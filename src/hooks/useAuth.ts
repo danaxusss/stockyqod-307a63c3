@@ -171,6 +171,9 @@ export function useAuth() {
 
       if (!error && data?.success) {
         const user = data.user as AppUser;
+        if (user.is_admin) {
+          sessionStorage.setItem('inventory_admin_pin', pin);
+        }
         await loadUserData(user);
         authStateManager.notify();
         return true;

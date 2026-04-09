@@ -122,11 +122,15 @@ export function useUserAuth() {
       localStorage.setItem(AUTH_STORAGE_KEY, 'true');
       localStorage.setItem(AUTH_TIME_KEY, Date.now().toString());
       localStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
+      // Store PIN in sessionStorage for admin operations (cleared on tab close)
+      if (user.is_admin) {
+        sessionStorage.setItem('inventory_admin_pin', pin);
+      }
       setIsAuthenticated(true);
-        setAuthenticatedUser(user);
-        userAuthStateManager.notify();
-        ActivityLogger.log('login', `User ${user.username} logged in`);
-        return true;
+      setAuthenticatedUser(user);
+      userAuthStateManager.notify();
+      ActivityLogger.log('login', `User ${user.username} logged in`);
+      return true;
     } catch (error) {
       console.error('Login with credentials failed:', error);
       return false;
@@ -143,6 +147,9 @@ export function useUserAuth() {
       localStorage.setItem(AUTH_STORAGE_KEY, 'true');
       localStorage.setItem(AUTH_TIME_KEY, Date.now().toString());
       localStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
+      if (user.is_admin) {
+        sessionStorage.setItem('inventory_admin_pin', pin);
+      }
       setIsAuthenticated(true);
       setAuthenticatedUser(user);
       userAuthStateManager.notify();
@@ -158,6 +165,7 @@ export function useUserAuth() {
     localStorage.removeItem(AUTH_STORAGE_KEY);
     localStorage.removeItem(AUTH_TIME_KEY);
     localStorage.removeItem(USER_DATA_KEY);
+    sessionStorage.removeItem('inventory_admin_pin');
     setIsAuthenticated(false);
     setAuthenticatedUser(null);
     userAuthStateManager.notify();
