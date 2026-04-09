@@ -126,7 +126,9 @@ export class PdfExportService {
     if (fields.showClientICE && quote.customer.ice) clientLines.push(`ICE : ${quote.customer.ice}`);
 
     const boxH = 6 + clientLines.length * 5;
-    doc.roundedRect(margin, clientBoxY, contentWidth / 2, boxH, 1, 1, 'S');
+    if (style.showBorders) {
+      doc.roundedRect(margin, clientBoxY, contentWidth / 2, boxH, br, br, 'S');
+    }
 
     doc.setFontSize(9);
     doc.setTextColor(...DARK);
@@ -194,8 +196,8 @@ export class PdfExportService {
       styles: {
         fontSize: 8.5,
         cellPadding: 3,
-        lineColor: [220, 225, 235],
-        lineWidth: 0.2,
+        lineColor: style.showBorders ? [220, 225, 235] : [255, 255, 255],
+        lineWidth: style.showBorders ? 0.2 : 0,
         textColor: DARK,
       },
       headStyles: {
