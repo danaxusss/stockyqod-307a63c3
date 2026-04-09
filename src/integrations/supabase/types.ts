@@ -14,7 +14,153 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      app_users: {
+        Row: {
+          allowed_brands: string[]
+          allowed_stock_locations: string[]
+          can_create_quote: boolean
+          created_at: string
+          id: string
+          is_admin: boolean
+          pin: string
+          price_display_type: string
+          updated_at: string
+          username: string
+        }
+        Insert: {
+          allowed_brands?: string[]
+          allowed_stock_locations?: string[]
+          can_create_quote?: boolean
+          created_at?: string
+          id?: string
+          is_admin?: boolean
+          pin: string
+          price_display_type?: string
+          updated_at?: string
+          username: string
+        }
+        Update: {
+          allowed_brands?: string[]
+          allowed_stock_locations?: string[]
+          can_create_quote?: boolean
+          created_at?: string
+          id?: string
+          is_admin?: boolean
+          pin?: string
+          price_display_type?: string
+          updated_at?: string
+          username?: string
+        }
+        Relationships: []
+      }
+      products: {
+        Row: {
+          barcode: string
+          brand: string
+          buyprice: number
+          created_at: string
+          name: string
+          price: number
+          provider: string
+          reseller_price: number
+          stock_levels: Json
+          techsheet: string
+          updated_at: string
+        }
+        Insert: {
+          barcode: string
+          brand?: string
+          buyprice?: number
+          created_at?: string
+          name: string
+          price?: number
+          provider?: string
+          reseller_price?: number
+          stock_levels?: Json
+          techsheet?: string
+          updated_at?: string
+        }
+        Update: {
+          barcode?: string
+          brand?: string
+          buyprice?: number
+          created_at?: string
+          name?: string
+          price?: number
+          provider?: string
+          reseller_price?: number
+          stock_levels?: Json
+          techsheet?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      quote_templates: {
+        Row: {
+          file_data: string
+          file_type: string
+          id: string
+          is_active: boolean
+          name: string
+          uploaded_at: string
+        }
+        Insert: {
+          file_data: string
+          file_type: string
+          id: string
+          is_active?: boolean
+          name: string
+          uploaded_at?: string
+        }
+        Update: {
+          file_data?: string
+          file_type?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          uploaded_at?: string
+        }
+        Relationships: []
+      }
+      quotes: {
+        Row: {
+          command_number: string | null
+          created_at: string
+          customer_info: Json
+          id: string
+          items: Json
+          notes: string | null
+          quote_number: string
+          status: string
+          total_amount: number
+          updated_at: string
+        }
+        Insert: {
+          command_number?: string | null
+          created_at?: string
+          customer_info?: Json
+          id: string
+          items?: Json
+          notes?: string | null
+          quote_number: string
+          status?: string
+          total_amount?: number
+          updated_at?: string
+        }
+        Update: {
+          command_number?: string | null
+          created_at?: string
+          customer_info?: Json
+          id?: string
+          items?: Json
+          notes?: string | null
+          quote_number?: string
+          status?: string
+          total_amount?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
