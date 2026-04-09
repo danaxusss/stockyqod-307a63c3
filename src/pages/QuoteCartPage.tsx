@@ -1127,54 +1127,18 @@ export function QuoteCartPage() {
         />
       </div>
 
-      {/* Excel Export Section */}
+      {/* PDF Export Section */}
       <div className="glass rounded-2xl shadow-xl p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold text-foreground flex items-center space-x-2">
-            <FileDown className="h-5 w-5" />
-            <span>Export Excel</span>
-          </h2>
-          <button
-            onClick={() => setShowTemplateUpload(!showTemplateUpload)}
-            className="flex items-center space-x-2 px-3 py-2 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors text-sm"
-          >
-            <Upload className="h-4 w-4" />
-            <span>Gérer Templates</span>
-          </button>
-        </div>
-
-        {/* Template Upload */}
-        {showTemplateUpload && (
-          <div className="mb-4 p-4 bg-secondary rounded-lg">
-            <h3 className="font-medium text-foreground mb-2">
-              Uploader un Template Excel
-            </h3>
-            <input
-              type="file"
-              accept=".xlsx,.xls"
-              onChange={handleTemplateUpload}
-              className="w-full px-3 py-2 border border-input rounded-lg bg-secondary text-foreground"
-            />
-            <p className="text-sm text-muted-foreground mt-2">
-              Formats acceptés: .xlsx, .xls
-            </p>
-          </div>
-        )}
-
-        {/* Active Template Info */}
-        {activeTemplate && (
-          <div className="mb-4 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-            <p className="text-sm text-green-700 dark:text-green-300">
-              Template actif: <strong>{activeTemplate.name}</strong>
-            </p>
-          </div>
-        )}
+        <h2 className="text-xl font-semibold text-foreground flex items-center space-x-2 mb-4">
+          <FileDown className="h-5 w-5" />
+          <span>Export PDF</span>
+        </h2>
 
         <div className="space-y-3">
           <button
             onClick={handleExport}
             disabled={isExporting || items.length === 0}
-            className="w-full flex items-center justify-center space-x-2 px-4 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-primary-foreground rounded-lg transition-colors"
+            className="w-full flex items-center justify-center space-x-2 px-4 py-3 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-lg transition-colors"
           >
             {isExporting ? (
               <>
@@ -1184,11 +1148,10 @@ export function QuoteCartPage() {
             ) : (
               <>
                 <FileDown className="h-4 w-4" />
-                <span>{activeTemplate ? `Exporter avec ${activeTemplate.name}` : 'Exporter avec Template par Défaut'}</span>
+                <span>Exporter en PDF</span>
               </>
             )}
           </button>
-          
         </div>
       </div>
 
