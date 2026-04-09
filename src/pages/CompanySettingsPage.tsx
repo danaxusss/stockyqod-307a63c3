@@ -139,33 +139,32 @@ export default function CompanySettingsPage() {
     );
   }
 
-  const inputClass = "w-full px-4 py-2 border border-input rounded-lg bg-secondary text-foreground focus:ring-2 focus:ring-ring";
+  const inputClass = "w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground focus:ring-2 focus:ring-ring";
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="max-w-4xl mx-auto space-y-4">
       {/* Header */}
-      <div className="glass rounded-2xl shadow-xl p-6">
-        <div className="flex items-center space-x-3">
-          <div className="p-3 bg-primary rounded-xl" style={{ boxShadow: 'var(--shadow-glow)' }}>
-            <Settings className="h-6 w-6 text-primary-foreground" />
+      <div className="glass rounded-xl shadow-lg p-4">
+        <div className="flex items-center space-x-2.5">
+          <div className="p-2 bg-primary rounded-lg" style={{ boxShadow: 'var(--shadow-glow)' }}>
+            <Settings className="h-4 w-4 text-primary-foreground" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Paramètres de l'Entreprise</h1>
-            <p className="text-muted-foreground">Configurez les informations affichées sur les devis</p>
+            <h1 className="text-lg font-bold text-foreground">Paramètres Entreprise</h1>
+            <p className="text-xs text-muted-foreground">Informations affichées sur les devis</p>
           </div>
         </div>
       </div>
 
       {/* Company Info */}
-      <div className="glass rounded-2xl shadow-xl p-6">
-        <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center space-x-2">
-          <Building className="h-5 w-5" />
-          <span>Informations de l'Entreprise</span>
+      <div className="glass rounded-xl shadow-lg p-4">
+        <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center space-x-1.5">
+          <Building className="h-4 w-4" /><span>Informations Entreprise</span>
         </h2>
 
         {/* Logo */}
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-foreground mb-2">Logo</label>
+        <div className="mb-4">
+          <label className="block text-xs font-medium text-foreground mb-1">Logo</label>
           <div className="flex items-center space-x-4">
             {logoPreview ? (
               <div className="relative">
@@ -190,8 +189,8 @@ export default function CompanySettingsPage() {
           </div>
           {/* Logo size */}
           {(logoPreview || settings.logo_url) && (
-            <div className="mt-3">
-              <label className="block text-sm font-medium text-foreground mb-1">Taille du logo dans le devis</label>
+            <div className="mt-2">
+              <label className="block text-xs font-medium text-foreground mb-1">Taille logo dans devis</label>
               <select
                 value={settings.logo_size || 'medium'}
                 onChange={e => setSettings({ ...settings, logo_size: e.target.value as 'small' | 'medium' | 'large' })}
@@ -205,8 +204,8 @@ export default function CompanySettingsPage() {
           )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {[
             <label className="block text-sm font-medium text-foreground mb-1">Nom de l'entreprise</label>
             <input
               type="text"
