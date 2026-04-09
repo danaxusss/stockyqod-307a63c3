@@ -428,11 +428,11 @@ export class PdfExportService {
     y = (doc as any).lastAutoTable.finalY + 4;
 
     // Check if totals fit on current page
-    const totalsHeight = (fields.showTVA ? 26 : 10) + 20;
-    if (y + totalsHeight > pageHeight - footerTotalHeight - 10) {
+    const totalsHeight = (fields.showTVA ? 20 : 8) + 16;
+    if (y + totalsHeight > pageHeight - footerTotalHeight - 8) {
       doc.addPage();
       drawPageDecorations();
-      y = 15;
+      y = 12;
     }
 
     // === TOTALS SECTION ===
@@ -440,56 +440,56 @@ export class PdfExportService {
     const totalHT = totalTTC / (1 + tvaRate / 100);
     const totalTVA = totalTTC - totalHT;
 
-    const totalsWidth = 85;
+    const totalsWidth = 75;
     const totalsX = pageWidth - margin - totalsWidth;
 
     if (fields.showTVA) {
       doc.setFillColor(248, 249, 252);
-      doc.rect(totalsX, y, totalsWidth, 8, 'F');
+      doc.rect(totalsX, y, totalsWidth, 6.5, 'F');
       doc.setDrawColor(230, 230, 230);
-      doc.rect(totalsX, y, totalsWidth, 8, 'S');
+      doc.rect(totalsX, y, totalsWidth, 6.5, 'S');
       
-      doc.setFontSize(9);
+      doc.setFontSize(7.5);
       doc.setFont(font, 'bold');
       doc.setTextColor(...DARK);
-      doc.text('TOTAL HT', totalsX + 4, y + 5.5);
-      doc.text(this.formatCurrency(totalHT) + ' Dh', totalsX + totalsWidth - 4, y + 5.5, { align: 'right' });
-      y += 8;
+      doc.text('TOTAL HT', totalsX + 3, y + 4.5);
+      doc.text(this.formatCurrency(totalHT) + ' Dh', totalsX + totalsWidth - 3, y + 4.5, { align: 'right' });
+      y += 6.5;
 
       doc.setFillColor(248, 249, 252);
-      doc.rect(totalsX, y, totalsWidth, 8, 'F');
+      doc.rect(totalsX, y, totalsWidth, 6.5, 'F');
       doc.setDrawColor(230, 230, 230);
-      doc.rect(totalsX, y, totalsWidth, 8, 'S');
+      doc.rect(totalsX, y, totalsWidth, 6.5, 'S');
       
       doc.setFont(font, 'bold');
       doc.setTextColor(...DARK);
-      doc.text(`TVA ${tvaRate}%`, totalsX + 4, y + 5.5);
-      doc.text(this.formatCurrency(totalTVA) + ' Dh', totalsX + totalsWidth - 4, y + 5.5, { align: 'right' });
-      y += 8;
+      doc.text(`TVA ${tvaRate}%`, totalsX + 3, y + 4.5);
+      doc.text(this.formatCurrency(totalTVA) + ' Dh', totalsX + totalsWidth - 3, y + 4.5, { align: 'right' });
+      y += 6.5;
     }
 
     if (style.totalsStyle === 'highlighted') {
       doc.setFillColor(...ACCENT);
-      doc.rect(totalsX, y, totalsWidth, 10, 'F');
-      doc.setFontSize(11);
+      doc.rect(totalsX, y, totalsWidth, 8, 'F');
+      doc.setFontSize(9);
       doc.setFont(font, 'bold');
       doc.setTextColor(...WHITE);
     } else if (style.totalsStyle === 'boxed') {
       doc.setDrawColor(...ACCENT);
-      doc.setLineWidth(0.8);
-      doc.rect(totalsX, y, totalsWidth, 10, 'S');
-      doc.setFontSize(11);
+      doc.setLineWidth(0.6);
+      doc.rect(totalsX, y, totalsWidth, 8, 'S');
+      doc.setFontSize(9);
       doc.setFont(font, 'bold');
       doc.setTextColor(...ACCENT);
     } else {
-      doc.setFontSize(11);
+      doc.setFontSize(9);
       doc.setFont(font, 'bold');
       doc.setTextColor(...ACCENT);
     }
 
-    doc.text('TOTAL TTC', totalsX + 4, y + 7);
-    doc.text(this.formatCurrency(totalTTC) + ' Dh', totalsX + totalsWidth - 4, y + 7, { align: 'right' });
-    y += 14;
+    doc.text('TOTAL TTC', totalsX + 3, y + 5.5);
+    doc.text(this.formatCurrency(totalTTC) + ' Dh', totalsX + totalsWidth - 3, y + 5.5, { align: 'right' });
+    y += 10;
 
     // === PAYMENT TERMS ===
     if (fields.showPaymentTerms) {
