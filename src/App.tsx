@@ -21,7 +21,7 @@ const StatisticsPage = React.lazy(() => import('./pages/StatisticsPage').then(m 
 function PageLoader() {
   return (
     <div className="flex items-center justify-center min-h-[50vh]">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
     </div>
   );
 }
@@ -39,7 +39,7 @@ function AppContent() {
 
   if (!isUserAuthenticated) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 dark:from-slate-900 dark:via-blue-900 dark:to-indigo-900 flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <LoginModal 
           roleType="user"
           isInitialGate={true}

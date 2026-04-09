@@ -1,11 +1,13 @@
 import React, { createContext, useContext, ReactNode } from 'react';
 import { AppState } from '../types';
 import { useApp } from '../hooks/useApp';
+import { SyncInfo } from '../utils/syncEngine';
 
 interface AppContextType {
   state: AppState;
   isLoading: boolean;
   syncStatus: null;
+  syncInfo: SyncInfo;
   syncData: (forceSync?: boolean) => Promise<boolean>;
   checkForUpdates: () => Promise<boolean>;
   getSyncStats: () => Promise<unknown>;

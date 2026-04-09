@@ -5,13 +5,12 @@ import { useAuth } from '../hooks/useAuth';
 import { useAppContext } from '../context/AppContext';
 import { useToast } from '../context/ToastContext';
 import { ExcelUploadModal } from '../components/ExcelUploadModal';
-import { SyncStatusIndicator } from '../components/SyncStatusIndicator';
 import { ProductUploadService } from '../utils/productUploadService';
 import { StorageManager } from '../utils/storage';
 
 export function Home() {
   const { isAdmin, canAccessStockLocation, authVersion, canCreateQuote } = useAuth();
-  const { state, syncStatus, syncData } = useAppContext();
+  const { state, syncData, syncInfo } = useAppContext();
   const { showToast } = useToast();
   const [isSyncing, setIsSyncing] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
@@ -19,45 +18,22 @@ export function Home() {
   const [showDebugInfo, setShowDebugInfo] = useState(false);
   const [debugInfo, setDebugInfo] = useState<any>(null);
 
-  // Debug logging for admin status on Home page
-  console.log('Home page render - Admin status:', {
-    isAdmin,
-    authVersion
-  });
-  // React to auth changes
   useEffect(() => {
-    // This effect will run whenever authVersion changes, ensuring the component re-renders
-    // when admin status changes
     console.log('Home page - Auth version changed:', authVersion, 'isAdmin:', isAdmin);
   }, [authVersion, isAdmin]);
 
   const handleSync = async () => {
     if (!isAdmin) return;
-    
     setIsSyncing(true);
-    
     try {
-      const hasUpdates = await syncData(true); // Force sync
-      if (hasUpdates) {
-        showToast({
-          type: 'success',
-          title: 'Synchronisation réussie',
-          message: 'Base de données mise à jour avec succès !'
-        });
-      } else {
-        showToast({
-          type: 'info',
-          title: 'Déjà à jour',
-          message: 'La base de données est déjà à jour - aucune nouvelle mise à jour disponible.'
-        });
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Échec de la synchronisation';
+      const hasUpdates = await syncData(true);
       showToast({
-        type: 'error',
-        title: 'Erreur de synchronisation',
-        message
+        type: hasUpdates ? 'success' : 'info',
+        title: hasUpdates ? 'Synchronisation réussie' : 'Déjà à jour',
+        message: hasUpdates ? 'Base de données mise à jour !' : 'Aucune nouvelle donnée.'
       });
+    } catch (error) {
+      showToast({ type: 'error', title: 'Erreur', message: error instanceof Error ? error.message : 'Échec' });
     } finally {
       setIsSyncing(false);
     }
@@ -65,130 +41,42 @@ export function Home() {
 
   const handleClearDatabase = async () => {
     if (!isAdmin) return;
-
-    const confirmed = window.confirm(
-      'Êtes-vous sûr de vouloir supprimer TOUS les produits de la base de données ?\n\n' +
-      'Cette action va :\n' +
-      '• Supprimer TOUS les produits de Supabase\n' +
-      '• Supprimer TOUTES les données locales (IndexedDB)\n' +
-      '• Réinitialiser toutes les préférences\n\n' +
-      'Cette action est IRRÉVERSIBLE !'
-    );
-
+    const confirmed = window.confirm('Supprimer TOUS les produits ? Cette action est IRRÉVERSIBLE !');
     if (!confirmed) return;
-
-    const doubleConfirm = window.confirm(
-      'DERNIÈRE CONFIRMATION !\n\n' +
-      'Vous êtes sur le point de DÉTRUIRE toutes les données.\n' +
-      'Tapez "CONFIRMER" dans la prochaine boîte de dialogue pour continuer.'
-    );
-
-    if (!doubleConfirm) return;
-
-    const finalConfirm = prompt(
-      'Pour confirmer la suppression complète, tapez exactement: CONFIRMER'
-    );
-
-    if (finalConfirm !== 'CONFIRMER') {
-      showToast({
-        type: 'warning',
-        title: 'Suppression annulée',
-        message: 'Confirmation incorrecte'
-      });
-      return;
-    }
+    const finalConfirm = prompt('Tapez exactement: CONFIRMER');
+    if (finalConfirm !== 'CONFIRMER') { showToast({ type: 'warning', title: 'Annulé', message: 'Confirmation incorrecte' }); return; }
 
     setIsClearing(true);
-
     try {
-      console.log('Starting complete database reset...');
-
-      // Step 1: Clear Supabase database
-      showToast({
-        type: 'info',
-        message: 'Étape 1/3: Suppression des produits Supabase...'
-      });
       await ProductUploadService.resetDatabase();
-
-      // Step 2: Clear local IndexedDB
-      showToast({
-        type: 'info',
-        message: 'Étape 2/3: Réinitialisation des préférences...'
-      });
-
-      // Step 3: Clear localStorage
-      showToast({
-        type: 'info',
-        message: 'Étape 3/3: Réinitialisation des préférences...'
-      });
       StorageManager.clearAllData();
-
-      showToast({
-        type: 'success',
-        title: 'Suppression terminée',
-        message: 'Base de données complètement vidée ! La page va se recharger...'
-      });
-
-      // Reload the page after a short delay
-      setTimeout(() => {
-        window.location.reload();
-      }, 2000);
-
+      showToast({ type: 'success', title: 'Suppression terminée', message: 'La page va se recharger...' });
+      setTimeout(() => window.location.reload(), 2000);
     } catch (error) {
-      console.error('Failed to clear database:', error);
-      showToast({
-        type: 'error',
-        title: 'Erreur de suppression',
-        message: `Échec de la suppression: ${error instanceof Error ? error.message : 'Erreur inconnue'}`
-      });
+      showToast({ type: 'error', title: 'Erreur', message: `${error instanceof Error ? error.message : 'Erreur'}` });
     } finally {
       setIsClearing(false);
     }
   };
 
   const handleUploadSuccess = () => {
-    showToast({
-      type: 'success',
-      title: 'Upload réussi',
-      message: 'Produits téléchargés avec succès !'
-    });
-    // Trigger a refresh of the app state if needed
+    showToast({ type: 'success', title: 'Upload réussi', message: 'Produits téléchargés !' });
     window.location.reload();
   };
 
   const handleDebugAnalysis = async () => {
     if (!isAdmin) return;
-    
     try {
       setShowDebugInfo(true);
-      
       const supabaseStats = await ProductUploadService.analyzeProducts();
-      
-      setDebugInfo({
-        supabase: supabaseStats,
-        timestamp: new Date().toISOString()
-      });
-      
-      console.log('Debug Analysis:', {
-        supabase: supabaseStats
-      });
-      
+      setDebugInfo({ supabase: supabaseStats, timestamp: new Date().toISOString() });
     } catch (error) {
-      console.error('Debug analysis failed:', error);
-      showToast({
-        type: 'error',
-        title: 'Erreur d\'analyse',
-        message: `Analyse de débogage échouée: ${error instanceof Error ? error.message : 'Erreur inconnue'}`
-      });
+      showToast({ type: 'error', title: 'Erreur', message: 'Analyse échouée' });
     }
   };
 
-  // Helper function to format numbers with separators
-  const formatNumber = (num: number): string => {
-    return new Intl.NumberFormat('fr-FR').format(num);
-  };
+  const formatNumber = (num: number): string => new Intl.NumberFormat('fr-FR').format(num);
 
-  // Calculate total stock across accessible locations only
   const totalStock = state.products.reduce((sum, product) => {
     const productTotal = Object.entries(product.stock_levels || {})
       .filter(([location]) => canAccessStockLocation(location))
@@ -196,65 +84,64 @@ export function Home() {
     return sum + productTotal;
   }, 0);
 
-  // Get unique accessible stock locations
   const allLocations = new Set<string>();
   state.products.forEach(product => {
     Object.keys(product.stock_levels || {}).forEach(location => {
-      if (canAccessStockLocation(location)) {
-        allLocations.add(location);
-      }
+      if (canAccessStockLocation(location)) allLocations.add(location);
     });
   });
 
-  // Show empty state with sync option if no products
+  // Card component for consistent styling
+  const ActionCard = ({ to, onClick, icon: Icon, iconGradient, title, desc, disabled, children }: any) => {
+    const cls = `group glass rounded-2xl p-5 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-[1.02] text-left ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`;
+    const content = (
+      <>
+        <div className={`flex items-center justify-center w-11 h-11 ${iconGradient} rounded-xl mb-3 transition-all`}>
+          <Icon className="h-5 w-5 text-primary-foreground" />
+        </div>
+        <h3 className="text-base font-semibold text-foreground mb-1">{title}</h3>
+        <p className="text-muted-foreground text-sm">{desc}</p>
+        {children}
+      </>
+    );
+
+    if (to) return <Link to={to} className={cls}>{content}</Link>;
+    return <button onClick={onClick} disabled={disabled} className={cls}>{content}</button>;
+  };
+
   if (state.products.length === 0) {
     return (
       <div className="max-w-4xl mx-auto">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl mb-4">
-            <Package className="h-8 w-8 text-white" />
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-primary rounded-2xl mb-4" style={{ boxShadow: 'var(--shadow-glow)' }}>
+            <Package className="h-8 w-8 text-primary-foreground" />
           </div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-            Gestion d'Inventaire
-          </h1>
-          <p className="text-gray-600 dark:text-gray-400">
-            Recherchez et gérez votre inventaire facilement
-          </p>
+          <h1 className="text-3xl font-bold text-foreground mb-2">Gestion d'Inventaire</h1>
+          <p className="text-muted-foreground">Recherchez et gérez votre inventaire facilement</p>
         </div>
 
-        <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl shadow-xl p-8 text-center">
+        <div className="glass rounded-2xl shadow-xl p-8 text-center">
           <div className="flex justify-center mb-6">
-            <div className="p-4 bg-gradient-to-r from-orange-100 to-red-100 dark:from-orange-900/30 dark:to-red-900/30 rounded-2xl">
-              <Package className="h-16 w-16 text-orange-600 dark:text-orange-400" />
+            <div className="p-4 bg-destructive/10 rounded-2xl">
+              <Package className="h-16 w-16 text-destructive" />
             </div>
           </div>
-          
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
-            Aucun Produit Trouvé
-          </h2>
-          
-          <p className="text-gray-600 dark:text-gray-400 mb-6 leading-relaxed">
+          <h2 className="text-2xl font-bold text-foreground mb-4">Aucun Produit Trouvé</h2>
+          <p className="text-muted-foreground mb-6 leading-relaxed">
             {state.isOnline 
-              ? "Votre inventaire semble vide. Synchronisez avec la base de données ou téléchargez des produits depuis un fichier Excel."
-              : "Aucun produit en cache. Veuillez vous connecter à Internet pour synchroniser les données."
-            }
+              ? "Synchronisez ou téléchargez des produits depuis un fichier Excel."
+              : "Aucun produit en cache. Connectez-vous à Internet pour synchroniser."}
           </p>
 
           {state.isOnline && isAdmin && (
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <button
-                onClick={handleSync}
-                disabled={isSyncing}
-                className="flex items-center justify-center space-x-2 px-4 py-2 sm:px-6 sm:py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-lg transition-colors"
-              >
+              <button onClick={handleSync} disabled={isSyncing}
+                className="flex items-center justify-center space-x-2 px-6 py-3 bg-primary hover:bg-primary/90 disabled:bg-muted text-primary-foreground rounded-xl transition-colors">
                 <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
-                <span>{isSyncing ? 'Synchronisation...' : 'Synchroniser Maintenant'}</span>
+                <span>{isSyncing ? 'Synchronisation...' : 'Synchroniser'}</span>
               </button>
-              
-              <button
-                onClick={() => setShowUploadModal(true)}
-                className="flex items-center justify-center space-x-2 px-4 py-2 sm:px-6 sm:py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors"
-              >
+              <button onClick={() => setShowUploadModal(true)}
+                className="flex items-center justify-center space-x-2 px-6 py-3 bg-accent hover:bg-accent/80 text-accent-foreground rounded-xl transition-colors">
                 <Upload className="h-4 w-4" />
                 <span>Télécharger Excel</span>
               </button>
@@ -262,20 +149,8 @@ export function Home() {
           )}
         </div>
 
-        {/* Sync Status at bottom for empty state */}
-        <div className="mt-8">
-          <SyncStatusIndicator 
-            syncStatus={syncStatus}
-            onSync={handleSync}
-            isSyncing={isSyncing}
-          />
-        </div>
-
         {showUploadModal && (
-          <ExcelUploadModal
-            onClose={() => setShowUploadModal(false)}
-            onSuccess={handleUploadSuccess}
-          />
+          <ExcelUploadModal onClose={() => setShowUploadModal(false)} onSuccess={handleUploadSuccess} />
         )}
       </div>
     );
@@ -284,221 +159,72 @@ export function Home() {
   return (
     <div className="max-w-4xl mx-auto">
       <div className="text-center mb-8">
-        <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl mb-4">
-          <Package className="h-8 w-8 text-white" />
+        <div className="inline-flex items-center justify-center w-16 h-16 bg-primary rounded-2xl mb-4" style={{ boxShadow: 'var(--shadow-glow)' }}>
+          <Package className="h-8 w-8 text-primary-foreground" />
         </div>
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-          Gestion d'Inventaire
-        </h1>
-        <p className="text-gray-600 dark:text-gray-400">
-          Recherchez et gérez votre inventaire facilement
-        </p>
+        <h1 className="text-3xl font-bold text-foreground mb-2">Gestion d'Inventaire</h1>
+        <p className="text-muted-foreground">Recherchez et gérez votre inventaire facilement</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-        <Link 
-          to="/search"
-          className="group bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl p-4 sm:p-6 shadow-lg hover:shadow-xl transition-all duration-300 border border-white/20 hover:scale-105"
-        >
-          <div className="flex items-center justify-center w-12 h-12 bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl mb-4 group-hover:from-blue-600 group-hover:to-blue-700 transition-all">
-            <Search className="h-6 w-6 text-white" />
-          </div>
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-            Rechercher Produits
-          </h3>
-          <p className="text-gray-600 dark:text-gray-400 text-sm">
-            Cherchez par nom, marque ou barcode
-          </p>
-        </Link>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 mb-8">
+        <ActionCard to="/search" icon={Search} iconGradient="bg-primary" title="Rechercher Produits" desc="Cherchez par nom, marque ou barcode" />
 
-        {/* Quote shortcuts - Only for non-admin users with quote permissions */}
         {canCreateQuote() && !isAdmin && (
           <>
-            <Link 
-              to="/quotes-history"
-              className="group bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl p-4 sm:p-6 shadow-lg hover:shadow-xl transition-all duration-300 border border-white/20 hover:scale-105"
-            >
-              <div className="flex items-center justify-center w-12 h-12 bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-xl mb-4 group-hover:from-emerald-600 group-hover:to-emerald-700 transition-all">
-                <FileText className="h-6 w-6 text-white" />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                Historique des Devis
-              </h3>
-              <p className="text-gray-600 dark:text-gray-400 text-sm">
-                Consultez et gérez vos devis
-              </p>
-            </Link>
-
-            <Link 
-              to="/quote-cart"
-              className="group bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl p-4 sm:p-6 shadow-lg hover:shadow-xl transition-all duration-300 border border-white/20 hover:scale-105"
-            >
-              <div className="flex items-center justify-center w-12 h-12 bg-gradient-to-r from-purple-500 to-purple-600 rounded-xl mb-4 group-hover:from-purple-600 group-hover:to-purple-700 transition-all">
-                <ShoppingCart className="h-6 w-6 text-white" />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                Nouveau Devis
-              </h3>
-              <p className="text-gray-600 dark:text-gray-400 text-sm">
-                Créer un nouveau devis
-              </p>
-            </Link>
+            <ActionCard to="/quotes-history" icon={FileText} iconGradient="bg-emerald-600" title="Historique des Devis" desc="Consultez et gérez vos devis" />
+            <ActionCard to="/quote-cart" icon={ShoppingCart} iconGradient="bg-violet-600" title="Nouveau Devis" desc="Créer un nouveau devis" />
           </>
         )}
+
         {isAdmin && (
           <>
-            <button
-              onClick={handleSync}
-              disabled={isSyncing || !state.isOnline}
-              className="group bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl p-4 sm:p-6 shadow-lg hover:shadow-xl transition-all duration-300 border border-white/20 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 text-left"
-            >
-              <div className="flex items-center justify-center w-12 h-12 bg-gradient-to-r from-orange-500 to-orange-600 rounded-xl mb-4 group-hover:from-orange-600 group-hover:to-orange-700 transition-all">
-                <RefreshCw className={`h-6 w-6 text-white ${isSyncing ? 'animate-spin' : ''}`} />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                Synchroniser Données
-              </h3>
-              <p className="text-gray-600 dark:text-gray-400 text-sm">
-                {isSyncing ? 'Synchronisation...' : 'Mettre à jour l\'inventaire depuis le serveur'}
-              </p>
-            </button>
-
-            <button
-              onClick={() => setShowUploadModal(true)}
-              className="group bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl p-4 sm:p-6 shadow-lg hover:shadow-xl transition-all duration-300 border border-white/20 hover:scale-105 text-left"
-            >
-              <div className="flex items-center justify-center w-12 h-12 bg-gradient-to-r from-purple-500 to-purple-600 rounded-xl mb-4 group-hover:from-purple-600 group-hover:to-purple-700 transition-all">
-                <Upload className="h-6 w-6 text-white" />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                Télécharger Excel
-              </h3>
-              <p className="text-gray-600 dark:text-gray-400 text-sm">
-                Importer des produits depuis Excel
-              </p>
-            </button>
-
-            <button
-              onClick={handleDebugAnalysis}
-              className="group bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl p-4 sm:p-6 shadow-lg hover:shadow-xl transition-all duration-300 border border-white/20 hover:scale-105 text-left"
-            >
-              <div className="flex items-center justify-center w-12 h-12 bg-gradient-to-r from-red-500 to-red-600 rounded-xl mb-4 group-hover:from-red-600 group-hover:to-red-700 transition-all">
-                <Bug className="h-6 w-6 text-white" />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                Analyse Debug
-              </h3>
-              <p className="text-gray-600 dark:text-gray-400 text-sm">
-                Analyser les données pour identifier les problèmes
-              </p>
-            </button>
-
-            <button
-              onClick={handleClearDatabase}
-              disabled={isClearing}
-              className="group bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl p-4 sm:p-6 shadow-lg hover:shadow-xl transition-all duration-300 border border-white/20 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 text-left"
-            >
-              <div className="flex items-center justify-center w-12 h-12 bg-gradient-to-r from-red-600 to-red-700 rounded-xl mb-4 group-hover:from-red-700 group-hover:to-red-800 transition-all">
-                <Trash2 className="h-6 w-6 text-white" />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                Vider Base de Données
-              </h3>
-              <p className="text-gray-600 dark:text-gray-400 text-sm">
-                {isClearing ? 'Suppression en cours...' : 'Supprimer TOUS les produits (IRRÉVERSIBLE)'}
-              </p>
-            </button>
-
-            <Link
-              to="/admin/statistics"
-              className="group bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl p-4 sm:p-6 shadow-lg hover:shadow-xl transition-all duration-300 border border-white/20 hover:scale-105 text-left"
-            >
-              <div className="flex items-center justify-center w-12 h-12 bg-gradient-to-r from-indigo-500 to-indigo-600 rounded-xl mb-4 group-hover:from-indigo-600 group-hover:to-indigo-700 transition-all">
-                <BarChart3 className="h-6 w-6 text-white" />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                Statistiques Générales
-              </h3>
-              <p className="text-gray-600 dark:text-gray-400 text-sm">
-                Voir les statistiques détaillées du système
-              </p>
-            </Link>
+            <ActionCard onClick={handleSync} disabled={isSyncing || !state.isOnline} icon={RefreshCw} iconGradient="bg-orange-600"
+              title="Synchroniser" desc={isSyncing ? 'Synchronisation...' : 'Mettre à jour depuis le serveur'} />
+            <ActionCard onClick={() => setShowUploadModal(true)} icon={Upload} iconGradient="bg-violet-600" title="Télécharger Excel" desc="Importer des produits" />
+            <ActionCard onClick={handleDebugAnalysis} icon={Bug} iconGradient="bg-rose-600" title="Analyse Debug" desc="Identifier les problèmes" />
+            <ActionCard onClick={handleClearDatabase} disabled={isClearing} icon={Trash2} iconGradient="bg-red-700"
+              title="Vider la Base" desc={isClearing ? 'Suppression...' : 'Supprimer TOUT (IRRÉVERSIBLE)'} />
+            <ActionCard to="/admin/statistics" icon={BarChart3} iconGradient="bg-primary" title="Statistiques" desc="Voir les stats détaillées" />
           </>
         )}
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        {[
+          { label: 'Produits', value: formatNumber(state.products.length) },
+          { label: 'Stock Total', value: formatNumber(totalStock) },
+          { label: 'Emplacements', value: allLocations.size.toString() },
+          { label: 'Statut', value: syncInfo.isOnline ? 'En ligne' : 'Hors ligne' },
+        ].map(({ label, value }) => (
+          <div key={label} className="glass rounded-xl p-4 text-center">
+            <div className="text-2xl font-bold text-foreground">{value}</div>
+            <div className="text-xs text-muted-foreground mt-1">{label}</div>
+          </div>
+        ))}
       </div>
 
       {/* Debug Information */}
       {showDebugInfo && debugInfo && isAdmin && (
-        <div className="mb-8 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl p-6 shadow-lg border border-white/20">
+        <div className="mb-8 glass rounded-2xl p-6 shadow-lg">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center space-x-2">
+            <h2 className="text-xl font-semibold text-foreground flex items-center space-x-2">
               <Bug className="h-5 w-5" />
               <span>Analyse de Debug</span>
             </h2>
-            <button
-              onClick={() => setShowDebugInfo(false)}
-              className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-            >
-              ✕
-            </button>
+            <button onClick={() => setShowDebugInfo(false)} className="text-muted-foreground hover:text-foreground">✕</button>
           </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <h3 className="font-semibold text-gray-900 dark:text-white mb-2">Base de Données Locale (IndexedDB)</h3>
-              <div className="space-y-2 text-sm">
-                <div>Produits: <span className="font-mono">{debugInfo.local.productsCount}</span></div>
-                <div>Meta: <span className="font-mono">{debugInfo.local.metaCount}</span></div>
-                <div>Identifiants dupliqués: <span className="font-mono">{debugInfo.local.duplicateBarcodes.length}</span></div>
-                {debugInfo.local.duplicateBarcodes.length > 0 && (
-                  <div className="text-red-600 dark:text-red-400">
-                    Dupliqués: {debugInfo.local.duplicateBarcodes.slice(0, 5).join(', ')}
-                    {debugInfo.local.duplicateBarcodes.length > 5 && '...'}
-                  </div>
-                )}
-              </div>
-            </div>
-            
-            <div>
-              <h3 className="font-semibold text-gray-900 dark:text-white mb-2">Base de Données Serveur (Supabase)</h3>
-              <div className="space-y-2 text-sm">
-                <div>Produits: <span className="font-mono">{debugInfo.supabase.totalCount}</span></div>
-                <div>Produits invalides: <span className="font-mono">{debugInfo.supabase.invalidProducts.length}</span></div>
-                <div>Identifiants dupliqués: <span className="font-mono">{debugInfo.supabase.duplicateBarcodes.length}</span></div>
-                {debugInfo.supabase.duplicateBarcodes.length > 0 && (
-                  <div className="text-red-600 dark:text-red-400">
-                    Dupliqués: {debugInfo.supabase.duplicateBarcodes.slice(0, 5).join(', ')}
-                    {debugInfo.supabase.duplicateBarcodes.length > 5 && '...'}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-          
-          <div className="mt-4 p-3 bg-gray-50 dark:bg-slate-700 rounded-lg">
-            <div className="text-sm text-gray-600 dark:text-gray-400">
-              <strong>Différence:</strong> {Math.abs(debugInfo.supabase.totalCount - debugInfo.local.productsCount)} produits
-              <br />
-              <strong>Analyse effectuée:</strong> {new Date(debugInfo.timestamp).toLocaleString('fr-FR')}
-            </div>
+          <div className="space-y-2 text-sm text-muted-foreground">
+            <div>Produits serveur: <span className="font-mono text-foreground">{debugInfo.supabase.totalCount}</span></div>
+            <div>Produits invalides: <span className="font-mono text-foreground">{debugInfo.supabase.invalidProducts.length}</span></div>
+            <div>Dupliqués: <span className="font-mono text-foreground">{debugInfo.supabase.duplicateBarcodes.length}</span></div>
+            <div className="text-xs mt-2">Analyse: {new Date(debugInfo.timestamp).toLocaleString('fr-FR')}</div>
           </div>
         </div>
       )}
 
-      {/* Sync Status moved to bottom */}
-      <div className="mb-6">
-        <SyncStatusIndicator 
-          syncStatus={syncStatus}
-          onSync={handleSync}
-          isSyncing={isSyncing}
-        />
-      </div>
-
       {showUploadModal && (
-        <ExcelUploadModal
-          onClose={() => setShowUploadModal(false)}
-          onSuccess={handleUploadSuccess}
-        />
+        <ExcelUploadModal onClose={() => setShowUploadModal(false)} onSuccess={handleUploadSuccess} />
       )}
     </div>
   );

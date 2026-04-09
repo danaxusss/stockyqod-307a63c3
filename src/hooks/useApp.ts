@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { AppState, Product } from '../types';
 import { StorageManager } from '../utils/storage';
-import { ProductUploadService } from '../utils/productUploadService';
+import { SyncEngine, SyncInfo } from '../utils/syncEngine';
+import { OfflineStorage } from '../utils/offlineStorage';
 
 export function useApp() {
   const [state, setState] = useState<AppState>({
@@ -14,28 +15,74 @@ export function useApp() {
 
   const [isLoading, setIsLoading] = useState(true);
   const [activeLoginModalRole, setActiveLoginModalRole] = useState<'user' | 'admin' | null>(null);
+  const [syncInfo, setSyncInfo] = useState<SyncInfo>(SyncEngine.getInfo());
 
-  // Load products directly from Supabase
+  // Subscribe to sync engine state
+  useEffect(() => {
+    return SyncEngine.subscribe((info) => {
+      setSyncInfo(info);
+      setState(prev => ({ ...prev, isOnline: info.isOnline }));
+    });
+  }, []);
+
+  // Load products: local cache first, then cloud
   useEffect(() => {
     const loadProducts = async () => {
       try {
         setIsLoading(true);
-        const products = await ProductUploadService.getAllProducts();
-        setState(prev => ({ ...prev, products }));
-        console.log(`Loaded ${products.length} products from Supabase`);
+        
+        // 1. Try local cache first (instant)
+        const cached = await OfflineStorage.getCachedProducts();
+        if (cached.length > 0) {
+          setState(prev => ({ ...prev, products: cached }));
+          console.log(`Loaded ${cached.length} products from local cache`);
+          setIsLoading(false);
+          
+          // 2. Background sync from cloud
+          if (navigator.onLine) {
+            SyncEngine.pullProducts()
+              .then(fresh => {
+                setState(prev => ({ ...prev, products: fresh }));
+                console.log(`Background sync: ${fresh.length} products from cloud`);
+              })
+              .catch(err => console.warn('Background sync failed:', err));
+          }
+        } else {
+          // No cache — must fetch from cloud
+          if (navigator.onLine) {
+            const products = await SyncEngine.pullProducts();
+            setState(prev => ({ ...prev, products }));
+            console.log(`Loaded ${products.length} products from cloud (first sync)`);
+          } else {
+            console.warn('Offline with no cached data');
+          }
+          setIsLoading(false);
+        }
       } catch (error) {
         console.error('Failed to load products:', error);
-      } finally {
         setIsLoading(false);
       }
     };
 
     loadProducts();
+    
+    // Start periodic background sync (every 5 min)
+    SyncEngine.startPeriodicSync();
+    return () => SyncEngine.stopPeriodicSync();
   }, []);
 
-  // Listen for online/offline changes
+  // Listen for online/offline + re-sync when coming back online
   useEffect(() => {
-    const handleOnline = () => setState(prev => ({ ...prev, isOnline: true }));
+    const handleOnline = () => {
+      setState(prev => ({ ...prev, isOnline: true }));
+      // Re-fetch products when coming back online
+      SyncEngine.pullProducts()
+        .then(fresh => {
+          setState(prev => ({ ...prev, products: fresh }));
+          console.log('Reconnected: synced products from cloud');
+        })
+        .catch(err => console.warn('Reconnect sync failed:', err));
+    };
     const handleOffline = () => setState(prev => ({ ...prev, isOnline: false }));
 
     window.addEventListener('online', handleOnline);
@@ -59,29 +106,28 @@ export function useApp() {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  // Refresh products from Supabase
-  const syncData = async (_forceSync = false): Promise<boolean> => {
+  const syncData = useCallback(async (_forceSync = false): Promise<boolean> => {
     if (!state.isOnline) {
       throw new Error('Sync requires internet connection');
     }
 
     try {
-      const products = await ProductUploadService.getAllProducts();
+      const { products } = await SyncEngine.pullAll();
       setState(prev => ({ ...prev, products, hasNewData: false }));
       return products.length > 0;
     } catch (error) {
       console.error('Sync failed:', error);
       throw error;
     }
-  };
+  }, [state.isOnline]);
 
   const checkForUpdates = async (): Promise<boolean> => {
-    return false; // Not needed with direct Supabase access
+    return false;
   };
 
   const getSyncStats = async () => {
-    const count = await ProductUploadService.getProductCount();
-    return { productCount: count };
+    const stats = await OfflineStorage.getSyncStats();
+    return stats;
   };
 
   const updateRole = (role: AppState['role']) => {
@@ -97,6 +143,7 @@ export function useApp() {
     state,
     isLoading,
     syncStatus: null,
+    syncInfo,
     syncData,
     checkForUpdates,
     getSyncStats,
