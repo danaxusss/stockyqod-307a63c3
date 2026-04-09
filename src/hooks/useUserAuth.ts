@@ -65,10 +65,10 @@ export function useUserAuth() {
     const unsubscribe = userAuthStateManager.subscribe(() => {
       setIsAuthenticated(checkAuthenticationStatus());
       const stored = localStorage.getItem(USER_DATA_KEY);
-      setAuthenticatedUser(stored ? JSON.parse(stored) : null);
+      try { setAuthenticatedUser(stored ? JSON.parse(stored) : null); } catch { setAuthenticatedUser(null); }
       triggerUpdate();
     });
-    return unsubscribe;
+    return () => { unsubscribe(); };
   }, [triggerUpdate]);
 
   useEffect(() => {
