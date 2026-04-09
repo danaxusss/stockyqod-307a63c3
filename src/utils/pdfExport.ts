@@ -58,13 +58,13 @@ export class PdfExportService {
 
     // === HEADER ===
     // Company name (left)
-    doc.setFontSize(18);
+    doc.setFontSize(companySize);
     doc.setFont(font, 'bold');
     doc.setTextColor(...DARK);
     doc.text(settings?.company_name || 'Mon Entreprise', margin, y + 7);
 
     // DEVIS title (right)
-    doc.setFontSize(24);
+    doc.setFontSize(titleSize);
     doc.setTextColor(...ACCENT);
     doc.text('DEVIS', pageWidth - margin, y + 7, { align: 'right' });
 
