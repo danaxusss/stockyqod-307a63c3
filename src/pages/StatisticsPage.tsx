@@ -88,35 +88,6 @@ export function StatisticsPage() {
     );
   }
 
-  useEffect(() => {
-    const loadStatistics = async () => {
-      setIsLoading(true);
-      try {
-        // Load all required data
-        const [quotes, allUsers] = await Promise.all([
-          getAllQuotes(),
-          SupabaseUsersService.getAllUsers()
-        ]);
-
-        setUsers(allUsers);
-        
-        // Calculate product statistics
-        const productStats = calculateProductStats(state.products);
-        setProductStats(productStats);
-
-        // Calculate quote statistics
-        const quoteStats = calculateQuoteStats(quotes, allUsers);
-        setQuoteStats(quoteStats);
-
-      } catch (error) {
-        console.error('Failed to load statistics:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadStatistics();
-  }, [state.products]);
 
   const calculateProductStats = (products: any[]): ProductStats => {
     const totalProducts = products.length;
