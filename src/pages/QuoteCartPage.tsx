@@ -1073,6 +1073,20 @@ export function QuoteCartPage() {
                           </button>
                         </div>
                       </td>
+                      <td className="px-4 py-4">
+                        <div className="flex items-center space-x-1">
+                          <input
+                            type="number"
+                            value={item.discount ?? 0}
+                            onChange={(e) => updateItemDiscount(item.id, parseFloat(e.target.value) || 0)}
+                            className="w-16 px-2 py-1 text-sm border border-input rounded focus:ring-2 focus:ring-ring bg-secondary text-foreground"
+                            step="1"
+                            min="0"
+                            max="100"
+                          />
+                          <span className="text-sm text-muted-foreground">%</span>
+                        </div>
+                      </td>
                       <td className="px-4 py-4 text-sm font-medium text-foreground">
                         {ExcelExportService.formatCurrency(item.subtotal)} Dh
                       </td>
