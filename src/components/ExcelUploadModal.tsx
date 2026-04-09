@@ -3,7 +3,7 @@ import { X, Upload, FileSpreadsheet, AlertCircle, CheckCircle, Loader, Trash2, C
 import * as ExcelJS from 'exceljs';
 import { Product, ExcelRow } from '../types';
 import { ProductUploadService } from '../utils/productUploadService';
-import { saveProducts } from '../utils/database';
+import { ActivityLogger } from '../utils/activityLogger';
 import { useToast } from '../context/ToastContext';
 
 interface ExcelUploadModalProps {
