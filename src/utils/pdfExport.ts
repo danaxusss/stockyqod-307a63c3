@@ -260,7 +260,12 @@ export class PdfExportService {
     clientRows.push(['Nom du Client', quote.customer.fullName || '']);
     if (quote.customer.address || quote.customer.phoneNumber) {
       const addrParts: string[] = [];
-      if (quote.customer.phoneNumber) addrParts.push(quote.customer.phoneNumber);
+      if (quote.customer.phoneNumber) {
+        let phone = quote.customer.phoneNumber.trim();
+        if (phone.startsWith('*')) phone = phone.substring(1).trim();
+        if (phone.endsWith(',')) phone = phone.slice(0, -1).trim();
+        addrParts.push(phone);
+      }
       if (quote.customer.address) addrParts.push(quote.customer.address);
       clientRows.push(['Adresse / Tel', addrParts.join(' / ')]);
     }
