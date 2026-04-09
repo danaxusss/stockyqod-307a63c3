@@ -818,20 +818,58 @@ export function QuoteCartPage() {
             <label className="block text-sm font-medium text-foreground mb-2">
               Vendeur *
             </label>
-            <select
-              value={customer.salesPerson}
-              onChange={(e) => setCustomer(prev => ({ ...prev, salesPerson: e.target.value }))}
-              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${
-                validationErrors.salesPerson ? 'border-red-500' : 'border-input'
-              }`}
-            >
-              <option value="">Sélectionner un vendeur</option>
-              {availableUsers.map((user) => (
-                <option key={user.username} value={user.username}>
-                  {user.displayName}
-                </option>
-              ))}
-            </select>
+            {isAdmin && useCustomSeller ? (
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={customer.salesPerson}
+                  onChange={(e) => setCustomer(prev => ({ ...prev, salesPerson: e.target.value }))}
+                  className={`flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${
+                    validationErrors.salesPerson ? 'border-red-500' : 'border-input'
+                  }`}
+                  placeholder="Nom du vendeur personnalisé"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUseCustomSeller(false);
+                    setCustomer(prev => ({ ...prev, salesPerson: '' }));
+                  }}
+                  className="px-3 py-2 text-sm border border-input rounded-lg hover:bg-secondary text-foreground"
+                >
+                  Liste
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <select
+                  value={customer.salesPerson}
+                  onChange={(e) => setCustomer(prev => ({ ...prev, salesPerson: e.target.value }))}
+                  className={`flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${
+                    validationErrors.salesPerson ? 'border-red-500' : 'border-input'
+                  }`}
+                >
+                  <option value="">Sélectionner un vendeur</option>
+                  {availableUsers.map((user) => (
+                    <option key={user.username} value={user.username}>
+                      {user.displayName}
+                    </option>
+                  ))}
+                </select>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUseCustomSeller(true);
+                      setCustomer(prev => ({ ...prev, salesPerson: '' }));
+                    }}
+                    className="px-3 py-2 text-sm border border-input rounded-lg hover:bg-secondary text-foreground whitespace-nowrap"
+                  >
+                    Autre
+                  </button>
+                )}
+              </div>
+            )}
             {validationErrors.salesPerson && (
               <p className="mt-1 text-sm text-red-600 dark:text-red-400">{validationErrors.salesPerson}</p>
             )}
