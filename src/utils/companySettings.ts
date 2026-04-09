@@ -141,7 +141,8 @@ export class CompanySettingsService {
       .from('company-assets')
       .getPublicUrl(path);
 
-    return data.publicUrl;
+    // Add cache-busting timestamp to prevent browser from serving stale cached logo
+    return `${data.publicUrl}?t=${Date.now()}`;
   }
 
   static async deleteLogo(): Promise<void> {
