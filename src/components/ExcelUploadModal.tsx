@@ -77,7 +77,7 @@ export function ExcelUploadModal({ onClose, onSuccess }: ExcelUploadModalProps) 
             if (rowStr.includes('barcode') || rowStr.includes('product') || rowStr.includes('stock')) {
               headerRowIndex = i;
               
-              // Create column mapping with improved reseller price detection
+              // Create column mapping with improved detection for all fields
               row.forEach((header: string, index: number) => {
                 const headerLower = String(header).toLowerCase().trim();
                 if (headerLower.includes('barcode')) columnMapping.barcode = index;
@@ -94,7 +94,22 @@ export function ExcelUploadModal({ onClose, onSuccess }: ExcelUploadModalProps) 
                   headerLower === 'prix d\'achat' ||
                   headerLower === 'prix_achat'
                 ) columnMapping.buyPrice = index;
-                else if (headerLower.includes('provider') || headerLower.includes('supplier')) columnMapping.provider = index;
+                else if (
+                  headerLower === 'reseller' ||
+                  headerLower === 'reseller price' ||
+                  headerLower === 'reseller_price' ||
+                  headerLower.includes('prix revendeur')
+                ) columnMapping.resellerPrice = index;
+                else if (
+                  headerLower === 'regular price' ||
+                  headerLower === 'regular_price' ||
+                  headerLower === 'sell price' ||
+                  headerLower === 'sell_price' ||
+                  headerLower === 'prix vente' ||
+                  headerLower === 'price' ||
+                  (headerLower.includes('regular') && headerLower.includes('price'))
+                ) columnMapping.regularPrice = index;
+                else if (headerLower.includes('provider') || headerLower.includes('supplier') || headerLower === 'fournisseur') columnMapping.provider = index;
               });
               break;
             }
@@ -124,15 +139,17 @@ export function ExcelUploadModal({ onClose, onSuccess }: ExcelUploadModalProps) 
             
             const barcode = String(row[columnMapping.barcode] || '').trim();
             const productName = String(row[columnMapping.productName] || '').trim();
-            const brand = String(row[columnMapping.brand] || '').trim();
+            const brand = columnMapping.brand !== undefined ? String(row[columnMapping.brand] || '').trim() : '';
             const stockLocation = String(row[columnMapping.stockLocation] || '').toLowerCase().trim();
             const stockLevel = parseNumericValue(row[columnMapping.stockLevel]);
             const buyPrice = parseNumericValue(row[columnMapping.buyPrice]);
-            const provider = String(row[columnMapping.provider] || '').trim();
+            const provider = columnMapping.provider !== undefined ? String(row[columnMapping.provider] || '').trim() : '';
 
-            // Calculate prices automatically using multipliers
-            const sellPrice = buyPrice * sellingMultiplier;
-            const resellerPrice = buyPrice * resellerMultiplier;
+            // Use actual prices from Excel if available, otherwise calculate from buy price
+            const rawResellerPrice = columnMapping.resellerPrice !== undefined ? parseNumericValue(row[columnMapping.resellerPrice]) : 0;
+            const rawRegularPrice = columnMapping.regularPrice !== undefined ? parseNumericValue(row[columnMapping.regularPrice]) : 0;
+            const sellPrice = rawRegularPrice > 0 ? rawRegularPrice : buyPrice * sellingMultiplier;
+            const resellerPrice = rawResellerPrice > 0 ? rawResellerPrice : buyPrice * resellerMultiplier;
 
             console.log(`Ligne ${index + headerRowIndex + 2}:`, {
               barcode,

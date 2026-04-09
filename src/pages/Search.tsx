@@ -323,13 +323,14 @@ export function SearchPage() {
                         <div className="p-2 bg-primary/10 rounded-lg"><Package className="h-4 w-4 text-primary" /></div>
                         <div className="flex-1 min-w-0">
                           <h3 className="font-semibold text-foreground truncate">{product.name}</h3>
-                          {product.brand && <p className="text-sm text-muted-foreground">{product.brand}</p>}
                         </div>
                       </div>
-                      <div className="flex items-center space-x-4 text-sm text-muted-foreground">
+                      <div className="flex items-center flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
                         <span>#{product.barcode}</span>
                         <span className="font-medium text-emerald-500">{displayPrice.toFixed(2)} Dh</span>
                         <span>Stock: {totalStock}</span>
+                        {product.brand && <span className="px-2 py-0.5 bg-primary/10 text-primary text-xs rounded-full font-medium">{product.brand}</span>}
+                        {product.provider && <span className="px-2 py-0.5 bg-orange-500/10 text-orange-500 text-xs rounded-full font-medium">{product.provider}</span>}
                       </div>
                       {accessibleStockLevels.length > 0 && (
                         <div className="mt-2 flex flex-wrap gap-2">

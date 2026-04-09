@@ -155,7 +155,10 @@ export function ProductDetail() {
             <div className="p-3 bg-white/20 rounded-xl"><Package className="h-8 w-8" /></div>
             <div>
               <h1 className="text-2xl font-bold">{product.name}</h1>
-              {product.brand && <p className="text-primary-foreground/70 text-lg">{product.brand}</p>}
+              <div className="flex items-center flex-wrap gap-3 mt-1">
+                {product.brand && <span className="px-3 py-1 bg-white/20 text-primary-foreground text-sm rounded-full font-medium">Marque: {product.brand}</span>}
+                {product.provider && <span className="px-3 py-1 bg-white/20 text-primary-foreground text-sm rounded-full font-medium">Fournisseur: {product.provider}</span>}
+              </div>
             </div>
           </div>
         </div>
