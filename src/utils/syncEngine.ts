@@ -110,7 +110,7 @@ class SyncEngineClass {
 
     for (const quote of pendingQuotes) {
       try {
-        await SupabaseQuotesService.upsertQuote(quote);
+        await SupabaseQuotesService.saveQuote(quote);
         await OfflineStorage.markQuoteSynced(quote.id);
       } catch (error) {
         console.error(`Failed to push quote ${quote.id}:`, error);
