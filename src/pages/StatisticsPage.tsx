@@ -116,7 +116,7 @@ export function StatisticsPage() {
       brandMap.set(brand, (brandMap.get(brand) || 0) + 1);
 
       // Low stock check (less than 5 total)
-      const totalStock = Object.values(product.stock_levels || {}).reduce((sum: number, level) => sum + (Number(level) || 0), 0);
+      const totalStock = Object.values(product.stock_levels || {}).reduce((sum: number, level: unknown) => sum + (Number(level) || 0), 0);
       if (totalStock < 5) {
         lowStockProducts++;
       }
@@ -125,7 +125,7 @@ export function StatisticsPage() {
       productValues.push({
         name: product.name,
         brand: product.brand || 'Sans marque',
-        value: totalStock * (product.price || 0)
+        value: (totalStock as number) * (product.price || 0)
       });
     });
 
