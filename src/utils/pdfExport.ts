@@ -130,10 +130,10 @@ export class PdfExportService {
     const drawPageDecorations = () => {
       // Top accent bar
       doc.setFillColor(...ACCENT);
-      doc.rect(0, 0, pageWidth, 3, 'F');
+      doc.rect(0, 0, pageWidth, 2, 'F');
       // Bottom accent bar
       doc.setFillColor(...ACCENT);
-      doc.rect(0, pageHeight - 3, pageWidth, 3, 'F');
+      doc.rect(0, pageHeight - 2, pageWidth, 2, 'F');
 
       // Footer
       const footerLineHeight = 3.5;
