@@ -300,8 +300,8 @@ export default function UserManagementPage() {
     return (
       <div className="max-w-7xl mx-auto">
         <div className="text-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="text-gray-600 dark:text-gray-400 mt-4">Chargement des utilisateurs...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="text-muted-foreground mt-4">Chargement des utilisateurs...</p>
         </div>
       </div>
     );
@@ -310,17 +310,17 @@ export default function UserManagementPage() {
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       {/* Header */}
-      <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-xl p-6">
+      <div className="glass rounded-2xl shadow-xl p-6">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center space-x-3">
-            <div className="p-3 bg-gradient-to-r from-purple-500 to-purple-600 rounded-xl">
-              <Users className="h-6 w-6 text-white" />
+            <div className="p-3 bg-primary rounded-xl">
+              <Users className="h-6 w-6 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+              <h1 className="text-2xl font-bold text-foreground">
                 Gestion des Utilisateurs
               </h1>
-              <p className="text-gray-600 dark:text-gray-400">
+              <p className="text-muted-foreground">
                 Gérez les utilisateurs et leurs permissions
               </p>
             </div>
@@ -328,7 +328,7 @@ export default function UserManagementPage() {
 
           <button
             onClick={() => setShowCreateModal(true)}
-            className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+            className="flex items-center space-x-2 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors"
           >
             <Plus className="h-4 w-4" />
             <span>Nouvel Utilisateur</span>
@@ -393,12 +393,12 @@ export default function UserManagementPage() {
         {/* Filters */}
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-slate-700 text-gray-900 dark:text-white"
+              className="w-full pl-10 pr-4 py-2 border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
               placeholder="Rechercher un utilisateur..."
             />
           </div>
@@ -406,7 +406,7 @@ export default function UserManagementPage() {
           <select
             value={filterRole}
             onChange={(e) => setFilterRole(e.target.value as 'all' | 'admin' | 'user')}
-            className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-slate-700 text-gray-900 dark:text-white"
+            className="px-3 py-2 border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
           >
             <option value="all">Tous les rôles</option>
             <option value="admin">Administrateurs</option>
@@ -416,14 +416,14 @@ export default function UserManagementPage() {
       </div>
 
       {/* Users Table */}
-      <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-xl overflow-hidden">
+      <div className="glass rounded-2xl shadow-xl overflow-hidden">
         {filteredUsers.length === 0 ? (
           <div className="p-12 text-center">
-            <Users className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+            <Users className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-foreground mb-2">
               {users.length === 0 ? 'Aucun Utilisateur' : 'Aucun Résultat'}
             </h3>
-            <p className="text-gray-600 dark:text-gray-400">
+            <p className="text-muted-foreground">
               {users.length === 0 
                 ? 'Créez votre premier utilisateur pour commencer'
                 : 'Aucun utilisateur ne correspond à vos critères de recherche'
@@ -433,31 +433,31 @@ export default function UserManagementPage() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-50 dark:bg-slate-700">
+              <thead className="bg-secondary">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Utilisateur
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Rôle
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Permissions
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Stock Autorisé
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Type de Prix
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                 {filteredUsers.map((user) => (
-                  <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50">
+                  <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-accent/50">
                     <td className="px-4 py-4">
                       <div className="flex items-center space-x-3">
                         <div className={`p-2 rounded-lg ${user.is_admin ? 'bg-purple-100 dark:bg-purple-900/30' : 'bg-blue-100 dark:bg-blue-900/30'}`}>
@@ -468,10 +468,10 @@ export default function UserManagementPage() {
                           )}
                         </div>
                         <div>
-                          <div className="text-sm font-medium text-gray-900 dark:text-white">
+                          <div className="text-sm font-medium text-foreground">
                             {user.username}
                           </div>
-                          <div className="text-sm text-gray-500 dark:text-gray-400">
+                          <div className="text-sm text-muted-foreground">
                             Créé le {user.created_at.toLocaleDateString('fr-FR')}
                           </div>
                         </div>
@@ -502,12 +502,12 @@ export default function UserManagementPage() {
                       </div>
                     </td>
                     <td className="px-4 py-4">
-                      <div className="text-sm text-gray-900 dark:text-white">
+                      <div className="text-sm text-foreground">
                         {formatStockLocations(user.allowed_stock_locations)}
                       </div>
                     </td>
                     <td className="px-4 py-4">
-                      <span className="inline-flex items-center px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300 rounded-full">
+                      <span className="inline-flex items-center px-2 py-1 text-xs bg-secondary text-gray-800 dark:text-gray-300 rounded-full">
                         <DollarSign className="h-3 w-3 mr-1" />
                         {getPriceTypeLabel(user.price_display_type)}
                       </span>
@@ -542,13 +542,13 @@ export default function UserManagementPage() {
       {/* Create/Edit User Modal */}
       {(showCreateModal || editingUser) && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+          <div className="bg-card rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b border-border">
               <div className="flex items-center space-x-3">
                 <div className="p-2 bg-blue-100 dark:bg-blue-900 rounded-lg">
                   <User className="h-5 w-5 text-blue-600 dark:text-blue-300" />
                 </div>
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                <h2 className="text-lg font-semibold text-foreground">
                   {editingUser ? 'Modifier l\'Utilisateur' : 'Nouvel Utilisateur'}
                 </h2>
               </div>
@@ -582,20 +582,20 @@ export default function UserManagementPage() {
                 {/* Basic Info */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-foreground mb-2">
                       Nom d'utilisateur *
                     </label>
                     <input
                       type="text"
                       value={formData.username}
                       onChange={(e) => handleInputChange('username', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-slate-700 text-gray-900 dark:text-white"
+                      className="w-full px-3 py-2 border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
                       placeholder="Nom d'utilisateur"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-foreground mb-2">
                       PIN (6 chiffres) *
                     </label>
                     <div className="relative">
@@ -603,14 +603,14 @@ export default function UserManagementPage() {
                         type={showPin ? "text" : "password"}
                         value={formData.pin}
                         onChange={(e) => handleInputChange('pin', e.target.value)}
-                        className="w-full px-3 py-2 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-slate-700 text-gray-900 dark:text-white"
+                        className="w-full px-3 py-2 pr-10 border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
                         placeholder="123456"
                         maxLength={6}
                       />
                       <button
                         type="button"
                         onClick={() => setShowPin(!showPin)}
-                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-gray-600 dark:hover:text-gray-300"
                       >
                         {showPin ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </button>
@@ -620,7 +620,7 @@ export default function UserManagementPage() {
 
                 {/* Role and Permissions */}
                 <div>
-                  <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+                  <h3 className="text-lg font-medium text-foreground mb-4">
                     Rôle et Permissions
                   </h3>
                   
@@ -631,12 +631,12 @@ export default function UserManagementPage() {
                         id="is_admin"
                         checked={formData.is_admin}
                         onChange={(e) => handleInputChange('is_admin', e.target.checked)}
-                        className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                        className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-ring dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
                       />
-                      <label htmlFor="is_admin" className="text-sm font-medium text-gray-900 dark:text-white">
+                      <label htmlFor="is_admin" className="text-sm font-medium text-foreground">
                         Administrateur
                       </label>
-                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                      <span className="text-xs text-muted-foreground">
                         (Accès complet au système)
                       </span>
                     </div>
@@ -649,12 +649,12 @@ export default function UserManagementPage() {
                         onChange={(e) => {
                           setIsResellerAccountChecked(e.target.checked);
                         }}
-                        className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                        className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-ring dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
                       />
-                      <label htmlFor="is_reseller_account" className="text-sm font-medium text-gray-900 dark:text-white">
+                      <label htmlFor="is_reseller_account" className="text-sm font-medium text-foreground">
                         Compte Revendeur ?
                       </label>
-                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                      <span className="text-xs text-muted-foreground">
                         (Affichage simplifié des produits)
                       </span>
                     </div>
@@ -664,12 +664,12 @@ export default function UserManagementPage() {
                         id="can_create_quote"
                         checked={formData.can_create_quote}
                         onChange={(e) => handleInputChange('can_create_quote', e.target.checked)}
-                        className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                        className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-ring dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
                       />
-                      <label htmlFor="can_create_quote" className="text-sm font-medium text-gray-900 dark:text-white">
+                      <label htmlFor="can_create_quote" className="text-sm font-medium text-foreground">
                         Peut créer des devis
                       </label>
-                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                      <span className="text-xs text-muted-foreground">
                         (Accès au panier et création de devis)
                       </span>
                     </div>
@@ -678,13 +678,13 @@ export default function UserManagementPage() {
 
                 {/* Price Display Type */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  <label className="block text-sm font-medium text-foreground mb-2">
                     Type de Prix Affiché
                   </label>
                   <select
                     value={formData.price_display_type}
                     onChange={(e) => handleInputChange('price_display_type', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-slate-700 text-gray-900 dark:text-white"
+                    className="w-full px-3 py-2 border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
                   >
                     <option value="normal">Prix Normal</option>
                     <option value="reseller">Prix Revendeur</option>
@@ -695,15 +695,15 @@ export default function UserManagementPage() {
 
                 {/* Brand Filtering */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  <label className="block text-sm font-medium text-foreground mb-2">
                     Marques Autorisées
                   </label>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                  <p className="text-xs text-muted-foreground mb-3">
                     Laissez vide pour autoriser toutes les marques
                   </p>
                   
                   {availableBrands.length > 0 ? (
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-40 overflow-y-auto border border-gray-300 dark:border-gray-600 rounded-lg p-3">
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-40 overflow-y-auto border border-input rounded-lg p-3">
                       {availableBrands.map((brand) => (
                         <div key={brand} className="flex items-center space-x-2">
                           <input
@@ -711,11 +711,11 @@ export default function UserManagementPage() {
                             id={`brand-${brand}`}
                             checked={formData.allowed_brands.includes(brand)}
                             onChange={() => handleBrandToggle(brand)}
-                            className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                            className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-ring dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
                           />
                           <label 
                             htmlFor={`brand-${brand}`} 
-                            className="text-sm text-gray-900 dark:text-white"
+                            className="text-sm text-foreground"
                           >
                             {brand}
                           </label>
@@ -723,22 +723,22 @@ export default function UserManagementPage() {
                       ))}
                     </div>
                   ) : (
-                    <div className="text-sm text-gray-500 dark:text-gray-400 italic">
+                    <div className="text-sm text-muted-foreground italic">
                       Aucune marque disponible
                     </div>
                   )}
                 </div>
                 {/* Stock Locations */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  <label className="block text-sm font-medium text-foreground mb-2">
                     Emplacements de Stock Autorisés
                   </label>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                  <p className="text-xs text-muted-foreground mb-3">
                     Laissez vide pour autoriser tous les emplacements
                   </p>
                   
                   {availableStockLocations.length > 0 ? (
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-40 overflow-y-auto border border-gray-300 dark:border-gray-600 rounded-lg p-3">
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-40 overflow-y-auto border border-input rounded-lg p-3">
                       {availableStockLocations.map((location) => (
                         <div key={location} className="flex items-center space-x-2">
                           <input
@@ -746,11 +746,11 @@ export default function UserManagementPage() {
                             id={`location-${location}`}
                             checked={formData.allowed_stock_locations.includes(location)}
                             onChange={() => handleStockLocationToggle(location)}
-                            className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                            className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-ring dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
                           />
                           <label 
                             htmlFor={`location-${location}`} 
-                            className="text-sm text-gray-900 dark:text-white capitalize"
+                            className="text-sm text-foreground capitalize"
                           >
                             {location.replace(/_/g, ' ')}
                           </label>
@@ -758,7 +758,7 @@ export default function UserManagementPage() {
                       ))}
                     </div>
                   ) : (
-                    <div className="text-sm text-gray-500 dark:text-gray-400 italic">
+                    <div className="text-sm text-muted-foreground italic">
                       Aucun emplacement de stock disponible
                     </div>
                   )}
@@ -769,7 +769,7 @@ export default function UserManagementPage() {
               <div className="flex space-x-3 mt-8">
                 <button
                   onClick={closeModal}
-                  className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                  className="flex-1 px-4 py-2 border border-input rounded-lg hover:bg-accent transition-colors"
                 >
                   Annuler
                 </button>
@@ -777,7 +777,7 @@ export default function UserManagementPage() {
                 <button
                   onClick={editingUser ? handleUpdateUser : handleCreateUser}
                   disabled={isSubmitting}
-                  className="flex-1 flex items-center justify-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 dark:disabled:bg-gray-600 text-white rounded-lg transition-colors disabled:cursor-not-allowed"
+                  className="flex-1 flex items-center justify-center space-x-2 px-4 py-2 bg-primary hover:bg-primary/90 disabled:bg-gray-300 dark:disabled:bg-gray-600 text-primary-foreground rounded-lg transition-colors disabled:cursor-not-allowed"
                 >
                   {isSubmitting ? (
                     <>

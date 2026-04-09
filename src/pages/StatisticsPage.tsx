@@ -222,8 +222,8 @@ export function StatisticsPage() {
     return (
       <div className="max-w-7xl mx-auto">
         <div className="text-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="text-gray-600 dark:text-gray-400 mt-4">Chargement des statistiques...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="text-muted-foreground mt-4">Chargement des statistiques...</p>
         </div>
       </div>
     );
@@ -232,16 +232,16 @@ export function StatisticsPage() {
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       {/* Header */}
-      <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-xl p-6">
+      <div className="glass rounded-2xl shadow-xl p-6">
         <div className="flex items-center space-x-3">
-          <div className="p-3 bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl">
-            <BarChart3 className="h-6 w-6 text-white" />
+          <div className="p-3 bg-primary rounded-xl">
+            <BarChart3 className="h-6 w-6 text-primary-foreground" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+            <h1 className="text-2xl font-bold text-foreground">
               Statistiques Générales
             </h1>
-            <p className="text-gray-600 dark:text-gray-400">
+            <p className="text-muted-foreground">
               Vue d'ensemble de votre inventaire et activité commerciale
             </p>
           </div>
@@ -249,8 +249,8 @@ export function StatisticsPage() {
       </div>
 
       {/* Product & Inventory Statistics */}
-      <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-xl p-6">
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-6 flex items-center space-x-2">
+      <div className="glass rounded-2xl shadow-xl p-6">
+        <h2 className="text-xl font-semibold text-foreground mb-6 flex items-center space-x-2">
           <Package className="h-5 w-5" />
           <span>Statistiques Produits & Inventaire</span>
         </h2>
@@ -311,18 +311,18 @@ export function StatisticsPage() {
             {/* Stock by Location */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center space-x-2">
+                <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center space-x-2">
                   <MapPin className="h-5 w-5" />
                   <span>Stock par Emplacement</span>
                 </h3>
                 <div className="space-y-3">
                   {productStats.stockByLocation.slice(0, 5).map((location, index) => (
-                    <div key={location.location} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-700 rounded-lg">
+                    <div key={location.location} className="flex items-center justify-between p-3 bg-secondary rounded-lg">
                       <div>
-                        <p className="font-medium text-gray-900 dark:text-white capitalize">
+                        <p className="font-medium text-foreground capitalize">
                           {location.location.replace(/_/g, ' ')}
                         </p>
-                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                        <p className="text-sm text-muted-foreground">
                           {formatNumber(location.count)} articles
                         </p>
                       </div>
@@ -338,18 +338,18 @@ export function StatisticsPage() {
 
               {/* Top Brands */}
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center space-x-2">
+                <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center space-x-2">
                   <Building className="h-5 w-5" />
                   <span>Top Marques</span>
                 </h3>
                 <div className="space-y-3">
                   {productStats.brandDistribution.slice(0, 5).map((brand, index) => (
-                    <div key={brand.brand} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-700 rounded-lg">
+                    <div key={brand.brand} className="flex items-center justify-between p-3 bg-secondary rounded-lg">
                       <div>
-                        <p className="font-medium text-gray-900 dark:text-white">
+                        <p className="font-medium text-foreground">
                           {brand.brand}
                         </p>
-                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                        <p className="text-sm text-muted-foreground">
                           {formatNumber(brand.count)} produits
                         </p>
                       </div>
@@ -368,8 +368,8 @@ export function StatisticsPage() {
       </div>
 
       {/* Sellers & Quotes Statistics */}
-      <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-xl p-6">
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-6 flex items-center space-x-2">
+      <div className="glass rounded-2xl shadow-xl p-6">
+        <h2 className="text-xl font-semibold text-foreground mb-6 flex items-center space-x-2">
           <FileText className="h-5 w-5" />
           <span>Statistiques Vendeurs & Devis</span>
         </h2>
@@ -430,15 +430,15 @@ export function StatisticsPage() {
             {/* Quote Status Distribution */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center space-x-2">
+                <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center space-x-2">
                   <Award className="h-5 w-5" />
                   <span>Top Vendeurs</span>
                 </h3>
                 <div className="space-y-3">
                   {quoteStats.topSellers.map((seller, index) => (
-                    <div key={seller.name} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-700 rounded-lg">
+                    <div key={seller.name} className="flex items-center justify-between p-3 bg-secondary rounded-lg">
                       <div className="flex items-center space-x-3">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-bold ${
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-primary-foreground font-bold ${
                           index === 0 ? 'bg-yellow-500' : 
                           index === 1 ? 'bg-gray-400' : 
                           index === 2 ? 'bg-orange-600' : 'bg-blue-500'
@@ -446,10 +446,10 @@ export function StatisticsPage() {
                           {index + 1}
                         </div>
                         <div>
-                          <p className="font-medium text-gray-900 dark:text-white">
+                          <p className="font-medium text-foreground">
                             {seller.name}
                           </p>
-                          <p className="text-sm text-gray-600 dark:text-gray-400">
+                          <p className="text-sm text-muted-foreground">
                             {formatNumber(seller.quotesCount)} devis
                           </p>
                         </div>
@@ -466,19 +466,19 @@ export function StatisticsPage() {
 
               {/* Recent Activity */}
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center space-x-2">
+                <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center space-x-2">
                   <Activity className="h-5 w-5" />
                   <span>Activité Récente</span>
                 </h3>
                 <div className="space-y-3 max-h-80 overflow-y-auto">
                   {quoteStats.recentActivity.map((activity, index) => (
-                    <div key={index} className="flex items-start space-x-3 p-3 bg-gray-50 dark:bg-slate-700 rounded-lg">
+                    <div key={index} className="flex items-start space-x-3 p-3 bg-secondary rounded-lg">
                       <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 dark:text-white">
+                        <p className="text-sm font-medium text-foreground">
                           {activity.action}
                         </p>
-                        <p className="text-xs text-gray-600 dark:text-gray-400 truncate">
+                        <p className="text-xs text-muted-foreground truncate">
                           {activity.details}
                         </p>
                         <p className="text-xs text-gray-500 dark:text-gray-500">
@@ -522,8 +522,8 @@ export function StatisticsPage() {
       </div>
 
       {/* Users Overview */}
-      <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-xl p-6">
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-6 flex items-center space-x-2">
+      <div className="glass rounded-2xl shadow-xl p-6">
+        <h2 className="text-xl font-semibold text-foreground mb-6 flex items-center space-x-2">
           <Users className="h-5 w-5" />
           <span>Utilisateurs du Système</span>
         </h2>

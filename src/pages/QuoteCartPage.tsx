@@ -671,8 +671,8 @@ export function QuoteCartPage() {
     return (
       <div className="max-w-7xl mx-auto">
         <div className="text-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="text-gray-600 dark:text-gray-400 mt-4">Chargement du devis...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="text-muted-foreground mt-4">Chargement du devis...</p>
         </div>
       </div>
     );
@@ -681,17 +681,17 @@ export function QuoteCartPage() {
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       {/* Header */}
-      <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-xl p-6">
+      <div className="glass rounded-2xl shadow-xl p-6">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center space-x-3">
-            <div className="p-3 bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl">
-              <ShoppingCart className="h-6 w-6 text-white" />
+            <div className="p-3 bg-primary rounded-xl">
+              <ShoppingCart className="h-6 w-6 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+              <h1 className="text-2xl font-bold text-foreground">
                 {isEditing ? 'Modifier le Devis' : 'Nouveau Devis'}
               </h1>
-              <p className="text-gray-600 dark:text-gray-400">
+              <p className="text-muted-foreground">
                 {isEditing ? `Devis ${quoteNumber}` : 'Créer un nouveau devis'}
               </p>
             </div>
@@ -700,14 +700,14 @@ export function QuoteCartPage() {
           {/* Status Badge */}
           <div className="flex items-center space-x-3">
             {lastSaved && (
-              <span className="text-sm text-gray-500 dark:text-gray-400">
+              <span className="text-sm text-muted-foreground">
                 Dernière sauvegarde: {lastSaved.toLocaleTimeString('fr-FR')}
               </span>
             )}
             <select
               value={status}
               onChange={(e) => setStatus(e.target.value as 'draft' | 'final')}
-              className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-white"
+              className="px-3 py-1 border border-input rounded-lg bg-secondary text-foreground"
             >
               <option value="draft">Brouillon</option>
               <option value="final">Final</option>
@@ -717,29 +717,29 @@ export function QuoteCartPage() {
 
         {/* Quote Details */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="flex items-center space-x-3 p-3 bg-gray-50 dark:bg-slate-700 rounded-lg">
+          <div className="flex items-center space-x-3 p-3 bg-secondary rounded-lg">
             <Hash className="h-5 w-5 text-blue-600 dark:text-blue-400" />
             <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Numéro de Devis</p>
-              <p className="font-semibold text-gray-900 dark:text-white">{quoteNumber}</p>
+              <p className="text-sm text-muted-foreground">Numéro de Devis</p>
+              <p className="font-semibold text-foreground">{quoteNumber}</p>
             </div>
           </div>
 
-          <div className="flex items-center space-x-3 p-3 bg-gray-50 dark:bg-slate-700 rounded-lg">
+          <div className="flex items-center space-x-3 p-3 bg-secondary rounded-lg">
             <Calendar className="h-5 w-5 text-green-600 dark:text-green-400" />
             <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Date</p>
-              <p className="font-semibold text-gray-900 dark:text-white">
+              <p className="text-sm text-muted-foreground">Date</p>
+              <p className="font-semibold text-foreground">
                 {ExcelExportService.formatDate(quote?.createdAt || new Date())}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center space-x-3 p-3 bg-gray-50 dark:bg-slate-700 rounded-lg">
+          <div className="flex items-center space-x-3 p-3 bg-secondary rounded-lg">
             <DollarSign className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
             <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Total</p>
-              <p className="font-semibold text-gray-900 dark:text-white">
+              <p className="text-sm text-muted-foreground">Total</p>
+              <p className="font-semibold text-foreground">
                 {ExcelExportService.formatCurrency(totalAmount)} Dh
               </p>
             </div>
@@ -748,9 +748,9 @@ export function QuoteCartPage() {
       </div>
 
       {/* Customer Information */}
-      <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-xl p-6">
+      <div className="glass rounded-2xl shadow-xl p-6">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center space-x-2">
+          <h2 className="text-xl font-semibold text-foreground flex items-center space-x-2">
             <User className="h-5 w-5" />
             <span>Informations Client</span>
           </h2>
@@ -764,17 +764,17 @@ export function QuoteCartPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-foreground mb-2">
               Nom Complet *
             </label>
             <div className="relative">
-              <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <input
                 type="text"
                 value={customer.fullName}
                 onChange={(e) => setCustomer(prev => ({ ...prev, fullName: e.target.value }))}
-                className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-slate-700 text-gray-900 dark:text-white ${
-                  validationErrors.fullName ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
+                className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${
+                  validationErrors.fullName ? 'border-red-500' : 'border-input'
                 }`}
                 placeholder="Nom complet du client"
               />
@@ -785,17 +785,17 @@ export function QuoteCartPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-foreground mb-2">
               Numéro de Téléphone *
             </label>
             <div className="relative">
-              <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <input
                 type="text"
                 value={customer.phoneNumber}
                 onChange={(e) => setCustomer(prev => ({ ...prev, phoneNumber: e.target.value }))}
-                className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-slate-700 text-gray-900 dark:text-white ${
-                  validationErrors.phoneNumber ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
+                className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${
+                  validationErrors.phoneNumber ? 'border-red-500' : 'border-input'
                 }`}
                 placeholder="Numéro de téléphone"
               />
@@ -806,17 +806,17 @@ export function QuoteCartPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-foreground mb-2">
               Adresse *
             </label>
             <div className="relative">
-              <Building className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Building className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <input
                 type="text"
                 value={customer.address}
                 onChange={(e) => setCustomer(prev => ({ ...prev, address: e.target.value }))}
-                className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-slate-700 text-gray-900 dark:text-white ${
-                  validationErrors.address ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
+                className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${
+                  validationErrors.address ? 'border-red-500' : 'border-input'
                 }`}
                 placeholder="Adresse du client"
               />
@@ -827,15 +827,15 @@ export function QuoteCartPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-foreground mb-2">
               Ville *
             </label>
             <input
               type="text"
               value={customer.city}
               onChange={(e) => setCustomer(prev => ({ ...prev, city: e.target.value }))}
-              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-slate-700 text-gray-900 dark:text-white ${
-                validationErrors.city ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
+              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${
+                validationErrors.city ? 'border-red-500' : 'border-input'
               }`}
               placeholder="Ville"
             />
@@ -845,27 +845,27 @@ export function QuoteCartPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-foreground mb-2">
               ICE (Optionnel)
             </label>
             <input
               type="text"
               value={customer.ice || ''}
               onChange={(e) => setCustomer(prev => ({ ...prev, ice: e.target.value }))}
-              className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-slate-700 text-gray-900 dark:text-white"
+              className="w-full px-4 py-3 border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
               placeholder="Numéro ICE"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-foreground mb-2">
               Vendeur *
             </label>
             <select
               value={customer.salesPerson}
               onChange={(e) => setCustomer(prev => ({ ...prev, salesPerson: e.target.value }))}
-              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-slate-700 text-gray-900 dark:text-white ${
-                validationErrors.salesPerson ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
+              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${
+                validationErrors.salesPerson ? 'border-red-500' : 'border-input'
               }`}
             >
               <option value="">Sélectionner un vendeur</option>
@@ -881,14 +881,14 @@ export function QuoteCartPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-foreground mb-2">
               Numéro de Commande
             </label>
             <input
               type="text"
               value={commandNumber}
               onChange={(e) => setCommandNumber(e.target.value)}
-              className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-slate-700 text-gray-900 dark:text-white"
+              className="w-full px-4 py-3 border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
               placeholder="Numéro de commande (optionnel)"
             />
           </div>
@@ -896,16 +896,16 @@ export function QuoteCartPage() {
       </div>
 
       {/* Product Search and Add */}
-      <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-xl p-6">
+      <div className="glass rounded-2xl shadow-xl p-6">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white flex items-center space-x-2">
+          <h2 className="text-lg sm:text-xl font-semibold text-foreground flex items-center space-x-2">
             <Package className="h-5 w-5" />
             <span>Ajouter des Produits</span>
           </h2>
           <div className="flex flex-col sm:flex-row gap-2 sm:space-x-2">
             <button
               onClick={() => setShowProductSearch(!showProductSearch)}
-              className="flex items-center justify-center space-x-1 sm:space-x-2 px-2 py-1.5 sm:px-4 sm:py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm sm:text-base"
+              className="flex items-center justify-center space-x-1 sm:space-x-2 px-2 py-1.5 sm:px-4 sm:py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors text-sm sm:text-base"
             >
               <Search className="h-4 w-4" />
               <span className="hidden xs:inline sm:inline">Rechercher</span>
@@ -913,7 +913,7 @@ export function QuoteCartPage() {
             </button>
             <button
               onClick={addCustomProduct}
-              className="flex items-center justify-center space-x-1 sm:space-x-2 px-2 py-1.5 sm:px-4 sm:py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm sm:text-base"
+              className="flex items-center justify-center space-x-1 sm:space-x-2 px-2 py-1.5 sm:px-4 sm:py-2 bg-green-600 hover:bg-green-700 text-primary-foreground rounded-lg transition-colors text-sm sm:text-base"
             >
               <Plus className="h-4 w-4" />
               <span className="hidden xs:inline sm:inline">Produit Personnalisé</span>
@@ -924,20 +924,20 @@ export function QuoteCartPage() {
 
         {/* Product Search */}
         {showProductSearch && (
-          <div className="mb-4 p-4 bg-gray-50 dark:bg-slate-700 rounded-lg">
+          <div className="mb-4 p-4 bg-secondary rounded-lg">
             <div className="flex space-x-2 mb-4">
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handleProductSearch()}
-                className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-slate-700 text-gray-900 dark:text-white"
+                className="flex-1 px-4 py-2 border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
                 placeholder="Rechercher un produit..."
               />
               <button
                 onClick={handleProductSearch}
                 disabled={isSearching}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-lg transition-colors"
+                className="px-4 py-2 bg-primary hover:bg-primary/90 disabled:bg-gray-400 text-primary-foreground rounded-lg transition-colors"
               >
                 {isSearching ? <Loader className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
               </button>
@@ -951,14 +951,14 @@ export function QuoteCartPage() {
                     className="flex items-center justify-between p-3 bg-white dark:bg-slate-600 rounded-lg border border-gray-200 dark:border-gray-500"
                   >
                     <div>
-                      <h4 className="font-medium text-gray-900 dark:text-white">{product.name}</h4>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                      <h4 className="font-medium text-foreground">{product.name}</h4>
+                      <p className="text-sm text-muted-foreground">
                         {product.brand} • #{product.barcode} • {product.price.toFixed(2)} Dh
                       </p>
                     </div>
                     <button
                       onClick={() => addProductToQuote(product)}
-                      className="flex items-center space-x-1 px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded transition-colors"
+                      className="flex items-center space-x-1 px-3 py-1 bg-green-600 hover:bg-green-700 text-primary-foreground rounded transition-colors"
                     >
                       <Plus className="h-3 w-3" />
                       <span>Ajouter</span>
@@ -972,13 +972,13 @@ export function QuoteCartPage() {
       </div>
 
       {/* Cart Items Table */}
-      <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-xl overflow-hidden">
-        <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+      <div className="glass rounded-2xl shadow-xl overflow-hidden">
+        <div className="p-6 border-b border-border">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center space-x-2">
+            <h2 className="text-xl font-semibold text-foreground flex items-center space-x-2">
               <FileText className="h-5 w-5" />
               <span>Articles du Devis</span>
-              <span className="text-sm font-normal text-gray-500 dark:text-gray-400">
+              <span className="text-sm font-normal text-muted-foreground">
                 ({totalItems} article{totalItems !== 1 ? 's' : ''})
               </span>
             </h2>
@@ -987,7 +987,7 @@ export function QuoteCartPage() {
               <button
                 onClick={handleCopyItems}
                 disabled={items.length === 0}
-                className="flex items-center space-x-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-lg transition-colors text-sm"
+                className="flex items-center space-x-2 px-3 py-2 bg-primary hover:bg-primary/90 disabled:bg-gray-400 text-primary-foreground rounded-lg transition-colors text-sm"
               >
                 <Copy className="h-4 w-4" />
                 <span>Copier</span>
@@ -1002,16 +1002,16 @@ export function QuoteCartPage() {
 
         {items.length === 0 ? (
           <div className="p-12 text-center">
-            <ShoppingCart className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+            <ShoppingCart className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-foreground mb-2">
               Aucun Article
             </h3>
-            <p className="text-gray-600 dark:text-gray-400 mb-4">
+            <p className="text-muted-foreground mb-4">
               Ajoutez des produits depuis la recherche ou créez des produits personnalisés
             </p>
             <button
               onClick={() => setShowProductSearch(true)}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+              className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors"
             >
               Rechercher des Produits
             </button>
@@ -1021,43 +1021,43 @@ export function QuoteCartPage() {
             {/* Table */}
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="bg-gray-50 dark:bg-slate-700">
+                <thead className="bg-secondary">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                       N°
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                       Nom du Produit
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                       Marge %
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                       Prix Unitaire
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                       Quantité
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                       Sous-total
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                       Actions
                     </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                   {currentItems.map((item, index) => (
-                    <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50">
-                      <td className="px-4 py-4 text-sm text-gray-900 dark:text-white">
+                    <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-accent/50">
+                      <td className="px-4 py-4 text-sm text-foreground">
                         {startIndex + index + 1}
                       </td>
                       <td className="px-4 py-4">
                         <div>
-                          <div className="text-sm font-medium text-gray-900 dark:text-white">
+                          <div className="text-sm font-medium text-foreground">
                             {item.product.name}
                           </div>
-                          <div className="text-sm text-gray-500 dark:text-gray-400">
+                          <div className="text-sm text-muted-foreground">
                             {item.product.brand} • #{item.product.barcode}
                           </div>
                         </div>
@@ -1067,7 +1067,7 @@ export function QuoteCartPage() {
                           <select
                             value={item.marginPercentage}
                             onChange={(e) => updateItemMargin(item.id, parseInt(e.target.value))}
-                            className="w-20 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-slate-700 text-orange-600 dark:text-orange-400 font-medium"
+                            className="w-20 px-2 py-1 text-sm border border-input rounded focus:ring-2 focus:ring-ring bg-secondary text-orange-600 dark:text-orange-400 font-medium"
                           >
                             {marginOptions.map((percentage) => (
                               <option key={percentage} value={percentage}>
@@ -1076,7 +1076,7 @@ export function QuoteCartPage() {
                             ))}
                           </select>
                         </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        <div className="text-xs text-muted-foreground mt-1">
                           Base: {item.product.buyprice.toFixed(2)} Dh
                         </div>
                       </td>
@@ -1085,11 +1085,11 @@ export function QuoteCartPage() {
                           type="number"
                           value={item.unitPrice}
                           onChange={(e) => updateItemUnitPrice(item.id, parseFloat(e.target.value) || 0)}
-                          className="w-20 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-slate-700 text-gray-900 dark:text-white"
+                          className="w-20 px-2 py-1 text-sm border border-input rounded focus:ring-2 focus:ring-ring bg-secondary text-foreground"
                           step="0.01"
                           min="0"
                         />
-                        <span className="ml-1 text-sm text-gray-500 dark:text-gray-400">Dh</span>
+                        <span className="ml-1 text-sm text-muted-foreground">Dh</span>
                       </td>
                       <td className="px-4 py-4">
                         <div className="flex items-center space-x-2">
@@ -1104,7 +1104,7 @@ export function QuoteCartPage() {
                             type="number"
                             value={item.quantity}
                             onChange={(e) => updateItemQuantity(item.id, parseInt(e.target.value) || 1)}
-                            className="w-16 px-2 py-1 text-sm text-center border border-gray-300 dark:border-gray-600 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-slate-700 text-gray-900 dark:text-white"
+                            className="w-16 px-2 py-1 text-sm text-center border border-input rounded focus:ring-2 focus:ring-ring bg-secondary text-foreground"
                             min="1"
                           />
                           <button
@@ -1115,7 +1115,7 @@ export function QuoteCartPage() {
                           </button>
                         </div>
                       </td>
-                      <td className="px-4 py-4 text-sm font-medium text-gray-900 dark:text-white">
+                      <td className="px-4 py-4 text-sm font-medium text-foreground">
                         {ExcelExportService.formatCurrency(item.subtotal)} Dh
                       </td>
                       <td className="px-4 py-4">
@@ -1135,26 +1135,26 @@ export function QuoteCartPage() {
 
             {/* Pagination */}
             {totalPages > 1 && (
-              <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700">
+              <div className="px-6 py-4 border-t border-border">
                 <div className="flex items-center justify-between">
-                  <div className="text-sm text-gray-700 dark:text-gray-300">
+                  <div className="text-sm text-foreground">
                     Affichage de {startIndex + 1} à {Math.min(endIndex, items.length)} sur {items.length} articles
                   </div>
                   <div className="flex items-center space-x-2">
                     <button
                       onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                       disabled={currentPage === 1}
-                      className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-3 py-1 border border-input rounded hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Précédent
                     </button>
-                    <span className="px-3 py-1 text-sm text-gray-700 dark:text-gray-300">
+                    <span className="px-3 py-1 text-sm text-foreground">
                       Page {currentPage} sur {totalPages}
                     </span>
                     <button
                       onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
                       disabled={currentPage === totalPages}
-                      className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-3 py-1 border border-input rounded hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Suivant
                     </button>
@@ -1164,13 +1164,13 @@ export function QuoteCartPage() {
             )}
 
             {/* Total */}
-            <div className="px-6 py-4 bg-gray-50 dark:bg-slate-700 border-t border-gray-200 dark:border-gray-700">
+            <div className="px-6 py-4 bg-secondary border-t border-border">
               <div className="flex justify-end">
                 <div className="text-right">
-                  <div className="text-lg font-semibold text-gray-900 dark:text-white">
+                  <div className="text-lg font-semibold text-foreground">
                     Total: {ExcelExportService.formatCurrency(totalAmount)} Dh
                   </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">
+                  <div className="text-sm text-muted-foreground">
                     {totalItems} article{totalItems !== 1 ? 's' : ''}
                   </div>
                 </div>
@@ -1181,24 +1181,24 @@ export function QuoteCartPage() {
       </div>
 
       {/* Notes Section */}
-      <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-xl p-6">
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4 flex items-center space-x-2">
+      <div className="glass rounded-2xl shadow-xl p-6">
+        <h2 className="text-xl font-semibold text-foreground mb-4 flex items-center space-x-2">
           <Edit3 className="h-5 w-5" />
           <span>Notes (Optionnel)</span>
         </h2>
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-slate-700 text-gray-900 dark:text-white"
+          className="w-full px-4 py-3 border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
           rows={4}
           placeholder="Ajoutez des notes ou commentaires pour ce devis..."
         />
       </div>
 
       {/* Excel Export Section */}
-      <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-xl p-6">
+      <div className="glass rounded-2xl shadow-xl p-6">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center space-x-2">
+          <h2 className="text-xl font-semibold text-foreground flex items-center space-x-2">
             <FileDown className="h-5 w-5" />
             <span>Export Excel</span>
           </h2>
@@ -1213,17 +1213,17 @@ export function QuoteCartPage() {
 
         {/* Template Upload */}
         {showTemplateUpload && (
-          <div className="mb-4 p-4 bg-gray-50 dark:bg-slate-700 rounded-lg">
-            <h3 className="font-medium text-gray-900 dark:text-white mb-2">
+          <div className="mb-4 p-4 bg-secondary rounded-lg">
+            <h3 className="font-medium text-foreground mb-2">
               Uploader un Template Excel
             </h3>
             <input
               type="file"
               accept=".xlsx,.xls"
               onChange={handleTemplateUpload}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-white"
+              className="w-full px-3 py-2 border border-input rounded-lg bg-secondary text-foreground"
             />
-            <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
+            <p className="text-sm text-muted-foreground mt-2">
               Formats acceptés: .xlsx, .xls
             </p>
           </div>
@@ -1242,7 +1242,7 @@ export function QuoteCartPage() {
           <button
             onClick={handleExport}
             disabled={isExporting || items.length === 0}
-            className="w-full flex items-center justify-center space-x-2 px-4 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white rounded-lg transition-colors"
+            className="w-full flex items-center justify-center space-x-2 px-4 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-primary-foreground rounded-lg transition-colors"
           >
             {isExporting ? (
               <>
@@ -1264,14 +1264,14 @@ export function QuoteCartPage() {
       <div className="flex flex-col sm:flex-row gap-4">
         <button
           onClick={() => navigate('/quotes-history')}
-          className="flex-1 px-6 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors"
+          className="flex-1 px-6 py-3 border border-input text-foreground hover:bg-accent rounded-lg transition-colors"
         >
           Retour à l'Historique
         </button>
         
         <button
           onClick={() => navigate('/search')}
-          className="flex-1 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+          className="flex-1 px-6 py-3 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors"
         >
           Ajouter des Produits
         </button>
@@ -1279,7 +1279,7 @@ export function QuoteCartPage() {
         <button
           onClick={() => handleSave(false)}
           disabled={isSaving}
-          className="flex-1 flex items-center justify-center space-x-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white rounded-lg transition-colors"
+          className="flex-1 flex items-center justify-center space-x-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-primary-foreground rounded-lg transition-colors"
         >
           {isSaving ? (
             <>
