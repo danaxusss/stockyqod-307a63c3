@@ -116,7 +116,7 @@ export function StatisticsPage() {
       brandMap.set(brand, (brandMap.get(brand) || 0) + 1);
 
       // Low stock check (less than 5 total)
-      const totalStock: number = Object.values(product.stock_levels || {}).reduce((sum: number, level: unknown) => sum + (Number(level) || 0), 0 as number);
+      const totalStock = (Object.values(product.stock_levels || {}) as number[]).reduce((sum, level) => sum + (Number(level) || 0), 0);
       if (totalStock < 5) {
         lowStockProducts++;
       }
