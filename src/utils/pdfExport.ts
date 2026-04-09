@@ -523,12 +523,12 @@ export class PdfExportService {
     const totalPagesCount = doc.getNumberOfPages();
     for (let i = 1; i <= totalPagesCount; i++) {
       doc.setPage(i);
-      doc.setFontSize(7);
+      doc.setFontSize(6);
       doc.setFont(font, 'normal');
       doc.setTextColor(...GRAY);
       doc.setFillColor(255, 255, 255);
-      doc.rect(pageWidth - margin - 30, pageHeight - footerTotalHeight - 8, 30, 6, 'F');
-      doc.text(`Page ${i} / ${totalPagesCount}`, pageWidth - margin, pageHeight - footerTotalHeight - 5, { align: 'right' });
+      doc.rect(pageWidth - margin - 25, pageHeight - footerTotalHeight - 6, 25, 5, 'F');
+      doc.text(`Page ${i} / ${totalPagesCount}`, pageWidth - margin, pageHeight - footerTotalHeight - 4, { align: 'right' });
     }
 
     // === SAVE ===
