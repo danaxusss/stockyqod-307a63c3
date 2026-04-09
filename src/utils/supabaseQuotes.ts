@@ -51,14 +51,14 @@ export class SupabaseQuotesService {
       created_at: quote.createdAt.toISOString(),
       updated_at: quote.updatedAt.toISOString(),
       status: quote.status,
-      customer_info: quote.customer as unknown as Record<string, unknown>,
-      items: quote.items as unknown as Record<string, unknown>[],
+      customer_info: quote.customer as unknown as import('@/integrations/supabase/types').Json,
+      items: quote.items as unknown as import('@/integrations/supabase/types').Json,
       total_amount: quote.totalAmount,
       notes: quote.notes || null
     };
 
-    const { error } = await supabase
-      .from('quotes')
+    const { error } = await (supabase
+      .from('quotes') as any)
       .upsert(quoteData, { onConflict: 'id', ignoreDuplicates: false });
 
     if (error) {

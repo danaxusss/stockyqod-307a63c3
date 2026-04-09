@@ -105,8 +105,8 @@ export class SupabaseUsersService {
     if (updates.allowed_brands !== undefined) updateData.allowed_brands = updates.allowed_brands;
     if (updates.price_display_type !== undefined) updateData.price_display_type = updates.price_display_type;
 
-    const { data, error } = await supabase
-      .from('app_users')
+    const { data, error } = await (supabase
+      .from('app_users') as any)
       .update(updateData)
       .eq('id', id)
       .select()

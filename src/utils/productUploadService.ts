@@ -48,11 +48,11 @@ export class ProductUploadService {
         buyprice: p.buyprice,
         reseller_price: p.reseller_price,
         provider: p.provider,
-        stock_levels: p.stock_levels as unknown as Record<string, unknown>
+        stock_levels: p.stock_levels as unknown as import('@/integrations/supabase/types').Json
       }));
 
-      const { error } = await supabase
-        .from('products')
+      const { error } = await (supabase
+        .from('products') as any)
         .upsert(rows, { onConflict: 'barcode', ignoreDuplicates: false });
 
       if (error) {
