@@ -139,33 +139,32 @@ export default function CompanySettingsPage() {
     );
   }
 
-  const inputClass = "w-full px-4 py-2 border border-input rounded-lg bg-secondary text-foreground focus:ring-2 focus:ring-ring";
+  const inputClass = "w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground focus:ring-2 focus:ring-ring";
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="max-w-4xl mx-auto space-y-4">
       {/* Header */}
-      <div className="glass rounded-2xl shadow-xl p-6">
-        <div className="flex items-center space-x-3">
-          <div className="p-3 bg-primary rounded-xl" style={{ boxShadow: 'var(--shadow-glow)' }}>
-            <Settings className="h-6 w-6 text-primary-foreground" />
+      <div className="glass rounded-xl shadow-lg p-4">
+        <div className="flex items-center space-x-2.5">
+          <div className="p-2 bg-primary rounded-lg" style={{ boxShadow: 'var(--shadow-glow)' }}>
+            <Settings className="h-4 w-4 text-primary-foreground" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Paramètres de l'Entreprise</h1>
-            <p className="text-muted-foreground">Configurez les informations affichées sur les devis</p>
+            <h1 className="text-lg font-bold text-foreground">Paramètres Entreprise</h1>
+            <p className="text-xs text-muted-foreground">Informations affichées sur les devis</p>
           </div>
         </div>
       </div>
 
       {/* Company Info */}
-      <div className="glass rounded-2xl shadow-xl p-6">
-        <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center space-x-2">
-          <Building className="h-5 w-5" />
-          <span>Informations de l'Entreprise</span>
+      <div className="glass rounded-xl shadow-lg p-4">
+        <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center space-x-1.5">
+          <Building className="h-4 w-4" /><span>Informations Entreprise</span>
         </h2>
 
         {/* Logo */}
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-foreground mb-2">Logo</label>
+        <div className="mb-4">
+          <label className="block text-xs font-medium text-foreground mb-1">Logo</label>
           <div className="flex items-center space-x-4">
             {logoPreview ? (
               <div className="relative">
@@ -190,8 +189,8 @@ export default function CompanySettingsPage() {
           </div>
           {/* Logo size */}
           {(logoPreview || settings.logo_url) && (
-            <div className="mt-3">
-              <label className="block text-sm font-medium text-foreground mb-1">Taille du logo dans le devis</label>
+            <div className="mt-2">
+              <label className="block text-xs font-medium text-foreground mb-1">Taille logo dans devis</label>
               <select
                 value={settings.logo_size || 'medium'}
                 onChange={e => setSettings({ ...settings, logo_size: e.target.value as 'small' | 'medium' | 'large' })}
@@ -205,9 +204,9 @@ export default function CompanySettingsPage() {
           )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Nom de l'entreprise</label>
+            <label className="block text-xs font-medium text-foreground mb-1">Nom de l'entreprise</label>
             <input
               type="text"
               value={settings.company_name}
@@ -217,7 +216,7 @@ export default function CompanySettingsPage() {
             />
           </div>
           <div className="md:col-span-2">
-            <label className="block text-sm font-medium text-foreground mb-1">Adresse</label>
+            <label className="block text-xs font-medium text-foreground mb-1">Adresse</label>
             <input
               type="text"
               value={settings.address}
@@ -229,7 +228,7 @@ export default function CompanySettingsPage() {
 
           {/* Legal identifiers */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">ICE</label>
+            <label className="block text-xs font-medium text-foreground mb-1">ICE</label>
             <input
               type="text"
               value={settings.ice}
@@ -239,7 +238,7 @@ export default function CompanySettingsPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">RC (Registre de Commerce)</label>
+            <label className="block text-xs font-medium text-foreground mb-1">RC (Registre de Commerce)</label>
             <input
               type="text"
               value={settings.rc}
@@ -249,7 +248,7 @@ export default function CompanySettingsPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">IF (Identifiant Fiscal)</label>
+            <label className="block text-xs font-medium text-foreground mb-1">IF (Identifiant Fiscal)</label>
             <input
               type="text"
               value={settings.if_number}
@@ -259,7 +258,7 @@ export default function CompanySettingsPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">CNSS</label>
+            <label className="block text-xs font-medium text-foreground mb-1">CNSS</label>
             <input
               type="text"
               value={settings.cnss}
@@ -269,7 +268,7 @@ export default function CompanySettingsPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Patente</label>
+            <label className="block text-xs font-medium text-foreground mb-1">Patente</label>
             <input
               type="text"
               value={settings.patente}
@@ -281,7 +280,7 @@ export default function CompanySettingsPage() {
 
           {/* Phones */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Téléphone 1</label>
+            <label className="block text-xs font-medium text-foreground mb-1">Téléphone 1</label>
             <input
               type="text"
               value={settings.phone}
@@ -291,7 +290,7 @@ export default function CompanySettingsPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Téléphone 2</label>
+            <label className="block text-xs font-medium text-foreground mb-1">Téléphone 2</label>
             <input
               type="text"
               value={settings.phone2}
@@ -301,7 +300,7 @@ export default function CompanySettingsPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">DIR (Directeur)</label>
+            <label className="block text-xs font-medium text-foreground mb-1">DIR (Directeur)</label>
             <input
               type="text"
               value={settings.phone_dir}
@@ -311,7 +310,7 @@ export default function CompanySettingsPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">GSM</label>
+            <label className="block text-xs font-medium text-foreground mb-1">GSM</label>
             <input
               type="text"
               value={settings.phone_gsm}
@@ -323,7 +322,7 @@ export default function CompanySettingsPage() {
 
           {/* Contact */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Email</label>
+            <label className="block text-xs font-medium text-foreground mb-1">Email</label>
             <input
               type="text"
               value={settings.email}
@@ -333,7 +332,7 @@ export default function CompanySettingsPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Site web</label>
+            <label className="block text-xs font-medium text-foreground mb-1">Site web</label>
             <input
               type="text"
               value={settings.website}
@@ -346,15 +345,15 @@ export default function CompanySettingsPage() {
       </div>
 
       {/* Quote Settings */}
-      <div className="glass rounded-2xl shadow-xl p-6">
-        <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center space-x-2">
+      <div className="glass rounded-xl shadow-lg p-4">
+        <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center space-x-2">
           <FileText className="h-5 w-5" />
           <span>Paramètres du Devis</span>
         </h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Taux TVA (%)</label>
+            <label className="block text-xs font-medium text-foreground mb-1">Taux TVA (%)</label>
             <input
               type="number"
               value={settings.tva_rate}
@@ -366,7 +365,7 @@ export default function CompanySettingsPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Conditions de paiement</label>
+            <label className="block text-xs font-medium text-foreground mb-1">Conditions de paiement</label>
             <input
               type="text"
               value={settings.payment_terms}
@@ -376,7 +375,7 @@ export default function CompanySettingsPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Validité du devis (jours)</label>
+            <label className="block text-xs font-medium text-foreground mb-1">Validité du devis (jours)</label>
             <input
               type="number"
               value={settings.quote_validity_days}
@@ -389,15 +388,15 @@ export default function CompanySettingsPage() {
       </div>
 
       {/* Quote Styling */}
-      <div className="glass rounded-2xl shadow-xl p-6">
-        <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center space-x-2">
+      <div className="glass rounded-xl shadow-lg p-4">
+        <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center space-x-2">
           <Palette className="h-5 w-5" />
           <span>Style du Devis</span>
         </h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Couleur d'accent</label>
+            <label className="block text-xs font-medium text-foreground mb-1">Couleur d'accent</label>
             <div className="flex items-center space-x-3">
               <input
                 type="color"
@@ -422,7 +421,7 @@ export default function CompanySettingsPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Police</label>
+            <label className="block text-xs font-medium text-foreground mb-1">Police</label>
             <select
               value={settings.quote_style?.fontFamily || 'helvetica'}
               onChange={e => setSettings({
@@ -438,7 +437,7 @@ export default function CompanySettingsPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Taille de l'en-tête</label>
+            <label className="block text-xs font-medium text-foreground mb-1">Taille de l'en-tête</label>
             <select
               value={settings.quote_style?.headerSize || 'large'}
               onChange={e => setSettings({
@@ -454,7 +453,7 @@ export default function CompanySettingsPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Style des totaux</label>
+            <label className="block text-xs font-medium text-foreground mb-1">Style des totaux</label>
             <select
               value={settings.quote_style?.totalsStyle || 'highlighted'}
               onChange={e => setSettings({
@@ -507,8 +506,8 @@ export default function CompanySettingsPage() {
       </div>
 
       {/* Visible Fields */}
-      <div className="glass rounded-2xl shadow-xl p-6">
-        <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center space-x-2">
+      <div className="glass rounded-xl shadow-lg p-4">
+        <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center space-x-2">
           <Eye className="h-5 w-5" />
           <span>Éléments Visibles sur le Devis</span>
         </h2>

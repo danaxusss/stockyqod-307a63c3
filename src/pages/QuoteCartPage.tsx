@@ -634,16 +634,16 @@ export function QuoteCartPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6">
+    <div className="max-w-7xl mx-auto space-y-4">
       {/* Header */}
-      <div className="glass rounded-2xl shadow-xl p-6">
+      <div className="glass rounded-xl shadow-lg p-4">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center space-x-3">
             <div className="p-3 bg-primary rounded-xl">
               <ShoppingCart className="h-6 w-6 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-foreground">
+              <h1 className="text-lg font-bold text-foreground">
                 {isEditing ? 'Modifier le Devis' : 'Nouveau Devis'}
               </h1>
               <p className="text-muted-foreground">
@@ -703,9 +703,9 @@ export function QuoteCartPage() {
       </div>
 
       {/* Customer Information */}
-      <div className="glass rounded-2xl shadow-xl p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-semibold text-foreground flex items-center space-x-2">
+      <div className="glass rounded-xl shadow-lg p-4">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-base font-semibold text-foreground flex items-center space-x-2">
             <User className="h-5 w-5" />
             <span>Informations Client</span>
           </h2>
@@ -717,7 +717,7 @@ export function QuoteCartPage() {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium text-foreground mb-2">
               Nom Complet *
@@ -728,7 +728,7 @@ export function QuoteCartPage() {
                 type="text"
                 value={customer.fullName}
                 onChange={(e) => setCustomer(prev => ({ ...prev, fullName: e.target.value }))}
-                className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${
+                className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${
                   validationErrors.fullName ? 'border-red-500' : 'border-input'
                 }`}
                 placeholder="Nom complet du client"
@@ -749,7 +749,7 @@ export function QuoteCartPage() {
                 type="text"
                 value={customer.phoneNumber}
                 onChange={(e) => setCustomer(prev => ({ ...prev, phoneNumber: e.target.value }))}
-                className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${
+                className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${
                   validationErrors.phoneNumber ? 'border-red-500' : 'border-input'
                 }`}
                 placeholder="Numéro de téléphone"
@@ -770,7 +770,7 @@ export function QuoteCartPage() {
                 type="text"
                 value={customer.address}
                 onChange={(e) => setCustomer(prev => ({ ...prev, address: e.target.value }))}
-                className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${
+                className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${
                   validationErrors.address ? 'border-red-500' : 'border-input'
                 }`}
                 placeholder="Adresse du client"
@@ -789,7 +789,7 @@ export function QuoteCartPage() {
               type="text"
               value={customer.city}
               onChange={(e) => setCustomer(prev => ({ ...prev, city: e.target.value }))}
-              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${
+              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${
                 validationErrors.city ? 'border-red-500' : 'border-input'
               }`}
               placeholder="Ville"
@@ -807,7 +807,7 @@ export function QuoteCartPage() {
               type="text"
               value={customer.ice || ''}
               onChange={(e) => setCustomer(prev => ({ ...prev, ice: e.target.value }))}
-              className="w-full px-4 py-3 border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
+              className="w-full px-4 py-2 border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
               placeholder="Numéro ICE"
             />
           </div>
@@ -819,7 +819,7 @@ export function QuoteCartPage() {
             <select
               value={customer.salesPerson}
               onChange={(e) => setCustomer(prev => ({ ...prev, salesPerson: e.target.value }))}
-              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${
+              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${
                 validationErrors.salesPerson ? 'border-red-500' : 'border-input'
               }`}
             >
@@ -843,7 +843,7 @@ export function QuoteCartPage() {
               type="text"
               value={commandNumber}
               onChange={(e) => setCommandNumber(e.target.value)}
-              className="w-full px-4 py-3 border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
+              className="w-full px-4 py-2 border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
               placeholder="Numéro de commande (optionnel)"
             />
           </div>
@@ -851,9 +851,9 @@ export function QuoteCartPage() {
       </div>
 
       {/* Product Search and Add */}
-      <div className="glass rounded-2xl shadow-xl p-6">
+      <div className="glass rounded-xl shadow-lg p-4">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg sm:text-xl font-semibold text-foreground flex items-center space-x-2">
+          <h2 className="text-lg sm:text-base font-semibold text-foreground flex items-center space-x-2">
             <Package className="h-5 w-5" />
             <span>Ajouter des Produits</span>
           </h2>
@@ -927,10 +927,10 @@ export function QuoteCartPage() {
       </div>
 
       {/* Cart Items Table */}
-      <div className="glass rounded-2xl shadow-xl overflow-hidden">
-        <div className="p-6 border-b border-border">
+      <div className="glass rounded-xl shadow-lg overflow-hidden">
+        <div className="p-4 border-b border-border">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-foreground flex items-center space-x-2">
+            <h2 className="text-base font-semibold text-foreground flex items-center space-x-2">
               <FileText className="h-5 w-5" />
               <span>Articles du Devis</span>
               <span className="text-sm font-normal text-muted-foreground">
@@ -978,28 +978,28 @@ export function QuoteCartPage() {
               <table className="w-full">
                 <thead className="bg-secondary">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                       N°
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                       Nom du Produit
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                       Marge %
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                       Prix Unitaire
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                       Quantité
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                       Remise %
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                       Sous-total
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                       Actions
                     </th>
                   </tr>
@@ -1107,7 +1107,7 @@ export function QuoteCartPage() {
 
             {/* Pagination */}
             {totalPages > 1 && (
-              <div className="px-6 py-4 border-t border-border">
+              <div className="px-4 py-2 border-t border-border">
                 <div className="flex items-center justify-between">
                   <div className="text-sm text-foreground">
                     Affichage de {startIndex + 1} à {Math.min(endIndex, items.length)} sur {items.length} articles
@@ -1136,7 +1136,7 @@ export function QuoteCartPage() {
             )}
 
             {/* Total */}
-            <div className="px-6 py-4 bg-secondary border-t border-border">
+            <div className="px-4 py-2 bg-secondary border-t border-border">
               <div className="flex justify-end">
                 <div className="text-right">
                   <div className="text-lg font-semibold text-foreground">
@@ -1153,23 +1153,23 @@ export function QuoteCartPage() {
       </div>
 
       {/* Notes Section */}
-      <div className="glass rounded-2xl shadow-xl p-6">
-        <h2 className="text-xl font-semibold text-foreground mb-4 flex items-center space-x-2">
+      <div className="glass rounded-xl shadow-lg p-4">
+        <h2 className="text-base font-semibold text-foreground mb-4 flex items-center space-x-2">
           <Edit3 className="h-5 w-5" />
           <span>Notes (Optionnel)</span>
         </h2>
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          className="w-full px-4 py-3 border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
+          className="w-full px-4 py-2 border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
           rows={4}
           placeholder="Ajoutez des notes ou commentaires pour ce devis..."
         />
       </div>
 
       {/* PDF Export Section */}
-      <div className="glass rounded-2xl shadow-xl p-6">
-        <h2 className="text-xl font-semibold text-foreground flex items-center space-x-2 mb-4">
+      <div className="glass rounded-xl shadow-lg p-4">
+        <h2 className="text-base font-semibold text-foreground flex items-center space-x-2 mb-4">
           <FileDown className="h-5 w-5" />
           <span>Export PDF</span>
         </h2>
@@ -1178,7 +1178,7 @@ export function QuoteCartPage() {
           <button
             onClick={handleExport}
             disabled={isExporting || items.length === 0}
-            className="w-full flex items-center justify-center space-x-2 px-4 py-3 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-lg transition-colors"
+            className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-lg transition-colors"
           >
             {isExporting ? (
               <>
@@ -1199,14 +1199,14 @@ export function QuoteCartPage() {
       <div className="flex flex-col sm:flex-row gap-4">
         <button
           onClick={() => navigate('/quotes-history')}
-          className="flex-1 px-6 py-3 border border-input text-foreground hover:bg-accent rounded-lg transition-colors"
+          className="flex-1 px-6 py-2 border border-input text-foreground hover:bg-accent rounded-lg transition-colors"
         >
           Retour à l'Historique
         </button>
         
         <button
           onClick={() => navigate('/search')}
-          className="flex-1 px-6 py-3 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors"
+          className="flex-1 px-6 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors"
         >
           Ajouter des Produits
         </button>
@@ -1214,7 +1214,7 @@ export function QuoteCartPage() {
         <button
           onClick={() => handleSave(false)}
           disabled={isSaving}
-          className="flex-1 flex items-center justify-center space-x-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-primary-foreground rounded-lg transition-colors"
+          className="flex-1 flex items-center justify-center space-x-2 px-6 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-primary-foreground rounded-lg transition-colors"
         >
           {isSaving ? (
             <>

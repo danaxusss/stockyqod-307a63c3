@@ -74,7 +74,7 @@ export function FloatingQuoteCart() {
       <div className="fixed bottom-6 right-6 z-40">
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="relative flex items-center justify-center w-14 h-14 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+          className="relative flex items-center justify-center w-12 h-12 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
         >
           <ShoppingCart className="h-6 w-6" />
           
@@ -92,11 +92,11 @@ export function FloatingQuoteCart() {
         <div className="fixed inset-0 bg-black/50 flex items-end justify-end z-50 p-4">
           <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-sm w-full max-h-[80vh] flex flex-col overflow-hidden">
             {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-blue-500 to-blue-600 text-white flex-shrink-0">
+            <div className="flex items-center justify-between p-3 border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-blue-500 to-blue-600 text-white flex-shrink-0">
               <div className="flex items-center space-x-3">
                 <ShoppingCart className="h-5 w-5" />
                 <div>
-                  <h2 className="text-lg font-semibold">Panier de Devis</h2>
+                  <h2 className="text-base font-semibold">Panier de Devis</h2>
                   <p className="text-blue-100 text-sm">
                     {cart.totalItems} article{cart.totalItems !== 1 ? 's' : ''}
                   </p>
@@ -139,8 +139,8 @@ export function FloatingQuoteCart() {
             {/* Content - Scrollable */}
             <div className="flex-1 overflow-y-auto">
               {cart.totalItems === 0 ? (
-                <div className="flex flex-col items-center justify-center p-8 text-center">
-                  <Package className="h-12 w-12 text-gray-400 mb-4" />
+                <div className="flex flex-col items-center justify-center p-6 text-center">
+                  <Package className="h-10 w-10 text-gray-400 mb-4" />
                   <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
                     Panier Vide
                   </h3>

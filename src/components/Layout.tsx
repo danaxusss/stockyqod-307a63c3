@@ -61,18 +61,18 @@ export function Layout({ children }: LayoutProps) {
       {/* Pull-to-refresh indicator */}
       {isUserAuthenticated && (isPulling || isSyncing) && (
         <div 
-          className="fixed top-16 left-1/2 -translate-x-1/2 z-40 transition-all duration-300"
+          className="fixed top-14 left-1/2 -translate-x-1/2 z-40 transition-all duration-300"
           style={{ transform: `translateX(-50%) translateY(${Math.max(0, pullDistance - 40)}px)` }}
         >
-          <div className="bg-card rounded-full p-3 shadow-lg border border-border">
-            <RefreshCw className={`h-5 w-5 text-primary ${isSyncing ? 'animate-spin' : ''}`} />
+          <div className="bg-card rounded-full p-2.5 shadow-lg border border-border">
+            <RefreshCw className={`h-4 w-4 text-primary ${isSyncing ? 'animate-spin' : ''}`} />
           </div>
         </div>
       )}
 
       <main 
         ref={mainRef}
-        className="container mx-auto px-4 py-6 flex-1 overflow-y-auto"
+        className="container mx-auto px-3 py-4 flex-1 overflow-y-auto"
         onTouchStart={isUserAuthenticated ? handleTouchStart : undefined}
         onTouchMove={isUserAuthenticated ? handleTouchMove : undefined}
         onTouchEnd={isUserAuthenticated ? handleTouchEnd : undefined}
@@ -85,23 +85,23 @@ export function Layout({ children }: LayoutProps) {
       </main>
       
       {!isHomePage && (
-        <div className="container mx-auto px-4 my-6">
+        <div className="container mx-auto px-3 my-4">
           <div className="flex justify-center">
             <Link
               to="/"
-              className="flex items-center space-x-2 px-6 py-3 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+              className="flex items-center space-x-2 px-5 py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg shadow hover:shadow-lg transition-all duration-200 transform hover:scale-105 text-sm"
             >
-              <Home className="h-5 w-5" />
+              <Home className="h-4 w-4" />
               <span className="font-medium">Accueil</span>
             </Link>
           </div>
         </div>
       )}
       
-      <footer className="py-6 border-t border-border/50 mt-auto">
-        <div className="container mx-auto px-4">
+      <footer className="py-3 border-t border-border/50 mt-auto">
+        <div className="container mx-auto px-3">
           <div className="text-center">
-            <p className="text-sm text-muted-foreground font-medium">
+            <p className="text-xs text-muted-foreground font-medium">
               Stocky V1.0 - Cuisimat Gr - By{' '}
               <a 
                 href="https://www.qodweb.com" 
