@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { AppUser } from '../types';
-import { SupabaseUsersService } from '../utils/supabaseUsers';
+import { supabase } from '@/integrations/supabase/client';
 
 const AUTH_STORAGE_KEY = 'inventory_user_authenticated';
 const AUTH_TIME_KEY = 'inventory_user_auth_time';
@@ -113,17 +113,18 @@ export function useUserAuth() {
 
   const loginWithCredentials = useCallback(async (username: string, pin: string): Promise<boolean> => {
     try {
-      const user = await SupabaseUsersService.authenticateUser(username, pin);
-      if (user) {
-        localStorage.setItem(AUTH_STORAGE_KEY, 'true');
-        localStorage.setItem(AUTH_TIME_KEY, Date.now().toString());
-        localStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
-        setIsAuthenticated(true);
-        setAuthenticatedUser(user);
-        userAuthStateManager.notify();
-        return true;
-      }
-      return false;
+      const { data, error } = await supabase.functions.invoke('verify-pin', {
+        body: { action: 'verify', username, pin }
+      });
+      if (error || !data?.success) return false;
+      const user = data.user as AppUser;
+      localStorage.setItem(AUTH_STORAGE_KEY, 'true');
+      localStorage.setItem(AUTH_TIME_KEY, Date.now().toString());
+      localStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
+      setIsAuthenticated(true);
+      setAuthenticatedUser(user);
+      userAuthStateManager.notify();
+      return true;
     } catch (error) {
       console.error('Login with credentials failed:', error);
       return false;
@@ -132,19 +133,18 @@ export function useUserAuth() {
 
   const loginWithPin = useCallback(async (pin: string): Promise<boolean> => {
     try {
-      const allUsers = await SupabaseUsersService.getAllUsers();
-      const user = allUsers.find(u => u.pin === pin);
-      
-      if (user) {
-        localStorage.setItem(AUTH_STORAGE_KEY, 'true');
-        localStorage.setItem(AUTH_TIME_KEY, Date.now().toString());
-        localStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
-        setIsAuthenticated(true);
-        setAuthenticatedUser(user);
-        userAuthStateManager.notify();
-        return true;
-      }
-      return false;
+      const { data, error } = await supabase.functions.invoke('verify-pin', {
+        body: { action: 'verify-pin-only', pin }
+      });
+      if (error || !data?.success) return false;
+      const user = data.user as AppUser;
+      localStorage.setItem(AUTH_STORAGE_KEY, 'true');
+      localStorage.setItem(AUTH_TIME_KEY, Date.now().toString());
+      localStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
+      setIsAuthenticated(true);
+      setAuthenticatedUser(user);
+      userAuthStateManager.notify();
+      return true;
     } catch (error) {
       console.error('PIN login failed:', error);
       return false;
