@@ -1,4 +1,3 @@
-// @ts-nocheck
 import React, { useState, useEffect } from 'react';
 import { 
   BarChart3, 
@@ -16,7 +15,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useAppContext } from '../context/AppContext';
-import { getAllQuotes } from '../utils/database';
+import { SupabaseQuotesService } from '../utils/supabaseQuotes';
 import { SupabaseUsersService } from '../utils/supabaseUsers';
 import { Quote, AppUser } from '../types';
 
@@ -48,6 +47,30 @@ export function StatisticsPage() {
   const [quoteStats, setQuoteStats] = useState<QuoteStats | null>(null);
   const [users, setUsers] = useState<AppUser[]>([]);
 
+  useEffect(() => {
+    const loadStatistics = async () => {
+      setIsLoading(true);
+      try {
+        const [quotes, allUsers] = await Promise.all([
+          SupabaseQuotesService.getAllQuotes(),
+          SupabaseUsersService.getAllUsers()
+        ]);
+
+        setUsers(allUsers);
+        const pStats = calculateProductStats(state.products);
+        setProductStats(pStats);
+        const qStats = calculateQuoteStats(quotes, allUsers);
+        setQuoteStats(qStats);
+      } catch (error) {
+        console.error('Failed to load statistics:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadStatistics();
+  }, [state.products]);
+
   // Redirect if not admin
   if (!isAdmin) {
     return (
@@ -65,35 +88,6 @@ export function StatisticsPage() {
     );
   }
 
-  useEffect(() => {
-    const loadStatistics = async () => {
-      setIsLoading(true);
-      try {
-        // Load all required data
-        const [quotes, allUsers] = await Promise.all([
-          getAllQuotes(),
-          SupabaseUsersService.getAllUsers()
-        ]);
-
-        setUsers(allUsers);
-        
-        // Calculate product statistics
-        const productStats = calculateProductStats(state.products);
-        setProductStats(productStats);
-
-        // Calculate quote statistics
-        const quoteStats = calculateQuoteStats(quotes, allUsers);
-        setQuoteStats(quoteStats);
-
-      } catch (error) {
-        console.error('Failed to load statistics:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadStatistics();
-  }, [state.products]);
 
   const calculateProductStats = (products: any[]): ProductStats => {
     const totalProducts = products.length;
@@ -122,7 +116,7 @@ export function StatisticsPage() {
       brandMap.set(brand, (brandMap.get(brand) || 0) + 1);
 
       // Low stock check (less than 5 total)
-      const totalStock = Object.values(product.stock_levels || {}).reduce((sum: number, level) => sum + (Number(level) || 0), 0);
+      const totalStock = (Object.values(product.stock_levels || {}) as number[]).reduce((sum, level) => sum + (Number(level) || 0), 0);
       if (totalStock < 5) {
         lowStockProducts++;
       }
@@ -131,7 +125,7 @@ export function StatisticsPage() {
       productValues.push({
         name: product.name,
         brand: product.brand || 'Sans marque',
-        value: totalStock * (product.price || 0)
+        value: (totalStock as number) * (product.price || 0)
       });
     });
 

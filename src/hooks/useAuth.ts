@@ -1,9 +1,7 @@
-// @ts-nocheck
-// TODO: Remove ts-nocheck in next phase
 import { useState, useEffect, useCallback } from 'react';
 import { UserRole, AppUser, UserPermissions } from '../types';
 import { StorageManager } from '../utils/storage';
-import { SupabaseUsersService } from '../utils/supabaseUsers';
+import { supabase } from '@/integrations/supabase/client';
 import { useUserAuth } from './useUserAuth';
 
 // Create a custom event for auth state changes
@@ -48,7 +46,7 @@ export function useAuth() {
       triggerUpdate();
     });
 
-    return unsubscribe;
+    return () => { unsubscribe(); };
   }, [triggerUpdate]);
 
   // Listen for custom auth events
@@ -166,41 +164,36 @@ export function useAuth() {
 
   const login = useCallback(async (pin: string): Promise<boolean> => {
     try {
-      // First try the old admin PIN system for backward compatibility
-      const storedPin = StorageManager.getAdminPin();
-      if (storedPin && pin === storedPin) {
-        // Create a temporary admin user object for backward compatibility
-        const tempAdminUser: AppUser = {
-          id: 'temp-admin',
-          username: 'admin',
-          pin: pin,
-          is_admin: true,
-          can_create_quote: true,
-          allowed_stock_locations: [],
-          price_display_type: 'normal',
-          created_at: new Date(),
-          updated_at: new Date()
-        };
-        
-        await loadUserData(tempAdminUser);
+      // Try to authenticate via edge function (PIN only)
+      const { data, error } = await supabase.functions.invoke('verify-pin', {
+        body: { action: 'verify-pin-only', pin }
+      });
+
+      if (!error && data?.success) {
+        const user = data.user as AppUser;
+        await loadUserData(user);
         authStateManager.notify();
         return true;
       }
 
-      // Try to authenticate with the new user system
-      // We don't know the username, so we'll need to check all users
-      // This is not ideal for production, but works for the transition period
-      try {
-        const allUsers = await SupabaseUsersService.getAllUsers();
-        const authenticatedUser = allUsers.find(user => user.pin === pin);
-        
-        if (authenticatedUser) {
-          await loadUserData(authenticatedUser);
-          authStateManager.notify();
-          return true;
-        }
-      } catch (error) {
-        console.warn('Failed to authenticate with new user system, falling back to old system:', error);
+      // Fallback: old admin PIN
+      const storedPin = StorageManager.getAdminPin();
+      if (storedPin && pin === storedPin) {
+        const tempAdminUser: AppUser = {
+          id: 'temp-admin',
+          username: 'admin',
+          pin: '',
+          is_admin: true,
+          can_create_quote: true,
+          allowed_stock_locations: [],
+          allowed_brands: [],
+          price_display_type: 'normal',
+          created_at: new Date(),
+          updated_at: new Date()
+        };
+        await loadUserData(tempAdminUser);
+        authStateManager.notify();
+        return true;
       }
 
       return false;
@@ -210,20 +203,16 @@ export function useAuth() {
     }
   }, [loadUserData]);
 
-  // New method for username/PIN authentication
   const loginWithUsername = useCallback(async (username: string, pin: string): Promise<boolean> => {
     try {
-      console.log('loginWithUsername - Attempting login for:', username);
-      const user = await SupabaseUsersService.authenticateUser(username, pin);
-      console.log('loginWithUsername - Authentication result:', user ? {
-        username: user.username,
-        is_admin: user.is_admin
-      } : 'null');
-      
-      if (user) {
+      const { data, error } = await supabase.functions.invoke('verify-pin', {
+        body: { action: 'verify', username, pin }
+      });
+
+      if (!error && data?.success) {
+        const user = data.user as AppUser;
         await loadUserData(user);
         authStateManager.notify();
-        console.log('loginWithUsername - Login successful, role should be:', user.is_admin ? 'admin' : 'sales');
         return true;
       }
       return false;
