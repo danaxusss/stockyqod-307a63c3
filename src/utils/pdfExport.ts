@@ -280,28 +280,28 @@ export class PdfExportService {
       margin: { left: margin, right: pageWidth - margin - leftColWidth },
       theme: 'plain',
       styles: {
-        fontSize: 8.5,
-        cellPadding: { top: 2.8, bottom: 2.8, left: 4, right: 4 },
+        fontSize: 7.5,
+        cellPadding: { top: 2, bottom: 2, left: 3, right: 3 },
         lineColor: [230, 230, 230],
-        lineWidth: 0.3,
+        lineWidth: 0.2,
         textColor: DARK,
       },
       columnStyles: {
         0: {
-          cellWidth: 32,
+          cellWidth: 28,
           fillColor: ACCENT,
           textColor: WHITE,
           fontStyle: 'bold',
-          fontSize: 7.5,
+          fontSize: 6.5,
         },
         1: {
-          cellWidth: leftColWidth - 32,
-          fontSize: 8.5,
+          cellWidth: leftColWidth - 28,
+          fontSize: 7.5,
           fillColor: [252, 252, 252],
         },
       },
       tableLineColor: [230, 230, 230],
-      tableLineWidth: 0.3,
+      tableLineWidth: 0.2,
     });
 
     const leftFinalY = (doc as any).lastAutoTable?.finalY || sectionStartY + 30;
