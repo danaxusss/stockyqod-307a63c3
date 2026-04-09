@@ -32,11 +32,11 @@ export class PdfExportService {
 
   static async exportQuoteToPdf(quote: Quote, settings?: CompanySettings | null): Promise<void> {
     const style: QuoteStyle = settings?.quote_style || {
-      accentColor: '#3B82F6', fontFamily: font, showBorders: true,
+      accentColor: '#3B82F6', fontFamily: 'helvetica', showBorders: true,
       borderRadius: 1, headerSize: 'large', totalsStyle: 'highlighted',
     };
     const ACCENT = hexToRgb(style.accentColor);
-    const font = style.fontFamily || font;
+    const font = style.fontFamily || 'helvetica';
     const br = style.borderRadius ?? 1;
 
     const doc = new jsPDF('p', 'mm', 'a4');
