@@ -46,6 +46,7 @@ export function QuoteCartPage() {
   const isEditing = Boolean(quoteId);
   const { cart, emptyCart } = useQuoteCart();
   const { showToast } = useToast();
+  const { state } = useAppContext();
 
   // Quote state
   const [quote, setQuote] = useState<Quote | null>(null);
@@ -221,12 +222,10 @@ export function QuoteCartPage() {
 
     setIsSearching(true);
     try {
-      const { state: appState } = useAppContext ? { state: { products: [] } } : { state: { products: [] } };
-      // Search locally from context products
-      const results = state.products.filter(p => {
-        const q = searchQuery.toLowerCase();
-        return p.name.toLowerCase().includes(q) || p.barcode.includes(q) || p.brand.toLowerCase().includes(q);
-      });
+      const q = searchQuery.toLowerCase();
+      const results = state.products.filter(p =>
+        p.name.toLowerCase().includes(q) || p.barcode.includes(q) || p.brand.toLowerCase().includes(q)
+      );
       setSearchResults(results.slice(0, 20));
     } catch (error) {
       console.error('Search failed:', error);
