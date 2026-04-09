@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
-import { Settings, Upload, Trash2, Save, Loader, Image, Building, Phone, Mail, Globe, Hash, FileText, Eye } from 'lucide-react';
-import { CompanySettingsService, CompanySettings, QuoteVisibleFields } from '../utils/companySettings';
+import { Settings, Upload, Trash2, Save, Loader, Image, Building, Phone, Mail, Globe, Hash, FileText, Eye, Palette } from 'lucide-react';
+import { CompanySettingsService, CompanySettings, QuoteVisibleFields, QuoteStyle } from '../utils/companySettings';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../context/ToastContext';
 import { useNavigate } from 'react-router-dom';
@@ -102,6 +102,7 @@ export default function CompanySettingsPage() {
         ice: settings.ice,
         logo_url: logoUrl,
         quote_visible_fields: settings.quote_visible_fields,
+        quote_style: settings.quote_style,
         payment_terms: settings.payment_terms,
         tva_rate: settings.tva_rate,
         quote_validity_days: settings.quote_validity_days,
