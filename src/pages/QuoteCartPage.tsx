@@ -452,13 +452,7 @@ export function QuoteCartPage() {
       errors.phoneNumber = 'Le numéro de téléphone est requis';
     }
 
-    if (!customer.address.trim()) {
-      errors.address = 'L\'adresse est requise';
-    }
-
-    if (!customer.city.trim()) {
-      errors.city = 'La ville est requise';
-    }
+    // address and city are optional now
 
     if (!customer.salesPerson.trim()) {
       errors.salesPerson = 'Le nom du vendeur est requis';
@@ -764,7 +758,7 @@ export function QuoteCartPage() {
 
           <div>
             <label className="block text-sm font-medium text-foreground mb-2">
-              Adresse *
+              Adresse / Ville (Optionnel)
             </label>
             <div className="relative">
               <Building className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -772,33 +766,10 @@ export function QuoteCartPage() {
                 type="text"
                 value={customer.address}
                 onChange={(e) => setCustomer(prev => ({ ...prev, address: e.target.value }))}
-                className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${
-                  validationErrors.address ? 'border-red-500' : 'border-input'
-                }`}
-                placeholder="Adresse du client"
+                className="w-full pl-10 pr-4 py-2 border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
+                placeholder="Adresse, Ville"
               />
             </div>
-            {validationErrors.address && (
-              <p className="mt-1 text-sm text-red-600 dark:text-red-400">{validationErrors.address}</p>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
-              Ville *
-            </label>
-            <input
-              type="text"
-              value={customer.city}
-              onChange={(e) => setCustomer(prev => ({ ...prev, city: e.target.value }))}
-              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${
-                validationErrors.city ? 'border-red-500' : 'border-input'
-              }`}
-              placeholder="Ville"
-            />
-            {validationErrors.city && (
-              <p className="mt-1 text-sm text-red-600 dark:text-red-400">{validationErrors.city}</p>
-            )}
           </div>
 
           <div>
