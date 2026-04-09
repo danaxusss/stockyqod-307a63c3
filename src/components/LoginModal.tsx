@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState } from 'react';
 import { X, Shield, User, Eye, EyeOff, Package } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';

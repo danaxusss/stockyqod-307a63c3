@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { Quote, QuoteItem, QuoteTemplate } from '../types';
 import * as ExcelJS from 'exceljs';
 

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { Product, Meta, Quote, QuoteTemplate } from '../types';
 

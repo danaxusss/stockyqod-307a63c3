@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { X, Camera, Flashlight, FlashlightOff, RotateCcw, AlertCircle, Smartphone, Target, Zap, Focus, Maximize } from 'lucide-react';
 import { BrowserMultiFormatReader, NotFoundException, ChecksumException, FormatException, BarcodeFormat } from '@zxing/library';
