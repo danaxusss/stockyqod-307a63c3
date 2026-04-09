@@ -224,21 +224,21 @@ export class PdfExportService {
       const nameY = y + 4;
       const maxNameWidth = devisBoxX - nameX - 5;
 
-      let nameFontSize = style.headerSize === 'small' ? 16 : style.headerSize === 'medium' ? 20 : 22;
+      let nameFontSize = style.headerSize === 'small' ? 14 : style.headerSize === 'medium' ? 17 : 19;
       doc.setFont(font, 'bold');
-      while (nameFontSize > 10) {
+      while (nameFontSize > 9) {
         doc.setFontSize(nameFontSize);
         if (doc.getTextWidth(companyName) <= maxNameWidth) break;
         nameFontSize -= 1;
       }
       doc.setFontSize(nameFontSize);
       doc.setTextColor(...ACCENT);
-      doc.text(companyName, nameX, nameY + 5, { maxWidth: maxNameWidth });
+      doc.text(companyName, nameX, nameY + 4, { maxWidth: maxNameWidth });
 
-      doc.setFontSize(7.5);
+      doc.setFontSize(6.5);
       doc.setFont(font, 'normal');
       doc.setTextColor(...GRAY);
-      doc.text('MATERIEL DE CUISINE PROFESSIONNEL', nameX, nameY + 10);
+      doc.text('MATERIEL DE CUISINE PROFESSIONNEL', nameX, nameY + 9);
     }
 
     y = Math.max(y + logoHeight, y + 18) + 8;
