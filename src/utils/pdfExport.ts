@@ -130,21 +130,7 @@ export class PdfExportService {
       }
     }
 
-    // Company name + subtitle
-    const nameX = logoLoaded ? margin + 48 : margin;
-    const nameY = y + 4;
-    
-    doc.setFontSize(style.headerSize === 'small' ? 16 : style.headerSize === 'medium' ? 20 : 24);
-    doc.setFont(font, 'bold');
-    doc.setTextColor(...ACCENT);
-    doc.text(companyName, nameX, nameY + 5);
-
-    doc.setFontSize(7.5);
-    doc.setFont(font, 'normal');
-    doc.setTextColor(...GRAY);
-    doc.text('MATERIEL DE CUISINE PROFESSIONNEL', nameX, nameY + 10);
-
-    // DEVIS title (right side) with accent background
+    // DEVIS title (right side) with accent background — draw first to know its position
     const devisBoxW = 55;
     const devisBoxH = 14;
     const devisBoxX = pageWidth - margin - devisBoxW;
@@ -156,6 +142,29 @@ export class PdfExportService {
     doc.setFont(font, 'bold');
     doc.setTextColor(...WHITE);
     doc.text('DEVIS', devisBoxX + devisBoxW / 2, devisBoxY + devisBoxH / 2 + 4, { align: 'center' });
+
+    // Company name + subtitle (left side, constrained to not overlap DEVIS box)
+    const nameX = logoLoaded ? margin + 48 : margin;
+    const nameY = y + 4;
+    const maxNameWidth = devisBoxX - nameX - 5; // leave 5mm gap before DEVIS box
+
+    // Dynamic font size: start at desired size, shrink if text overflows
+    let nameFontSize = style.headerSize === 'small' ? 16 : style.headerSize === 'medium' ? 20 : 22;
+    doc.setFont(font, 'bold');
+    while (nameFontSize > 10) {
+      doc.setFontSize(nameFontSize);
+      const textWidth = doc.getTextWidth(companyName);
+      if (textWidth <= maxNameWidth) break;
+      nameFontSize -= 1;
+    }
+    doc.setFontSize(nameFontSize);
+    doc.setTextColor(...ACCENT);
+    doc.text(companyName, nameX, nameY + 5, { maxWidth: maxNameWidth });
+
+    doc.setFontSize(7.5);
+    doc.setFont(font, 'normal');
+    doc.setTextColor(...GRAY);
+    doc.text('MATERIEL DE CUISINE PROFESSIONNEL', nameX, nameY + 10);
 
     y = Math.max(y + logoHeight, y + 18) + 8;
 
@@ -220,6 +229,9 @@ export class PdfExportService {
       tableLineWidth: 0.3,
     });
 
+    // Capture LEFT table's final Y before drawing right table
+    const leftFinalY = (doc as any).lastAutoTable?.finalY || sectionStartY + 30;
+
     // --- RIGHT: Quote details ---
     const quoteInfoRows: [string, string][] = [
       ['Date', this.formatDate(quote.createdAt)],
@@ -255,24 +267,9 @@ export class PdfExportService {
       tableLineWidth: 0.3,
     });
 
-    // Get final Y after both sections
-    const leftFinalY = (doc as any).lastAutoTable?.finalY || sectionStartY + 30;
-    y = Math.max(leftFinalY, (doc as any).lastAutoTable?.finalY || sectionStartY + 30) + 5;
-
-    // === COMPANY DETAILS LINE ===
-    const companyDetails: string[] = [];
-    if (fields.showCompanyAddress && settings?.address) companyDetails.push(settings.address);
-    if (fields.showCompanyPhone && settings?.phone) companyDetails.push(`Tel: ${settings.phone}`);
-    if (fields.showCompanyEmail && settings?.email) companyDetails.push(settings.email);
-
-    if (companyDetails.length > 0) {
-      // Small accent dot separator
-      doc.setFontSize(7);
-      doc.setFont(font, 'normal');
-      doc.setTextColor(...GRAY);
-      doc.text(companyDetails.join('  |  '), margin, y);
-      y += 6;
-    }
+    // Use the maximum Y from both tables to avoid overlap
+    const rightFinalY = (doc as any).lastAutoTable?.finalY || sectionStartY + 30;
+    y = Math.max(leftFinalY, rightFinalY) + 8;
 
     // === ITEMS TABLE ===
     const tableHeaders = [['Marque', 'REF', 'DESCRIPTION', 'QTE', 'PU TTC', 'TOTAL TTC']];
