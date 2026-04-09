@@ -347,7 +347,11 @@ export function QuoteCartPage() {
 
   // Calculate totals
   const calculateTotals = useCallback(() => {
-    const totalAmount = items.reduce((sum, item) => sum + item.subtotal, 0);
+    const totalAmount = items.reduce((sum, item) => {
+      const discount = item.discount ?? 0;
+      const discountedPrice = item.unitPrice * (1 - discount / 100);
+      return sum + discountedPrice * item.quantity;
+    }, 0);
     const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
     
     return { totalAmount, totalItems };
@@ -358,15 +362,16 @@ export function QuoteCartPage() {
     if (newQuantity < 1) return;
     
     setItems(prevItems => 
-      prevItems.map(item => 
-        item.id === itemId 
-          ? { 
-              ...item, 
-              quantity: newQuantity, 
-              subtotal: item.unitPrice * newQuantity 
-            }
-          : item
-      )
+      prevItems.map(item => {
+        if (item.id !== itemId) return item;
+        const discount = item.discount ?? 0;
+        const discountedPrice = item.unitPrice * (1 - discount / 100);
+        return { 
+          ...item, 
+          quantity: newQuantity, 
+          subtotal: discountedPrice * newQuantity 
+        };
+      })
     );
   };
 
@@ -375,15 +380,33 @@ export function QuoteCartPage() {
     if (newUnitPrice < 0) return;
     
     setItems(prevItems => 
-      prevItems.map(item => 
-        item.id === itemId 
-          ? { 
-              ...item, 
-              unitPrice: newUnitPrice, 
-              subtotal: newUnitPrice * item.quantity 
-            }
-          : item
-      )
+      prevItems.map(item => {
+        if (item.id !== itemId) return item;
+        const discount = item.discount ?? 0;
+        const discountedPrice = newUnitPrice * (1 - discount / 100);
+        return { 
+          ...item, 
+          unitPrice: newUnitPrice, 
+          subtotal: discountedPrice * item.quantity 
+        };
+      })
+    );
+  };
+
+  // Update item discount percentage
+  const updateItemDiscount = (itemId: string, newDiscount: number) => {
+    if (newDiscount < 0 || newDiscount > 100) return;
+    
+    setItems(prevItems => 
+      prevItems.map(item => {
+        if (item.id !== itemId) return item;
+        const discountedPrice = item.unitPrice * (1 - newDiscount / 100);
+        return { 
+          ...item, 
+          discount: newDiscount, 
+          subtotal: discountedPrice * item.quantity 
+        };
+      })
     );
   };
 
@@ -394,13 +417,14 @@ export function QuoteCartPage() {
     setItems(prevItems => 
       prevItems.map(item => {
         if (item.id === itemId) {
-          // Calculate new unit price based on buy price and new margin
           const newUnitPrice = item.product.buyprice + (item.product.buyprice * (newMarginPercentage / 100));
+          const discount = item.discount ?? 0;
+          const discountedPrice = newUnitPrice * (1 - discount / 100);
           return {
             ...item,
             marginPercentage: newMarginPercentage,
             unitPrice: newUnitPrice,
-            subtotal: newUnitPrice * item.quantity
+            subtotal: discountedPrice * item.quantity
           };
         }
         return item;
@@ -970,6 +994,9 @@ export function QuoteCartPage() {
                       Quantité
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                      Remise %
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                       Sous-total
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
@@ -1044,6 +1071,20 @@ export function QuoteCartPage() {
                           >
                             <Plus className="h-3 w-3" />
                           </button>
+                        </div>
+                      </td>
+                      <td className="px-4 py-4">
+                        <div className="flex items-center space-x-1">
+                          <input
+                            type="number"
+                            value={item.discount ?? 0}
+                            onChange={(e) => updateItemDiscount(item.id, parseFloat(e.target.value) || 0)}
+                            className="w-16 px-2 py-1 text-sm border border-input rounded focus:ring-2 focus:ring-ring bg-secondary text-foreground"
+                            step="1"
+                            min="0"
+                            max="100"
+                          />
+                          <span className="text-sm text-muted-foreground">%</span>
                         </div>
                       </td>
                       <td className="px-4 py-4 text-sm font-medium text-foreground">

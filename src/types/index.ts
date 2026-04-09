@@ -55,6 +55,7 @@ export interface QuoteItem {
   unitPrice: number;
   quantity: number;
   subtotal: number;
+  discount?: number; // percentage discount (0-100)
 }
 
 export interface QuoteCart {
