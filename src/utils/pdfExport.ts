@@ -171,9 +171,9 @@ export class PdfExportService {
 
     // Logo size settings
     const logoSizeConfig = {
-      small: { maxW: 45, maxH: 25 },
-      medium: { maxW: 65, maxH: 35 },
-      large: { maxW: 85, maxH: 45 },
+      small: { maxW: 35, maxH: 20 },
+      medium: { maxW: 50, maxH: 28 },
+      large: { maxW: 70, maxH: 38 },
     };
     const logoSize = settings?.logo_size || 'medium';
     const { maxW: maxLogoW, maxH: maxLogoH } = logoSizeConfig[logoSize] || logoSizeConfig.medium;
