@@ -546,6 +546,7 @@ export function QuoteCartPage() {
 
     setIsExporting(true);
     try {
+      const freshSettings = await CompanySettingsService.getSettings().catch(() => companySettings);
       const { totalAmount } = calculateTotals();
       const quoteData: Quote = {
         id: quote?.id || `quote-${Date.now()}`,
@@ -560,7 +561,7 @@ export function QuoteCartPage() {
         notes
       };
 
-      await PdfExportService.exportQuoteToPdf(quoteData, companySettings);
+      await PdfExportService.exportQuoteToPdf(quoteData, freshSettings || companySettings);
       showToast({
         type: 'success',
         title: 'Export réussi',
