@@ -5,6 +5,7 @@ import { ToastProvider } from './context/ToastContext';
 import { Layout } from './components/Layout';
 import { LoginModal } from './components/LoginModal';
 import { FloatingQuoteCart } from './components/FloatingQuoteCart';
+import { AIChatWidget } from './components/AIChatWidget';
 import { useAuth } from './hooks/useAuth';
 import { useUserAuth } from './hooks/useUserAuth';
 
@@ -71,6 +72,7 @@ function AppContent() {
       </Layout>
 
       {canCreateQuote() && <FloatingQuoteCart />}
+      <AIChatWidget />
 
       {activeLoginModalRole === 'admin' && (
         <LoginModal 
