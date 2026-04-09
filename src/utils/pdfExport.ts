@@ -163,7 +163,7 @@ export class PdfExportService {
     // Draw first page decorations
     drawPageDecorations();
 
-    y = 10;
+    y = 7;
 
     // === HEADER: Logo OR Company Name (left) | DEVIS (right) ===
     let logoLoaded = false;
