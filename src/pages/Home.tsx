@@ -7,7 +7,6 @@ import { useToast } from '../context/ToastContext';
 import { ExcelUploadModal } from '../components/ExcelUploadModal';
 import { SyncStatusIndicator } from '../components/SyncStatusIndicator';
 import { ProductUploadService } from '../utils/productUploadService';
-import { ProductUploadService } from '../utils/productUploadService';
 import { StorageManager } from '../utils/storage';
 
 export function Home() {
@@ -114,9 +113,8 @@ export function Home() {
       // Step 2: Clear local IndexedDB
       showToast({
         type: 'info',
-        message: 'Étape 2/3: Suppression des données locales...'
+        message: 'Étape 2/3: Réinitialisation des préférences...'
       });
-      await clearAllData();
 
       // Step 3: Clear localStorage
       showToast({
@@ -164,13 +162,9 @@ export function Home() {
     try {
       setShowDebugInfo(true);
       
-      const [localStats, supabaseStats] = await Promise.all([
-        getDatabaseStats(),
-        ProductUploadService.analyzeProducts()
-      ]);
+      const supabaseStats = await ProductUploadService.analyzeProducts();
       
       setDebugInfo({
-        local: localStats,
         supabase: supabaseStats,
         timestamp: new Date().toISOString()
       });
