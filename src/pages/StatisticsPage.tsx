@@ -230,134 +230,97 @@ export function StatisticsPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6">
+    <div className="max-w-7xl mx-auto space-y-4">
       {/* Header */}
-      <div className="glass rounded-2xl shadow-xl p-6">
-        <div className="flex items-center space-x-3">
-          <div className="p-3 bg-primary rounded-xl">
-            <BarChart3 className="h-6 w-6 text-primary-foreground" />
+      <div className="glass rounded-xl shadow-lg p-4">
+        <div className="flex items-center space-x-2.5">
+          <div className="p-2 bg-primary rounded-lg">
+            <BarChart3 className="h-4 w-4 text-primary-foreground" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-foreground">
-              Statistiques Générales
-            </h1>
-            <p className="text-muted-foreground">
-              Vue d'ensemble de votre inventaire et activité commerciale
-            </p>
+            <h1 className="text-lg font-bold text-foreground">Statistiques</h1>
+            <p className="text-xs text-muted-foreground">Vue d'ensemble inventaire & activité</p>
           </div>
         </div>
       </div>
 
       {/* Product & Inventory Statistics */}
-      <div className="glass rounded-2xl shadow-xl p-6">
-        <h2 className="text-xl font-semibold text-foreground mb-6 flex items-center space-x-2">
-          <Package className="h-5 w-5" />
-          <span>Statistiques Produits & Inventaire</span>
+      <div className="glass rounded-xl shadow-lg p-4">
+        <h2 className="text-base font-semibold text-foreground mb-4 flex items-center space-x-2">
+          <Package className="h-4 w-4" />
+          <span>Produits & Inventaire</span>
         </h2>
 
         {productStats && (
           <>
-            {/* Overview Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-              <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
-                <div className="flex items-center space-x-3">
-                  <Package className="h-8 w-8 text-blue-600 dark:text-blue-400" />
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+              <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">
+                <div className="flex items-center space-x-2">
+                  <Package className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                   <div>
-                    <p className="text-sm text-blue-600 dark:text-blue-400">Total Produits</p>
-                    <p className="text-2xl font-bold text-blue-900 dark:text-blue-100">
-                      {formatNumber(productStats.totalProducts)}
-                    </p>
+                    <p className="text-[11px] text-blue-600 dark:text-blue-400">Produits</p>
+                    <p className="text-lg font-bold text-blue-900 dark:text-blue-100">{formatNumber(productStats.totalProducts)}</p>
                   </div>
                 </div>
               </div>
-
-              <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-lg">
-                <div className="flex items-center space-x-3">
-                  <DollarSign className="h-8 w-8 text-emerald-600 dark:text-emerald-400" />
+              <div className="bg-emerald-50 dark:bg-emerald-900/20 p-3 rounded-lg">
+                <div className="flex items-center space-x-2">
+                  <DollarSign className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
                   <div>
-                    <p className="text-sm text-emerald-600 dark:text-emerald-400">Valeur Stock</p>
-                    <p className="text-2xl font-bold text-emerald-900 dark:text-emerald-100">
-                      {formatCurrency(productStats.totalStockValue)} Dh
-                    </p>
+                    <p className="text-[11px] text-emerald-600 dark:text-emerald-400">Valeur Stock</p>
+                    <p className="text-lg font-bold text-emerald-900 dark:text-emerald-100">{formatCurrency(productStats.totalStockValue)} Dh</p>
                   </div>
                 </div>
               </div>
-
-              <div className="bg-orange-50 dark:bg-orange-900/20 p-4 rounded-lg">
-                <div className="flex items-center space-x-3">
-                  <Building className="h-8 w-8 text-orange-600 dark:text-orange-400" />
+              <div className="bg-orange-50 dark:bg-orange-900/20 p-3 rounded-lg">
+                <div className="flex items-center space-x-2">
+                  <Building className="h-5 w-5 text-orange-600 dark:text-orange-400" />
                   <div>
-                    <p className="text-sm text-orange-600 dark:text-orange-400">Marques</p>
-                    <p className="text-2xl font-bold text-orange-900 dark:text-orange-100">
-                      {productStats.brandDistribution.length}
-                    </p>
+                    <p className="text-[11px] text-orange-600 dark:text-orange-400">Marques</p>
+                    <p className="text-lg font-bold text-orange-900 dark:text-orange-100">{productStats.brandDistribution.length}</p>
                   </div>
                 </div>
               </div>
-
-              <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg">
-                <div className="flex items-center space-x-3">
-                  <Target className="h-8 w-8 text-red-600 dark:text-red-400" />
+              <div className="bg-red-50 dark:bg-red-900/20 p-3 rounded-lg">
+                <div className="flex items-center space-x-2">
+                  <Target className="h-5 w-5 text-red-600 dark:text-red-400" />
                   <div>
-                    <p className="text-sm text-red-600 dark:text-red-400">Stock Faible</p>
-                    <p className="text-2xl font-bold text-red-900 dark:text-red-100">
-                      {formatNumber(productStats.lowStockProducts)}
-                    </p>
+                    <p className="text-[11px] text-red-600 dark:text-red-400">Stock Faible</p>
+                    <p className="text-lg font-bold text-red-900 dark:text-red-100">{formatNumber(productStats.lowStockProducts)}</p>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Stock by Location */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
               <div>
-                <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center space-x-2">
-                  <MapPin className="h-5 w-5" />
-                  <span>Stock par Emplacement</span>
+                <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center space-x-1.5">
+                  <MapPin className="h-4 w-4" /><span>Stock par Emplacement</span>
                 </h3>
-                <div className="space-y-3">
-                  {productStats.stockByLocation.slice(0, 5).map((location, index) => (
-                    <div key={location.location} className="flex items-center justify-between p-3 bg-secondary rounded-lg">
+                <div className="space-y-2">
+                  {productStats.stockByLocation.slice(0, 5).map((location) => (
+                    <div key={location.location} className="flex items-center justify-between p-2 bg-secondary rounded-lg text-sm">
                       <div>
-                        <p className="font-medium text-foreground capitalize">
-                          {location.location.replace(/_/g, ' ')}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          {formatNumber(location.count)} articles
-                        </p>
+                        <p className="font-medium text-foreground capitalize">{location.location.replace(/_/g, ' ')}</p>
+                        <p className="text-xs text-muted-foreground">{formatNumber(location.count)} articles</p>
                       </div>
-                      <div className="text-right">
-                        <p className="font-semibold text-emerald-600 dark:text-emerald-400">
-                          {formatCurrency(location.value)} Dh
-                        </p>
-                      </div>
+                      <p className="font-semibold text-emerald-600 dark:text-emerald-400 text-sm">{formatCurrency(location.value)} Dh</p>
                     </div>
                   ))}
                 </div>
               </div>
-
-              {/* Top Brands */}
               <div>
-                <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center space-x-2">
-                  <Building className="h-5 w-5" />
-                  <span>Top Marques</span>
+                <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center space-x-1.5">
+                  <Building className="h-4 w-4" /><span>Top Marques</span>
                 </h3>
-                <div className="space-y-3">
-                  {productStats.brandDistribution.slice(0, 5).map((brand, index) => (
-                    <div key={brand.brand} className="flex items-center justify-between p-3 bg-secondary rounded-lg">
+                <div className="space-y-2">
+                  {productStats.brandDistribution.slice(0, 5).map((brand) => (
+                    <div key={brand.brand} className="flex items-center justify-between p-2 bg-secondary rounded-lg text-sm">
                       <div>
-                        <p className="font-medium text-foreground">
-                          {brand.brand}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          {formatNumber(brand.count)} produits
-                        </p>
+                        <p className="font-medium text-foreground">{brand.brand}</p>
+                        <p className="text-xs text-muted-foreground">{formatNumber(brand.count)} produits</p>
                       </div>
-                      <div className="text-right">
-                        <p className="font-semibold text-blue-600 dark:text-blue-400">
-                          {brand.percentage.toFixed(1)}%
-                        </p>
-                      </div>
+                      <p className="font-semibold text-blue-600 dark:text-blue-400 text-sm">{brand.percentage.toFixed(1)}%</p>
                     </div>
                   ))}
                 </div>
@@ -367,123 +330,87 @@ export function StatisticsPage() {
         )}
       </div>
 
-      {/* Sellers & Quotes Statistics */}
-      <div className="glass rounded-2xl shadow-xl p-6">
-        <h2 className="text-xl font-semibold text-foreground mb-6 flex items-center space-x-2">
-          <FileText className="h-5 w-5" />
-          <span>Statistiques Vendeurs & Devis</span>
+      {/* Sellers & Quotes */}
+      <div className="glass rounded-xl shadow-lg p-4">
+        <h2 className="text-base font-semibold text-foreground mb-4 flex items-center space-x-2">
+          <FileText className="h-4 w-4" /><span>Vendeurs & Devis</span>
         </h2>
 
         {quoteStats && (
           <>
-            {/* Overview Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-              <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-lg">
-                <div className="flex items-center space-x-3">
-                  <FileText className="h-8 w-8 text-purple-600 dark:text-purple-400" />
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+              <div className="bg-purple-50 dark:bg-purple-900/20 p-3 rounded-lg">
+                <div className="flex items-center space-x-2">
+                  <FileText className="h-5 w-5 text-purple-600 dark:text-purple-400" />
                   <div>
-                    <p className="text-sm text-purple-600 dark:text-purple-400">Total Devis</p>
-                    <p className="text-2xl font-bold text-purple-900 dark:text-purple-100">
-                      {formatNumber(quoteStats.totalQuotes)}
-                    </p>
+                    <p className="text-[11px] text-purple-600 dark:text-purple-400">Total Devis</p>
+                    <p className="text-lg font-bold text-purple-900 dark:text-purple-100">{formatNumber(quoteStats.totalQuotes)}</p>
                   </div>
                 </div>
               </div>
-
-              <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg">
-                <div className="flex items-center space-x-3">
-                  <DollarSign className="h-8 w-8 text-green-600 dark:text-green-400" />
+              <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-lg">
+                <div className="flex items-center space-x-2">
+                  <DollarSign className="h-5 w-5 text-green-600 dark:text-green-400" />
                   <div>
-                    <p className="text-sm text-green-600 dark:text-green-400">Valeur Totale</p>
-                    <p className="text-2xl font-bold text-green-900 dark:text-green-100">
-                      {formatCurrency(quoteStats.totalValue)} Dh
-                    </p>
+                    <p className="text-[11px] text-green-600 dark:text-green-400">Valeur Totale</p>
+                    <p className="text-lg font-bold text-green-900 dark:text-green-100">{formatCurrency(quoteStats.totalValue)} Dh</p>
                   </div>
                 </div>
               </div>
-
-              <div className="bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-lg">
-                <div className="flex items-center space-x-3">
-                  <TrendingUp className="h-8 w-8 text-indigo-600 dark:text-indigo-400" />
+              <div className="bg-indigo-50 dark:bg-indigo-900/20 p-3 rounded-lg">
+                <div className="flex items-center space-x-2">
+                  <TrendingUp className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
                   <div>
-                    <p className="text-sm text-indigo-600 dark:text-indigo-400">Valeur Moyenne</p>
-                    <p className="text-2xl font-bold text-indigo-900 dark:text-indigo-100">
-                      {formatCurrency(quoteStats.averageQuoteValue)} Dh
-                    </p>
+                    <p className="text-[11px] text-indigo-600 dark:text-indigo-400">Moy.</p>
+                    <p className="text-lg font-bold text-indigo-900 dark:text-indigo-100">{formatCurrency(quoteStats.averageQuoteValue)} Dh</p>
                   </div>
                 </div>
               </div>
-
-              <div className="bg-yellow-50 dark:bg-yellow-900/20 p-4 rounded-lg">
-                <div className="flex items-center space-x-3">
-                  <Calendar className="h-8 w-8 text-yellow-600 dark:text-yellow-400" />
+              <div className="bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded-lg">
+                <div className="flex items-center space-x-2">
+                  <Calendar className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
                   <div>
-                    <p className="text-sm text-yellow-600 dark:text-yellow-400">Ce Mois</p>
-                    <p className="text-2xl font-bold text-yellow-900 dark:text-yellow-100">
-                      {formatNumber(quoteStats.quotesThisMonth)}
-                    </p>
+                    <p className="text-[11px] text-yellow-600 dark:text-yellow-400">Ce Mois</p>
+                    <p className="text-lg font-bold text-yellow-900 dark:text-yellow-100">{formatNumber(quoteStats.quotesThisMonth)}</p>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Quote Status Distribution */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
               <div>
-                <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center space-x-2">
-                  <Award className="h-5 w-5" />
-                  <span>Top Vendeurs</span>
+                <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center space-x-1.5">
+                  <Award className="h-4 w-4" /><span>Top Vendeurs</span>
                 </h3>
-                <div className="space-y-3">
+                <div className="space-y-2">
                   {quoteStats.topSellers.map((seller, index) => (
-                    <div key={seller.name} className="flex items-center justify-between p-3 bg-secondary rounded-lg">
-                      <div className="flex items-center space-x-3">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-primary-foreground font-bold ${
-                          index === 0 ? 'bg-yellow-500' : 
-                          index === 1 ? 'bg-gray-400' : 
-                          index === 2 ? 'bg-orange-600' : 'bg-blue-500'
-                        }`}>
-                          {index + 1}
-                        </div>
+                    <div key={seller.name} className="flex items-center justify-between p-2 bg-secondary rounded-lg">
+                      <div className="flex items-center space-x-2">
+                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-primary-foreground text-xs font-bold ${
+                          index === 0 ? 'bg-yellow-500' : index === 1 ? 'bg-gray-400' : index === 2 ? 'bg-orange-600' : 'bg-blue-500'
+                        }`}>{index + 1}</div>
                         <div>
-                          <p className="font-medium text-foreground">
-                            {seller.name}
-                          </p>
-                          <p className="text-sm text-muted-foreground">
-                            {formatNumber(seller.quotesCount)} devis
-                          </p>
+                          <p className="text-sm font-medium text-foreground">{seller.name}</p>
+                          <p className="text-xs text-muted-foreground">{formatNumber(seller.quotesCount)} devis</p>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <p className="font-semibold text-emerald-600 dark:text-emerald-400">
-                          {formatCurrency(seller.totalValue)} Dh
-                        </p>
-                      </div>
+                      <p className="font-semibold text-emerald-600 dark:text-emerald-400 text-sm">{formatCurrency(seller.totalValue)} Dh</p>
                     </div>
                   ))}
                 </div>
               </div>
-
-              {/* Recent Activity */}
               <div>
-                <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center space-x-2">
-                  <Activity className="h-5 w-5" />
-                  <span>Activité Récente</span>
+                <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center space-x-1.5">
+                  <Activity className="h-4 w-4" /><span>Activité Récente</span>
                 </h3>
-                <div className="space-y-3 max-h-80 overflow-y-auto">
+                <div className="space-y-2 max-h-60 overflow-y-auto">
                   {quoteStats.recentActivity.map((activity, index) => (
-                    <div key={index} className="flex items-start space-x-3 p-3 bg-secondary rounded-lg">
-                      <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
+                    <div key={index} className="flex items-start space-x-2 p-2 bg-secondary rounded-lg">
+                      <div className="w-1.5 h-1.5 bg-blue-500 rounded-full mt-1.5 flex-shrink-0"></div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-foreground">
-                          {activity.action}
-                        </p>
-                        <p className="text-xs text-muted-foreground truncate">
-                          {activity.details}
-                        </p>
-                        <p className="text-xs text-gray-500 dark:text-gray-500">
-                          {activity.date.toLocaleDateString('fr-FR')} à {activity.date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
-                        </p>
+                        <p className="text-xs font-medium text-foreground">{activity.action}</p>
+                        <p className="text-[11px] text-muted-foreground truncate">{activity.details}</p>
+                        <p className="text-[10px] text-gray-500">{activity.date.toLocaleDateString('fr-FR')} à {activity.date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</p>
                       </div>
                     </div>
                   ))}
