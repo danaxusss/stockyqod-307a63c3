@@ -147,6 +147,9 @@ export function useUserAuth() {
       localStorage.setItem(AUTH_STORAGE_KEY, 'true');
       localStorage.setItem(AUTH_TIME_KEY, Date.now().toString());
       localStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
+      if (user.is_admin) {
+        sessionStorage.setItem('inventory_admin_pin', pin);
+      }
       setIsAuthenticated(true);
       setAuthenticatedUser(user);
       userAuthStateManager.notify();
