@@ -285,6 +285,8 @@ export class PdfExportService {
         lineColor: [230, 230, 230],
         lineWidth: 0.2,
         textColor: DARK,
+        font: 'helvetica',
+        charSpace: 0,
       },
       columnStyles: {
         0: {
