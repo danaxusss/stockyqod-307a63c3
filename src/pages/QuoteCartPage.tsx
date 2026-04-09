@@ -27,14 +27,9 @@ import {
 } from 'lucide-react';
 import { Quote, QuoteItem, CustomerInfo, QuoteTemplate, Product } from '../types';
 import { ExcelExportService } from '../utils/excelExport';
-import { 
-  saveQuote, 
-  getQuote, 
-  getActiveQuoteTemplate, 
-  saveQuoteTemplate, 
-  getQuoteTemplates,
-  searchProducts
-} from '../utils/database';
+import { SupabaseQuotesService } from '../utils/supabaseQuotes';
+import { ActivityLogger } from '../utils/activityLogger';
+import { useAppContext } from '../context/AppContext';
 import { SupabaseUsersService } from '../utils/supabaseUsers';
 import { useQuoteCart } from '../hooks/useQuoteCart';
 import { useToast } from '../context/ToastContext';

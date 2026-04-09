@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Package, ArrowLeft, Copy, MapPin, DollarSign, ShoppingCart, Home, AlertCircle, Users, Building, TrendingUp, Search, Calculator, Plus } from 'lucide-react';
 import { Product } from '../types';
-import { getProduct } from '../utils/database';
+import { useAppContext } from '../context/AppContext';
 import { searchStateManager } from '../utils/searchStateManager';
 import { useQuoteCart } from '../hooks/useQuoteCart';
 import { useToast } from '../context/ToastContext';

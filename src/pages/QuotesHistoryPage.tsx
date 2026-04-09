@@ -22,7 +22,8 @@ import {
   X
 } from 'lucide-react';
 import { Quote } from '../types';
-import { getAllQuotes, deleteQuote, searchQuotes } from '../utils/database';
+import { SupabaseQuotesService } from '../utils/supabaseQuotes';
+import { ActivityLogger } from '../utils/activityLogger';
 import { ExcelExportService } from '../utils/excelExport';
 import { useAuth } from '../hooks/useAuth';
 
