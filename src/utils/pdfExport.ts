@@ -206,17 +206,17 @@ export class PdfExportService {
     }
 
     // DEVIS title (right side)
-    const devisBoxW = 55;
-    const devisBoxH = 14;
+    const devisBoxW = 45;
+    const devisBoxH = 11;
     const devisBoxX = pageWidth - margin - devisBoxW;
     const devisBoxY = y;
 
     doc.setFillColor(...ACCENT);
     doc.roundedRect(devisBoxX, devisBoxY, devisBoxW, devisBoxH, 2, 2, 'F');
-    doc.setFontSize(28);
+    doc.setFontSize(22);
     doc.setFont(font, 'bold');
     doc.setTextColor(...WHITE);
-    doc.text('DEVIS', devisBoxX + devisBoxW / 2, devisBoxY + devisBoxH / 2 + 4, { align: 'center' });
+    doc.text('DEVIS', devisBoxX + devisBoxW / 2, devisBoxY + devisBoxH / 2 + 3, { align: 'center' });
 
     // If logo is loaded, skip company name & tagline. Otherwise show them.
     if (!logoLoaded) {
