@@ -67,12 +67,18 @@ export class CompanySettingsService {
     const current = await this.getSettings();
     if (!current) throw new Error('No settings found');
 
+    const updateData: Record<string, unknown> = {
+      ...settings,
+      updated_at: new Date().toISOString(),
+    };
+    // Cast quote_visible_fields to JSON-compatible type
+    if (settings.quote_visible_fields) {
+      updateData.quote_visible_fields = settings.quote_visible_fields as unknown as Record<string, boolean>;
+    }
+
     const { error } = await supabase
       .from('company_settings')
-      .update({
-        ...settings,
-        updated_at: new Date().toISOString(),
-      })
+      .update(updateData as any)
       .eq('id', current.id);
 
     if (error) throw error;
