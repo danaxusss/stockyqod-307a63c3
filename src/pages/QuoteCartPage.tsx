@@ -25,8 +25,10 @@ import {
   Package,
   Info
 } from 'lucide-react';
-import { Quote, QuoteItem, CustomerInfo, QuoteTemplate, Product } from '../types';
+import { Quote, QuoteItem, CustomerInfo, Product } from '../types';
 import { ExcelExportService } from '../utils/excelExport';
+import { PdfExportService } from '../utils/pdfExport';
+import { CompanySettingsService, CompanySettings } from '../utils/companySettings';
 import { SupabaseQuotesService } from '../utils/supabaseQuotes';
 import { ActivityLogger } from '../utils/activityLogger';
 import { useAppContext } from '../context/AppContext';
@@ -71,10 +73,8 @@ export function QuoteCartPage() {
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
-  // Template state
-  const [templates, setTemplates] = useState<QuoteTemplate[]>([]);
-  const [activeTemplate, setActiveTemplate] = useState<QuoteTemplate | null>(null);
-  const [showTemplateUpload, setShowTemplateUpload] = useState(false);
+  // Company settings for PDF export
+  const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null);
 
   // Product search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -141,28 +141,10 @@ export function QuoteCartPage() {
     loadQuote();
   }, [quoteId, isEditing, navigate, cart.items, showToast, currentUser, authenticatedUser]);
 
-  // Load templates
+  // Load company settings for PDF export
   useEffect(() => {
-    const loadTemplates = async () => {
-      try {
-        const [allTemplates, active] = await Promise.all([
-          SupabaseQuotesService.getQuoteTemplates(),
-          SupabaseQuotesService.getActiveQuoteTemplate()
-        ]);
-        setTemplates(allTemplates);
-        setActiveTemplate(active || null);
-      } catch (error) {
-        console.error('Failed to load templates:', error);
-        showToast({
-          type: 'error',
-          title: 'Erreur de chargement',
-          message: 'Erreur lors du chargement des templates'
-        });
-      }
-    };
-
-    loadTemplates();
-  }, [showToast]);
+    CompanySettingsService.getSettings().then(setCompanySettings).catch(console.error);
+  }, []);
 
   // Load available users for sales person dropdown
   useEffect(() => {
