@@ -37,10 +37,18 @@ export interface CompanySettings {
   company_name: string;
   address: string;
   phone: string;
+  phone2: string;
+  phone_dir: string;
+  phone_gsm: string;
   email: string;
   website: string;
   ice: string;
+  rc: string;
+  if_number: string;
+  cnss: string;
+  patente: string;
   logo_url: string | null;
+  logo_size: 'small' | 'medium' | 'large';
   quote_visible_fields: QuoteVisibleFields;
   quote_style: QuoteStyle;
   payment_terms: string;
@@ -75,6 +83,14 @@ export class CompanySettingsService {
 
     return {
       ...data,
+      logo_size: (data as any).logo_size || 'medium',
+      rc: (data as any).rc || '',
+      if_number: (data as any).if_number || '',
+      cnss: (data as any).cnss || '',
+      patente: (data as any).patente || '',
+      phone2: (data as any).phone2 || '',
+      phone_dir: (data as any).phone_dir || '',
+      phone_gsm: (data as any).phone_gsm || '',
       quote_visible_fields: {
         ...DEFAULT_VISIBLE_FIELDS,
         ...(data.quote_visible_fields as Record<string, boolean>),
@@ -94,7 +110,6 @@ export class CompanySettingsService {
       ...settings,
       updated_at: new Date().toISOString(),
     };
-    // Cast JSON fields to JSON-compatible type
     if (settings.quote_visible_fields) {
       updateData.quote_visible_fields = settings.quote_visible_fields as unknown as Record<string, boolean>;
     }
@@ -114,7 +129,6 @@ export class CompanySettingsService {
     const ext = file.name.split('.').pop();
     const path = `logo.${ext}`;
 
-    // Remove old logo
     await supabase.storage.from('company-assets').remove([path]);
 
     const { error } = await supabase.storage
@@ -131,7 +145,6 @@ export class CompanySettingsService {
   }
 
   static async deleteLogo(): Promise<void> {
-    // Try to remove common extensions
     await supabase.storage
       .from('company-assets')
       .remove(['logo.png', 'logo.jpg', 'logo.jpeg', 'logo.webp', 'logo.svg']);
