@@ -170,7 +170,6 @@ export function Home() {
       });
       
       console.log('Debug Analysis:', {
-        local: localStats,
         supabase: supabaseStats
       });
       
