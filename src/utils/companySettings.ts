@@ -94,9 +94,12 @@ export class CompanySettingsService {
       ...settings,
       updated_at: new Date().toISOString(),
     };
-    // Cast quote_visible_fields to JSON-compatible type
+    // Cast JSON fields to JSON-compatible type
     if (settings.quote_visible_fields) {
       updateData.quote_visible_fields = settings.quote_visible_fields as unknown as Record<string, boolean>;
+    }
+    if (settings.quote_style) {
+      updateData.quote_style = settings.quote_style as unknown as Record<string, unknown>;
     }
 
     const { error } = await supabase
