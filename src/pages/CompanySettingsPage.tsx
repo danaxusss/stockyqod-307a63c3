@@ -86,7 +86,6 @@ export default function CompanySettingsPage() {
     if (!settings) return;
     setIsSaving(true);
     try {
-      // Upload logo if new file selected
       let logoUrl = settings.logo_url;
       if (logoFile) {
         logoUrl = await CompanySettingsService.uploadLogo(logoFile);
@@ -97,10 +96,18 @@ export default function CompanySettingsPage() {
         company_name: settings.company_name,
         address: settings.address,
         phone: settings.phone,
+        phone2: settings.phone2,
+        phone_dir: settings.phone_dir,
+        phone_gsm: settings.phone_gsm,
         email: settings.email,
         website: settings.website,
         ice: settings.ice,
+        rc: settings.rc,
+        if_number: settings.if_number,
+        cnss: settings.cnss,
+        patente: settings.patente,
         logo_url: logoUrl,
+        logo_size: settings.logo_size,
         quote_visible_fields: settings.quote_visible_fields,
         quote_style: settings.quote_style,
         payment_terms: settings.payment_terms,
@@ -131,6 +138,8 @@ export default function CompanySettingsPage() {
       </div>
     );
   }
+
+  const inputClass = "w-full px-4 py-2 border border-input rounded-lg bg-secondary text-foreground focus:ring-2 focus:ring-ring";
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -179,6 +188,21 @@ export default function CompanySettingsPage() {
               <input type="file" accept="image/*" onChange={handleLogoChange} className="hidden" />
             </label>
           </div>
+          {/* Logo size */}
+          {(logoPreview || settings.logo_url) && (
+            <div className="mt-3">
+              <label className="block text-sm font-medium text-foreground mb-1">Taille du logo dans le devis</label>
+              <select
+                value={settings.logo_size || 'medium'}
+                onChange={e => setSettings({ ...settings, logo_size: e.target.value as 'small' | 'medium' | 'large' })}
+                className={inputClass + " max-w-xs"}
+              >
+                <option value="small">Petit</option>
+                <option value="medium">Moyen</option>
+                <option value="large">Grand</option>
+              </select>
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -188,18 +212,8 @@ export default function CompanySettingsPage() {
               type="text"
               value={settings.company_name}
               onChange={e => setSettings({ ...settings, company_name: e.target.value })}
-              className="w-full px-4 py-2 border border-input rounded-lg bg-secondary text-foreground focus:ring-2 focus:ring-ring"
-              placeholder="Mon Entreprise"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">ICE / Identifiant Fiscal</label>
-            <input
-              type="text"
-              value={settings.ice}
-              onChange={e => setSettings({ ...settings, ice: e.target.value })}
-              className="w-full px-4 py-2 border border-input rounded-lg bg-secondary text-foreground focus:ring-2 focus:ring-ring"
-              placeholder="Numéro ICE"
+              className={inputClass}
+              placeholder="CUISIMAT Equipements s.a.r.l"
             />
           </div>
           <div className="md:col-span-2">
@@ -208,28 +222,114 @@ export default function CompanySettingsPage() {
               type="text"
               value={settings.address}
               onChange={e => setSettings({ ...settings, address: e.target.value })}
-              className="w-full px-4 py-2 border border-input rounded-lg bg-secondary text-foreground focus:ring-2 focus:ring-ring"
-              placeholder="Adresse complète"
+              className={inputClass}
+              placeholder="BD BRAHIM ROUDANI RES PERLA MAARIF CASABLANCA"
+            />
+          </div>
+
+          {/* Legal identifiers */}
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">ICE</label>
+            <input
+              type="text"
+              value={settings.ice}
+              onChange={e => setSettings({ ...settings, ice: e.target.value })}
+              className={inputClass}
+              placeholder="000061298000065"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Téléphone</label>
+            <label className="block text-sm font-medium text-foreground mb-1">RC (Registre de Commerce)</label>
+            <input
+              type="text"
+              value={settings.rc}
+              onChange={e => setSettings({ ...settings, rc: e.target.value })}
+              className={inputClass}
+              placeholder="299179"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">IF (Identifiant Fiscal)</label>
+            <input
+              type="text"
+              value={settings.if_number}
+              onChange={e => setSettings({ ...settings, if_number: e.target.value })}
+              className={inputClass}
+              placeholder="40445099"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">CNSS</label>
+            <input
+              type="text"
+              value={settings.cnss}
+              onChange={e => setSettings({ ...settings, cnss: e.target.value })}
+              className={inputClass}
+              placeholder="8955504"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">Patente</label>
+            <input
+              type="text"
+              value={settings.patente}
+              onChange={e => setSettings({ ...settings, patente: e.target.value })}
+              className={inputClass}
+              placeholder="35874257"
+            />
+          </div>
+
+          {/* Phones */}
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">Téléphone 1</label>
             <input
               type="text"
               value={settings.phone}
               onChange={e => setSettings({ ...settings, phone: e.target.value })}
-              className="w-full px-4 py-2 border border-input rounded-lg bg-secondary text-foreground focus:ring-2 focus:ring-ring"
-              placeholder="06 12 34 56 78"
+              className={inputClass}
+              placeholder="05 20 18 06 45"
             />
           </div>
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">Téléphone 2</label>
+            <input
+              type="text"
+              value={settings.phone2}
+              onChange={e => setSettings({ ...settings, phone2: e.target.value })}
+              className={inputClass}
+              placeholder="05 22 99 60 84"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">DIR (Directeur)</label>
+            <input
+              type="text"
+              value={settings.phone_dir}
+              onChange={e => setSettings({ ...settings, phone_dir: e.target.value })}
+              className={inputClass}
+              placeholder="07 70 70 70 56"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">GSM</label>
+            <input
+              type="text"
+              value={settings.phone_gsm}
+              onChange={e => setSettings({ ...settings, phone_gsm: e.target.value })}
+              className={inputClass}
+              placeholder="06 61 19 62 47"
+            />
+          </div>
+
+          {/* Contact */}
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">Email</label>
             <input
               type="text"
               value={settings.email}
               onChange={e => setSettings({ ...settings, email: e.target.value })}
-              className="w-full px-4 py-2 border border-input rounded-lg bg-secondary text-foreground focus:ring-2 focus:ring-ring"
-              placeholder="contact@entreprise.com"
+              className={inputClass}
+              placeholder="nourdharchi@gmail.com"
             />
           </div>
           <div>
@@ -238,8 +338,8 @@ export default function CompanySettingsPage() {
               type="text"
               value={settings.website}
               onChange={e => setSettings({ ...settings, website: e.target.value })}
-              className="w-full px-4 py-2 border border-input rounded-lg bg-secondary text-foreground focus:ring-2 focus:ring-ring"
-              placeholder="www.entreprise.com"
+              className={inputClass}
+              placeholder="www.cuisimat-groupe.ma"
             />
           </div>
         </div>
@@ -259,7 +359,7 @@ export default function CompanySettingsPage() {
               type="number"
               value={settings.tva_rate}
               onChange={e => setSettings({ ...settings, tva_rate: parseFloat(e.target.value) || 0 })}
-              className="w-full px-4 py-2 border border-input rounded-lg bg-secondary text-foreground focus:ring-2 focus:ring-ring"
+              className={inputClass}
               min="0"
               max="100"
               step="0.5"
@@ -271,7 +371,7 @@ export default function CompanySettingsPage() {
               type="text"
               value={settings.payment_terms}
               onChange={e => setSettings({ ...settings, payment_terms: e.target.value })}
-              className="w-full px-4 py-2 border border-input rounded-lg bg-secondary text-foreground focus:ring-2 focus:ring-ring"
+              className={inputClass}
               placeholder="30 jours"
             />
           </div>
@@ -281,7 +381,7 @@ export default function CompanySettingsPage() {
               type="number"
               value={settings.quote_validity_days}
               onChange={e => setSettings({ ...settings, quote_validity_days: parseInt(e.target.value) || 30 })}
-              className="w-full px-4 py-2 border border-input rounded-lg bg-secondary text-foreground focus:ring-2 focus:ring-ring"
+              className={inputClass}
               min="1"
             />
           </div>
@@ -296,7 +396,6 @@ export default function CompanySettingsPage() {
         </h2>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {/* Accent Color */}
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">Couleur d'accent</label>
             <div className="flex items-center space-x-3">
@@ -322,7 +421,6 @@ export default function CompanySettingsPage() {
             </div>
           </div>
 
-          {/* Font */}
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">Police</label>
             <select
@@ -331,7 +429,7 @@ export default function CompanySettingsPage() {
                 ...settings,
                 quote_style: { ...settings.quote_style, fontFamily: e.target.value as QuoteStyle['fontFamily'] },
               })}
-              className="w-full px-4 py-2 border border-input rounded-lg bg-secondary text-foreground focus:ring-2 focus:ring-ring"
+              className={inputClass}
             >
               <option value="helvetica">Helvetica (Moderne)</option>
               <option value="times">Times (Classique)</option>
@@ -339,7 +437,6 @@ export default function CompanySettingsPage() {
             </select>
           </div>
 
-          {/* Header Size */}
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">Taille de l'en-tête</label>
             <select
@@ -348,7 +445,7 @@ export default function CompanySettingsPage() {
                 ...settings,
                 quote_style: { ...settings.quote_style, headerSize: e.target.value as QuoteStyle['headerSize'] },
               })}
-              className="w-full px-4 py-2 border border-input rounded-lg bg-secondary text-foreground focus:ring-2 focus:ring-ring"
+              className={inputClass}
             >
               <option value="small">Petit</option>
               <option value="medium">Moyen</option>
@@ -356,7 +453,6 @@ export default function CompanySettingsPage() {
             </select>
           </div>
 
-          {/* Totals Style */}
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">Style des totaux</label>
             <select
@@ -365,7 +461,7 @@ export default function CompanySettingsPage() {
                 ...settings,
                 quote_style: { ...settings.quote_style, totalsStyle: e.target.value as QuoteStyle['totalsStyle'] },
               })}
-              className="w-full px-4 py-2 border border-input rounded-lg bg-secondary text-foreground focus:ring-2 focus:ring-ring"
+              className={inputClass}
             >
               <option value="highlighted">Surligné (couleur)</option>
               <option value="boxed">Encadré</option>
@@ -373,7 +469,6 @@ export default function CompanySettingsPage() {
             </select>
           </div>
 
-          {/* Show Borders */}
           <div className="flex items-center space-x-3">
             <label className="flex items-center space-x-3 p-3 bg-secondary rounded-lg cursor-pointer hover:bg-accent transition-colors flex-1">
               <input
@@ -390,7 +485,6 @@ export default function CompanySettingsPage() {
           </div>
         </div>
 
-        {/* Color Preview */}
         <div className="mt-4 flex items-center space-x-3">
           <span className="text-sm text-muted-foreground">Aperçu :</span>
           <div

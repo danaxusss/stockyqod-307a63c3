@@ -89,48 +89,72 @@ export type Database = {
       company_settings: {
         Row: {
           address: string
+          cnss: string
           company_name: string
           email: string
           ice: string
           id: string
+          if_number: string
+          logo_size: string
           logo_url: string | null
+          patente: string
           payment_terms: string
           phone: string
+          phone_dir: string
+          phone_gsm: string
+          phone2: string
           quote_style: Json
           quote_validity_days: number
           quote_visible_fields: Json
+          rc: string
           tva_rate: number
           updated_at: string
           website: string
         }
         Insert: {
           address?: string
+          cnss?: string
           company_name?: string
           email?: string
           ice?: string
           id?: string
+          if_number?: string
+          logo_size?: string
           logo_url?: string | null
+          patente?: string
           payment_terms?: string
           phone?: string
+          phone_dir?: string
+          phone_gsm?: string
+          phone2?: string
           quote_style?: Json
           quote_validity_days?: number
           quote_visible_fields?: Json
+          rc?: string
           tva_rate?: number
           updated_at?: string
           website?: string
         }
         Update: {
           address?: string
+          cnss?: string
           company_name?: string
           email?: string
           ice?: string
           id?: string
+          if_number?: string
+          logo_size?: string
           logo_url?: string | null
+          patente?: string
           payment_terms?: string
           phone?: string
+          phone_dir?: string
+          phone_gsm?: string
+          phone2?: string
           quote_style?: Json
           quote_validity_days?: number
           quote_visible_fields?: Json
+          rc?: string
           tva_rate?: number
           updated_at?: string
           website?: string

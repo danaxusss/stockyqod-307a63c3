@@ -88,8 +88,43 @@ export class PdfExportService {
     const tvaRate = settings?.tva_rate ?? 20;
     const companyName = settings?.company_name || 'Mon Entreprise';
 
-    // Check if any item has a discount
     const hasDiscount = quote.items.some(item => (item.discount ?? 0) > 0);
+
+    // === Build footer legal lines ===
+    const buildFooterLines = (): string[] => {
+      const lines: string[] = [];
+      // Line 1: Company name + address
+      const line1Parts: string[] = [companyName];
+      if (settings?.address) line1Parts.push(settings.address);
+      lines.push(line1Parts.join(' - '));
+
+      // Line 2: Legal identifiers
+      const legalParts: string[] = [];
+      if (settings?.rc) legalParts.push(`RC N° ${settings.rc}`);
+      if (settings?.if_number) legalParts.push(`IF N° ${settings.if_number}`);
+      if (settings?.cnss) legalParts.push(`CNSS N° ${settings.cnss}`);
+      if (settings?.patente) legalParts.push(`PATENTE N° ${settings.patente}`);
+      if (settings?.ice && fields.showCompanyICE) legalParts.push(`ICE N° ${settings.ice}`);
+      if (legalParts.length > 0) lines.push(legalParts.join(' - '));
+
+      // Line 3: Phones
+      const phoneParts: string[] = [];
+      if (settings?.phone) phoneParts.push(`Tél: ${settings.phone}`);
+      if (settings?.phone2) phoneParts.push(settings.phone2);
+      if (settings?.phone_dir) phoneParts.push(`DIR : ${settings.phone_dir}`);
+      if (settings?.phone_gsm) phoneParts.push(`GSM: ${settings.phone_gsm}`);
+      if (phoneParts.length > 0) lines.push(phoneParts.join(' / '));
+
+      // Line 4: Email + website
+      const contactParts: string[] = [];
+      if (settings?.email) contactParts.push(`Email: ${settings.email}`);
+      if (settings?.website && fields.showCompanyWebsite) contactParts.push(`Site web: ${settings.website}`);
+      if (contactParts.length > 0) lines.push(contactParts.join(' - '));
+
+      return lines;
+    };
+
+    const footerLines = buildFooterLines();
 
     // === Draw header and footer on every page ===
     const drawPageDecorations = () => {
@@ -101,32 +136,28 @@ export class PdfExportService {
       doc.rect(0, pageHeight - 3, pageWidth, 3, 'F');
 
       // Footer
-      const footerBaseY = pageHeight - 18;
+      const footerLineHeight = 3.5;
+      const footerTotalHeight = footerLines.length * footerLineHeight + 6;
+      const footerBaseY = pageHeight - footerTotalHeight - 3;
+
       doc.setDrawColor(...ACCENT);
       doc.setLineWidth(0.8);
-      doc.line(margin, footerBaseY - 2, pageWidth - margin, footerBaseY - 2);
+      doc.line(margin, footerBaseY, pageWidth - margin, footerBaseY);
 
-      doc.setFontSize(7.5);
-      doc.setFont(font, 'bold');
-      doc.setTextColor(...ACCENT);
-      doc.text(companyName, pageWidth / 2, footerBaseY + 2, { align: 'center' });
-
-      const legalParts: string[] = [];
-      if (settings?.address) legalParts.push(settings.address);
-      if (settings?.phone) legalParts.push(`Tel: ${settings.phone}`);
-      if (settings?.email) legalParts.push(settings.email);
-      if (settings?.website && fields.showCompanyWebsite) legalParts.push(settings.website);
-
-      if (legalParts.length > 0) {
-        doc.setFont(font, 'normal');
-        doc.setTextColor(...GRAY);
-        doc.setFontSize(6.5);
-        doc.text(legalParts.join('  -  '), pageWidth / 2, footerBaseY + 6, { align: 'center', maxWidth: contentWidth });
-      }
-
-      if (fields.showCompanyICE && settings?.ice) {
-        doc.setFontSize(6.5);
-        doc.text(`ICE : ${settings.ice}`, pageWidth / 2, footerBaseY + 10, { align: 'center' });
+      let fy = footerBaseY + 4;
+      for (let i = 0; i < footerLines.length; i++) {
+        if (i === 0) {
+          // First line bold with accent color
+          doc.setFont(font, 'bold');
+          doc.setTextColor(...ACCENT);
+          doc.setFontSize(6.5);
+        } else {
+          doc.setFont(font, 'normal');
+          doc.setTextColor(...GRAY);
+          doc.setFontSize(6);
+        }
+        doc.text(footerLines[i], pageWidth / 2, fy, { align: 'center', maxWidth: contentWidth });
+        fy += footerLineHeight;
       }
     };
 
@@ -139,6 +170,15 @@ export class PdfExportService {
     let logoLoaded = false;
     let logoHeight = 0;
 
+    // Logo size settings
+    const logoSizeConfig = {
+      small: { maxW: 35, maxH: 18 },
+      medium: { maxW: 55, maxH: 28 },
+      large: { maxW: 75, maxH: 38 },
+    };
+    const logoSize = settings?.logo_size || 'medium';
+    const { maxW: maxLogoW, maxH: maxLogoH } = logoSizeConfig[logoSize] || logoSizeConfig.medium;
+
     if (fields.showLogo && settings?.logo_url) {
       const logoBase64 = await loadImageAsBase64(settings.logo_url);
       if (logoBase64) {
@@ -150,8 +190,6 @@ export class PdfExportService {
             img.onerror = () => resolve();
           });
           
-          const maxLogoW = 55;
-          const maxLogoH = 25;
           let logoW = maxLogoW;
           let logoH = (img.height / img.width) * logoW;
           if (logoH > maxLogoH) {
@@ -308,7 +346,6 @@ export class PdfExportService {
     y = Math.max(leftFinalY, rightFinalY) + 8;
 
     // === ITEMS TABLE ===
-    // Build headers and body based on whether discount exists
     const tableHeaders = hasDiscount
       ? [['Marque', 'REF', 'DESCRIPTION', 'QTE', 'PU TTC', 'Remise', 'TOTAL TTC']]
       : [['Marque', 'REF', 'DESCRIPTION', 'QTE', 'PU TTC', 'TOTAL TTC']];
@@ -331,16 +368,15 @@ export class PdfExportService {
       return row;
     });
 
-    // Column styles: give more space to DESCRIPTION, less to others
     const itemColumnStyles: Record<number, any> = hasDiscount
       ? {
-          0: { cellWidth: 18, halign: 'center' },   // Marque
-          1: { cellWidth: 24, halign: 'center' },   // REF
-          2: { cellWidth: 'auto' },                   // DESCRIPTION (gets remaining space)
-          3: { cellWidth: 12, halign: 'center' },    // QTE
-          4: { cellWidth: 24, halign: 'right' },     // PU TTC
-          5: { cellWidth: 16, halign: 'center' },    // Remise
-          6: { cellWidth: 26, halign: 'right', fontStyle: 'bold' }, // TOTAL TTC
+          0: { cellWidth: 18, halign: 'center' },
+          1: { cellWidth: 24, halign: 'center' },
+          2: { cellWidth: 'auto' },
+          3: { cellWidth: 12, halign: 'center' },
+          4: { cellWidth: 24, halign: 'right' },
+          5: { cellWidth: 16, halign: 'center' },
+          6: { cellWidth: 26, halign: 'right', fontStyle: 'bold' },
         }
       : {
           0: { cellWidth: 18, halign: 'center' },
@@ -351,11 +387,15 @@ export class PdfExportService {
           5: { cellWidth: 26, halign: 'right', fontStyle: 'bold' },
         };
 
+    // Calculate footer height to set bottom margin for items table
+    const footerLineHeight = 3.5;
+    const footerTotalHeight = footerLines.length * footerLineHeight + 10;
+
     autoTable(doc, {
       startY: y,
       head: tableHeaders,
       body: tableBody,
-      margin: { left: margin, right: margin },
+      margin: { left: margin, right: margin, bottom: footerTotalHeight + 5 },
       styles: {
         fontSize: 8,
         cellPadding: { top: 3, bottom: 3, left: 3, right: 3 },
@@ -377,22 +417,20 @@ export class PdfExportService {
       },
       columnStyles: itemColumnStyles,
       didDrawPage: (data) => {
-        // Redraw decorations on every new page
         drawPageDecorations();
-        // Add page number
         const pageCount = doc.getNumberOfPages();
         doc.setFontSize(7);
         doc.setFont(font, 'normal');
         doc.setTextColor(...GRAY);
-        doc.text(`Page ${doc.getCurrentPageInfo().pageNumber} / ${pageCount}`, pageWidth - margin, pageHeight - 22, { align: 'right' });
+        doc.text(`Page ${doc.getCurrentPageInfo().pageNumber} / ${pageCount}`, pageWidth - margin, pageHeight - footerTotalHeight - 5, { align: 'right' });
       },
     });
 
     y = (doc as any).lastAutoTable.finalY + 6;
 
-    // Check if totals fit on current page, if not add new page
+    // Check if totals fit on current page
     const totalsHeight = (fields.showTVA ? 26 : 10) + 20;
-    if (y + totalsHeight > pageHeight - 30) {
+    if (y + totalsHeight > pageHeight - footerTotalHeight - 10) {
       doc.addPage();
       drawPageDecorations();
       y = 15;
@@ -407,7 +445,6 @@ export class PdfExportService {
     const totalsX = pageWidth - margin - totalsWidth;
 
     if (fields.showTVA) {
-      // TOTAL HT row
       doc.setFillColor(248, 249, 252);
       doc.rect(totalsX, y, totalsWidth, 8, 'F');
       doc.setDrawColor(230, 230, 230);
@@ -420,7 +457,6 @@ export class PdfExportService {
       doc.text(this.formatCurrency(totalHT) + ' Dh', totalsX + totalsWidth - 4, y + 5.5, { align: 'right' });
       y += 8;
 
-      // TVA row
       doc.setFillColor(248, 249, 252);
       doc.rect(totalsX, y, totalsWidth, 8, 'F');
       doc.setDrawColor(230, 230, 230);
@@ -433,7 +469,6 @@ export class PdfExportService {
       y += 8;
     }
 
-    // TOTAL TTC row (highlighted)
     if (style.totalsStyle === 'highlighted') {
       doc.setFillColor(...ACCENT);
       doc.rect(totalsX, y, totalsWidth, 10, 'F');
@@ -485,17 +520,16 @@ export class PdfExportService {
       y += 4 + noteLines.length * 4;
     }
 
-    // Fix page numbers (now that we know total pages)
+    // Fix page numbers
     const totalPagesCount = doc.getNumberOfPages();
     for (let i = 1; i <= totalPagesCount; i++) {
       doc.setPage(i);
       doc.setFontSize(7);
       doc.setFont(font, 'normal');
       doc.setTextColor(...GRAY);
-      // Clear old page number area and redraw
       doc.setFillColor(255, 255, 255);
-      doc.rect(pageWidth - margin - 30, pageHeight - 25, 30, 6, 'F');
-      doc.text(`Page ${i} / ${totalPagesCount}`, pageWidth - margin, pageHeight - 22, { align: 'right' });
+      doc.rect(pageWidth - margin - 30, pageHeight - footerTotalHeight - 8, 30, 6, 'F');
+      doc.text(`Page ${i} / ${totalPagesCount}`, pageWidth - margin, pageHeight - footerTotalHeight - 5, { align: 'right' });
     }
 
     // === SAVE ===
