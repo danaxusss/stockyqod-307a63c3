@@ -51,13 +51,14 @@ export class ActivityLogger {
 
   static async log(action: ActivityAction, details?: string, entityType?: string, entityId?: string): Promise<void> {
     try {
-      await supabase.from('activity_logs').insert({
-        user_id: this.getUserId(),
-        username: this.getUsername(),
-        action,
-        details: details || null,
-        entity_type: entityType || null,
-        entity_id: entityId || null,
+      // Use the secure RPC function instead of direct INSERT
+      await supabase.rpc('insert_activity_log', {
+        p_user_id: this.getUserId(),
+        p_username: this.getUsername(),
+        p_action: action,
+        p_details: details || null,
+        p_entity_type: entityType || null,
+        p_entity_id: entityId || null,
       });
     } catch (error) {
       console.error('Failed to log activity:', error);
@@ -65,11 +66,7 @@ export class ActivityLogger {
   }
 
   static async getRecentLogs(limit = 50): Promise<ActivityLog[]> {
-    const { data, error } = await supabase
-      .from('activity_logs')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(limit);
+    const { data, error } = await supabase.rpc('get_recent_activity_logs', { p_limit: limit });
 
     if (error) {
       console.error('Failed to fetch activity logs:', error);
@@ -80,12 +77,10 @@ export class ActivityLogger {
   }
 
   static async getLogsByUser(username: string, limit = 50): Promise<ActivityLog[]> {
-    const { data, error } = await supabase
-      .from('activity_logs')
-      .select('*')
-      .eq('username', username)
-      .order('created_at', { ascending: false })
-      .limit(limit);
+    const { data, error } = await supabase.rpc('get_activity_logs_by_user', { 
+      p_username: username, 
+      p_limit: limit 
+    });
 
     if (error) return [];
     return (data || []) as unknown as ActivityLog[];
