@@ -8,7 +8,6 @@ import {
   Trash2, 
   Save, 
   FileDown, 
-  Upload, 
   User, 
   Phone, 
   Building, 
