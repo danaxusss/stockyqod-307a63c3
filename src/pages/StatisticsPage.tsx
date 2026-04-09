@@ -1,4 +1,3 @@
-// @ts-nocheck
 import React, { useState, useEffect } from 'react';
 import { 
   BarChart3, 
@@ -16,7 +15,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useAppContext } from '../context/AppContext';
-import { getAllQuotes } from '../utils/database';
+import { SupabaseQuotesService } from '../utils/supabaseQuotes';
 import { SupabaseUsersService } from '../utils/supabaseUsers';
 import { Quote, AppUser } from '../types';
 
