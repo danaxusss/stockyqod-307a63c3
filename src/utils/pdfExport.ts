@@ -327,22 +327,22 @@ export class PdfExportService {
       margin: { left: rightColX, right: margin },
       theme: 'plain',
       styles: {
-        fontSize: 8.5,
-        cellPadding: { top: 2.8, bottom: 2.8, left: 4, right: 4 },
+        fontSize: 7.5,
+        cellPadding: { top: 2, bottom: 2, left: 3, right: 3 },
         lineColor: [230, 230, 230],
-        lineWidth: 0.3,
+        lineWidth: 0.2,
         textColor: DARK,
       },
       columnStyles: {
-        0: { cellWidth: 28, fontStyle: 'bold', textColor: ACCENT, fontSize: 7.5, fillColor: ACCENT_LIGHT },
-        1: { cellWidth: rightColWidth - 28, halign: 'right', fillColor: [252, 252, 252] },
+        0: { cellWidth: 24, fontStyle: 'bold', textColor: ACCENT, fontSize: 6.5, fillColor: ACCENT_LIGHT },
+        1: { cellWidth: rightColWidth - 24, halign: 'right', fillColor: [252, 252, 252] },
       },
       tableLineColor: [230, 230, 230],
-      tableLineWidth: 0.3,
+      tableLineWidth: 0.2,
     });
 
-    const rightFinalY = (doc as any).lastAutoTable?.finalY || sectionStartY + 30;
-    y = Math.max(leftFinalY, rightFinalY) + 8;
+    const rightFinalY = (doc as any).lastAutoTable?.finalY || sectionStartY + 25;
+    y = Math.max(leftFinalY, rightFinalY) + 5;
 
     // === ITEMS TABLE ===
     const tableHeaders = hasDiscount
