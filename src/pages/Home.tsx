@@ -6,7 +6,7 @@ import { useAppContext } from '../context/AppContext';
 import { useToast } from '../context/ToastContext';
 import { ExcelUploadModal } from '../components/ExcelUploadModal';
 import { SyncStatusIndicator } from '../components/SyncStatusIndicator';
-import { getDatabaseStats, clearAllProducts, clearAllData } from '../utils/database';
+import { ProductUploadService } from '../utils/productUploadService';
 import { ProductUploadService } from '../utils/productUploadService';
 import { StorageManager } from '../utils/storage';
 
