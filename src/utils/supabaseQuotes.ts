@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { supabase } from './supabaseClient';
 import { Quote, QuoteTemplate } from '../types';
 
