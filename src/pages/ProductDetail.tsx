@@ -142,143 +142,122 @@ export function ProductDetail() {
 
   return (
     <div className="max-w-5xl mx-auto">
-      <div className="mb-6">
-        <button onClick={handleBackNavigation} className="flex items-center space-x-2 text-primary hover:underline">
+      <div className="mb-3">
+        <button onClick={handleBackNavigation} className="flex items-center space-x-2 text-primary hover:underline text-sm">
           <ArrowLeft className="h-4 w-4" /><span>{cameFromSearch ? 'Retour à la Recherche' : 'Retour'}</span>
         </button>
       </div>
 
-      <div className="glass rounded-2xl shadow-xl overflow-hidden">
+      <div className="glass rounded-xl shadow-xl overflow-hidden">
         {/* Header */}
-        <div className="bg-primary p-6 text-primary-foreground" style={{ backgroundImage: 'var(--gradient-primary)' }}>
-          <div className="flex items-center space-x-4">
-            <div className="p-3 bg-white/20 rounded-xl"><Package className="h-8 w-8" /></div>
-            <div>
-              <h1 className="text-2xl font-bold">{product.name}</h1>
-              <div className="flex items-center flex-wrap gap-3 mt-1">
-                {product.brand && <span className="px-3 py-1 bg-white/20 text-primary-foreground text-sm rounded-full font-medium">Marque: {product.brand}</span>}
-                {product.provider && <span className="px-3 py-1 bg-white/20 text-primary-foreground text-sm rounded-full font-medium">Fournisseur: {product.provider}</span>}
+        <div className="bg-primary px-5 py-4 text-primary-foreground" style={{ backgroundImage: 'var(--gradient-primary)' }}>
+          <div className="flex items-center space-x-3">
+            <div className="p-2 bg-white/20 rounded-lg"><Package className="h-6 w-6" /></div>
+            <div className="min-w-0">
+              <h1 className="text-xl font-bold truncate">{product.name}</h1>
+              <div className="flex items-center flex-wrap gap-2 mt-0.5">
+                <span className="text-primary-foreground/70 text-sm">#{product.barcode}</span>
+                {product.brand && <span className="px-2 py-0.5 bg-white/20 text-primary-foreground text-xs rounded font-medium">{product.brand}</span>}
+                {product.provider && <span className="px-2 py-0.5 bg-white/20 text-primary-foreground text-xs rounded font-medium">{product.provider}</span>}
               </div>
             </div>
           </div>
         </div>
 
-        <div className="p-6">
-          {/* Price Calculator */}
-          {canCreateQuote() && userPriceDisplayType !== 'reseller' && (
-            <div className="mb-8 p-6 rounded-xl border bg-accent/30 border-primary/20">
-              <h2 className="text-lg font-semibold text-foreground flex items-center space-x-2 mb-6">
-                <Calculator className="h-5 w-5" /><span>Calculateur de Prix</span>
-              </h2>
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-muted-foreground mb-3">Pourcentage de Marge</label>
-                <select value={marginPercentage} onChange={(e) => setMarginPercentage(parseInt(e.target.value))}
-                  className="w-full px-4 py-3 border border-input rounded-lg focus:ring-2 focus:ring-ring bg-background text-foreground">
-                  {marginOptions.map((p) => <option key={p} value={p}>{p}%</option>)}
-                </select>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <div className="text-center p-4 bg-secondary rounded-lg">
-                  <div className="text-sm text-muted-foreground mb-1">Prix d'Achat</div>
-                  <div className="text-xl font-bold text-foreground">{product.buyprice.toFixed(2)} Dh</div>
-                </div>
-                <div className="text-center p-4 bg-secondary rounded-lg">
-                  <div className="text-sm text-muted-foreground mb-1">Marge Appliquée</div>
-                  <div className="text-xl font-bold text-orange-400">+{marginPercentage}%</div>
-                </div>
-                <div className="text-center p-4 bg-secondary rounded-lg">
-                  <div className="text-sm text-muted-foreground mb-1">Prix Final</div>
-                  <div className="text-xl font-bold text-emerald-400">{finalPrice.toFixed(2)} Dh</div>
-                </div>
-              </div>
-              <div className="flex flex-col sm:flex-row gap-3">
-                <button onClick={handleCopy} className="flex-1 flex items-center justify-center space-x-2 px-4 py-3 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors">
-                  <Copy className="h-4 w-4" /><span>Copier pour Excel</span>
-                </button>
-                <button onClick={handleAddToCart} className="flex-1 flex items-center justify-center space-x-2 px-4 py-3 bg-violet-600 hover:bg-violet-700 text-white rounded-lg transition-colors">
-                  <Plus className="h-4 w-4" /><span>Ajouter au Panier</span>
-                </button>
-              </div>
-              <p className="text-sm text-muted-foreground mt-3 text-center">
-                Prix calculé: {product.buyprice.toFixed(2)} Dh + {marginPercentage}% = {finalPrice.toFixed(2)} Dh
-              </p>
+        <div className="p-5">
+          {/* Quick Info Bar */}
+          <div className="grid grid-cols-3 gap-3 mb-5">
+            <div className="text-center p-3 bg-primary/10 rounded-lg">
+              <div className="text-xs text-muted-foreground">Stock Total</div>
+              <div className="text-xl font-bold text-foreground">{totalStock}</div>
             </div>
-          )}
-
-          {/* Main Details Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-            <div className="space-y-6">
-              <h3 className="text-xl font-semibold text-foreground border-b border-border pb-2">Informations Produit</h3>
-              <div className="space-y-4">
-                <div className="flex items-center space-x-3 p-4 bg-secondary rounded-xl">
-                  <Package className="h-6 w-6 text-muted-foreground" />
-                  <div><p className="text-sm text-muted-foreground">Identifiant</p><p className="text-xl font-semibold text-foreground break-all">{product.barcode}</p></div>
-                </div>
-                <div className="flex items-center space-x-3 p-4 bg-primary/10 rounded-xl">
-                  <Package className="h-6 w-6 text-primary" />
-                  <div><p className="text-sm text-primary">Quantité Totale</p><p className="text-2xl font-bold text-foreground">{totalStock}</p></div>
-                </div>
-                <div className="flex items-center space-x-3 p-4 bg-emerald-500/10 rounded-xl">
-                  <DollarSign className="h-6 w-6 text-emerald-400" />
-                  <div><p className="text-sm text-emerald-400">Prix Affiché</p><p className="text-2xl font-bold text-foreground">{displayPrice.toFixed(2)} Dh</p></div>
-                </div>
-              </div>
+            <div className="text-center p-3 bg-emerald-500/10 rounded-lg">
+              <div className="text-xs text-muted-foreground">Prix Affiché</div>
+              <div className="text-xl font-bold text-foreground">{displayPrice.toFixed(2)} Dh</div>
             </div>
-
-            <div className="space-y-6">
-              <h3 className="text-xl font-semibold text-foreground border-b border-border pb-2">Stock par Emplacement</h3>
-              <div className="space-y-4">
-                {accessibleStockLocations.length > 0 ? (
-                  accessibleStockLocations.map(([location, level], index) => {
-                    const cs = colorSchemes[index % colorSchemes.length];
-                    return (
-                      <div key={location} className={`flex items-center space-x-3 p-4 ${cs.bg} rounded-xl`}>
-                        <MapPin className={`h-6 w-6 ${cs.text}`} />
-                        <div>
-                          <p className={`text-sm ${cs.text} capitalize font-medium`}>{location.replace(/_/g, ' ')}</p>
-                          <p className={`text-2xl font-bold ${cs.textDark}`}>{level}</p>
-                        </div>
-                      </div>
-                    );
-                  })
-                ) : (
-                  <div className="flex items-center space-x-3 p-4 bg-secondary rounded-xl">
-                    <MapPin className="h-6 w-6 text-muted-foreground" />
-                    <div><p className="text-sm text-muted-foreground">Emplacements Stock</p><p className="text-xl font-semibold text-foreground">Aucun emplacement accessible</p></div>
-                  </div>
-                )}
-              </div>
+            <div className="text-center p-3 bg-secondary rounded-lg">
+              <div className="text-xs text-muted-foreground">Emplacements</div>
+              <div className="text-xl font-bold text-foreground">{accessibleStockLocations.length}</div>
             </div>
           </div>
 
+          {/* Price Calculator */}
+          {canCreateQuote() && userPriceDisplayType !== 'reseller' && (
+            <div className="mb-5 p-4 rounded-lg border bg-accent/30 border-primary/20">
+              <div className="flex items-center gap-2 mb-3">
+                <Calculator className="h-4 w-4" />
+                <h2 className="text-sm font-semibold text-foreground">Calculateur de Prix</h2>
+              </div>
+              <div className="flex items-center gap-3 mb-3">
+                <select value={marginPercentage} onChange={(e) => setMarginPercentage(parseInt(e.target.value))}
+                  className="px-3 py-2 border border-input rounded-lg text-sm focus:ring-2 focus:ring-ring bg-background text-foreground">
+                  {marginOptions.map((p) => <option key={p} value={p}>{p}%</option>)}
+                </select>
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-muted-foreground">{product.buyprice.toFixed(2)} Dh</span>
+                  <span className="text-orange-400">+{marginPercentage}%</span>
+                  <span className="text-foreground">=</span>
+                  <span className="font-bold text-emerald-400">{finalPrice.toFixed(2)} Dh</span>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={handleCopy} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm transition-colors">
+                  <Copy className="h-3.5 w-3.5" /><span>Copier</span>
+                </button>
+                <button onClick={handleAddToCart} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-sm transition-colors">
+                  <Plus className="h-3.5 w-3.5" /><span>Ajouter au Panier</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Stock Locations */}
+          {accessibleStockLocations.length > 0 && (
+            <div className="mb-5">
+              <h3 className="text-sm font-semibold text-foreground mb-2">Stock par Emplacement</h3>
+              <div className="flex flex-wrap gap-2">
+                {accessibleStockLocations.map(([location, level], index) => {
+                  const cs = colorSchemes[index % colorSchemes.length];
+                  return (
+                    <div key={location} className={`flex items-center gap-2 px-3 py-2 ${cs.bg} rounded-lg`}>
+                      <MapPin className={`h-4 w-4 ${cs.text}`} />
+                      <span className={`text-sm ${cs.text} capitalize font-medium`}>{location.replace(/_/g, ' ')}</span>
+                      <span className={`text-lg font-bold ${cs.textDark}`}>{level}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Pricing Details */}
           {userPriceDisplayType !== 'reseller' && (
-            <div className="border-t border-border pt-8 mb-8">
-              <h3 className="text-xl font-semibold text-foreground mb-6">Tous les Détails de Prix</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <div className="flex items-center space-x-3 p-4 bg-emerald-500/10 rounded-xl">
-                  <DollarSign className="h-6 w-6 text-emerald-400" />
-                  <div><p className="text-sm text-emerald-400">Prix Normal</p><p className="text-2xl font-bold text-foreground">{product.price.toFixed(2)} Dh</p></div>
+            <div className="mb-5">
+              <h3 className="text-sm font-semibold text-foreground mb-2">Détails de Prix</h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                <div className="flex items-center gap-2 p-2.5 bg-emerald-500/10 rounded-lg">
+                  <DollarSign className="h-4 w-4 text-emerald-400 shrink-0" />
+                  <div><p className="text-[11px] text-emerald-400">Normal</p><p className="text-sm font-bold text-foreground">{product.price.toFixed(2)} Dh</p></div>
                 </div>
-                <div className="flex items-center space-x-3 p-4 bg-violet-500/10 rounded-xl">
-                  <Users className="h-6 w-6 text-violet-400" />
-                  <div><p className="text-sm text-violet-400">Prix Revendeur</p><p className="text-2xl font-bold text-foreground">{product.reseller_price.toFixed(2)} Dh</p></div>
+                <div className="flex items-center gap-2 p-2.5 bg-violet-500/10 rounded-lg">
+                  <Users className="h-4 w-4 text-violet-400 shrink-0" />
+                  <div><p className="text-[11px] text-violet-400">Revendeur</p><p className="text-sm font-bold text-foreground">{product.reseller_price.toFixed(2)} Dh</p></div>
                 </div>
-                <div className="flex items-center space-x-3 p-4 bg-orange-500/10 rounded-xl">
-                  <ShoppingCart className="h-6 w-6 text-orange-400" />
-                  <div><p className="text-sm text-orange-400">Prix d'Achat</p><p className="text-2xl font-bold text-foreground">{product.buyprice.toFixed(2)} Dh</p></div>
+                <div className="flex items-center gap-2 p-2.5 bg-orange-500/10 rounded-lg">
+                  <ShoppingCart className="h-4 w-4 text-orange-400 shrink-0" />
+                  <div><p className="text-[11px] text-orange-400">Achat</p><p className="text-sm font-bold text-foreground">{product.buyprice.toFixed(2)} Dh</p></div>
                 </div>
-                <div className="flex items-center space-x-3 p-4 bg-indigo-500/10 rounded-xl">
-                  <TrendingUp className="h-6 w-6 text-indigo-400" />
-                  <div><p className="text-sm text-indigo-400">Marge Normale</p><p className="text-2xl font-bold text-foreground">{normalMargin.toFixed(1)}%</p></div>
+                <div className="flex items-center gap-2 p-2.5 bg-indigo-500/10 rounded-lg">
+                  <TrendingUp className="h-4 w-4 text-indigo-400 shrink-0" />
+                  <div><p className="text-[11px] text-indigo-400">Marge Normale</p><p className="text-sm font-bold text-foreground">{normalMargin.toFixed(1)}%</p></div>
                 </div>
-                <div className="flex items-center space-x-3 p-4 bg-rose-500/10 rounded-xl">
-                  <TrendingUp className="h-6 w-6 text-rose-400" />
-                  <div><p className="text-sm text-rose-400">Marge Revendeur</p><p className="text-2xl font-bold text-foreground">{resellerMargin.toFixed(1)}%</p></div>
+                <div className="flex items-center gap-2 p-2.5 bg-rose-500/10 rounded-lg">
+                  <TrendingUp className="h-4 w-4 text-rose-400 shrink-0" />
+                  <div><p className="text-[11px] text-rose-400">Marge Revendeur</p><p className="text-sm font-bold text-foreground">{resellerMargin.toFixed(1)}%</p></div>
                 </div>
-                <div className="flex items-center space-x-3 p-4 bg-teal-500/10 rounded-xl">
-                  <Building className="h-6 w-6 text-teal-400" />
-                  <div><p className="text-sm text-teal-400">Fournisseur</p><p className="text-lg font-bold text-foreground truncate">{product.provider || 'Non spécifié'}</p></div>
+                <div className="flex items-center gap-2 p-2.5 bg-teal-500/10 rounded-lg">
+                  <Building className="h-4 w-4 text-teal-400 shrink-0" />
+                  <div><p className="text-[11px] text-teal-400">Fournisseur</p><p className="text-sm font-bold text-foreground truncate">{product.provider || '—'}</p></div>
                 </div>
               </div>
             </div>
@@ -286,21 +265,21 @@ export function ProductDetail() {
 
           {/* Tech Sheet */}
           {product.techsheet && (
-            <div className="border-t border-border pt-6 mt-6">
+            <div className="mb-4">
               <a href={product.techsheet} target="_blank" rel="noopener noreferrer"
-                className="inline-flex items-center space-x-2 px-6 py-3 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors">
-                <Package className="h-4 w-4" /><span>Ouvrir Fiche Technique</span>
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm transition-colors">
+                <Package className="h-3.5 w-3.5" /><span>Fiche Technique</span>
               </a>
             </div>
           )}
 
           {/* Action Buttons */}
-          <div className="border-t border-border pt-6 mt-6 flex flex-wrap gap-3">
-            <button onClick={() => navigate('/')} className="flex items-center space-x-2 px-6 py-3 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors">
-              <Home className="h-4 w-4" /><span>Accueil</span>
+          <div className="border-t border-border pt-4 flex flex-wrap gap-2">
+            <button onClick={() => navigate('/')} className="flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm transition-colors">
+              <Home className="h-3.5 w-3.5" /><span>Accueil</span>
             </button>
-            <button onClick={handleBackToSearch} className="flex items-center space-x-2 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors">
-              <Search className="h-4 w-4" /><span>Retour à la Recherche</span>
+            <button onClick={handleBackToSearch} className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm transition-colors">
+              <Search className="h-3.5 w-3.5" /><span>Recherche</span>
             </button>
           </div>
         </div>
