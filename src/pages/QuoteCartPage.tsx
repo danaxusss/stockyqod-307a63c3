@@ -347,7 +347,11 @@ export function QuoteCartPage() {
 
   // Calculate totals
   const calculateTotals = useCallback(() => {
-    const totalAmount = items.reduce((sum, item) => sum + item.subtotal, 0);
+    const totalAmount = items.reduce((sum, item) => {
+      const discount = item.discount ?? 0;
+      const discountedPrice = item.unitPrice * (1 - discount / 100);
+      return sum + discountedPrice * item.quantity;
+    }, 0);
     const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
     
     return { totalAmount, totalItems };
@@ -358,15 +362,16 @@ export function QuoteCartPage() {
     if (newQuantity < 1) return;
     
     setItems(prevItems => 
-      prevItems.map(item => 
-        item.id === itemId 
-          ? { 
-              ...item, 
-              quantity: newQuantity, 
-              subtotal: item.unitPrice * newQuantity 
-            }
-          : item
-      )
+      prevItems.map(item => {
+        if (item.id !== itemId) return item;
+        const discount = item.discount ?? 0;
+        const discountedPrice = item.unitPrice * (1 - discount / 100);
+        return { 
+          ...item, 
+          quantity: newQuantity, 
+          subtotal: discountedPrice * newQuantity 
+        };
+      })
     );
   };
 
@@ -375,15 +380,33 @@ export function QuoteCartPage() {
     if (newUnitPrice < 0) return;
     
     setItems(prevItems => 
-      prevItems.map(item => 
-        item.id === itemId 
-          ? { 
-              ...item, 
-              unitPrice: newUnitPrice, 
-              subtotal: newUnitPrice * item.quantity 
-            }
-          : item
-      )
+      prevItems.map(item => {
+        if (item.id !== itemId) return item;
+        const discount = item.discount ?? 0;
+        const discountedPrice = newUnitPrice * (1 - discount / 100);
+        return { 
+          ...item, 
+          unitPrice: newUnitPrice, 
+          subtotal: discountedPrice * item.quantity 
+        };
+      })
+    );
+  };
+
+  // Update item discount percentage
+  const updateItemDiscount = (itemId: string, newDiscount: number) => {
+    if (newDiscount < 0 || newDiscount > 100) return;
+    
+    setItems(prevItems => 
+      prevItems.map(item => {
+        if (item.id !== itemId) return item;
+        const discountedPrice = item.unitPrice * (1 - newDiscount / 100);
+        return { 
+          ...item, 
+          discount: newDiscount, 
+          subtotal: discountedPrice * item.quantity 
+        };
+      })
     );
   };
 
