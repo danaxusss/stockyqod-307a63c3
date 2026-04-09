@@ -347,7 +347,7 @@ export class PdfExportService {
       doc.setFont(font, 'bold');
       doc.setTextColor(...DARK);
       doc.text('TOTAL HT', totalsX + 4, y + 5.5);
-      doc.text(this.formatCurrency(totalHT), totalsX + totalsWidth - 4, y + 5.5, { align: 'right' });
+      doc.text(this.formatCurrency(totalHT) + ' Dh', totalsX + totalsWidth - 4, y + 5.5, { align: 'right' });
       y += 8;
 
       // TVA row
@@ -359,7 +359,7 @@ export class PdfExportService {
       doc.setFont(font, 'bold');
       doc.setTextColor(...DARK);
       doc.text(`TVA ${tvaRate}%`, totalsX + 4, y + 5.5);
-      doc.text(this.formatCurrency(totalTVA), totalsX + totalsWidth - 4, y + 5.5, { align: 'right' });
+      doc.text(this.formatCurrency(totalTVA) + ' Dh', totalsX + totalsWidth - 4, y + 5.5, { align: 'right' });
       y += 8;
     }
 
@@ -384,7 +384,7 @@ export class PdfExportService {
     }
 
     doc.text('TOTAL TTC', totalsX + 4, y + 7);
-    doc.text(this.formatCurrency(totalTTC), totalsX + totalsWidth - 4, y + 7, { align: 'right' });
+    doc.text(this.formatCurrency(totalTTC) + ' Dh', totalsX + totalsWidth - 4, y + 7, { align: 'right' });
     y += 14;
 
     // === PAYMENT TERMS ===
