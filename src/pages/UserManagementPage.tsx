@@ -308,227 +308,119 @@ export default function UserManagementPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6">
+    <div className="max-w-7xl mx-auto space-y-4">
       {/* Header */}
-      <div className="glass rounded-2xl shadow-xl p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center space-x-3">
-            <div className="p-3 bg-primary rounded-xl">
-              <Users className="h-6 w-6 text-primary-foreground" />
+      <div className="glass rounded-xl shadow-lg p-4">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center space-x-2.5">
+            <div className="p-2 bg-primary rounded-lg">
+              <Users className="h-4 w-4 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-foreground">
-                Gestion des Utilisateurs
-              </h1>
-              <p className="text-muted-foreground">
-                Gérez les utilisateurs et leurs permissions
-              </p>
+              <h1 className="text-lg font-bold text-foreground">Gestion Utilisateurs</h1>
+              <p className="text-xs text-muted-foreground">Gérez les permissions</p>
             </div>
           </div>
-
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="flex items-center space-x-2 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors"
-          >
-            <Plus className="h-4 w-4" />
-            <span>Nouvel Utilisateur</span>
+          <button onClick={() => setShowCreateModal(true)} className="flex items-center space-x-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors text-sm">
+            <Plus className="h-3.5 w-3.5" /><span>Nouveau</span>
           </button>
         </div>
 
         {/* Statistics */}
         {stats && (
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
-            <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
-              <div className="flex items-center space-x-2">
-                <Users className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                <div>
-                  <p className="text-sm text-blue-600 dark:text-blue-400">Total</p>
-                  <p className="text-xl font-bold text-blue-900 dark:text-blue-100">{stats.totalUsers}</p>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-2.5 mb-4">
+            {[
+              { icon: Users, label: 'Total', value: stats.totalUsers, color: 'blue' },
+              { icon: Shield, label: 'Admins', value: stats.adminUsers, color: 'purple' },
+              { icon: User, label: 'Users', value: stats.regularUsers, color: 'green' },
+              { icon: UserCheck, label: 'Devis', value: stats.usersWithQuoteAccess, color: 'orange' },
+              { icon: MapPin, label: 'Stock Limité', value: stats.usersWithRestrictedStock, color: 'red' },
+            ].map(({ icon: Icon, label, value, color }) => (
+              <div key={label} className={`bg-${color}-50 dark:bg-${color}-900/20 p-2.5 rounded-lg`}>
+                <div className="flex items-center space-x-1.5">
+                  <Icon className={`h-4 w-4 text-${color}-600 dark:text-${color}-400`} />
+                  <div>
+                    <p className={`text-[10px] text-${color}-600 dark:text-${color}-400`}>{label}</p>
+                    <p className={`text-base font-bold text-${color}-900 dark:text-${color}-100`}>{value}</p>
+                  </div>
                 </div>
               </div>
-            </div>
-            
-            <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-lg">
-              <div className="flex items-center space-x-2">
-                <Shield className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-                <div>
-                  <p className="text-sm text-purple-600 dark:text-purple-400">Admins</p>
-                  <p className="text-xl font-bold text-purple-900 dark:text-purple-100">{stats.adminUsers}</p>
-                </div>
-              </div>
-            </div>
-            
-            <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg">
-              <div className="flex items-center space-x-2">
-                <User className="h-5 w-5 text-green-600 dark:text-green-400" />
-                <div>
-                  <p className="text-sm text-green-600 dark:text-green-400">Utilisateurs</p>
-                  <p className="text-xl font-bold text-green-900 dark:text-green-100">{stats.regularUsers}</p>
-                </div>
-              </div>
-            </div>
-            
-            <div className="bg-orange-50 dark:bg-orange-900/20 p-4 rounded-lg">
-              <div className="flex items-center space-x-2">
-                <UserCheck className="h-5 w-5 text-orange-600 dark:text-orange-400" />
-                <div>
-                  <p className="text-sm text-orange-600 dark:text-orange-400">Accès Devis</p>
-                  <p className="text-xl font-bold text-orange-900 dark:text-orange-100">{stats.usersWithQuoteAccess}</p>
-                </div>
-              </div>
-            </div>
-            
-            <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg">
-              <div className="flex items-center space-x-2">
-                <MapPin className="h-5 w-5 text-red-600 dark:text-red-400" />
-                <div>
-                  <p className="text-sm text-red-600 dark:text-red-400">Stock Limité</p>
-                  <p className="text-xl font-bold text-red-900 dark:text-red-100">{stats.usersWithRestrictedStock}</p>
-                </div>
-              </div>
-            </div>
+            ))}
           </div>
         )}
 
         {/* Filters */}
-        <div className="flex flex-col sm:flex-row gap-4">
+        <div className="flex flex-col sm:flex-row gap-2.5">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
-              placeholder="Rechercher un utilisateur..."
-            />
+            <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-8 pr-3 py-1.5 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground" placeholder="Rechercher..." />
           </div>
-          
-          <select
-            value={filterRole}
-            onChange={(e) => setFilterRole(e.target.value as 'all' | 'admin' | 'user')}
-            className="px-3 py-2 border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
-          >
-            <option value="all">Tous les rôles</option>
-            <option value="admin">Administrateurs</option>
-            <option value="user">Utilisateurs</option>
+          <select value={filterRole} onChange={(e) => setFilterRole(e.target.value as 'all' | 'admin' | 'user')}
+            className="px-2.5 py-1.5 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground">
+            <option value="all">Tous</option><option value="admin">Admins</option><option value="user">Users</option>
           </select>
         </div>
       </div>
 
       {/* Users Table */}
-      <div className="glass rounded-2xl shadow-xl overflow-hidden">
+      <div className="glass rounded-xl shadow-lg overflow-hidden">
         {filteredUsers.length === 0 ? (
-          <div className="p-12 text-center">
-            <Users className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-foreground mb-2">
-              {users.length === 0 ? 'Aucun Utilisateur' : 'Aucun Résultat'}
-            </h3>
-            <p className="text-muted-foreground">
-              {users.length === 0 
-                ? 'Créez votre premier utilisateur pour commencer'
-                : 'Aucun utilisateur ne correspond à vos critères de recherche'
-              }
-            </p>
+          <div className="p-8 text-center">
+            <Users className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+            <h3 className="text-base font-medium text-foreground mb-1">{users.length === 0 ? 'Aucun Utilisateur' : 'Aucun Résultat'}</h3>
+            <p className="text-sm text-muted-foreground">{users.length === 0 ? 'Créez votre premier utilisateur' : 'Aucun résultat'}</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-secondary">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Utilisateur
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Rôle
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Permissions
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Stock Autorisé
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Type de Prix
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Actions
-                  </th>
+                  {['Utilisateur', 'Rôle', 'Permissions', 'Stock', 'Prix', 'Actions'].map(h => (
+                    <th key={h} className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{h}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                 {filteredUsers.map((user) => (
-                  <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-accent/50">
-                    <td className="px-4 py-4">
-                      <div className="flex items-center space-x-3">
-                        <div className={`p-2 rounded-lg ${user.is_admin ? 'bg-purple-100 dark:bg-purple-900/30' : 'bg-blue-100 dark:bg-blue-900/30'}`}>
-                          {user.is_admin ? (
-                            <Shield className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-                          ) : (
-                            <User className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                          )}
+                  <tr key={user.id} className="hover:bg-accent/50">
+                    <td className="px-3 py-2.5">
+                      <div className="flex items-center space-x-2">
+                        <div className={`p-1 rounded ${user.is_admin ? 'bg-purple-100 dark:bg-purple-900/30' : 'bg-blue-100 dark:bg-blue-900/30'}`}>
+                          {user.is_admin ? <Shield className="h-3 w-3 text-purple-600 dark:text-purple-400" /> : <User className="h-3 w-3 text-blue-600 dark:text-blue-400" />}
                         </div>
                         <div>
-                          <div className="text-sm font-medium text-foreground">
-                            {user.username}
-                          </div>
-                          <div className="text-sm text-muted-foreground">
-                            Créé le {user.created_at.toLocaleDateString('fr-FR')}
-                          </div>
+                          <div className="text-xs font-medium text-foreground">{user.username}</div>
+                          <div className="text-[10px] text-muted-foreground">{user.created_at.toLocaleDateString('fr-FR')}</div>
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-4">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                        user.is_admin
-                          ? 'bg-purple-100 dark:bg-purple-900/20 text-purple-800 dark:text-purple-300'
-                          : 'bg-blue-100 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300'
-                      }`}>
-                        {user.is_admin ? 'Administrateur' : 'Utilisateur'}
+                    <td className="px-3 py-2.5">
+                      <span className={`inline-flex px-1.5 py-0.5 text-[10px] font-semibold rounded-full ${user.is_admin ? 'bg-purple-100 dark:bg-purple-900/20 text-purple-800 dark:text-purple-300' : 'bg-blue-100 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300'}`}>
+                        {user.is_admin ? 'Admin' : 'User'}
                       </span>
                     </td>
-                    <td className="px-4 py-4">
-                      <div className="flex items-center space-x-2">
-                        {user.can_create_quote ? (
-                          <span className="inline-flex items-center px-2 py-1 text-xs bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-300 rounded-full">
-                            <UserCheck className="h-3 w-3 mr-1" />
-                            Devis
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center px-2 py-1 text-xs bg-red-100 dark:bg-red-900/20 text-red-800 dark:text-red-300 rounded-full">
-                            <UserX className="h-3 w-3 mr-1" />
-                            Pas de devis
-                          </span>
-                        )}
-                      </div>
+                    <td className="px-3 py-2.5">
+                      {user.can_create_quote ? (
+                        <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-300 rounded-full">
+                          <UserCheck className="h-2.5 w-2.5 mr-0.5" />Devis
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] bg-red-100 dark:bg-red-900/20 text-red-800 dark:text-red-300 rounded-full">
+                          <UserX className="h-2.5 w-2.5 mr-0.5" />Non
+                        </span>
+                      )}
                     </td>
-                    <td className="px-4 py-4">
-                      <div className="text-sm text-foreground">
-                        {formatStockLocations(user.allowed_stock_locations)}
-                      </div>
-                    </td>
-                    <td className="px-4 py-4">
-                      <span className="inline-flex items-center px-2 py-1 text-xs bg-secondary text-gray-800 dark:text-gray-300 rounded-full">
-                        <DollarSign className="h-3 w-3 mr-1" />
-                        {getPriceTypeLabel(user.price_display_type)}
+                    <td className="px-3 py-2.5 text-xs text-foreground">{formatStockLocations(user.allowed_stock_locations)}</td>
+                    <td className="px-3 py-2.5">
+                      <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] bg-secondary text-gray-800 dark:text-gray-300 rounded-full">
+                        <DollarSign className="h-2.5 w-2.5 mr-0.5" />{getPriceTypeLabel(user.price_display_type)}
                       </span>
                     </td>
-                    <td className="px-4 py-4">
-                      <div className="flex items-center space-x-2">
-                        <button
-                          onClick={() => handleEditUser(user)}
-                          className="p-1 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors"
-                          title="Modifier"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </button>
-                        
-                        <button
-                          onClick={() => handleDeleteUser(user)}
-                          className="p-1 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
-                          title="Supprimer"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                    <td className="px-3 py-2.5">
+                      <div className="flex items-center space-x-1">
+                        <button onClick={() => handleEditUser(user)} className="p-1 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors" title="Modifier"><Edit className="h-3.5 w-3.5" /></button>
+                        <button onClick={() => handleDeleteUser(user)} className="p-1 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors" title="Supprimer"><Trash2 className="h-3.5 w-3.5" /></button>
                       </div>
                     </td>
                   </tr>
