@@ -74,7 +74,7 @@ export class PdfExportService {
     const doc = new jsPDF('p', 'mm', 'a4');
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = 15;
+    const margin = 12;
     const contentWidth = pageWidth - margin * 2;
     let y = margin;
 
@@ -130,31 +130,30 @@ export class PdfExportService {
     const drawPageDecorations = () => {
       // Top accent bar
       doc.setFillColor(...ACCENT);
-      doc.rect(0, 0, pageWidth, 3, 'F');
+      doc.rect(0, 0, pageWidth, 2, 'F');
       // Bottom accent bar
       doc.setFillColor(...ACCENT);
-      doc.rect(0, pageHeight - 3, pageWidth, 3, 'F');
+      doc.rect(0, pageHeight - 2, pageWidth, 2, 'F');
 
       // Footer
-      const footerLineHeight = 3.5;
-      const footerTotalHeight = footerLines.length * footerLineHeight + 6;
-      const footerBaseY = pageHeight - footerTotalHeight - 3;
+      const footerLineHeight = 3;
+      const footerTotalHeight = footerLines.length * footerLineHeight + 4;
+      const footerBaseY = pageHeight - footerTotalHeight - 2;
 
       doc.setDrawColor(...ACCENT);
-      doc.setLineWidth(0.8);
+      doc.setLineWidth(0.5);
       doc.line(margin, footerBaseY, pageWidth - margin, footerBaseY);
 
-      let fy = footerBaseY + 4;
+      let fy = footerBaseY + 3;
       for (let i = 0; i < footerLines.length; i++) {
         if (i === 0) {
-          // First line bold with accent color
           doc.setFont(font, 'bold');
           doc.setTextColor(...ACCENT);
-          doc.setFontSize(6.5);
+          doc.setFontSize(5.5);
         } else {
           doc.setFont(font, 'normal');
           doc.setTextColor(...GRAY);
-          doc.setFontSize(6);
+          doc.setFontSize(5);
         }
         doc.text(footerLines[i], pageWidth / 2, fy, { align: 'center', maxWidth: contentWidth });
         fy += footerLineHeight;
@@ -164,7 +163,7 @@ export class PdfExportService {
     // Draw first page decorations
     drawPageDecorations();
 
-    y = 10;
+    y = 7;
 
     // === HEADER: Logo OR Company Name (left) | DEVIS (right) ===
     let logoLoaded = false;
@@ -172,9 +171,9 @@ export class PdfExportService {
 
     // Logo size settings
     const logoSizeConfig = {
-      small: { maxW: 45, maxH: 25 },
-      medium: { maxW: 65, maxH: 35 },
-      large: { maxW: 85, maxH: 45 },
+      small: { maxW: 35, maxH: 20 },
+      medium: { maxW: 50, maxH: 28 },
+      large: { maxW: 70, maxH: 38 },
     };
     const logoSize = settings?.logo_size || 'medium';
     const { maxW: maxLogoW, maxH: maxLogoH } = logoSizeConfig[logoSize] || logoSizeConfig.medium;
@@ -207,17 +206,17 @@ export class PdfExportService {
     }
 
     // DEVIS title (right side)
-    const devisBoxW = 55;
-    const devisBoxH = 14;
+    const devisBoxW = 45;
+    const devisBoxH = 11;
     const devisBoxX = pageWidth - margin - devisBoxW;
     const devisBoxY = y;
 
     doc.setFillColor(...ACCENT);
     doc.roundedRect(devisBoxX, devisBoxY, devisBoxW, devisBoxH, 2, 2, 'F');
-    doc.setFontSize(28);
+    doc.setFontSize(22);
     doc.setFont(font, 'bold');
     doc.setTextColor(...WHITE);
-    doc.text('DEVIS', devisBoxX + devisBoxW / 2, devisBoxY + devisBoxH / 2 + 4, { align: 'center' });
+    doc.text('DEVIS', devisBoxX + devisBoxW / 2, devisBoxY + devisBoxH / 2 + 3, { align: 'center' });
 
     // If logo is loaded, skip company name & tagline. Otherwise show them.
     if (!logoLoaded) {
@@ -225,30 +224,30 @@ export class PdfExportService {
       const nameY = y + 4;
       const maxNameWidth = devisBoxX - nameX - 5;
 
-      let nameFontSize = style.headerSize === 'small' ? 16 : style.headerSize === 'medium' ? 20 : 22;
+      let nameFontSize = style.headerSize === 'small' ? 14 : style.headerSize === 'medium' ? 17 : 19;
       doc.setFont(font, 'bold');
-      while (nameFontSize > 10) {
+      while (nameFontSize > 9) {
         doc.setFontSize(nameFontSize);
         if (doc.getTextWidth(companyName) <= maxNameWidth) break;
         nameFontSize -= 1;
       }
       doc.setFontSize(nameFontSize);
       doc.setTextColor(...ACCENT);
-      doc.text(companyName, nameX, nameY + 5, { maxWidth: maxNameWidth });
+      doc.text(companyName, nameX, nameY + 4, { maxWidth: maxNameWidth });
 
-      doc.setFontSize(7.5);
+      doc.setFontSize(6.5);
       doc.setFont(font, 'normal');
       doc.setTextColor(...GRAY);
-      doc.text('MATERIEL DE CUISINE PROFESSIONNEL', nameX, nameY + 10);
+      doc.text('MATERIEL DE CUISINE PROFESSIONNEL', nameX, nameY + 9);
     }
 
-    y = Math.max(y + logoHeight, y + 18) + 8;
+    y = Math.max(y + logoHeight, y + 14) + 5;
 
     // === THIN SEPARATOR LINE ===
     doc.setDrawColor(...ACCENT);
-    doc.setLineWidth(0.6);
+    doc.setLineWidth(0.4);
     doc.line(margin, y, pageWidth - margin, y);
-    y += 6;
+    y += 4;
 
     // === TWO COLUMN LAYOUT: Client info (left) + Quote meta (right) ===
     const leftColWidth = contentWidth * 0.55;
@@ -281,28 +280,28 @@ export class PdfExportService {
       margin: { left: margin, right: pageWidth - margin - leftColWidth },
       theme: 'plain',
       styles: {
-        fontSize: 8.5,
-        cellPadding: { top: 2.8, bottom: 2.8, left: 4, right: 4 },
+        fontSize: 7.5,
+        cellPadding: { top: 2, bottom: 2, left: 3, right: 3 },
         lineColor: [230, 230, 230],
-        lineWidth: 0.3,
+        lineWidth: 0.2,
         textColor: DARK,
       },
       columnStyles: {
         0: {
-          cellWidth: 32,
+          cellWidth: 28,
           fillColor: ACCENT,
           textColor: WHITE,
           fontStyle: 'bold',
-          fontSize: 7.5,
+          fontSize: 6.5,
         },
         1: {
-          cellWidth: leftColWidth - 32,
-          fontSize: 8.5,
+          cellWidth: leftColWidth - 28,
+          fontSize: 7.5,
           fillColor: [252, 252, 252],
         },
       },
       tableLineColor: [230, 230, 230],
-      tableLineWidth: 0.3,
+      tableLineWidth: 0.2,
     });
 
     const leftFinalY = (doc as any).lastAutoTable?.finalY || sectionStartY + 30;
@@ -328,22 +327,22 @@ export class PdfExportService {
       margin: { left: rightColX, right: margin },
       theme: 'plain',
       styles: {
-        fontSize: 8.5,
-        cellPadding: { top: 2.8, bottom: 2.8, left: 4, right: 4 },
+        fontSize: 7.5,
+        cellPadding: { top: 2, bottom: 2, left: 3, right: 3 },
         lineColor: [230, 230, 230],
-        lineWidth: 0.3,
+        lineWidth: 0.2,
         textColor: DARK,
       },
       columnStyles: {
-        0: { cellWidth: 28, fontStyle: 'bold', textColor: ACCENT, fontSize: 7.5, fillColor: ACCENT_LIGHT },
-        1: { cellWidth: rightColWidth - 28, halign: 'right', fillColor: [252, 252, 252] },
+        0: { cellWidth: 24, fontStyle: 'bold', textColor: ACCENT, fontSize: 6.5, fillColor: ACCENT_LIGHT },
+        1: { cellWidth: rightColWidth - 24, halign: 'right', fillColor: [252, 252, 252] },
       },
       tableLineColor: [230, 230, 230],
-      tableLineWidth: 0.3,
+      tableLineWidth: 0.2,
     });
 
-    const rightFinalY = (doc as any).lastAutoTable?.finalY || sectionStartY + 30;
-    y = Math.max(leftFinalY, rightFinalY) + 8;
+    const rightFinalY = (doc as any).lastAutoTable?.finalY || sectionStartY + 25;
+    y = Math.max(leftFinalY, rightFinalY) + 5;
 
     // === ITEMS TABLE ===
     const tableHeaders = hasDiscount
@@ -388,17 +387,17 @@ export class PdfExportService {
         };
 
     // Calculate footer height to set bottom margin for items table
-    const footerLineHeight = 3.5;
-    const footerTotalHeight = footerLines.length * footerLineHeight + 10;
+    const footerLineHeight = 3;
+    const footerTotalHeight = footerLines.length * footerLineHeight + 8;
 
     autoTable(doc, {
       startY: y,
       head: tableHeaders,
       body: tableBody,
-      margin: { left: margin, right: margin, bottom: footerTotalHeight + 5 },
+      margin: { left: margin, right: margin, bottom: footerTotalHeight + 4 },
       styles: {
-        fontSize: 8,
-        cellPadding: { top: 3, bottom: 3, left: 3, right: 3 },
+        fontSize: 7,
+        cellPadding: { top: 2, bottom: 2, left: 2.5, right: 2.5 },
         lineColor: [230, 230, 230],
         lineWidth: 0.2,
         textColor: DARK,
@@ -408,9 +407,9 @@ export class PdfExportService {
         fillColor: ACCENT,
         textColor: WHITE,
         fontStyle: 'bold',
-        fontSize: 8,
+        fontSize: 7,
         halign: 'center',
-        cellPadding: { top: 3.5, bottom: 3.5, left: 3, right: 3 },
+        cellPadding: { top: 2.5, bottom: 2.5, left: 2.5, right: 2.5 },
       },
       alternateRowStyles: {
         fillColor: [248, 249, 252],
@@ -419,21 +418,21 @@ export class PdfExportService {
       didDrawPage: (data) => {
         drawPageDecorations();
         const pageCount = doc.getNumberOfPages();
-        doc.setFontSize(7);
+        doc.setFontSize(6);
         doc.setFont(font, 'normal');
         doc.setTextColor(...GRAY);
-        doc.text(`Page ${doc.getCurrentPageInfo().pageNumber} / ${pageCount}`, pageWidth - margin, pageHeight - footerTotalHeight - 5, { align: 'right' });
+        doc.text(`Page ${doc.getCurrentPageInfo().pageNumber} / ${pageCount}`, pageWidth - margin, pageHeight - footerTotalHeight - 4, { align: 'right' });
       },
     });
 
-    y = (doc as any).lastAutoTable.finalY + 6;
+    y = (doc as any).lastAutoTable.finalY + 4;
 
     // Check if totals fit on current page
-    const totalsHeight = (fields.showTVA ? 26 : 10) + 20;
-    if (y + totalsHeight > pageHeight - footerTotalHeight - 10) {
+    const totalsHeight = (fields.showTVA ? 20 : 8) + 16;
+    if (y + totalsHeight > pageHeight - footerTotalHeight - 8) {
       doc.addPage();
       drawPageDecorations();
-      y = 15;
+      y = 12;
     }
 
     // === TOTALS SECTION ===
@@ -441,60 +440,60 @@ export class PdfExportService {
     const totalHT = totalTTC / (1 + tvaRate / 100);
     const totalTVA = totalTTC - totalHT;
 
-    const totalsWidth = 85;
+    const totalsWidth = 75;
     const totalsX = pageWidth - margin - totalsWidth;
 
     if (fields.showTVA) {
       doc.setFillColor(248, 249, 252);
-      doc.rect(totalsX, y, totalsWidth, 8, 'F');
+      doc.rect(totalsX, y, totalsWidth, 6.5, 'F');
       doc.setDrawColor(230, 230, 230);
-      doc.rect(totalsX, y, totalsWidth, 8, 'S');
+      doc.rect(totalsX, y, totalsWidth, 6.5, 'S');
       
-      doc.setFontSize(9);
+      doc.setFontSize(7.5);
       doc.setFont(font, 'bold');
       doc.setTextColor(...DARK);
-      doc.text('TOTAL HT', totalsX + 4, y + 5.5);
-      doc.text(this.formatCurrency(totalHT) + ' Dh', totalsX + totalsWidth - 4, y + 5.5, { align: 'right' });
-      y += 8;
+      doc.text('TOTAL HT', totalsX + 3, y + 4.5);
+      doc.text(this.formatCurrency(totalHT) + ' Dh', totalsX + totalsWidth - 3, y + 4.5, { align: 'right' });
+      y += 6.5;
 
       doc.setFillColor(248, 249, 252);
-      doc.rect(totalsX, y, totalsWidth, 8, 'F');
+      doc.rect(totalsX, y, totalsWidth, 6.5, 'F');
       doc.setDrawColor(230, 230, 230);
-      doc.rect(totalsX, y, totalsWidth, 8, 'S');
+      doc.rect(totalsX, y, totalsWidth, 6.5, 'S');
       
       doc.setFont(font, 'bold');
       doc.setTextColor(...DARK);
-      doc.text(`TVA ${tvaRate}%`, totalsX + 4, y + 5.5);
-      doc.text(this.formatCurrency(totalTVA) + ' Dh', totalsX + totalsWidth - 4, y + 5.5, { align: 'right' });
-      y += 8;
+      doc.text(`TVA ${tvaRate}%`, totalsX + 3, y + 4.5);
+      doc.text(this.formatCurrency(totalTVA) + ' Dh', totalsX + totalsWidth - 3, y + 4.5, { align: 'right' });
+      y += 6.5;
     }
 
     if (style.totalsStyle === 'highlighted') {
       doc.setFillColor(...ACCENT);
-      doc.rect(totalsX, y, totalsWidth, 10, 'F');
-      doc.setFontSize(11);
+      doc.rect(totalsX, y, totalsWidth, 8, 'F');
+      doc.setFontSize(9);
       doc.setFont(font, 'bold');
       doc.setTextColor(...WHITE);
     } else if (style.totalsStyle === 'boxed') {
       doc.setDrawColor(...ACCENT);
-      doc.setLineWidth(0.8);
-      doc.rect(totalsX, y, totalsWidth, 10, 'S');
-      doc.setFontSize(11);
+      doc.setLineWidth(0.6);
+      doc.rect(totalsX, y, totalsWidth, 8, 'S');
+      doc.setFontSize(9);
       doc.setFont(font, 'bold');
       doc.setTextColor(...ACCENT);
     } else {
-      doc.setFontSize(11);
+      doc.setFontSize(9);
       doc.setFont(font, 'bold');
       doc.setTextColor(...ACCENT);
     }
 
-    doc.text('TOTAL TTC', totalsX + 4, y + 7);
-    doc.text(this.formatCurrency(totalTTC) + ' Dh', totalsX + totalsWidth - 4, y + 7, { align: 'right' });
-    y += 14;
+    doc.text('TOTAL TTC', totalsX + 3, y + 5.5);
+    doc.text(this.formatCurrency(totalTTC) + ' Dh', totalsX + totalsWidth - 3, y + 5.5, { align: 'right' });
+    y += 10;
 
     // === PAYMENT TERMS ===
     if (fields.showPaymentTerms) {
-      doc.setFontSize(8);
+      doc.setFontSize(7);
       doc.setFont(font, 'italic');
       doc.setTextColor(...GRAY);
       doc.text(
@@ -502,34 +501,34 @@ export class PdfExportService {
         margin,
         y
       );
-      y += 6;
+      y += 5;
     }
 
     // === NOTES ===
     if (fields.showNotes && quote.notes) {
       doc.setDrawColor(230, 230, 230);
-      doc.line(margin, y, margin + 60, y);
-      y += 4;
+      doc.line(margin, y, margin + 50, y);
+      y += 3;
       doc.setTextColor(...DARK);
       doc.setFont(font, 'bold');
-      doc.setFontSize(8);
+      doc.setFontSize(7);
       doc.text('Note :', margin, y);
       doc.setFont(font, 'normal');
-      const noteLines = doc.splitTextToSize(quote.notes, contentWidth - 15);
-      doc.text(noteLines, margin + 14, y);
-      y += 4 + noteLines.length * 4;
+      const noteLines = doc.splitTextToSize(quote.notes, contentWidth - 12);
+      doc.text(noteLines, margin + 12, y);
+      y += 3 + noteLines.length * 3.5;
     }
 
     // Fix page numbers
     const totalPagesCount = doc.getNumberOfPages();
     for (let i = 1; i <= totalPagesCount; i++) {
       doc.setPage(i);
-      doc.setFontSize(7);
+      doc.setFontSize(6);
       doc.setFont(font, 'normal');
       doc.setTextColor(...GRAY);
       doc.setFillColor(255, 255, 255);
-      doc.rect(pageWidth - margin - 30, pageHeight - footerTotalHeight - 8, 30, 6, 'F');
-      doc.text(`Page ${i} / ${totalPagesCount}`, pageWidth - margin, pageHeight - footerTotalHeight - 5, { align: 'right' });
+      doc.rect(pageWidth - margin - 25, pageHeight - footerTotalHeight - 6, 25, 5, 'F');
+      doc.text(`Page ${i} / ${totalPagesCount}`, pageWidth - margin, pageHeight - footerTotalHeight - 4, { align: 'right' });
     }
 
     // === SAVE ===
