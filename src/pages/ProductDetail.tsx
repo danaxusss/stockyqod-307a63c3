@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Package, ArrowLeft, Copy, MapPin, DollarSign, ShoppingCart, Home, AlertCircle, Users, Building, TrendingUp, Search, Calculator, Plus } from 'lucide-react';
 import { Product } from '../types';
-import { getProduct } from '../utils/database';
+import { useAppContext } from '../context/AppContext';
 import { searchStateManager } from '../utils/searchStateManager';
 import { useQuoteCart } from '../hooks/useQuoteCart';
 import { useToast } from '../context/ToastContext';
@@ -13,12 +13,12 @@ export function ProductDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { canAccessStockLocation, canAccessBrand, canCreateQuote, getDisplayPrice, getPriceDisplayType } = useAuth();
+  const { state } = useAppContext();
   const [product, setProduct] = useState<Product | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [marginPercentage, setMarginPercentage] = useState(() => {
-    // Load saved margin percentage from localStorage
     const saved = localStorage.getItem('inventory_margin_percentage');
     return saved ? parseInt(saved) : 30;
   });
@@ -60,11 +60,9 @@ export function ProductDetail() {
         console.log('Chargement du produit avec ID:', id);
         console.log('ID décodé:', decodeURIComponent(id));
         
-        // Try both encoded and decoded versions
-        let foundProduct = await getProduct(id);
-        if (!foundProduct) {
-          foundProduct = await getProduct(decodeURIComponent(id));
-        }
+        // Search in loaded products from context
+        const decodedId = decodeURIComponent(id);
+        const foundProduct = state.products.find(p => p.barcode === id || p.barcode === decodedId) || null;
         
         console.log('Produit trouvé:', foundProduct);
         

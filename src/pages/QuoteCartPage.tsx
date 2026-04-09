@@ -27,14 +27,9 @@ import {
 } from 'lucide-react';
 import { Quote, QuoteItem, CustomerInfo, QuoteTemplate, Product } from '../types';
 import { ExcelExportService } from '../utils/excelExport';
-import { 
-  saveQuote, 
-  getQuote, 
-  getActiveQuoteTemplate, 
-  saveQuoteTemplate, 
-  getQuoteTemplates,
-  searchProducts
-} from '../utils/database';
+import { SupabaseQuotesService } from '../utils/supabaseQuotes';
+import { ActivityLogger } from '../utils/activityLogger';
+import { useAppContext } from '../context/AppContext';
 import { SupabaseUsersService } from '../utils/supabaseUsers';
 import { useQuoteCart } from '../hooks/useQuoteCart';
 import { useToast } from '../context/ToastContext';
@@ -51,6 +46,7 @@ export function QuoteCartPage() {
   const isEditing = Boolean(quoteId);
   const { cart, emptyCart } = useQuoteCart();
   const { showToast } = useToast();
+  const { state } = useAppContext();
 
   // Quote state
   const [quote, setQuote] = useState<Quote | null>(null);
@@ -113,7 +109,7 @@ export function QuoteCartPage() {
 
       setIsLoading(true);
       try {
-        const loadedQuote = await getQuote(quoteId!);
+        const loadedQuote = await SupabaseQuotesService.getQuote(quoteId!);
         if (loadedQuote) {
           setQuote(loadedQuote);
           setItems(loadedQuote.items);
@@ -150,8 +146,8 @@ export function QuoteCartPage() {
     const loadTemplates = async () => {
       try {
         const [allTemplates, active] = await Promise.all([
-          getQuoteTemplates(),
-          getActiveQuoteTemplate()
+          SupabaseQuotesService.getQuoteTemplates(),
+          SupabaseQuotesService.getActiveQuoteTemplate()
         ]);
         setTemplates(allTemplates);
         setActiveTemplate(active || null);
@@ -226,8 +222,11 @@ export function QuoteCartPage() {
 
     setIsSearching(true);
     try {
-      const results = await searchProducts(searchQuery);
-      setSearchResults(results);
+      const q = searchQuery.toLowerCase();
+      const results = state.products.filter(p =>
+        p.name.toLowerCase().includes(q) || p.barcode.includes(q) || p.brand.toLowerCase().includes(q)
+      );
+      setSearchResults(results.slice(0, 20));
     } catch (error) {
       console.error('Search failed:', error);
       showToast({
@@ -496,7 +495,8 @@ export function QuoteCartPage() {
         notes
       };
 
-      await saveQuote(quoteData);
+      await SupabaseQuotesService.saveQuote(quoteData);
+      await ActivityLogger.log('quote_created', `Quote ${quoteNumber} saved`, 'quote', quoteData.id);
       setQuote(quoteData);
       setLastSaved(now);
       
@@ -600,10 +600,10 @@ export function QuoteCartPage() {
         isActive: templates.length === 0 // First template becomes active
       };
 
-      await saveQuoteTemplate(template);
+      await SupabaseQuotesService.saveQuoteTemplate(template);
       
-      // Reload templates
-      const updatedTemplates = await getQuoteTemplates();
+      const updatedTemplates = await SupabaseQuotesService.getQuoteTemplates();
+      setTemplates(updatedTemplates);
       setTemplates(updatedTemplates);
       
       if (template.isActive) {

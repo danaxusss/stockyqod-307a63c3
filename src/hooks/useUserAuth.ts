@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { AppUser } from '../types';
 import { supabase } from '@/integrations/supabase/client';
+import { ActivityLogger } from '../utils/activityLogger';
 
 const AUTH_STORAGE_KEY = 'inventory_user_authenticated';
 const AUTH_TIME_KEY = 'inventory_user_auth_time';
@@ -122,9 +123,10 @@ export function useUserAuth() {
       localStorage.setItem(AUTH_TIME_KEY, Date.now().toString());
       localStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
       setIsAuthenticated(true);
-      setAuthenticatedUser(user);
-      userAuthStateManager.notify();
-      return true;
+        setAuthenticatedUser(user);
+        userAuthStateManager.notify();
+        ActivityLogger.log('login', `User ${user.username} logged in`);
+        return true;
     } catch (error) {
       console.error('Login with credentials failed:', error);
       return false;
@@ -152,6 +154,7 @@ export function useUserAuth() {
   }, []);
 
   const logout = useCallback((): void => {
+    ActivityLogger.log('logout', 'User logged out');
     localStorage.removeItem(AUTH_STORAGE_KEY);
     localStorage.removeItem(AUTH_TIME_KEY);
     localStorage.removeItem(USER_DATA_KEY);

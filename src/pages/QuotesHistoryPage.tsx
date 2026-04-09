@@ -22,7 +22,8 @@ import {
   X
 } from 'lucide-react';
 import { Quote } from '../types';
-import { getAllQuotes, deleteQuote, searchQuotes } from '../utils/database';
+import { SupabaseQuotesService } from '../utils/supabaseQuotes';
+import { ActivityLogger } from '../utils/activityLogger';
 import { ExcelExportService } from '../utils/excelExport';
 import { useAuth } from '../hooks/useAuth';
 
@@ -56,7 +57,7 @@ export function QuotesHistoryPage() {
     setMessage(null);
     try {
       console.log('Loading quotes from database...');
-      const allQuotes = await getAllQuotes();
+      const allQuotes = await SupabaseQuotesService.getAllQuotes();
       
       const currentUsername = currentUser?.username || authenticatedUser?.username;
       console.log(`Loaded ${allQuotes.length} quotes for user: ${currentUsername} (admin: ${isAdmin})`);
@@ -178,7 +179,8 @@ export function QuotesHistoryPage() {
     if (!confirmed) return;
 
     try {
-      await deleteQuote(quote.id);
+      await SupabaseQuotesService.deleteQuote(quote.id);
+      await ActivityLogger.log('quote_deleted', `Quote ${quote.quoteNumber} deleted`, 'quote', quote.id);
       setMessage({ 
         type: 'success', 
         text: navigator.onLine 
