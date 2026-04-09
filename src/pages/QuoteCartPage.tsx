@@ -417,13 +417,14 @@ export function QuoteCartPage() {
     setItems(prevItems => 
       prevItems.map(item => {
         if (item.id === itemId) {
-          // Calculate new unit price based on buy price and new margin
           const newUnitPrice = item.product.buyprice + (item.product.buyprice * (newMarginPercentage / 100));
+          const discount = item.discount ?? 0;
+          const discountedPrice = newUnitPrice * (1 - discount / 100);
           return {
             ...item,
             marginPercentage: newMarginPercentage,
             unitPrice: newUnitPrice,
-            subtotal: newUnitPrice * item.quantity
+            subtotal: discountedPrice * item.quantity
           };
         }
         return item;
