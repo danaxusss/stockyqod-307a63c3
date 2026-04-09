@@ -86,6 +86,54 @@ export type Database = {
         }
         Relationships: []
       }
+      company_settings: {
+        Row: {
+          address: string
+          company_name: string
+          email: string
+          ice: string
+          id: string
+          logo_url: string | null
+          payment_terms: string
+          phone: string
+          quote_validity_days: number
+          quote_visible_fields: Json
+          tva_rate: number
+          updated_at: string
+          website: string
+        }
+        Insert: {
+          address?: string
+          company_name?: string
+          email?: string
+          ice?: string
+          id?: string
+          logo_url?: string | null
+          payment_terms?: string
+          phone?: string
+          quote_validity_days?: number
+          quote_visible_fields?: Json
+          tva_rate?: number
+          updated_at?: string
+          website?: string
+        }
+        Update: {
+          address?: string
+          company_name?: string
+          email?: string
+          ice?: string
+          id?: string
+          logo_url?: string | null
+          payment_terms?: string
+          phone?: string
+          quote_validity_days?: number
+          quote_visible_fields?: Json
+          tva_rate?: number
+          updated_at?: string
+          website?: string
+        }
+        Relationships: []
+      }
       products: {
         Row: {
           barcode: string
