@@ -45,7 +45,6 @@ async function loadImageAsBase64(url: string): Promise<string | null> {
 
 const DARK: [number, number, number] = [30, 30, 30];
 const GRAY: [number, number, number] = [100, 100, 100];
-const LIGHT_GRAY: [number, number, number] = [200, 200, 200];
 const WHITE: [number, number, number] = [255, 255, 255];
 
 export class PdfExportService {
@@ -57,7 +56,6 @@ export class PdfExportService {
   }
 
   static formatCurrency(amount: number): string {
-    // Use regular spaces (not narrow non-breaking spaces) for PDF compatibility
     const parts = amount.toFixed(2).split('.');
     const intPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
     return `${intPart},${parts[1]}`;
@@ -90,13 +88,54 @@ export class PdfExportService {
     const tvaRate = settings?.tva_rate ?? 20;
     const companyName = settings?.company_name || 'Mon Entreprise';
 
-    // === TOP ACCENT BAR ===
-    doc.setFillColor(...ACCENT);
-    doc.rect(0, 0, pageWidth, 3, 'F');
+    // Check if any item has a discount
+    const hasDiscount = quote.items.some(item => (item.discount ?? 0) > 0);
+
+    // === Draw header and footer on every page ===
+    const drawPageDecorations = () => {
+      // Top accent bar
+      doc.setFillColor(...ACCENT);
+      doc.rect(0, 0, pageWidth, 3, 'F');
+      // Bottom accent bar
+      doc.setFillColor(...ACCENT);
+      doc.rect(0, pageHeight - 3, pageWidth, 3, 'F');
+
+      // Footer
+      const footerBaseY = pageHeight - 18;
+      doc.setDrawColor(...ACCENT);
+      doc.setLineWidth(0.8);
+      doc.line(margin, footerBaseY - 2, pageWidth - margin, footerBaseY - 2);
+
+      doc.setFontSize(7.5);
+      doc.setFont(font, 'bold');
+      doc.setTextColor(...ACCENT);
+      doc.text(companyName, pageWidth / 2, footerBaseY + 2, { align: 'center' });
+
+      const legalParts: string[] = [];
+      if (settings?.address) legalParts.push(settings.address);
+      if (settings?.phone) legalParts.push(`Tel: ${settings.phone}`);
+      if (settings?.email) legalParts.push(settings.email);
+      if (settings?.website && fields.showCompanyWebsite) legalParts.push(settings.website);
+
+      if (legalParts.length > 0) {
+        doc.setFont(font, 'normal');
+        doc.setTextColor(...GRAY);
+        doc.setFontSize(6.5);
+        doc.text(legalParts.join('  -  '), pageWidth / 2, footerBaseY + 6, { align: 'center', maxWidth: contentWidth });
+      }
+
+      if (fields.showCompanyICE && settings?.ice) {
+        doc.setFontSize(6.5);
+        doc.text(`ICE : ${settings.ice}`, pageWidth / 2, footerBaseY + 10, { align: 'center' });
+      }
+    };
+
+    // Draw first page decorations
+    drawPageDecorations();
 
     y = 10;
 
-    // === HEADER: Logo + Company Name (left) | DEVIS (right) ===
+    // === HEADER: Logo OR Company Name (left) | DEVIS (right) ===
     let logoLoaded = false;
     let logoHeight = 0;
 
@@ -111,9 +150,8 @@ export class PdfExportService {
             img.onerror = () => resolve();
           });
           
-          // Calculate dimensions maintaining aspect ratio
-          const maxLogoW = 45;
-          const maxLogoH = 22;
+          const maxLogoW = 55;
+          const maxLogoH = 25;
           let logoW = maxLogoW;
           let logoH = (img.height / img.width) * logoW;
           if (logoH > maxLogoH) {
@@ -130,7 +168,7 @@ export class PdfExportService {
       }
     }
 
-    // DEVIS title (right side) with accent background — draw first to know its position
+    // DEVIS title (right side)
     const devisBoxW = 55;
     const devisBoxH = 14;
     const devisBoxX = pageWidth - margin - devisBoxW;
@@ -143,28 +181,28 @@ export class PdfExportService {
     doc.setTextColor(...WHITE);
     doc.text('DEVIS', devisBoxX + devisBoxW / 2, devisBoxY + devisBoxH / 2 + 4, { align: 'center' });
 
-    // Company name + subtitle (left side, constrained to not overlap DEVIS box)
-    const nameX = logoLoaded ? margin + 48 : margin;
-    const nameY = y + 4;
-    const maxNameWidth = devisBoxX - nameX - 5; // leave 5mm gap before DEVIS box
+    // If logo is loaded, skip company name & tagline. Otherwise show them.
+    if (!logoLoaded) {
+      const nameX = margin;
+      const nameY = y + 4;
+      const maxNameWidth = devisBoxX - nameX - 5;
 
-    // Dynamic font size: start at desired size, shrink if text overflows
-    let nameFontSize = style.headerSize === 'small' ? 16 : style.headerSize === 'medium' ? 20 : 22;
-    doc.setFont(font, 'bold');
-    while (nameFontSize > 10) {
+      let nameFontSize = style.headerSize === 'small' ? 16 : style.headerSize === 'medium' ? 20 : 22;
+      doc.setFont(font, 'bold');
+      while (nameFontSize > 10) {
+        doc.setFontSize(nameFontSize);
+        if (doc.getTextWidth(companyName) <= maxNameWidth) break;
+        nameFontSize -= 1;
+      }
       doc.setFontSize(nameFontSize);
-      const textWidth = doc.getTextWidth(companyName);
-      if (textWidth <= maxNameWidth) break;
-      nameFontSize -= 1;
-    }
-    doc.setFontSize(nameFontSize);
-    doc.setTextColor(...ACCENT);
-    doc.text(companyName, nameX, nameY + 5, { maxWidth: maxNameWidth });
+      doc.setTextColor(...ACCENT);
+      doc.text(companyName, nameX, nameY + 5, { maxWidth: maxNameWidth });
 
-    doc.setFontSize(7.5);
-    doc.setFont(font, 'normal');
-    doc.setTextColor(...GRAY);
-    doc.text('MATERIEL DE CUISINE PROFESSIONNEL', nameX, nameY + 10);
+      doc.setFontSize(7.5);
+      doc.setFont(font, 'normal');
+      doc.setTextColor(...GRAY);
+      doc.text('MATERIEL DE CUISINE PROFESSIONNEL', nameX, nameY + 10);
+    }
 
     y = Math.max(y + logoHeight, y + 18) + 8;
 
@@ -229,7 +267,6 @@ export class PdfExportService {
       tableLineWidth: 0.3,
     });
 
-    // Capture LEFT table's final Y before drawing right table
     const leftFinalY = (doc as any).lastAutoTable?.finalY || sectionStartY + 30;
 
     // --- RIGHT: Quote details ---
@@ -244,7 +281,7 @@ export class PdfExportService {
       const validityDays = settings?.quote_validity_days ?? 30;
       const validityDate = new Date(quote.createdAt);
       validityDate.setDate(validityDate.getDate() + validityDays);
-      quoteInfoRows.push(['Validite', this.formatDate(validityDate)]);
+      quoteInfoRows.push(['Validite', `${validityDays} jours (${this.formatDate(validityDate)})`]);
     }
 
     autoTable(doc, {
@@ -267,24 +304,52 @@ export class PdfExportService {
       tableLineWidth: 0.3,
     });
 
-    // Use the maximum Y from both tables to avoid overlap
     const rightFinalY = (doc as any).lastAutoTable?.finalY || sectionStartY + 30;
     y = Math.max(leftFinalY, rightFinalY) + 8;
 
     // === ITEMS TABLE ===
-    const tableHeaders = [['Marque', 'REF', 'DESCRIPTION', 'QTE', 'PU TTC', 'TOTAL TTC']];
+    // Build headers and body based on whether discount exists
+    const tableHeaders = hasDiscount
+      ? [['Marque', 'REF', 'DESCRIPTION', 'QTE', 'PU TTC', 'Remise', 'TOTAL TTC']]
+      : [['Marque', 'REF', 'DESCRIPTION', 'QTE', 'PU TTC', 'TOTAL TTC']];
 
     const tableBody = quote.items.map(item => {
-      const totalTTC = item.unitPrice * item.quantity;
-      return [
+      const discount = item.discount ?? 0;
+      const discountedPrice = item.unitPrice * (1 - discount / 100);
+      const totalTTC = discountedPrice * item.quantity;
+      const row = [
         item.product.brand || '',
         item.product.barcode || '',
         item.product.name,
         String(item.quantity),
         this.formatCurrency(item.unitPrice),
-        this.formatCurrency(totalTTC),
       ];
+      if (hasDiscount) {
+        row.push(discount > 0 ? `${discount}%` : '-');
+      }
+      row.push(this.formatCurrency(totalTTC));
+      return row;
     });
+
+    // Column styles: give more space to DESCRIPTION, less to others
+    const itemColumnStyles: Record<number, any> = hasDiscount
+      ? {
+          0: { cellWidth: 18, halign: 'center' },   // Marque
+          1: { cellWidth: 24, halign: 'center' },   // REF
+          2: { cellWidth: 'auto' },                   // DESCRIPTION (gets remaining space)
+          3: { cellWidth: 12, halign: 'center' },    // QTE
+          4: { cellWidth: 24, halign: 'right' },     // PU TTC
+          5: { cellWidth: 16, halign: 'center' },    // Remise
+          6: { cellWidth: 26, halign: 'right', fontStyle: 'bold' }, // TOTAL TTC
+        }
+      : {
+          0: { cellWidth: 18, halign: 'center' },
+          1: { cellWidth: 24, halign: 'center' },
+          2: { cellWidth: 'auto' },
+          3: { cellWidth: 12, halign: 'center' },
+          4: { cellWidth: 24, halign: 'right' },
+          5: { cellWidth: 26, halign: 'right', fontStyle: 'bold' },
+        };
 
     autoTable(doc, {
       startY: y,
@@ -310,22 +375,28 @@ export class PdfExportService {
       alternateRowStyles: {
         fillColor: [248, 249, 252],
       },
-      columnStyles: {
-        0: { cellWidth: 22, halign: 'center' },
-        1: { cellWidth: 28, halign: 'center' },
-        2: { cellWidth: 'auto' },
-        3: { cellWidth: 14, halign: 'center' },
-        4: { cellWidth: 26, halign: 'right' },
-        5: { cellWidth: 28, halign: 'right', fontStyle: 'bold' },
-      },
+      columnStyles: itemColumnStyles,
       didDrawPage: (data) => {
-        // Redraw top accent bar on each page
-        doc.setFillColor(...ACCENT);
-        doc.rect(0, 0, pageWidth, 3, 'F');
+        // Redraw decorations on every new page
+        drawPageDecorations();
+        // Add page number
+        const pageCount = doc.getNumberOfPages();
+        doc.setFontSize(7);
+        doc.setFont(font, 'normal');
+        doc.setTextColor(...GRAY);
+        doc.text(`Page ${doc.getCurrentPageInfo().pageNumber} / ${pageCount}`, pageWidth - margin, pageHeight - 22, { align: 'right' });
       },
     });
 
     y = (doc as any).lastAutoTable.finalY + 6;
+
+    // Check if totals fit on current page, if not add new page
+    const totalsHeight = (fields.showTVA ? 26 : 10) + 20;
+    if (y + totalsHeight > pageHeight - 30) {
+      doc.addPage();
+      drawPageDecorations();
+      y = 15;
+    }
 
     // === TOTALS SECTION ===
     const totalTTC = quote.totalAmount;
@@ -335,7 +406,6 @@ export class PdfExportService {
     const totalsWidth = 85;
     const totalsX = pageWidth - margin - totalsWidth;
 
-    // Draw totals with clean styling
     if (fields.showTVA) {
       // TOTAL HT row
       doc.setFillColor(248, 249, 252);
@@ -415,43 +485,18 @@ export class PdfExportService {
       y += 4 + noteLines.length * 4;
     }
 
-    // === FOOTER (pinned to bottom) ===
-    const footerBaseY = pageHeight - 18;
-
-    // Accent line
-    doc.setDrawColor(...ACCENT);
-    doc.setLineWidth(0.8);
-    doc.line(margin, footerBaseY - 2, pageWidth - margin, footerBaseY - 2);
-
-    // Company name bold
-    doc.setFontSize(7.5);
-    doc.setFont(font, 'bold');
-    doc.setTextColor(...ACCENT);
-    doc.text(companyName, pageWidth / 2, footerBaseY + 2, { align: 'center' });
-
-    // Contact details
-    const legalParts: string[] = [];
-    if (settings?.address) legalParts.push(settings.address);
-    if (settings?.phone) legalParts.push(`Tel: ${settings.phone}`);
-    if (settings?.email) legalParts.push(settings.email);
-    if (settings?.website && fields.showCompanyWebsite) legalParts.push(settings.website);
-
-    if (legalParts.length > 0) {
+    // Fix page numbers (now that we know total pages)
+    const totalPagesCount = doc.getNumberOfPages();
+    for (let i = 1; i <= totalPagesCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(7);
       doc.setFont(font, 'normal');
       doc.setTextColor(...GRAY);
-      doc.setFontSize(6.5);
-      doc.text(legalParts.join('  -  '), pageWidth / 2, footerBaseY + 6, { align: 'center', maxWidth: contentWidth });
+      // Clear old page number area and redraw
+      doc.setFillColor(255, 255, 255);
+      doc.rect(pageWidth - margin - 30, pageHeight - 25, 30, 6, 'F');
+      doc.text(`Page ${i} / ${totalPagesCount}`, pageWidth - margin, pageHeight - 22, { align: 'right' });
     }
-
-    // ICE
-    if (fields.showCompanyICE && settings?.ice) {
-      doc.setFontSize(6.5);
-      doc.text(`ICE : ${settings.ice}`, pageWidth / 2, footerBaseY + 10, { align: 'center' });
-    }
-
-    // Bottom accent bar
-    doc.setFillColor(...ACCENT);
-    doc.rect(0, pageHeight - 3, pageWidth, 3, 'F');
 
     // === SAVE ===
     const filename = `Devis_${quote.quoteNumber}_${this.formatDate(quote.createdAt).replace(/\//g, '-')}.pdf`;
