@@ -419,27 +419,22 @@ export function StatisticsPage() {
             </div>
 
             {/* Status Distribution */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="bg-yellow-50 dark:bg-yellow-900/20 p-4 rounded-lg">
-                <div className="flex items-center space-x-3">
-                  <div className="w-4 h-4 bg-yellow-500 rounded-full"></div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded-lg">
+                <div className="flex items-center space-x-2">
+                  <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
                   <div>
-                    <p className="text-sm text-yellow-600 dark:text-yellow-400">Devis Brouillons</p>
-                    <p className="text-xl font-bold text-yellow-900 dark:text-yellow-100">
-                      {formatNumber(quoteStats.draftQuotes)} ({((quoteStats.draftQuotes / quoteStats.totalQuotes) * 100).toFixed(1)}%)
-                    </p>
+                    <p className="text-[11px] text-yellow-600 dark:text-yellow-400">Brouillons</p>
+                    <p className="text-base font-bold text-yellow-900 dark:text-yellow-100">{formatNumber(quoteStats.draftQuotes)} ({((quoteStats.draftQuotes / quoteStats.totalQuotes) * 100).toFixed(1)}%)</p>
                   </div>
                 </div>
               </div>
-
-              <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg">
-                <div className="flex items-center space-x-3">
-                  <div className="w-4 h-4 bg-green-500 rounded-full"></div>
+              <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-lg">
+                <div className="flex items-center space-x-2">
+                  <div className="w-3 h-3 bg-green-500 rounded-full"></div>
                   <div>
-                    <p className="text-sm text-green-600 dark:text-green-400">Devis Finalisés</p>
-                    <p className="text-xl font-bold text-green-900 dark:text-green-100">
-                      {formatNumber(quoteStats.finalQuotes)} ({((quoteStats.finalQuotes / quoteStats.totalQuotes) * 100).toFixed(1)}%)
-                    </p>
+                    <p className="text-[11px] text-green-600 dark:text-green-400">Finalisés</p>
+                    <p className="text-base font-bold text-green-900 dark:text-green-100">{formatNumber(quoteStats.finalQuotes)} ({((quoteStats.finalQuotes / quoteStats.totalQuotes) * 100).toFixed(1)}%)</p>
                   </div>
                 </div>
               </div>
@@ -449,45 +444,35 @@ export function StatisticsPage() {
       </div>
 
       {/* Users Overview */}
-      <div className="glass rounded-2xl shadow-xl p-6">
-        <h2 className="text-xl font-semibold text-foreground mb-6 flex items-center space-x-2">
-          <Users className="h-5 w-5" />
-          <span>Utilisateurs du Système</span>
+      <div className="glass rounded-xl shadow-lg p-4">
+        <h2 className="text-base font-semibold text-foreground mb-4 flex items-center space-x-2">
+          <Users className="h-4 w-4" /><span>Utilisateurs</span>
         </h2>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
-            <div className="flex items-center space-x-3">
-              <Users className="h-8 w-8 text-blue-600 dark:text-blue-400" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">
+            <div className="flex items-center space-x-2">
+              <Users className="h-5 w-5 text-blue-600 dark:text-blue-400" />
               <div>
-                <p className="text-sm text-blue-600 dark:text-blue-400">Total Utilisateurs</p>
-                <p className="text-2xl font-bold text-blue-900 dark:text-blue-100">
-                  {formatNumber(users.length)}
-                </p>
+                <p className="text-[11px] text-blue-600 dark:text-blue-400">Total</p>
+                <p className="text-lg font-bold text-blue-900 dark:text-blue-100">{formatNumber(users.length)}</p>
               </div>
             </div>
           </div>
-
-          <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-lg">
-            <div className="flex items-center space-x-3">
-              <Award className="h-8 w-8 text-purple-600 dark:text-purple-400" />
+          <div className="bg-purple-50 dark:bg-purple-900/20 p-3 rounded-lg">
+            <div className="flex items-center space-x-2">
+              <Award className="h-5 w-5 text-purple-600 dark:text-purple-400" />
               <div>
-                <p className="text-sm text-purple-600 dark:text-purple-400">Administrateurs</p>
-                <p className="text-2xl font-bold text-purple-900 dark:text-purple-100">
-                  {formatNumber(users.filter(u => u.is_admin).length)}
-                </p>
+                <p className="text-[11px] text-purple-600 dark:text-purple-400">Admins</p>
+                <p className="text-lg font-bold text-purple-900 dark:text-purple-100">{formatNumber(users.filter(u => u.is_admin).length)}</p>
               </div>
             </div>
           </div>
-
-          <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-lg">
-            <div className="flex items-center space-x-3">
-              <FileText className="h-8 w-8 text-emerald-600 dark:text-emerald-400" />
+          <div className="bg-emerald-50 dark:bg-emerald-900/20 p-3 rounded-lg">
+            <div className="flex items-center space-x-2">
+              <FileText className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
               <div>
-                <p className="text-sm text-emerald-600 dark:text-emerald-400">Accès Devis</p>
-                <p className="text-2xl font-bold text-emerald-900 dark:text-emerald-100">
-                  {formatNumber(users.filter(u => u.can_create_quote).length)}
-                </p>
+                <p className="text-[11px] text-emerald-600 dark:text-emerald-400">Accès Devis</p>
+                <p className="text-lg font-bold text-emerald-900 dark:text-emerald-100">{formatNumber(users.filter(u => u.can_create_quote).length)}</p>
               </div>
             </div>
           </div>
