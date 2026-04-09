@@ -22,40 +22,101 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
-    // Fetch products from DB for context
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { data: products, error: dbError } = await supabase
-      .from("products")
-      .select("barcode, name, brand, price, reseller_price, buyprice, provider, stock_levels")
-      .limit(1000);
+    // Extract the last user message to build search queries
+    const lastUserMsg = [...messages].reverse().find((m: any) => m.role === "user")?.content || "";
+    
+    // Extract meaningful search keywords (>2 chars, skip common words)
+    const stopWords = new Set(["les", "des", "une", "pour", "avec", "dans", "sur", "par", "que", "qui", "est", "sont", "pas", "plus", "mon", "ton", "son", "nos", "vos", "cette", "ces", "tout", "tous", "quel", "quels", "quelle", "quelles", "cherche", "besoin", "voudrais", "veux", "faut", "client", "produit", "produits", "article", "articles", "avez", "vous", "nous", "ils", "elle", "elles", "aussi", "mais", "donc", "comme", "bien", "très", "peu", "trop"]);
+    
+    const keywords = lastUserMsg
+      .toLowerCase()
+      .replace(/[^a-zà-ÿ0-9\s-]/g, " ")
+      .split(/\s+/)
+      .filter((w: string) => w.length > 2 && !stopWords.has(w));
 
-    if (dbError) {
-      console.error("DB error:", dbError);
-      throw new Error("Failed to fetch products");
+    // Search products using ILIKE on name, brand, barcode, and provider
+    let products: any[] = [];
+    
+    if (keywords.length > 0) {
+      // Build OR conditions: each keyword matches name, brand, barcode, or provider
+      const orConditions = keywords.map((kw: string) => 
+        `name.ilike.%${kw}%,brand.ilike.%${kw}%,barcode.ilike.%${kw}%,provider.ilike.%${kw}%`
+      ).join(",");
+
+      const { data, error } = await supabase
+        .from("products")
+        .select("barcode, name, brand, price, reseller_price, buyprice, provider, stock_levels")
+        .or(orConditions)
+        .limit(100);
+
+      if (error) {
+        console.error("DB search error:", error);
+        // Fallback: try individual keyword searches
+        for (const kw of keywords.slice(0, 5)) {
+          const { data: kwData } = await supabase
+            .from("products")
+            .select("barcode, name, brand, price, reseller_price, buyprice, provider, stock_levels")
+            .or(`name.ilike.%${kw}%,brand.ilike.%${kw}%,barcode.ilike.%${kw}%`)
+            .limit(50);
+          if (kwData) products.push(...kwData);
+        }
+        // Deduplicate by barcode
+        const seen = new Set<string>();
+        products = products.filter(p => {
+          if (seen.has(p.barcode)) return false;
+          seen.add(p.barcode);
+          return true;
+        });
+      } else {
+        products = data || [];
+      }
     }
 
-    // Build product catalog summary for the AI
-    const productCatalog = (products || []).map((p: any) => {
-      const totalStock = Object.values(p.stock_levels || {}).reduce((sum: number, v: any) => sum + (Number(v) || 0), 0);
-      return `- ${p.name} | Marque: ${p.brand} | Code: ${p.barcode} | Prix: ${p.price} DH | Prix revendeur: ${p.reseller_price} DH | Stock: ${totalStock} | Fournisseur: ${p.provider}`;
-    }).join("\n");
+    // If no results from keyword search, try a broader search with fewer keywords
+    if (products.length === 0 && keywords.length > 0) {
+      for (const kw of keywords.slice(0, 3)) {
+        const { data } = await supabase
+          .from("products")
+          .select("barcode, name, brand, price, reseller_price, buyprice, provider, stock_levels")
+          .or(`name.ilike.%${kw}%,brand.ilike.%${kw}%`)
+          .limit(50);
+        if (data) products.push(...data);
+      }
+      const seen = new Set<string>();
+      products = products.filter(p => {
+        if (seen.has(p.barcode)) return false;
+        seen.add(p.barcode);
+        return true;
+      });
+    }
 
-    const systemPrompt = `Tu es un assistant commercial expert. Tu aides les vendeurs à trouver des produits dans le catalogue.
+    // Build product catalog for context
+    const productCatalog = products.length > 0
+      ? products.map((p: any) => {
+          const totalStock = Object.values(p.stock_levels || {}).reduce((sum: number, v: any) => sum + (Number(v) || 0), 0);
+          const stockDetail = Object.entries(p.stock_levels || {}).map(([loc, qty]) => `${loc}: ${qty}`).join(", ");
+          return `- ${p.name} | Marque: ${p.brand} | Code: ${p.barcode} | Prix: ${p.price} DH | Prix revendeur: ${p.reseller_price} DH | Stock total: ${totalStock} (${stockDetail}) | Fournisseur: ${p.provider}`;
+        }).join("\n")
+      : "Aucun produit trouvé pour cette recherche.";
 
-CATALOGUE PRODUITS:
+    const systemPrompt = `Tu es un assistant commercial expert pour une boutique. Tu aides les vendeurs à trouver des produits.
+
+RÉSULTATS DE RECHERCHE (${products.length} produits trouvés):
 ${productCatalog}
 
 INSTRUCTIONS:
-- Quand on te demande des produits, cherche dans le catalogue ci-dessus les produits correspondants ou similaires.
-- Présente chaque produit trouvé avec son nom, marque, code-barres, prix, et stock disponible.
-- Si un produit exact n'existe pas, suggère des alternatives similaires du catalogue.
-- Formate ta réponse de manière claire avec des listes.
-- Réponds en français.
+- Présente TOUS les produits trouvés ci-dessus qui correspondent à la demande du client.
+- Pour chaque produit: nom, marque, code-barres, prix, prix revendeur, et stock par emplacement.
 - Si le stock est 0, mentionne-le mais propose quand même le produit.
-- Sois concis et pratique.`;
+- Si aucun produit n'a été trouvé, dis-le clairement et suggère de reformuler la recherche avec d'autres termes.
+- Formate ta réponse avec des listes claires et lisibles.
+- Réponds en français.
+- Sois concis et pratique.
+- N'invente JAMAIS de produits qui ne sont pas dans les résultats ci-dessus.`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -64,7 +125,7 @@ INSTRUCTIONS:
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "google/gemini-2.5-flash-lite",
         messages: [
           { role: "system", content: systemPrompt },
           ...messages,
