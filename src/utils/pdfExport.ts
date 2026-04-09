@@ -136,25 +136,24 @@ export class PdfExportService {
       doc.rect(0, pageHeight - 2, pageWidth, 2, 'F');
 
       // Footer
-      const footerLineHeight = 3.5;
-      const footerTotalHeight = footerLines.length * footerLineHeight + 6;
-      const footerBaseY = pageHeight - footerTotalHeight - 3;
+      const footerLineHeight = 3;
+      const footerTotalHeight = footerLines.length * footerLineHeight + 4;
+      const footerBaseY = pageHeight - footerTotalHeight - 2;
 
       doc.setDrawColor(...ACCENT);
-      doc.setLineWidth(0.8);
+      doc.setLineWidth(0.5);
       doc.line(margin, footerBaseY, pageWidth - margin, footerBaseY);
 
-      let fy = footerBaseY + 4;
+      let fy = footerBaseY + 3;
       for (let i = 0; i < footerLines.length; i++) {
         if (i === 0) {
-          // First line bold with accent color
           doc.setFont(font, 'bold');
           doc.setTextColor(...ACCENT);
-          doc.setFontSize(6.5);
+          doc.setFontSize(5.5);
         } else {
           doc.setFont(font, 'normal');
           doc.setTextColor(...GRAY);
-          doc.setFontSize(6);
+          doc.setFontSize(5);
         }
         doc.text(footerLines[i], pageWidth / 2, fy, { align: 'center', maxWidth: contentWidth });
         fy += footerLineHeight;
