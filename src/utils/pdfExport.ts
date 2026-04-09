@@ -387,17 +387,17 @@ export class PdfExportService {
         };
 
     // Calculate footer height to set bottom margin for items table
-    const footerLineHeight = 3.5;
-    const footerTotalHeight = footerLines.length * footerLineHeight + 10;
+    const footerLineHeight = 3;
+    const footerTotalHeight = footerLines.length * footerLineHeight + 8;
 
     autoTable(doc, {
       startY: y,
       head: tableHeaders,
       body: tableBody,
-      margin: { left: margin, right: margin, bottom: footerTotalHeight + 5 },
+      margin: { left: margin, right: margin, bottom: footerTotalHeight + 4 },
       styles: {
-        fontSize: 8,
-        cellPadding: { top: 3, bottom: 3, left: 3, right: 3 },
+        fontSize: 7,
+        cellPadding: { top: 2, bottom: 2, left: 2.5, right: 2.5 },
         lineColor: [230, 230, 230],
         lineWidth: 0.2,
         textColor: DARK,
@@ -407,9 +407,9 @@ export class PdfExportService {
         fillColor: ACCENT,
         textColor: WHITE,
         fontStyle: 'bold',
-        fontSize: 8,
+        fontSize: 7,
         halign: 'center',
-        cellPadding: { top: 3.5, bottom: 3.5, left: 3, right: 3 },
+        cellPadding: { top: 2.5, bottom: 2.5, left: 2.5, right: 2.5 },
       },
       alternateRowStyles: {
         fillColor: [248, 249, 252],
@@ -418,14 +418,14 @@ export class PdfExportService {
       didDrawPage: (data) => {
         drawPageDecorations();
         const pageCount = doc.getNumberOfPages();
-        doc.setFontSize(7);
+        doc.setFontSize(6);
         doc.setFont(font, 'normal');
         doc.setTextColor(...GRAY);
-        doc.text(`Page ${doc.getCurrentPageInfo().pageNumber} / ${pageCount}`, pageWidth - margin, pageHeight - footerTotalHeight - 5, { align: 'right' });
+        doc.text(`Page ${doc.getCurrentPageInfo().pageNumber} / ${pageCount}`, pageWidth - margin, pageHeight - footerTotalHeight - 4, { align: 'right' });
       },
     });
 
-    y = (doc as any).lastAutoTable.finalY + 6;
+    y = (doc as any).lastAutoTable.finalY + 4;
 
     // Check if totals fit on current page
     const totalsHeight = (fields.showTVA ? 26 : 10) + 20;
