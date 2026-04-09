@@ -514,7 +514,7 @@ export function QuoteCartPage() {
     }
   };
 
-  // Export to Excel
+  // Export to PDF
   const handleExport = async () => {
     if (!validateForm()) {
       showToast({
@@ -541,19 +541,18 @@ export function QuoteCartPage() {
         notes
       };
 
-      console.log('Exporting with template:', activeTemplate?.name || 'default');
-      await ExcelExportService.exportQuoteToExcel(quoteData, activeTemplate || undefined);
+      await PdfExportService.exportQuoteToPdf(quoteData, companySettings);
       showToast({
         type: 'success',
         title: 'Export réussi',
-        message: 'Devis exporté avec succès'
+        message: 'Devis exporté en PDF avec succès'
       });
     } catch (error) {
       console.error('Export failed:', error);
       showToast({
         type: 'error',
         title: 'Erreur d\'export',
-        message: `Erreur lors de l'export Excel: ${error instanceof Error ? error.message : 'Erreur inconnue'}`
+        message: `Erreur lors de l'export PDF: ${error instanceof Error ? error.message : 'Erreur inconnue'}`
       });
     } finally {
       setIsExporting(false);
