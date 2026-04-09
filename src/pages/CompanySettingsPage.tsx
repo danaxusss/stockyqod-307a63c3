@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
-import { Settings, Upload, Trash2, Save, Loader, Image, Building, Phone, Mail, Globe, Hash, FileText, Eye } from 'lucide-react';
-import { CompanySettingsService, CompanySettings, QuoteVisibleFields } from '../utils/companySettings';
+import { Settings, Upload, Trash2, Save, Loader, Image, Building, Phone, Mail, Globe, Hash, FileText, Eye, Palette } from 'lucide-react';
+import { CompanySettingsService, CompanySettings, QuoteVisibleFields, QuoteStyle } from '../utils/companySettings';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../context/ToastContext';
 import { useNavigate } from 'react-router-dom';
@@ -102,6 +102,7 @@ export default function CompanySettingsPage() {
         ice: settings.ice,
         logo_url: logoUrl,
         quote_visible_fields: settings.quote_visible_fields,
+        quote_style: settings.quote_style,
         payment_terms: settings.payment_terms,
         tva_rate: settings.tva_rate,
         quote_validity_days: settings.quote_validity_days,
@@ -283,6 +284,130 @@ export default function CompanySettingsPage() {
               className="w-full px-4 py-2 border border-input rounded-lg bg-secondary text-foreground focus:ring-2 focus:ring-ring"
               min="1"
             />
+          </div>
+        </div>
+      </div>
+
+      {/* Quote Styling */}
+      <div className="glass rounded-2xl shadow-xl p-6">
+        <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center space-x-2">
+          <Palette className="h-5 w-5" />
+          <span>Style du Devis</span>
+        </h2>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {/* Accent Color */}
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">Couleur d'accent</label>
+            <div className="flex items-center space-x-3">
+              <input
+                type="color"
+                value={settings.quote_style?.accentColor || '#3B82F6'}
+                onChange={e => setSettings({
+                  ...settings,
+                  quote_style: { ...settings.quote_style, accentColor: e.target.value },
+                })}
+                className="h-10 w-14 rounded-lg border border-input cursor-pointer"
+              />
+              <input
+                type="text"
+                value={settings.quote_style?.accentColor || '#3B82F6'}
+                onChange={e => setSettings({
+                  ...settings,
+                  quote_style: { ...settings.quote_style, accentColor: e.target.value },
+                })}
+                className="flex-1 px-4 py-2 border border-input rounded-lg bg-secondary text-foreground focus:ring-2 focus:ring-ring"
+                placeholder="#3B82F6"
+              />
+            </div>
+          </div>
+
+          {/* Font */}
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">Police</label>
+            <select
+              value={settings.quote_style?.fontFamily || 'helvetica'}
+              onChange={e => setSettings({
+                ...settings,
+                quote_style: { ...settings.quote_style, fontFamily: e.target.value as QuoteStyle['fontFamily'] },
+              })}
+              className="w-full px-4 py-2 border border-input rounded-lg bg-secondary text-foreground focus:ring-2 focus:ring-ring"
+            >
+              <option value="helvetica">Helvetica (Moderne)</option>
+              <option value="times">Times (Classique)</option>
+              <option value="courier">Courier (Monospace)</option>
+            </select>
+          </div>
+
+          {/* Header Size */}
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">Taille de l'en-tête</label>
+            <select
+              value={settings.quote_style?.headerSize || 'large'}
+              onChange={e => setSettings({
+                ...settings,
+                quote_style: { ...settings.quote_style, headerSize: e.target.value as QuoteStyle['headerSize'] },
+              })}
+              className="w-full px-4 py-2 border border-input rounded-lg bg-secondary text-foreground focus:ring-2 focus:ring-ring"
+            >
+              <option value="small">Petit</option>
+              <option value="medium">Moyen</option>
+              <option value="large">Grand</option>
+            </select>
+          </div>
+
+          {/* Totals Style */}
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">Style des totaux</label>
+            <select
+              value={settings.quote_style?.totalsStyle || 'highlighted'}
+              onChange={e => setSettings({
+                ...settings,
+                quote_style: { ...settings.quote_style, totalsStyle: e.target.value as QuoteStyle['totalsStyle'] },
+              })}
+              className="w-full px-4 py-2 border border-input rounded-lg bg-secondary text-foreground focus:ring-2 focus:ring-ring"
+            >
+              <option value="highlighted">Surligné (couleur)</option>
+              <option value="boxed">Encadré</option>
+              <option value="simple">Simple</option>
+            </select>
+          </div>
+
+          {/* Show Borders */}
+          <div className="flex items-center space-x-3">
+            <label className="flex items-center space-x-3 p-3 bg-secondary rounded-lg cursor-pointer hover:bg-accent transition-colors flex-1">
+              <input
+                type="checkbox"
+                checked={settings.quote_style?.showBorders !== false}
+                onChange={e => setSettings({
+                  ...settings,
+                  quote_style: { ...settings.quote_style, showBorders: e.target.checked },
+                })}
+                className="h-4 w-4 rounded border-primary text-primary focus:ring-ring"
+              />
+              <span className="text-sm text-foreground">Afficher les bordures du tableau</span>
+            </label>
+          </div>
+        </div>
+
+        {/* Color Preview */}
+        <div className="mt-4 flex items-center space-x-3">
+          <span className="text-sm text-muted-foreground">Aperçu :</span>
+          <div
+            className="h-8 w-8 rounded-md"
+            style={{ backgroundColor: settings.quote_style?.accentColor || '#3B82F6' }}
+          />
+          <div
+            className="h-6 px-3 rounded text-white text-xs flex items-center font-bold"
+            style={{ backgroundColor: settings.quote_style?.accentColor || '#3B82F6' }}
+          >
+            TOTAL TTC
+          </div>
+          <div
+            className="h-6 px-3 rounded text-xs flex items-center font-bold"
+            style={{ color: settings.quote_style?.accentColor || '#3B82F6' }}
+          >
+            DEVIS
           </div>
         </div>
       </div>

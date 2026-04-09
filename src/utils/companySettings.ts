@@ -14,6 +14,24 @@ export interface QuoteVisibleFields {
   showValidityDate: boolean;
 }
 
+export interface QuoteStyle {
+  accentColor: string;
+  fontFamily: 'helvetica' | 'times' | 'courier';
+  showBorders: boolean;
+  borderRadius: number;
+  headerSize: 'small' | 'medium' | 'large';
+  totalsStyle: 'highlighted' | 'simple' | 'boxed';
+}
+
+const DEFAULT_QUOTE_STYLE: QuoteStyle = {
+  accentColor: '#3B82F6',
+  fontFamily: 'helvetica',
+  showBorders: true,
+  borderRadius: 1,
+  headerSize: 'large',
+  totalsStyle: 'highlighted',
+};
+
 export interface CompanySettings {
   id: string;
   company_name: string;
@@ -24,6 +42,7 @@ export interface CompanySettings {
   ice: string;
   logo_url: string | null;
   quote_visible_fields: QuoteVisibleFields;
+  quote_style: QuoteStyle;
   payment_terms: string;
   tva_rate: number;
   quote_validity_days: number;
@@ -60,6 +79,10 @@ export class CompanySettingsService {
         ...DEFAULT_VISIBLE_FIELDS,
         ...(data.quote_visible_fields as Record<string, boolean>),
       },
+      quote_style: {
+        ...DEFAULT_QUOTE_STYLE,
+        ...(data.quote_style as Record<string, unknown>),
+      },
     } as CompanySettings;
   }
 
@@ -71,9 +94,12 @@ export class CompanySettingsService {
       ...settings,
       updated_at: new Date().toISOString(),
     };
-    // Cast quote_visible_fields to JSON-compatible type
+    // Cast JSON fields to JSON-compatible type
     if (settings.quote_visible_fields) {
       updateData.quote_visible_fields = settings.quote_visible_fields as unknown as Record<string, boolean>;
+    }
+    if (settings.quote_style) {
+      updateData.quote_style = settings.quote_style as unknown as Record<string, unknown>;
     }
 
     const { error } = await supabase

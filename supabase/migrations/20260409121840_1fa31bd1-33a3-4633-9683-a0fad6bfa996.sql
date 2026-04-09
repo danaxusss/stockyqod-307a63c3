@@ -1,0 +1,1 @@
+ALTER TABLE public.company_settings ADD COLUMN quote_style jsonb NOT NULL DEFAULT '{"accentColor": "#3B82F6", "fontFamily": "helvetica", "showBorders": true, "borderRadius": 1, "headerSize": "large", "totalsStyle": "highlighted"}'::jsonb;

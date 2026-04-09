@@ -2,9 +2,15 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Quote } from '../types';
-import { CompanySettings } from './companySettings';
+import { CompanySettings, QuoteStyle } from './companySettings';
 
-const BLUE = [59, 130, 246]; // #3B82F6
+function hexToRgb(hex: string): [number, number, number] {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result
+    ? [parseInt(result[1], 16), parseInt(result[2], 16), parseInt(result[3], 16)]
+    : [59, 130, 246];
+}
+
 const DARK = [30, 30, 30];
 const GRAY = [120, 120, 120];
 const LIGHT_BG = [245, 247, 250];
@@ -25,6 +31,14 @@ export class PdfExportService {
   }
 
   static async exportQuoteToPdf(quote: Quote, settings?: CompanySettings | null): Promise<void> {
+    const style: QuoteStyle = settings?.quote_style || {
+      accentColor: '#3B82F6', fontFamily: 'helvetica', showBorders: true,
+      borderRadius: 1, headerSize: 'large', totalsStyle: 'highlighted',
+    };
+    const ACCENT = hexToRgb(style.accentColor);
+    const font = style.fontFamily || 'helvetica';
+    const br = style.borderRadius ?? 1;
+
     const doc = new jsPDF('p', 'mm', 'a4');
     const pageWidth = doc.internal.pageSize.getWidth();
     const margin = 15;
@@ -39,24 +53,26 @@ export class PdfExportService {
     };
 
     const tvaRate = settings?.tva_rate ?? 20;
+    const titleSize = style.headerSize === 'large' ? 24 : style.headerSize === 'medium' ? 20 : 16;
+    const companySize = style.headerSize === 'large' ? 18 : style.headerSize === 'medium' ? 15 : 12;
 
     // === HEADER ===
     // Company name (left)
-    doc.setFontSize(18);
-    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(companySize);
+    doc.setFont(font, 'bold');
     doc.setTextColor(...DARK);
     doc.text(settings?.company_name || 'Mon Entreprise', margin, y + 7);
 
     // DEVIS title (right)
-    doc.setFontSize(24);
-    doc.setTextColor(...BLUE);
+    doc.setFontSize(titleSize);
+    doc.setTextColor(...ACCENT);
     doc.text('DEVIS', pageWidth - margin, y + 7, { align: 'right' });
 
     y += 14;
 
     // Company details (left)
     doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(font, 'normal');
     doc.setTextColor(...GRAY);
 
     if (fields.showCompanyAddress && settings?.address) {
@@ -110,13 +126,15 @@ export class PdfExportService {
     if (fields.showClientICE && quote.customer.ice) clientLines.push(`ICE : ${quote.customer.ice}`);
 
     const boxH = 6 + clientLines.length * 5;
-    doc.roundedRect(margin, clientBoxY, contentWidth / 2, boxH, 1, 1, 'S');
+    if (style.showBorders) {
+      doc.roundedRect(margin, clientBoxY, contentWidth / 2, boxH, br, br, 'S');
+    }
 
     doc.setFontSize(9);
     doc.setTextColor(...DARK);
     let clientY = clientBoxY + 5;
     clientLines.forEach((line, i) => {
-      doc.setFont('helvetica', i === 0 ? 'bold' : 'normal');
+      doc.setFont(font, i === 0 ? 'bold' : 'normal');
       doc.text(line, margin + 4, clientY);
       clientY += 5;
     });
@@ -178,12 +196,12 @@ export class PdfExportService {
       styles: {
         fontSize: 8.5,
         cellPadding: 3,
-        lineColor: [220, 225, 235],
-        lineWidth: 0.2,
+        lineColor: style.showBorders ? [220, 225, 235] : [255, 255, 255],
+        lineWidth: style.showBorders ? 0.2 : 0,
         textColor: DARK,
       },
       headStyles: {
-        fillColor: BLUE,
+        fillColor: ACCENT,
         textColor: [255, 255, 255],
         fontStyle: 'bold',
         fontSize: 8.5,
@@ -207,32 +225,50 @@ export class PdfExportService {
 
       // Total HT
       doc.setFontSize(9);
-      doc.setFont('helvetica', 'bold');
+      doc.setFont(font, 'bold');
       doc.setTextColor(...DARK);
       doc.text('TOTAL HT', totalsX, y + 4);
       doc.text(`${this.formatCurrency(totalHT)} Dh`, pageWidth - margin, y + 4, { align: 'right' });
       y += 7;
 
       // Total TVA
-      doc.setFont('helvetica', 'normal');
+      doc.setFont(font, 'normal');
       doc.text('TOTAL TVA', totalsX, y + 4);
       doc.text(`${this.formatCurrency(totalTVA)} Dh`, pageWidth - margin, y + 4, { align: 'right' });
       y += 7;
 
-      // Total TTC - highlighted
-      doc.setFillColor(...BLUE);
-      doc.roundedRect(totalsX - 2, y, totalsWidth + 2, 9, 1, 1, 'F');
-      doc.setTextColor(255, 255, 255);
-      doc.setFont('helvetica', 'bold');
+      // Total TTC
+      if (style.totalsStyle === 'highlighted') {
+        doc.setFillColor(...ACCENT);
+        doc.roundedRect(totalsX - 2, y, totalsWidth + 2, 9, br, br, 'F');
+        doc.setTextColor(255, 255, 255);
+      } else if (style.totalsStyle === 'boxed') {
+        doc.setDrawColor(...ACCENT);
+        doc.setLineWidth(0.5);
+        doc.roundedRect(totalsX - 2, y, totalsWidth + 2, 9, br, br, 'S');
+        doc.setTextColor(...ACCENT);
+      } else {
+        doc.setTextColor(...ACCENT);
+      }
+      doc.setFont(font, 'bold');
       doc.setFontSize(10);
       doc.text('TOTAL TTC', totalsX + 2, y + 6);
       doc.text(`${this.formatCurrency(quote.totalAmount)} Dh`, pageWidth - margin - 2, y + 6, { align: 'right' });
       y += 16;
     } else {
-      doc.setFillColor(...BLUE);
-      doc.roundedRect(totalsX - 2, y, totalsWidth + 2, 9, 1, 1, 'F');
-      doc.setTextColor(255, 255, 255);
-      doc.setFont('helvetica', 'bold');
+      if (style.totalsStyle === 'highlighted') {
+        doc.setFillColor(...ACCENT);
+        doc.roundedRect(totalsX - 2, y, totalsWidth + 2, 9, br, br, 'F');
+        doc.setTextColor(255, 255, 255);
+      } else if (style.totalsStyle === 'boxed') {
+        doc.setDrawColor(...ACCENT);
+        doc.setLineWidth(0.5);
+        doc.roundedRect(totalsX - 2, y, totalsWidth + 2, 9, br, br, 'S');
+        doc.setTextColor(...ACCENT);
+      } else {
+        doc.setTextColor(...ACCENT);
+      }
+      doc.setFont(font, 'bold');
       doc.setFontSize(10);
       doc.text('TOTAL', totalsX + 2, y + 6);
       doc.text(`${this.formatCurrency(quote.totalAmount)} Dh`, pageWidth - margin - 2, y + 6, { align: 'right' });
@@ -242,7 +278,7 @@ export class PdfExportService {
     // === NOTES ===
     if (fields.showNotes && quote.notes) {
       doc.setTextColor(...DARK);
-      doc.setFont('helvetica', 'italic');
+      doc.setFont(font, 'italic');
       doc.setFontSize(8.5);
       doc.text(`Note : ${quote.notes}`, margin, y);
       y += 10;
@@ -262,14 +298,14 @@ export class PdfExportService {
       doc.line(margin, y, pageWidth - margin, y);
       y += 6;
 
-      doc.setTextColor(...BLUE);
-      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(...ACCENT);
+      doc.setFont(font, 'bold');
       doc.setFontSize(9);
       doc.text('MODALITÉ ET CONDITIONS', margin, y);
       y += 6;
 
       doc.setTextColor(...DARK);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont(font, 'normal');
       doc.setFontSize(8);
       doc.text(`Conditions de règlement de la facture : ${settings?.payment_terms || '30 jours'}`, margin, y);
       y += 5;
