@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Search, RefreshCw, Package, Upload, Bug, Trash2, TrendingUp, BarChart3, FileText, ShoppingCart } from 'lucide-react';
+import React, { useState, useEffect, forwardRef } from 'react';
+import { Search, RefreshCw, Package, Upload, Bug, Trash2, BarChart3, FileText, ShoppingCart, LucideIcon } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useAppContext } from '../context/AppContext';
@@ -7,6 +7,37 @@ import { useToast } from '../context/ToastContext';
 import { ExcelUploadModal } from '../components/ExcelUploadModal';
 import { ProductUploadService } from '../utils/productUploadService';
 import { StorageManager } from '../utils/storage';
+
+interface ActionCardProps {
+  to?: string;
+  onClick?: () => void;
+  icon: LucideIcon;
+  iconGradient: string;
+  title: string;
+  desc: string;
+  disabled?: boolean;
+  children?: React.ReactNode;
+}
+
+const ActionCard = forwardRef<HTMLDivElement, ActionCardProps>(
+  ({ to, onClick, icon: Icon, iconGradient, title, desc, disabled, children }, ref) => {
+    const cls = `group glass rounded-2xl p-5 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-[1.02] text-left ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`;
+    const content = (
+      <>
+        <div className={`flex items-center justify-center w-11 h-11 ${iconGradient} rounded-xl mb-3 transition-all`}>
+          <Icon className="h-5 w-5 text-primary-foreground" />
+        </div>
+        <h3 className="text-base font-semibold text-foreground mb-1">{title}</h3>
+        <p className="text-muted-foreground text-sm">{desc}</p>
+        {children}
+      </>
+    );
+
+    if (to) return <Link to={to} className={cls}>{content}</Link>;
+    return <button onClick={onClick} disabled={disabled} className={cls}>{content}</button>;
+  }
+);
+ActionCard.displayName = 'ActionCard';
 
 export function Home() {
   const { isAdmin, canAccessStockLocation, authVersion, canCreateQuote } = useAuth();
@@ -90,24 +121,6 @@ export function Home() {
       if (canAccessStockLocation(location)) allLocations.add(location);
     });
   });
-
-  // Card component for consistent styling
-  const ActionCard = ({ to, onClick, icon: Icon, iconGradient, title, desc, disabled, children }: any) => {
-    const cls = `group glass rounded-2xl p-5 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-[1.02] text-left ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`;
-    const content = (
-      <>
-        <div className={`flex items-center justify-center w-11 h-11 ${iconGradient} rounded-xl mb-3 transition-all`}>
-          <Icon className="h-5 w-5 text-primary-foreground" />
-        </div>
-        <h3 className="text-base font-semibold text-foreground mb-1">{title}</h3>
-        <p className="text-muted-foreground text-sm">{desc}</p>
-        {children}
-      </>
-    );
-
-    if (to) return <Link to={to} className={cls}>{content}</Link>;
-    return <button onClick={onClick} disabled={disabled} className={cls}>{content}</button>;
-  };
 
   if (state.products.length === 0) {
     return (
