@@ -2,6 +2,108 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  :root {
+    /* Midnight Indigo — Light mode (inverted for readability) */
+    --background: 220 20% 97%;
+    --foreground: 240 50% 6%;
+    
+    --card: 220 20% 95%;
+    --card-foreground: 240 50% 6%;
+    
+    --popover: 220 20% 97%;
+    --popover-foreground: 240 50% 6%;
+    
+    --primary: 239 84% 67%;
+    --primary-foreground: 0 0% 100%;
+    
+    --secondary: 240 30% 92%;
+    --secondary-foreground: 240 50% 15%;
+    
+    --muted: 220 20% 92%;
+    --muted-foreground: 220 15% 45%;
+    
+    --accent: 240 60% 95%;
+    --accent-foreground: 239 84% 55%;
+    
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    
+    --border: 220 20% 88%;
+    --input: 220 20% 88%;
+    --ring: 239 84% 67%;
+    
+    --radius: 0.75rem;
+    
+    --sidebar-background: 240 40% 10%;
+    --sidebar-foreground: 220 20% 90%;
+    --sidebar-primary: 239 84% 67%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 40% 18%;
+    --sidebar-accent-foreground: 220 20% 90%;
+    --sidebar-border: 240 30% 20%;
+    --sidebar-ring: 239 84% 67%;
+    
+    /* Custom tokens */
+    --gradient-primary: linear-gradient(135deg, hsl(239 84% 67%), hsl(250 90% 72%));
+    --gradient-dark: linear-gradient(135deg, hsl(240 50% 6%), hsl(240 40% 12%));
+    --shadow-glow: 0 0 30px -5px hsl(239 84% 67% / 0.3);
+    --shadow-elevated: 0 20px 40px -15px hsl(240 50% 6% / 0.15);
+  }
+
+  .dark {
+    /* Midnight Indigo — Dark mode (the "real" theme) */
+    --background: 240 50% 4%;
+    --foreground: 220 20% 92%;
+    
+    --card: 240 40% 8%;
+    --card-foreground: 220 20% 92%;
+    
+    --popover: 240 40% 8%;
+    --popover-foreground: 220 20% 92%;
+    
+    --primary: 239 84% 67%;
+    --primary-foreground: 0 0% 100%;
+    
+    --secondary: 240 30% 14%;
+    --secondary-foreground: 220 20% 85%;
+    
+    --muted: 240 30% 12%;
+    --muted-foreground: 220 15% 55%;
+    
+    --accent: 240 40% 14%;
+    --accent-foreground: 239 84% 75%;
+    
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    
+    --border: 240 30% 16%;
+    --input: 240 30% 16%;
+    --ring: 239 84% 67%;
+    
+    --sidebar-background: 240 50% 3%;
+    --sidebar-foreground: 220 20% 90%;
+    --sidebar-primary: 239 84% 67%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 40% 10%;
+    --sidebar-accent-foreground: 220 20% 90%;
+    --sidebar-border: 240 30% 12%;
+    --sidebar-ring: 239 84% 67%;
+    
+    --shadow-glow: 0 0 40px -5px hsl(239 84% 67% / 0.25);
+    --shadow-elevated: 0 20px 40px -15px hsl(0 0% 0% / 0.5);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
 html, body {
   height: 100%;
 }
@@ -52,16 +154,16 @@ html, body {
 }
 
 .glow-effect {
-  filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.8));
+  filter: drop-shadow(0 0 8px hsl(239 84% 67% / 0.8));
 }
 
 @keyframes scannerPulse {
   0%, 100% {
-    box-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
+    box-shadow: 0 0 20px hsl(239 84% 67% / 0.5);
     transform: scale(1);
   }
   50% {
-    box-shadow: 0 0 40px rgba(59, 130, 246, 0.8);
+    box-shadow: 0 0 40px hsl(239 84% 67% / 0.8);
     transform: scale(1.02);
   }
 }
@@ -82,4 +184,11 @@ html, body {
 
 video {
   transition: filter 0.3s ease;
+}
+
+/* Glass morphism utility */
+.glass {
+  background: hsl(var(--card) / 0.7);
+  backdrop-filter: blur(12px);
+  border: 1px solid hsl(var(--border) / 0.5);
 }
