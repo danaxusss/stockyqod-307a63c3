@@ -235,19 +235,37 @@ export class PdfExportService {
       doc.text(`${this.formatCurrency(totalTVA)} Dh`, pageWidth - margin, y + 4, { align: 'right' });
       y += 7;
 
-      // Total TTC - highlighted
-      doc.setFillColor(...ACCENT);
-      doc.roundedRect(totalsX - 2, y, totalsWidth + 2, 9, 1, 1, 'F');
-      doc.setTextColor(255, 255, 255);
+      // Total TTC
+      if (style.totalsStyle === 'highlighted') {
+        doc.setFillColor(...ACCENT);
+        doc.roundedRect(totalsX - 2, y, totalsWidth + 2, 9, br, br, 'F');
+        doc.setTextColor(255, 255, 255);
+      } else if (style.totalsStyle === 'boxed') {
+        doc.setDrawColor(...ACCENT);
+        doc.setLineWidth(0.5);
+        doc.roundedRect(totalsX - 2, y, totalsWidth + 2, 9, br, br, 'S');
+        doc.setTextColor(...ACCENT);
+      } else {
+        doc.setTextColor(...ACCENT);
+      }
       doc.setFont(font, 'bold');
       doc.setFontSize(10);
       doc.text('TOTAL TTC', totalsX + 2, y + 6);
       doc.text(`${this.formatCurrency(quote.totalAmount)} Dh`, pageWidth - margin - 2, y + 6, { align: 'right' });
       y += 16;
     } else {
-      doc.setFillColor(...ACCENT);
-      doc.roundedRect(totalsX - 2, y, totalsWidth + 2, 9, 1, 1, 'F');
-      doc.setTextColor(255, 255, 255);
+      if (style.totalsStyle === 'highlighted') {
+        doc.setFillColor(...ACCENT);
+        doc.roundedRect(totalsX - 2, y, totalsWidth + 2, 9, br, br, 'F');
+        doc.setTextColor(255, 255, 255);
+      } else if (style.totalsStyle === 'boxed') {
+        doc.setDrawColor(...ACCENT);
+        doc.setLineWidth(0.5);
+        doc.roundedRect(totalsX - 2, y, totalsWidth + 2, 9, br, br, 'S');
+        doc.setTextColor(...ACCENT);
+      } else {
+        doc.setTextColor(...ACCENT);
+      }
       doc.setFont(font, 'bold');
       doc.setFontSize(10);
       doc.text('TOTAL', totalsX + 2, y + 6);
