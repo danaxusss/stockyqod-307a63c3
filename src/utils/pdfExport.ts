@@ -11,9 +11,17 @@ function hexToRgb(hex: string): [number, number, number] {
     : [59, 130, 246];
 }
 
-const DARK = [30, 30, 30];
-const GRAY = [120, 120, 120];
-const LIGHT_BG = [245, 247, 250];
+function lightenColor(rgb: [number, number, number], factor: number): [number, number, number] {
+  return [
+    Math.min(255, Math.round(rgb[0] + (255 - rgb[0]) * factor)),
+    Math.min(255, Math.round(rgb[1] + (255 - rgb[1]) * factor)),
+    Math.min(255, Math.round(rgb[2] + (255 - rgb[2]) * factor)),
+  ];
+}
+
+const DARK: [number, number, number] = [30, 30, 30];
+const GRAY: [number, number, number] = [100, 100, 100];
+const LIGHT_GRAY: [number, number, number] = [200, 200, 200];
 
 export class PdfExportService {
   static formatDate(date: Date): string {
@@ -36,12 +44,14 @@ export class PdfExportService {
       borderRadius: 1, headerSize: 'large', totalsStyle: 'highlighted',
     };
     const ACCENT = hexToRgb(style.accentColor);
+    const ACCENT_LIGHT = lightenColor(ACCENT, 0.85);
     const font = style.fontFamily || 'helvetica';
     const br = style.borderRadius ?? 1;
 
     const doc = new jsPDF('p', 'mm', 'a4');
     const pageWidth = doc.internal.pageSize.getWidth();
-    const margin = 15;
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 14;
     const contentWidth = pageWidth - margin * 2;
     let y = margin;
 
@@ -53,140 +63,154 @@ export class PdfExportService {
     };
 
     const tvaRate = settings?.tva_rate ?? 20;
-    const titleSize = style.headerSize === 'large' ? 24 : style.headerSize === 'medium' ? 20 : 16;
-    const companySize = style.headerSize === 'large' ? 18 : style.headerSize === 'medium' ? 15 : 12;
 
-    // === HEADER ===
-    // Company name (left)
-    doc.setFontSize(companySize);
+    // === HEADER: Company name + subtitle ===
+    const companyName = settings?.company_name || 'Mon Entreprise';
+    doc.setFontSize(22);
     doc.setFont(font, 'bold');
-    doc.setTextColor(...DARK);
-    doc.text(settings?.company_name || 'Mon Entreprise', margin, y + 7);
-
-    // DEVIS title (right)
-    doc.setFontSize(titleSize);
     doc.setTextColor(...ACCENT);
-    doc.text('DEVIS', pageWidth - margin, y + 7, { align: 'right' });
+    doc.text(companyName, margin, y + 8);
 
-    y += 14;
-
-    // Company details (left)
-    doc.setFontSize(9);
+    // Subtitle under company name
+    doc.setFontSize(8);
     doc.setFont(font, 'normal');
     doc.setTextColor(...GRAY);
+    doc.text('MATERIEL DE CUISINE PROFESSIONNEL', margin, y + 13);
 
-    if (fields.showCompanyAddress && settings?.address) {
-      doc.text(`Adresse : ${settings.address}`, margin, y);
-      y += 4.5;
+    y += 20;
+
+    // === TWO COLUMN LAYOUT: Client info (left) + Quote info (right) ===
+    const leftColWidth = contentWidth * 0.58;
+    const rightColWidth = contentWidth * 0.38;
+    const rightColX = margin + leftColWidth + contentWidth * 0.04;
+    const sectionStartY = y;
+
+    // --- LEFT: Client Information Table ---
+    const clientRows: [string, string][] = [];
+    clientRows.push(['Nom du Client', quote.customer.fullName || '']);
+    if (quote.customer.address || quote.customer.phoneNumber) {
+      const addrParts: string[] = [];
+      if (quote.customer.phoneNumber) addrParts.push(quote.customer.phoneNumber);
+      if (quote.customer.address) addrParts.push(quote.customer.address);
+      clientRows.push(['Adresse / Tel', addrParts.join(' / ')]);
     }
-    if (fields.showCompanyPhone && settings?.phone) {
-      doc.text(`Téléphone : ${settings.phone}`, margin, y);
-      y += 4.5;
+    if (quote.customer.city) {
+      clientRows.push(['Ville', quote.customer.city]);
     }
-    if (fields.showCompanyEmail && settings?.email) {
-      doc.text(`E-mail : ${settings.email}`, margin, y);
-      y += 4.5;
+    if (quote.customer.salesPerson) {
+      clientRows.push(['Commercial', quote.customer.salesPerson]);
     }
-    if (fields.showCompanyWebsite && settings?.website) {
-      doc.text(`Site internet : ${settings.website}`, margin, y);
-      y += 4.5;
-    }
-    if (fields.showCompanyICE && settings?.ice) {
-      doc.text(`ICE : ${settings.ice}`, margin, y);
-      y += 4.5;
+    if (fields.showClientICE && quote.customer.ice) {
+      clientRows.push(['ICE Client', quote.customer.ice]);
     }
 
-    // Quote info (right side)
-    const rightX = pageWidth - margin;
-    let rightY = 22;
-    doc.setFontSize(9);
-    doc.setTextColor(...DARK);
-    doc.text(`N° ${quote.quoteNumber}`, rightX, rightY, { align: 'right' });
-    rightY += 4.5;
-    doc.text(`Date : ${this.formatDate(quote.createdAt)}`, rightX, rightY, { align: 'right' });
-    rightY += 4.5;
+    autoTable(doc, {
+      startY: sectionStartY,
+      body: clientRows.map(([label, value]) => [label, value]),
+      margin: { left: margin, right: pageWidth - margin - leftColWidth },
+      theme: 'plain',
+      styles: {
+        fontSize: 8.5,
+        cellPadding: { top: 2.5, bottom: 2.5, left: 3, right: 3 },
+        lineColor: LIGHT_GRAY,
+        lineWidth: 0.3,
+        textColor: DARK,
+      },
+      columnStyles: {
+        0: {
+          cellWidth: 30,
+          fillColor: ACCENT,
+          textColor: [255, 255, 255],
+          fontStyle: 'bold',
+          fontSize: 7.5,
+        },
+        1: {
+          cellWidth: leftColWidth - 30,
+          fontSize: 8.5,
+        },
+      },
+      tableLineColor: LIGHT_GRAY,
+      tableLineWidth: 0.3,
+    });
+
+    // --- RIGHT: DEVIS title + Quote details ---
+    let rightY = sectionStartY;
+
+    // DEVIS title
+    doc.setFontSize(28);
+    doc.setFont(font, 'bold');
+    doc.setTextColor(...ACCENT);
+    doc.text('DEVIS', rightColX + rightColWidth, rightY + 6, { align: 'right' });
+    rightY += 14;
+
+    // Quote details as mini table
+    const quoteInfoRows: [string, string][] = [
+      ['Date', this.formatDate(quote.createdAt)],
+      ['N° de piece', quote.quoteNumber],
+    ];
+    if (quote.commandNumber) {
+      quoteInfoRows.push(['N° de cmd', quote.commandNumber]);
+    }
     if (fields.showValidityDate) {
       const validityDays = settings?.quote_validity_days ?? 30;
       const validityDate = new Date(quote.createdAt);
       validityDate.setDate(validityDate.getDate() + validityDays);
-      doc.text(`Valable jusqu'au : ${this.formatDate(validityDate)}`, rightX, rightY, { align: 'right' });
+      quoteInfoRows.push(['Validite', this.formatDate(validityDate)]);
     }
 
-    y = Math.max(y, rightY) + 8;
-
-    // === CLIENT BOX ===
-    const clientBoxY = y;
-    doc.setDrawColor(200, 210, 225);
-    doc.setLineWidth(0.3);
-
-    const clientLines: string[] = [];
-    clientLines.push(`Client : ${quote.customer.fullName}`);
-    if (quote.customer.address) clientLines.push(`Adresse : ${quote.customer.address}, ${quote.customer.city}`);
-    if (quote.customer.phoneNumber) clientLines.push(`Tél : ${quote.customer.phoneNumber}`);
-    if (fields.showClientICE && quote.customer.ice) clientLines.push(`ICE : ${quote.customer.ice}`);
-
-    const boxH = 6 + clientLines.length * 5;
-    if (style.showBorders) {
-      doc.roundedRect(margin, clientBoxY, contentWidth / 2, boxH, br, br, 'S');
-    }
-
-    doc.setFontSize(9);
-    doc.setTextColor(...DARK);
-    let clientY = clientBoxY + 5;
-    clientLines.forEach((line, i) => {
-      doc.setFont(font, i === 0 ? 'bold' : 'normal');
-      doc.text(line, margin + 4, clientY);
-      clientY += 5;
+    autoTable(doc, {
+      startY: rightY,
+      body: quoteInfoRows,
+      margin: { left: rightColX, right: margin },
+      theme: 'plain',
+      styles: {
+        fontSize: 8,
+        cellPadding: { top: 2, bottom: 2, left: 3, right: 3 },
+        lineColor: LIGHT_GRAY,
+        lineWidth: 0.2,
+        textColor: DARK,
+      },
+      columnStyles: {
+        0: { cellWidth: 25, fontStyle: 'bold', textColor: GRAY, fontSize: 7.5 },
+        1: { cellWidth: rightColWidth - 25, halign: 'right' },
+      },
     });
 
-    y = clientBoxY + boxH + 8;
+    // Get final Y after both sections
+    const leftFinalY = (doc as any).lastAutoTable?.finalY || sectionStartY + 30;
+    y = Math.max(leftFinalY, (doc as any).lastAutoTable?.finalY || sectionStartY + 30) + 6;
+
+    // === COMPANY DETAILS (small line under header) ===
+    const companyDetails: string[] = [];
+    if (fields.showCompanyAddress && settings?.address) companyDetails.push(settings.address);
+    if (fields.showCompanyPhone && settings?.phone) companyDetails.push(`Tel: ${settings.phone}`);
+    if (fields.showCompanyEmail && settings?.email) companyDetails.push(settings.email);
+
+    if (companyDetails.length > 0) {
+      doc.setFontSize(7);
+      doc.setFont(font, 'normal');
+      doc.setTextColor(...GRAY);
+      doc.text(companyDetails.join('  |  '), margin, y);
+      y += 5;
+    }
 
     // === ITEMS TABLE ===
+    // CHR-style: Brand | Barcode | Description | QTE | PU TTC | TOTAL TTC
     const showTVA = fields.showTVA;
-    
-    const tableHeaders = showTVA
-      ? [['DESCRIPTION', 'QTÉ', 'PRIX U. HT', 'TVA %', 'TVA €', 'TOTAL HT']]
-      : [['DESCRIPTION', 'QTÉ', 'PRIX UNITAIRE', 'TOTAL']];
+
+    const tableHeaders = [['Marque', 'REF', 'DESCRIPTION', 'QTE', 'PU TTC', 'TOTAL TTC']];
 
     const tableBody = quote.items.map(item => {
-      const unitHT = item.unitPrice / (1 + tvaRate / 100);
-      const totalHT = unitHT * item.quantity;
-      const tvaAmount = totalHT * (tvaRate / 100);
-
-      if (showTVA) {
-        return [
-          `${item.product.name}\n${item.product.brand} • ${item.product.barcode}`,
-          String(item.quantity),
-          `${this.formatCurrency(unitHT)} Dh`,
-          `${tvaRate}%`,
-          `${this.formatCurrency(tvaAmount)} Dh`,
-          `${this.formatCurrency(totalHT)} Dh`,
-        ];
-      } else {
-        return [
-          `${item.product.name}\n${item.product.brand} • ${item.product.barcode}`,
-          String(item.quantity),
-          `${this.formatCurrency(item.unitPrice)} Dh`,
-          `${this.formatCurrency(item.subtotal)} Dh`,
-        ];
-      }
+      const totalTTC = item.unitPrice * item.quantity;
+      return [
+        item.product.brand || '',
+        item.product.barcode || '',
+        item.product.name,
+        String(item.quantity),
+        this.formatCurrency(item.unitPrice),
+        this.formatCurrency(totalTTC),
+      ];
     });
-
-    const colStyles = showTVA
-      ? {
-          0: { cellWidth: 'auto' },
-          1: { cellWidth: 18, halign: 'center' },
-          2: { cellWidth: 28, halign: 'right' },
-          3: { cellWidth: 18, halign: 'center' },
-          4: { cellWidth: 25, halign: 'right' },
-          5: { cellWidth: 28, halign: 'right' },
-        }
-      : {
-          0: { cellWidth: 'auto' },
-          1: { cellWidth: 20, halign: 'center' },
-          2: { cellWidth: 35, halign: 'right' },
-          3: { cellWidth: 35, halign: 'right' },
-        };
 
     autoTable(doc, {
       startY: y,
@@ -194,133 +218,145 @@ export class PdfExportService {
       body: tableBody,
       margin: { left: margin, right: margin },
       styles: {
-        fontSize: 8.5,
-        cellPadding: 3,
-        lineColor: style.showBorders ? [220, 225, 235] : [255, 255, 255],
-        lineWidth: style.showBorders ? 0.2 : 0,
+        fontSize: 8,
+        cellPadding: 2.5,
+        lineColor: LIGHT_GRAY,
+        lineWidth: 0.2,
         textColor: DARK,
+        overflow: 'linebreak',
       },
       headStyles: {
         fillColor: ACCENT,
         textColor: [255, 255, 255],
         fontStyle: 'bold',
-        fontSize: 8.5,
+        fontSize: 8,
+        halign: 'center',
       },
       alternateRowStyles: {
-        fillColor: LIGHT_BG,
+        fillColor: [250, 250, 252],
       },
-      columnStyles: colStyles,
+      columnStyles: {
+        0: { cellWidth: 22, halign: 'center' },  // Marque
+        1: { cellWidth: 28, halign: 'center' },   // REF / Barcode
+        2: { cellWidth: 'auto' },                   // Description
+        3: { cellWidth: 14, halign: 'center' },    // QTE
+        4: { cellWidth: 26, halign: 'right' },     // PU TTC
+        5: { cellWidth: 28, halign: 'right' },     // TOTAL TTC
+      },
+    });
+
+    y = (doc as any).lastAutoTable.finalY + 4;
+
+    // === TOTALS ===
+    const totalTTC = quote.totalAmount;
+    const totalHT = totalTTC / (1 + tvaRate / 100);
+    const totalTVA = totalTTC - totalHT;
+
+    // Totals table (right-aligned)
+    const totalsData: (string | { content: string; styles: object })[][] = [];
+
+    if (showTVA) {
+      totalsData.push([
+        { content: 'TOTAL HT', styles: { fontStyle: 'bold', halign: 'right' } },
+        { content: `${this.formatCurrency(totalHT)}`, styles: { halign: 'right' } },
+      ]);
+      totalsData.push([
+        { content: `TVA ${tvaRate}%`, styles: { fontStyle: 'bold', halign: 'right' } },
+        { content: `${this.formatCurrency(totalTVA)}`, styles: { halign: 'right' } },
+      ]);
+    }
+
+    // Total TTC row
+    const ttcRowStyle = style.totalsStyle === 'highlighted'
+      ? { fillColor: ACCENT, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 10 }
+      : style.totalsStyle === 'boxed'
+      ? { lineColor: ACCENT, lineWidth: 0.5, fontStyle: 'bold', textColor: ACCENT, fontSize: 10 }
+      : { fontStyle: 'bold', textColor: ACCENT, fontSize: 10 };
+
+    totalsData.push([
+      { content: 'TOTAL TTC', styles: { ...ttcRowStyle, halign: 'right' } },
+      { content: `${this.formatCurrency(totalTTC)}`, styles: { ...ttcRowStyle, halign: 'right' } },
+    ]);
+
+    autoTable(doc, {
+      startY: y,
+      body: totalsData,
+      margin: { left: pageWidth - margin - 80, right: margin },
+      theme: 'plain',
+      styles: {
+        fontSize: 9,
+        cellPadding: { top: 2.5, bottom: 2.5, left: 4, right: 4 },
+        textColor: DARK,
+        lineColor: LIGHT_GRAY,
+        lineWidth: 0.2,
+      },
+      columnStyles: {
+        0: { cellWidth: 35 },
+        1: { cellWidth: 45 },
+      },
     });
 
     y = (doc as any).lastAutoTable.finalY + 6;
 
-    // === TOTALS ===
-    const totalsX = pageWidth - margin - 80;
-    const totalsWidth = 80;
-
-    if (showTVA) {
-      const totalTTC = quote.totalAmount;
-      const totalHT = totalTTC / (1 + tvaRate / 100);
-      const totalTVA = totalTTC - totalHT;
-
-      // Total HT
-      doc.setFontSize(9);
-      doc.setFont(font, 'bold');
-      doc.setTextColor(...DARK);
-      doc.text('TOTAL HT', totalsX, y + 4);
-      doc.text(`${this.formatCurrency(totalHT)} Dh`, pageWidth - margin, y + 4, { align: 'right' });
-      y += 7;
-
-      // Total TVA
-      doc.setFont(font, 'normal');
-      doc.text('TOTAL TVA', totalsX, y + 4);
-      doc.text(`${this.formatCurrency(totalTVA)} Dh`, pageWidth - margin, y + 4, { align: 'right' });
-      y += 7;
-
-      // Total TTC
-      if (style.totalsStyle === 'highlighted') {
-        doc.setFillColor(...ACCENT);
-        doc.roundedRect(totalsX - 2, y, totalsWidth + 2, 9, br, br, 'F');
-        doc.setTextColor(255, 255, 255);
-      } else if (style.totalsStyle === 'boxed') {
-        doc.setDrawColor(...ACCENT);
-        doc.setLineWidth(0.5);
-        doc.roundedRect(totalsX - 2, y, totalsWidth + 2, 9, br, br, 'S');
-        doc.setTextColor(...ACCENT);
-      } else {
-        doc.setTextColor(...ACCENT);
-      }
-      doc.setFont(font, 'bold');
-      doc.setFontSize(10);
-      doc.text('TOTAL TTC', totalsX + 2, y + 6);
-      doc.text(`${this.formatCurrency(quote.totalAmount)} Dh`, pageWidth - margin - 2, y + 6, { align: 'right' });
-      y += 16;
-    } else {
-      if (style.totalsStyle === 'highlighted') {
-        doc.setFillColor(...ACCENT);
-        doc.roundedRect(totalsX - 2, y, totalsWidth + 2, 9, br, br, 'F');
-        doc.setTextColor(255, 255, 255);
-      } else if (style.totalsStyle === 'boxed') {
-        doc.setDrawColor(...ACCENT);
-        doc.setLineWidth(0.5);
-        doc.roundedRect(totalsX - 2, y, totalsWidth + 2, 9, br, br, 'S');
-        doc.setTextColor(...ACCENT);
-      } else {
-        doc.setTextColor(...ACCENT);
-      }
-      doc.setFont(font, 'bold');
-      doc.setFontSize(10);
-      doc.text('TOTAL', totalsX + 2, y + 6);
-      doc.text(`${this.formatCurrency(quote.totalAmount)} Dh`, pageWidth - margin - 2, y + 6, { align: 'right' });
-      y += 16;
-    }
-
     // === NOTES ===
     if (fields.showNotes && quote.notes) {
       doc.setTextColor(...DARK);
-      doc.setFont(font, 'italic');
-      doc.setFontSize(8.5);
-      doc.text(`Note : ${quote.notes}`, margin, y);
-      y += 10;
+      doc.setFont(font, 'bold');
+      doc.setFontSize(8);
+      doc.text('Note:', margin, y + 3);
+      doc.setFont(font, 'normal');
+      const noteLines = doc.splitTextToSize(quote.notes, contentWidth - 15);
+      doc.text(noteLines, margin + 12, y + 3);
+      y += 4 + noteLines.length * 4;
     }
 
-    // === FOOTER: Payment terms & conditions ===
+    // === FOOTER ===
+    // Always push footer to bottom area
+    const footerY = Math.max(y + 10, pageHeight - 30);
+
     if (fields.showPaymentTerms) {
-      // Check if we need a new page
-      if (y > 250) {
-        doc.addPage();
-        y = margin;
-      }
+      doc.setDrawColor(...LIGHT_GRAY);
+      doc.line(margin, footerY - 4, pageWidth - margin, footerY - 4);
 
-      y = Math.max(y, 230);
-
-      doc.setDrawColor(220, 225, 235);
-      doc.line(margin, y, pageWidth - margin, y);
-      y += 6;
-
-      doc.setTextColor(...ACCENT);
-      doc.setFont(font, 'bold');
-      doc.setFontSize(9);
-      doc.text('MODALITÉ ET CONDITIONS', margin, y);
-      y += 6;
-
-      doc.setTextColor(...DARK);
+      doc.setFontSize(7.5);
       doc.setFont(font, 'normal');
-      doc.setFontSize(8);
-      doc.text(`Conditions de règlement de la facture : ${settings?.payment_terms || '30 jours'}`, margin, y);
-      y += 5;
+      doc.setTextColor(...GRAY);
+      doc.text(
+        `Conditions de reglement : ${settings?.payment_terms || '30 jours'}`,
+        margin,
+        footerY
+      );
+    }
 
-      // Legal text
-      y += 5;
+    // Company legal footer (centered at very bottom)
+    const legalY = pageHeight - 14;
+    doc.setDrawColor(...ACCENT);
+    doc.setLineWidth(0.5);
+    doc.line(margin, legalY - 3, pageWidth - margin, legalY - 3);
+
+    doc.setFontSize(7);
+    doc.setFont(font, 'bold');
+    doc.setTextColor(...ACCENT);
+    doc.text(companyName, pageWidth / 2, legalY, { align: 'center' });
+
+    // Address + contact line
+    const legalParts: string[] = [];
+    if (settings?.address) legalParts.push(settings.address);
+    if (settings?.phone) legalParts.push(`Tel: ${settings.phone}`);
+    if (settings?.email) legalParts.push(settings.email);
+    if (settings?.website && fields.showCompanyWebsite) legalParts.push(settings.website);
+
+    if (legalParts.length > 0) {
+      doc.setFont(font, 'normal');
       doc.setTextColor(...GRAY);
       doc.setFontSize(6.5);
-      const legalText = `Conformément à l'article L. 441-6, une indemnité de 40 € est due en cas de retard de paiement ou de non paiement total d'une facture à la date de paiement définie dans le document.`;
-      doc.text(legalText, pageWidth / 2, y, { align: 'center', maxWidth: contentWidth });
+      doc.text(legalParts.join('  -  '), pageWidth / 2, legalY + 3.5, { align: 'center', maxWidth: contentWidth });
+    }
 
-      if (settings?.company_name) {
-        y += 5;
-        doc.text(`${settings.company_name}${settings.ice ? ` - ICE : ${settings.ice}` : ''}`, pageWidth / 2, y, { align: 'center' });
-      }
+    // ICE line
+    if (fields.showCompanyICE && settings?.ice) {
+      doc.setFontSize(6.5);
+      doc.text(`ICE : ${settings.ice}`, pageWidth / 2, legalY + 7, { align: 'center' });
     }
 
     // === DOWNLOAD ===
