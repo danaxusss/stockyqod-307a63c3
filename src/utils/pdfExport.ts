@@ -241,13 +241,13 @@ export class PdfExportService {
       doc.text('MATERIEL DE CUISINE PROFESSIONNEL', nameX, nameY + 9);
     }
 
-    y = Math.max(y + logoHeight, y + 18) + 8;
+    y = Math.max(y + logoHeight, y + 14) + 5;
 
     // === THIN SEPARATOR LINE ===
     doc.setDrawColor(...ACCENT);
-    doc.setLineWidth(0.6);
+    doc.setLineWidth(0.4);
     doc.line(margin, y, pageWidth - margin, y);
-    y += 6;
+    y += 4;
 
     // === TWO COLUMN LAYOUT: Client info (left) + Quote meta (right) ===
     const leftColWidth = contentWidth * 0.55;
