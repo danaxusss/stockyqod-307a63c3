@@ -96,6 +96,7 @@ export type Database = {
           logo_url: string | null
           payment_terms: string
           phone: string
+          quote_style: Json
           quote_validity_days: number
           quote_visible_fields: Json
           tva_rate: number
@@ -111,6 +112,7 @@ export type Database = {
           logo_url?: string | null
           payment_terms?: string
           phone?: string
+          quote_style?: Json
           quote_validity_days?: number
           quote_visible_fields?: Json
           tva_rate?: number
@@ -126,6 +128,7 @@ export type Database = {
           logo_url?: string | null
           payment_terms?: string
           phone?: string
+          quote_style?: Json
           quote_validity_days?: number
           quote_visible_fields?: Json
           tva_rate?: number
