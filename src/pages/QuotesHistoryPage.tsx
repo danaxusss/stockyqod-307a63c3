@@ -83,9 +83,21 @@ export function QuotesHistoryPage() {
 
   const handleExport = async (quote: Quote) => {
     setIsExporting(quote.id);
-    try { await PdfExportService.exportQuoteToPdf(quote, companySettings); setMessage({ type: 'success', text: 'Devis exporté en PDF' }); }
-    catch { setMessage({ type: 'error', text: 'Erreur lors de l\'export PDF' }); }
-    finally { setIsExporting(null); }
+    try {
+      const [freshQuote, freshSettings] = await Promise.all([
+        SupabaseQuotesService.getQuote(quote.id),
+        CompanySettingsService.getSettings(),
+      ]);
+
+      await PdfExportService.exportQuoteToPdf(freshQuote || quote, freshSettings || companySettings);
+      setMessage({ type: 'success', text: 'Devis exporté en PDF' });
+    }
+    catch {
+      setMessage({ type: 'error', text: 'Erreur lors de l\'export PDF' });
+    }
+    finally {
+      setIsExporting(null);
+    }
   };
 
   const totalPages = Math.ceil(filteredQuotes.length / QUOTES_PER_PAGE);
