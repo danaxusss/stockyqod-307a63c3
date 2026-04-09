@@ -346,24 +346,27 @@ export class PdfExportService {
 
     // === ITEMS TABLE ===
     const tableHeaders = hasDiscount
-      ? [['Marque', 'REF', 'DESCRIPTION', 'QTE', 'PU TTC', 'Remise', 'TOTAL TTC']]
-      : [['Marque', 'REF', 'DESCRIPTION', 'QTE', 'PU TTC', 'TOTAL TTC']];
+      ? [['Marque', 'REF', 'DESCRIPTION', 'QTE', 'PU HT', 'Remise', 'TOTAL HT']]
+      : [['Marque', 'REF', 'DESCRIPTION', 'QTE', 'PU HT', 'TOTAL HT']];
+
+    const tvaDivisor = 1 + tvaRate / 100;
 
     const tableBody = quote.items.map(item => {
       const discount = item.discount ?? 0;
-      const discountedPrice = item.unitPrice * (1 - discount / 100);
-      const totalTTC = discountedPrice * item.quantity;
+      const unitPriceHT = item.unitPrice / tvaDivisor;
+      const discountedPriceHT = unitPriceHT * (1 - discount / 100);
+      const totalHTItem = discountedPriceHT * item.quantity;
       const row = [
         item.product.brand || '',
         item.product.barcode || '',
         item.product.name,
         String(item.quantity),
-        this.formatCurrency(item.unitPrice),
+        this.formatCurrency(unitPriceHT),
       ];
       if (hasDiscount) {
         row.push(discount > 0 ? `${discount}%` : '-');
       }
-      row.push(this.formatCurrency(totalTTC));
+      row.push(this.formatCurrency(totalHTItem));
       return row;
     });
 

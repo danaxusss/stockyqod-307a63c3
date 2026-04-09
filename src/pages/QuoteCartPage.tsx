@@ -999,7 +999,7 @@ export function QuoteCartPage() {
                       Marge %
                     </th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Prix Unitaire
+                      PU HT
                     </th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                       Quantité
@@ -1008,7 +1008,7 @@ export function QuoteCartPage() {
                       Remise %
                     </th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Sous-total
+                      Total HT
                     </th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                       Actions
@@ -1099,7 +1099,7 @@ export function QuoteCartPage() {
                         </div>
                       </td>
                       <td className="px-4 py-4 text-sm font-medium text-foreground">
-                        {ExcelExportService.formatCurrency(item.subtotal)} Dh
+                        {ExcelExportService.formatCurrency(item.subtotal / (1 + (companySettings?.tva_rate ?? 20) / 100))} Dh
                       </td>
                       <td className="px-4 py-4">
                         <button
@@ -1146,16 +1146,31 @@ export function QuoteCartPage() {
               </div>
             )}
 
-            {/* Total */}
+            {/* Totals */}
             <div className="px-4 py-2 bg-secondary border-t border-border">
               <div className="flex justify-end">
-                <div className="text-right">
-                  <div className="text-lg font-semibold text-foreground">
-                    Total: {ExcelExportService.formatCurrency(totalAmount)} Dh
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    {totalItems} article{totalItems !== 1 ? 's' : ''}
-                  </div>
+                <div className="text-right space-y-1">
+                  {(() => {
+                    const tvaRate = companySettings?.tva_rate ?? 20;
+                    const totalHT = totalAmount / (1 + tvaRate / 100);
+                    const totalTVA = totalAmount - totalHT;
+                    return (
+                      <>
+                        <div className="text-sm text-muted-foreground">
+                          Total HT: {ExcelExportService.formatCurrency(totalHT)} Dh
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          TVA {tvaRate}%: {ExcelExportService.formatCurrency(totalTVA)} Dh
+                        </div>
+                        <div className="text-lg font-semibold text-foreground">
+                          Total TTC: {ExcelExportService.formatCurrency(totalAmount)} Dh
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          {totalItems} article{totalItems !== 1 ? 's' : ''}
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
