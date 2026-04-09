@@ -309,50 +309,43 @@ export function SearchPage() {
             </h2>
             <div className="text-sm text-muted-foreground">Trié par {getSortLabel(sortBy)} ({sortOrder === 'asc' ? 'croissant' : 'décroissant'})</div>
           </div>
-          <div className="space-y-3">
+          <div className="space-y-2">
             {filteredResults.map((product) => {
               const accessibleStockLevels = Object.entries(product.stock_levels || {}).filter(([location]) => canAccessStockLocation(location));
               const totalStock = accessibleStockLevels.reduce((sum, [, level]) => sum + level, 0);
               const displayPrice = getDisplayPrice(product);
               const isAdded = addedProductIds.has(product.barcode);
               return (
-                <div key={product.barcode} className="glass rounded-xl p-4 shadow-lg hover:shadow-xl transition-all duration-300 group">
-                  <div className="flex items-center justify-between">
-                    <Link to={`/product/${encodeURIComponent(product.barcode)}`} className="flex-1 min-w-0 hover:scale-[1.01] transition-transform duration-200">
-                      <div className="flex items-center space-x-3 mb-2">
-                        <div className="p-2 bg-primary/10 rounded-lg"><Package className="h-4 w-4 text-primary" /></div>
-                        <div className="flex-1 min-w-0">
-                          <h3 className="font-semibold text-foreground truncate">{product.name}</h3>
-                        </div>
+                <div key={product.barcode} className="glass rounded-lg px-3 py-2.5 shadow hover:shadow-md transition-all duration-200 group">
+                  <div className="flex items-center justify-between gap-3">
+                    <Link to={`/product/${encodeURIComponent(product.barcode)}`} className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-semibold text-foreground text-sm truncate">{product.name}</h3>
+                        {product.brand && <span className="px-1.5 py-0.5 bg-primary/10 text-primary text-[11px] rounded font-medium shrink-0">{product.brand}</span>}
+                        {product.provider && <span className="px-1.5 py-0.5 bg-orange-500/10 text-orange-500 text-[11px] rounded font-medium shrink-0 hidden sm:inline">{product.provider}</span>}
                       </div>
-                      <div className="flex items-center flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
                         <span>#{product.barcode}</span>
-                        <span className="font-medium text-emerald-500">{displayPrice.toFixed(2)} Dh</span>
+                        <span className="font-semibold text-emerald-500">{displayPrice.toFixed(2)} Dh</span>
                         <span>Stock: {totalStock}</span>
-                        {product.brand && <span className="px-2 py-0.5 bg-primary/10 text-primary text-xs rounded-full font-medium">{product.brand}</span>}
-                        {product.provider && <span className="px-2 py-0.5 bg-orange-500/10 text-orange-500 text-xs rounded-full font-medium">{product.provider}</span>}
+                        {accessibleStockLevels.map(([location, level]) => (
+                          <span key={location} className="px-1.5 py-0.5 bg-secondary text-secondary-foreground rounded capitalize hidden md:inline">
+                            {location.replace(/_/g, ' ')}: {level}
+                          </span>
+                        ))}
                       </div>
-                      {accessibleStockLevels.length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {accessibleStockLevels.map(([location, level]) => (
-                            <span key={location} className="px-2 py-1 bg-secondary text-secondary-foreground text-xs rounded-full capitalize">
-                              {location.replace(/_/g, ' ')}: {level}
-                            </span>
-                          ))}
-                        </div>
-                      )}
                     </Link>
-                    <div className="flex items-center space-x-2 ml-4">
+                    <div className="flex items-center gap-1.5 shrink-0">
                       {canCreateQuote() && (
                         <button onClick={(e) => handleAddToCart(product, e)}
-                          className={`flex items-center space-x-2 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 transform hover:scale-105 ${
-                            isAdded ? 'bg-emerald-600 text-white' : 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-md hover:shadow-lg'
+                          className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
+                            isAdded ? 'bg-emerald-600 text-white' : 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm'
                           }`}>
-                          {isAdded ? <><span className="text-xs">✓</span><span className="hidden sm:inline">Ajouté !</span></> : <><Plus className="h-4 w-4" /><span className="hidden sm:inline">Ajouter</span></>}
+                          {isAdded ? <><span>✓</span><span className="hidden sm:inline">Ajouté</span></> : <><Plus className="h-3.5 w-3.5" /><span className="hidden sm:inline">Ajouter</span></>}
                         </button>
                       )}
-                      <Link to={`/product/${encodeURIComponent(product.barcode)}`} className="p-2 text-muted-foreground hover:text-primary transition-colors" title="Voir les détails">
-                        <ArrowRight className="h-4 w-4" />
+                      <Link to={`/product/${encodeURIComponent(product.barcode)}`} className="p-1.5 text-muted-foreground hover:text-primary transition-colors">
+                        <ArrowRight className="h-3.5 w-3.5" />
                       </Link>
                     </div>
                   </div>
