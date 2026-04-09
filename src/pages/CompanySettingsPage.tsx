@@ -205,8 +205,8 @@ export default function CompanySettingsPage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {[
-            <label className="block text-sm font-medium text-foreground mb-1">Nom de l'entreprise</label>
+          <div>
+            <label className="block text-xs font-medium text-foreground mb-1">Nom de l'entreprise</label>
             <input
               type="text"
               value={settings.company_name}
