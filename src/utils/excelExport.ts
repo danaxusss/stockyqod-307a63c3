@@ -223,7 +223,7 @@ export class ExcelExportService {
 
     // Table headers (row 7)
     const headerRowTable = worksheet.getRow(7);
-    const headers = ['Brand', 'BARCODE', 'TITLE', 'QTE', 'PU TTC', 'TOTAL TTC'];
+    const headers = ['Brand', 'BARCODE', 'TITLE', 'QTE', 'PU HT', 'TOTAL HT'];
     headers.forEach((header, index) => {
       const cell = headerRowTable.getCell(index + 1);
       cell.value = header;
@@ -297,8 +297,12 @@ export class ExcelExportService {
       worksheet.getCell(`B${rowIndex}`).value = item.product.barcode; // BARCODE
       worksheet.getCell(`C${rowIndex}`).value = item.product.name; // TITLE
       worksheet.getCell(`D${rowIndex}`).value = item.quantity; // QTE
-      worksheet.getCell(`E${rowIndex}`).value = parseFloat(item.unitPrice.toFixed(2)); // PU TTC
-      worksheet.getCell(`F${rowIndex}`).value = parseFloat(item.subtotal.toFixed(2)); // TOTAL TTC
+      const unitPriceHT = item.unitPrice / 1.20;
+      const discount = item.discount ?? 0;
+      const discountedHT = unitPriceHT * (1 - discount / 100);
+      const totalHTItem = discountedHT * item.quantity;
+      worksheet.getCell(`E${rowIndex}`).value = parseFloat(unitPriceHT.toFixed(2)); // PU HT
+      worksheet.getCell(`F${rowIndex}`).value = parseFloat(totalHTItem.toFixed(2)); // TOTAL HT
     });
 
     // Calculate and populate totals (only on the last page)
