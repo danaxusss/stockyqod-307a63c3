@@ -8,7 +8,6 @@ import {
   Trash2, 
   Save, 
   FileDown, 
-  Upload, 
   User, 
   Phone, 
   Building, 
@@ -25,8 +24,10 @@ import {
   Package,
   Info
 } from 'lucide-react';
-import { Quote, QuoteItem, CustomerInfo, QuoteTemplate, Product } from '../types';
+import { Quote, QuoteItem, CustomerInfo, Product } from '../types';
 import { ExcelExportService } from '../utils/excelExport';
+import { PdfExportService } from '../utils/pdfExport';
+import { CompanySettingsService, CompanySettings } from '../utils/companySettings';
 import { SupabaseQuotesService } from '../utils/supabaseQuotes';
 import { ActivityLogger } from '../utils/activityLogger';
 import { useAppContext } from '../context/AppContext';
@@ -71,10 +72,8 @@ export function QuoteCartPage() {
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
-  // Template state
-  const [templates, setTemplates] = useState<QuoteTemplate[]>([]);
-  const [activeTemplate, setActiveTemplate] = useState<QuoteTemplate | null>(null);
-  const [showTemplateUpload, setShowTemplateUpload] = useState(false);
+  // Company settings for PDF export
+  const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null);
 
   // Product search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -141,28 +140,10 @@ export function QuoteCartPage() {
     loadQuote();
   }, [quoteId, isEditing, navigate, cart.items, showToast, currentUser, authenticatedUser]);
 
-  // Load templates
+  // Load company settings for PDF export
   useEffect(() => {
-    const loadTemplates = async () => {
-      try {
-        const [allTemplates, active] = await Promise.all([
-          SupabaseQuotesService.getQuoteTemplates(),
-          SupabaseQuotesService.getActiveQuoteTemplate()
-        ]);
-        setTemplates(allTemplates);
-        setActiveTemplate(active || null);
-      } catch (error) {
-        console.error('Failed to load templates:', error);
-        showToast({
-          type: 'error',
-          title: 'Erreur de chargement',
-          message: 'Erreur lors du chargement des templates'
-        });
-      }
-    };
-
-    loadTemplates();
-  }, [showToast]);
+    CompanySettingsService.getSettings().then(setCompanySettings).catch(console.error);
+  }, []);
 
   // Load available users for sales person dropdown
   useEffect(() => {
@@ -532,7 +513,7 @@ export function QuoteCartPage() {
     }
   };
 
-  // Export to Excel
+  // Export to PDF
   const handleExport = async () => {
     if (!validateForm()) {
       showToast({
@@ -559,75 +540,25 @@ export function QuoteCartPage() {
         notes
       };
 
-      console.log('Exporting with template:', activeTemplate?.name || 'default');
-      await ExcelExportService.exportQuoteToExcel(quoteData, activeTemplate || undefined);
+      await PdfExportService.exportQuoteToPdf(quoteData, companySettings);
       showToast({
         type: 'success',
         title: 'Export réussi',
-        message: 'Devis exporté avec succès'
+        message: 'Devis exporté en PDF avec succès'
       });
     } catch (error) {
       console.error('Export failed:', error);
       showToast({
         type: 'error',
         title: 'Erreur d\'export',
-        message: `Erreur lors de l'export Excel: ${error instanceof Error ? error.message : 'Erreur inconnue'}`
+        message: `Erreur lors de l'export PDF: ${error instanceof Error ? error.message : 'Erreur inconnue'}`
       });
     } finally {
       setIsExporting(false);
     }
   };
 
-  // Handle template upload
-  const handleTemplateUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    try {
-      // Validate template
-      await ExcelExportService.validateTemplate(file);
-
-      // Convert file to ArrayBuffer
-      const fileData = await file.arrayBuffer();
-
-      // Save template
-      const template: QuoteTemplate = {
-        id: `template-${Date.now()}`,
-        name: file.name,
-        fileData,
-        fileType: file.type,
-        uploadedAt: new Date(),
-        isActive: templates.length === 0 // First template becomes active
-      };
-
-      await SupabaseQuotesService.saveQuoteTemplate(template);
-      
-      const updatedTemplates = await SupabaseQuotesService.getQuoteTemplates();
-      setTemplates(updatedTemplates);
-      setTemplates(updatedTemplates);
-      
-      if (template.isActive) {
-        setActiveTemplate(template);
-      }
-
-      showToast({
-        type: 'success',
-        title: 'Template uploadé',
-        message: 'Template uploadé avec succès'
-      });
-      setShowTemplateUpload(false);
-    } catch (error) {
-      console.error('Template upload failed:', error);
-      showToast({
-        type: 'error',
-        title: 'Erreur d\'upload',
-        message: 'Erreur lors de l\'upload du template'
-      });
-    }
-
-    // Reset file input
-    event.target.value = '';
-  };
+  // (Template upload removed - using PDF export now)
 
   // Copy items to clipboard
   const handleCopyItems = async () => {
@@ -1195,54 +1126,18 @@ export function QuoteCartPage() {
         />
       </div>
 
-      {/* Excel Export Section */}
+      {/* PDF Export Section */}
       <div className="glass rounded-2xl shadow-xl p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold text-foreground flex items-center space-x-2">
-            <FileDown className="h-5 w-5" />
-            <span>Export Excel</span>
-          </h2>
-          <button
-            onClick={() => setShowTemplateUpload(!showTemplateUpload)}
-            className="flex items-center space-x-2 px-3 py-2 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors text-sm"
-          >
-            <Upload className="h-4 w-4" />
-            <span>Gérer Templates</span>
-          </button>
-        </div>
-
-        {/* Template Upload */}
-        {showTemplateUpload && (
-          <div className="mb-4 p-4 bg-secondary rounded-lg">
-            <h3 className="font-medium text-foreground mb-2">
-              Uploader un Template Excel
-            </h3>
-            <input
-              type="file"
-              accept=".xlsx,.xls"
-              onChange={handleTemplateUpload}
-              className="w-full px-3 py-2 border border-input rounded-lg bg-secondary text-foreground"
-            />
-            <p className="text-sm text-muted-foreground mt-2">
-              Formats acceptés: .xlsx, .xls
-            </p>
-          </div>
-        )}
-
-        {/* Active Template Info */}
-        {activeTemplate && (
-          <div className="mb-4 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-            <p className="text-sm text-green-700 dark:text-green-300">
-              Template actif: <strong>{activeTemplate.name}</strong>
-            </p>
-          </div>
-        )}
+        <h2 className="text-xl font-semibold text-foreground flex items-center space-x-2 mb-4">
+          <FileDown className="h-5 w-5" />
+          <span>Export PDF</span>
+        </h2>
 
         <div className="space-y-3">
           <button
             onClick={handleExport}
             disabled={isExporting || items.length === 0}
-            className="w-full flex items-center justify-center space-x-2 px-4 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-primary-foreground rounded-lg transition-colors"
+            className="w-full flex items-center justify-center space-x-2 px-4 py-3 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-lg transition-colors"
           >
             {isExporting ? (
               <>
@@ -1252,11 +1147,10 @@ export function QuoteCartPage() {
             ) : (
               <>
                 <FileDown className="h-4 w-4" />
-                <span>{activeTemplate ? `Exporter avec ${activeTemplate.name}` : 'Exporter avec Template par Défaut'}</span>
+                <span>Exporter en PDF</span>
               </>
             )}
           </button>
-          
         </div>
       </div>
 

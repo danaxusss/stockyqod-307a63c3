@@ -17,6 +17,7 @@ const QuoteCartPage = React.lazy(() => import('./pages/QuoteCartPage').then(m =>
 const QuotesHistoryPage = React.lazy(() => import('./pages/QuotesHistoryPage').then(m => ({ default: m.QuotesHistoryPage })));
 const UserManagementPage = React.lazy(() => import('./pages/UserManagementPage'));
 const StatisticsPage = React.lazy(() => import('./pages/StatisticsPage').then(m => ({ default: m.StatisticsPage })));
+const CompanySettingsPage = React.lazy(() => import('./pages/CompanySettingsPage'));
 
 function PageLoader() {
   return (
@@ -67,6 +68,7 @@ function AppContent() {
             )}
             <Route path="/admin/users" element={<UserManagementPage />} />
             <Route path="/admin/statistics" element={<StatisticsPage />} />
+            <Route path="/admin/settings" element={<CompanySettingsPage />} />
           </Routes>
         </Suspense>
       </Layout>

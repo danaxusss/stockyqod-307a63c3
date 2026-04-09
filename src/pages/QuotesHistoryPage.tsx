@@ -5,7 +5,8 @@ import { FileText, Search, Filter, Eye, Edit, Trash2, FileDown, Plus, Calendar, 
 import { Quote } from '../types';
 import { SupabaseQuotesService } from '../utils/supabaseQuotes';
 import { ActivityLogger } from '../utils/activityLogger';
-import { ExcelExportService } from '../utils/excelExport';
+import { PdfExportService } from '../utils/pdfExport';
+import { CompanySettingsService, CompanySettings } from '../utils/companySettings';
 import { useAuth } from '../hooks/useAuth';
 
 const QUOTES_PER_PAGE = 10;
@@ -26,6 +27,7 @@ export function QuotesHistoryPage() {
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   const [isExporting, setIsExporting] = useState<string | null>(null);
+  const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null);
 
   const loadQuotes = useCallback(async () => {
     setIsLoading(true); setMessage(null);
@@ -38,6 +40,7 @@ export function QuotesHistoryPage() {
   }, [isAdmin, currentUser, authenticatedUser]);
 
   useEffect(() => { loadQuotes(); }, [loadQuotes]);
+  useEffect(() => { CompanySettingsService.getSettings().then(setCompanySettings).catch(console.error); }, []);
   useEffect(() => { if (message) { const t = setTimeout(() => setMessage(null), 5000); return () => clearTimeout(t); } }, [message]);
 
   useEffect(() => {
@@ -80,8 +83,8 @@ export function QuotesHistoryPage() {
 
   const handleExport = async (quote: Quote) => {
     setIsExporting(quote.id);
-    try { await ExcelExportService.exportQuoteToExcel(quote); setMessage({ type: 'success', text: 'Devis exporté' }); }
-    catch { setMessage({ type: 'error', text: 'Erreur lors de l\'export' }); }
+    try { await PdfExportService.exportQuoteToPdf(quote, companySettings); setMessage({ type: 'success', text: 'Devis exporté en PDF' }); }
+    catch { setMessage({ type: 'error', text: 'Erreur lors de l\'export PDF' }); }
     finally { setIsExporting(null); }
   };
 
