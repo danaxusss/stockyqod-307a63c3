@@ -1052,8 +1052,12 @@ export function QuoteCartPage() {
                       <td className="px-4 py-4">
                         <input
                           type="number"
-                          value={item.unitPrice}
-                          onChange={(e) => updateItemUnitPrice(item.id, parseFloat(e.target.value) || 0)}
+                          value={parseFloat((item.unitPrice / (1 + (companySettings?.tva_rate ?? 20) / 100)).toFixed(2))}
+                          onChange={(e) => {
+                            const htValue = parseFloat(e.target.value) || 0;
+                            const ttcValue = htValue * (1 + (companySettings?.tva_rate ?? 20) / 100);
+                            updateItemUnitPrice(item.id, ttcValue);
+                          }}
                           className="w-20 px-2 py-1 text-sm border border-input rounded focus:ring-2 focus:ring-ring bg-secondary text-foreground"
                           step="0.01"
                           min="0"
