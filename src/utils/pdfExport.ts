@@ -2,9 +2,15 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Quote } from '../types';
-import { CompanySettings } from './companySettings';
+import { CompanySettings, QuoteStyle } from './companySettings';
 
-const BLUE = [59, 130, 246]; // #3B82F6
+function hexToRgb(hex: string): [number, number, number] {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result
+    ? [parseInt(result[1], 16), parseInt(result[2], 16), parseInt(result[3], 16)]
+    : [59, 130, 246];
+}
+
 const DARK = [30, 30, 30];
 const GRAY = [120, 120, 120];
 const LIGHT_BG = [245, 247, 250];
@@ -25,6 +31,14 @@ export class PdfExportService {
   }
 
   static async exportQuoteToPdf(quote: Quote, settings?: CompanySettings | null): Promise<void> {
+    const style: QuoteStyle = settings?.quote_style || {
+      accentColor: '#3B82F6', fontFamily: 'helvetica', showBorders: true,
+      borderRadius: 1, headerSize: 'large', totalsStyle: 'highlighted',
+    };
+    const ACCENT = hexToRgb(style.accentColor);
+    const font = style.fontFamily || 'helvetica';
+    const br = style.borderRadius ?? 1;
+
     const doc = new jsPDF('p', 'mm', 'a4');
     const pageWidth = doc.internal.pageSize.getWidth();
     const margin = 15;
@@ -39,6 +53,8 @@ export class PdfExportService {
     };
 
     const tvaRate = settings?.tva_rate ?? 20;
+    const titleSize = style.headerSize === 'large' ? 24 : style.headerSize === 'medium' ? 20 : 16;
+    const companySize = style.headerSize === 'large' ? 18 : style.headerSize === 'medium' ? 15 : 12;
 
     // === HEADER ===
     // Company name (left)
