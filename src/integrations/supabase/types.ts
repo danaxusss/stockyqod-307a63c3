@@ -274,7 +274,85 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_activity_logs_by_user: {
+        Args: { p_limit?: number; p_username: string }
+        Returns: {
+          action: string
+          created_at: string
+          details: string
+          entity_id: string
+          entity_type: string
+          id: string
+          user_id: string
+          username: string
+        }[]
+      }
+      get_app_user_by_id_safe: {
+        Args: { p_id: string }
+        Returns: {
+          allowed_brands: string[]
+          allowed_stock_locations: string[]
+          can_create_quote: boolean
+          created_at: string
+          id: string
+          is_admin: boolean
+          price_display_type: string
+          updated_at: string
+          username: string
+        }[]
+      }
+      get_app_user_by_username_safe: {
+        Args: { p_username: string }
+        Returns: {
+          allowed_brands: string[]
+          allowed_stock_locations: string[]
+          can_create_quote: boolean
+          created_at: string
+          id: string
+          is_admin: boolean
+          price_display_type: string
+          updated_at: string
+          username: string
+        }[]
+      }
+      get_app_users_safe: {
+        Args: never
+        Returns: {
+          allowed_brands: string[]
+          allowed_stock_locations: string[]
+          can_create_quote: boolean
+          created_at: string
+          id: string
+          is_admin: boolean
+          price_display_type: string
+          updated_at: string
+          username: string
+        }[]
+      }
+      get_recent_activity_logs: {
+        Args: { p_limit?: number }
+        Returns: {
+          action: string
+          created_at: string
+          details: string
+          entity_id: string
+          entity_type: string
+          id: string
+          user_id: string
+          username: string
+        }[]
+      }
+      insert_activity_log: {
+        Args: {
+          p_action?: string
+          p_details?: string
+          p_entity_id?: string
+          p_entity_type?: string
+          p_user_id?: string
+          p_username?: string
+        }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never
