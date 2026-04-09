@@ -43,7 +43,8 @@ serve(async (req) => {
     const keywords = normalized
       .replace(/[^a-z0-9\s-]/g, " ")
       .split(/\s+/)
-      .filter((w: string) => w.length > 1 && !stopWords.has(w));
+      .filter((w: string) => w.length > 1 && !stopWords.has(w))
+      .map((w: string) => w.replace(/s$/, "")); // basic French plural stemming
 
     console.log("Search keywords:", keywords);
 
