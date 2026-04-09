@@ -493,7 +493,7 @@ export class PdfExportService {
 
     // === PAYMENT TERMS ===
     if (fields.showPaymentTerms) {
-      doc.setFontSize(8);
+      doc.setFontSize(7);
       doc.setFont(font, 'italic');
       doc.setTextColor(...GRAY);
       doc.text(
@@ -501,22 +501,22 @@ export class PdfExportService {
         margin,
         y
       );
-      y += 6;
+      y += 5;
     }
 
     // === NOTES ===
     if (fields.showNotes && quote.notes) {
       doc.setDrawColor(230, 230, 230);
-      doc.line(margin, y, margin + 60, y);
-      y += 4;
+      doc.line(margin, y, margin + 50, y);
+      y += 3;
       doc.setTextColor(...DARK);
       doc.setFont(font, 'bold');
-      doc.setFontSize(8);
+      doc.setFontSize(7);
       doc.text('Note :', margin, y);
       doc.setFont(font, 'normal');
-      const noteLines = doc.splitTextToSize(quote.notes, contentWidth - 15);
-      doc.text(noteLines, margin + 14, y);
-      y += 4 + noteLines.length * 4;
+      const noteLines = doc.splitTextToSize(quote.notes, contentWidth - 12);
+      doc.text(noteLines, margin + 12, y);
+      y += 3 + noteLines.length * 3.5;
     }
 
     // Fix page numbers
