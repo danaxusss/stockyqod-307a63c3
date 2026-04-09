@@ -1,7 +1,7 @@
 import { SyncData, Meta } from '../types';
 
 const API_BASE = import.meta.env.VITE_SUPABASE_URL;
-const API_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const API_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 // Flag to track if Edge Functions are available
 let edgeFunctionsAvailable = true;
@@ -9,12 +9,8 @@ let edgeFunctionsAvailable = true;
 // Validate environment variables
 function validateEnvironment() {
   if (!API_BASE || !API_KEY) {
-    const errorMessage = 'Supabase configuration missing. Please check your environment variables:\n' +
-      `VITE_SUPABASE_URL: ${API_BASE ? 'Set' : 'Missing'}\n` +
-      `VITE_SUPABASE_ANON_KEY: ${API_KEY ? 'Set' : 'Missing'}\n` +
-      'Please ensure these are properly configured in your .env file.';
-    
-    console.error(errorMessage);
+    console.warn('Supabase configuration missing, Edge Functions will not be available.');
+    edgeFunctionsAvailable = false;
     return false;
   }
   return true;
