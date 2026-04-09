@@ -69,6 +69,61 @@ async function streamChat({
   onDone();
 }
 
+// Extract [BARCODE:xxx] tags from AI response
+function extractBarcodes(content: string): string[] {
+  const pattern = /\[BARCODE:([^\]]+)\]/g;
+  const found: string[] = [];
+  let match;
+  while ((match = pattern.exec(content)) !== null) {
+    found.push(match[1]);
+  }
+  return [...new Set(found)];
+}
+
+// Custom markdown renderer that replaces [BARCODE:xxx] with add-to-cart buttons
+function ProductMessage({ 
+  content, 
+  products, 
+  canAdd, 
+  onAdd 
+}: { 
+  content: string; 
+  products: Product[]; 
+  canAdd: boolean; 
+  onAdd: (barcode: string) => void;
+}) {
+  // Split content by [BARCODE:xxx] markers
+  const parts = content.split(/(\[BARCODE:[^\]]+\])/g);
+  
+  return (
+    <div className="prose prose-sm dark:prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+      {parts.map((part, i) => {
+        const barcodeMatch = part.match(/^\[BARCODE:([^\]]+)\]$/);
+        if (barcodeMatch) {
+          const barcode = barcodeMatch[1];
+          const product = products.find(p => p.barcode === barcode);
+          if (product && canAdd) {
+            return (
+              <button
+                key={i}
+                onClick={() => onAdd(barcode)}
+                className="inline-flex items-center gap-1.5 text-xs font-medium bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 rounded-lg px-2.5 py-1.5 hover:bg-emerald-200 dark:hover:bg-emerald-800 transition-colors border border-emerald-200 dark:border-emerald-700 my-1"
+              >
+                <ShoppingCart className="h-3.5 w-3.5" />
+                Ajouter au devis
+              </button>
+            );
+          }
+          // If product not found in local state, just show the code
+          return <span key={i} className="text-xs text-muted-foreground font-mono">({barcode})</span>;
+        }
+        // Regular markdown text
+        return <ReactMarkdown key={i}>{part}</ReactMarkdown>;
+      })}
+    </div>
+  );
+}
+
 export function AIChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -83,12 +138,8 @@ export function AIChatWidget() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const findProductByBarcode = (barcode: string): Product | undefined => {
-    return state.products.find(p => p.barcode === barcode);
-  };
-
   const handleAddToQuote = (barcode: string) => {
-    const product = findProductByBarcode(barcode);
+    const product = state.products.find(p => p.barcode === barcode);
     if (product) {
       addToCart(product, 'normal', 0);
     }
@@ -129,26 +180,13 @@ export function AIChatWidget() {
     }
   };
 
-  // Extract barcodes from assistant messages for "add to quote" buttons
-  const extractBarcodes = (content: string): string[] => {
-    const barcodePattern = /\b(\d{6,13})\b/g;
-    const found: string[] = [];
-    let match;
-    while ((match = barcodePattern.exec(content)) !== null) {
-      if (state.products.some(p => p.barcode === match![1])) {
-        found.push(match[1]);
-      }
-    }
-    return [...new Set(found)];
-  };
-
   return (
     <>
       {/* Floating button */}
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-24 right-6 z-50 bg-blue-600 hover:bg-blue-700 text-white rounded-full p-4 shadow-lg transition-transform hover:scale-105"
+          className="fixed bottom-24 right-6 z-50 bg-primary hover:bg-primary/90 text-primary-foreground rounded-full p-4 shadow-lg transition-transform hover:scale-105"
           title="Assistant IA produits"
         >
           <MessageSquare className="h-6 w-6" />
@@ -157,56 +195,41 @@ export function AIChatWidget() {
 
       {/* Chat panel */}
       {isOpen && (
-        <div className="fixed bottom-6 right-6 z-50 w-[380px] max-h-[520px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+        <div className="fixed bottom-6 right-6 z-50 w-[400px] max-h-[560px] bg-background border border-border rounded-2xl shadow-2xl flex flex-col overflow-hidden">
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 bg-blue-600 text-white">
+          <div className="flex items-center justify-between px-4 py-3 bg-primary text-primary-foreground">
             <div className="flex items-center gap-2">
               <MessageSquare className="h-5 w-5" />
               <span className="font-semibold text-sm">Assistant IA Produits</span>
             </div>
-            <button onClick={() => setIsOpen(false)} className="hover:bg-blue-700 rounded p-1">
+            <button onClick={() => setIsOpen(false)} className="hover:bg-primary/80 rounded p-1">
               <X className="h-4 w-4" />
             </button>
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-3 space-y-3 min-h-[300px]">
+          <div className="flex-1 overflow-y-auto p-3 space-y-3 min-h-[340px]">
             {messages.length === 0 && (
-              <div className="text-center text-slate-400 dark:text-slate-500 text-sm mt-8 px-4">
+              <div className="text-center text-muted-foreground text-sm mt-8 px-4">
                 <MessageSquare className="h-10 w-10 mx-auto mb-3 opacity-40" />
                 <p className="font-medium">Demandez-moi des produits !</p>
-                <p className="mt-1 text-xs">Ex: « Le client cherche un disjoncteur 20A et un contacteur »</p>
+                <p className="mt-1 text-xs opacity-70">Ex: « machines à café » ou « disjoncteur 20A »</p>
               </div>
             )}
             {messages.map((msg, i) => (
               <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] rounded-xl px-3 py-2 text-sm ${
+                <div className={`max-w-[90%] rounded-xl px-3 py-2 text-sm ${
                   msg.role === 'user'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-muted text-foreground'
                 }`}>
                   {msg.role === 'assistant' ? (
-                    <div className="prose prose-sm dark:prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-                      <ReactMarkdown>{msg.content}</ReactMarkdown>
-                      {/* Add to quote buttons for found barcodes */}
-                      {canCreateQuote() && !isLoading && extractBarcodes(msg.content).length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-1">
-                          {extractBarcodes(msg.content).map(bc => {
-                            const p = findProductByBarcode(bc);
-                            return p ? (
-                              <button
-                                key={bc}
-                                onClick={() => handleAddToQuote(bc)}
-                                className="inline-flex items-center gap-1 text-xs bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 rounded-full px-2 py-1 hover:bg-green-200 dark:hover:bg-green-800 transition-colors"
-                              >
-                                <ShoppingCart className="h-3 w-3" />
-                                Ajouter {p.name.slice(0, 20)}
-                              </button>
-                            ) : null;
-                          })}
-                        </div>
-                      )}
-                    </div>
+                    <ProductMessage
+                      content={msg.content}
+                      products={state.products}
+                      canAdd={canCreateQuote()}
+                      onAdd={handleAddToQuote}
+                    />
                   ) : (
                     msg.content
                   )}
@@ -215,8 +238,8 @@ export function AIChatWidget() {
             ))}
             {isLoading && messages[messages.length - 1]?.role !== 'assistant' && (
               <div className="flex justify-start">
-                <div className="bg-slate-100 dark:bg-slate-800 rounded-xl px-3 py-2">
-                  <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                <div className="bg-muted rounded-xl px-3 py-2">
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
                 </div>
               </div>
             )}
@@ -224,20 +247,20 @@ export function AIChatWidget() {
           </div>
 
           {/* Input */}
-          <div className="border-t border-slate-200 dark:border-slate-700 p-3">
+          <div className="border-t border-border p-3">
             <form onSubmit={(e) => { e.preventDefault(); send(); }} className="flex gap-2">
               <input
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Décrivez les produits recherchés..."
-                className="flex-1 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 dark:text-slate-200"
+                className="flex-1 text-sm rounded-lg border border-border bg-background px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
                 disabled={isLoading}
               />
               <button
                 type="submit"
                 disabled={isLoading || !input.trim()}
-                className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg p-2 transition-colors"
+                className="bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-lg p-2 transition-colors"
               >
                 <Send className="h-4 w-4" />
               </button>
