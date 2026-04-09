@@ -559,56 +559,7 @@ export function QuoteCartPage() {
     }
   };
 
-  // Handle template upload
-  const handleTemplateUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    try {
-      // Validate template
-      await ExcelExportService.validateTemplate(file);
-
-      // Convert file to ArrayBuffer
-      const fileData = await file.arrayBuffer();
-
-      // Save template
-      const template: QuoteTemplate = {
-        id: `template-${Date.now()}`,
-        name: file.name,
-        fileData,
-        fileType: file.type,
-        uploadedAt: new Date(),
-        isActive: templates.length === 0 // First template becomes active
-      };
-
-      await SupabaseQuotesService.saveQuoteTemplate(template);
-      
-      const updatedTemplates = await SupabaseQuotesService.getQuoteTemplates();
-      setTemplates(updatedTemplates);
-      setTemplates(updatedTemplates);
-      
-      if (template.isActive) {
-        setActiveTemplate(template);
-      }
-
-      showToast({
-        type: 'success',
-        title: 'Template uploadé',
-        message: 'Template uploadé avec succès'
-      });
-      setShowTemplateUpload(false);
-    } catch (error) {
-      console.error('Template upload failed:', error);
-      showToast({
-        type: 'error',
-        title: 'Erreur d\'upload',
-        message: 'Erreur lors de l\'upload du template'
-      });
-    }
-
-    // Reset file input
-    event.target.value = '';
-  };
+  // (Template upload removed - using PDF export now)
 
   // Copy items to clipboard
   const handleCopyItems = async () => {
