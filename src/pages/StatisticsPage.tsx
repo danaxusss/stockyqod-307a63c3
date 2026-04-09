@@ -47,6 +47,30 @@ export function StatisticsPage() {
   const [quoteStats, setQuoteStats] = useState<QuoteStats | null>(null);
   const [users, setUsers] = useState<AppUser[]>([]);
 
+  useEffect(() => {
+    const loadStatistics = async () => {
+      setIsLoading(true);
+      try {
+        const [quotes, allUsers] = await Promise.all([
+          SupabaseQuotesService.getAllQuotes(),
+          SupabaseUsersService.getAllUsers()
+        ]);
+
+        setUsers(allUsers);
+        const pStats = calculateProductStats(state.products);
+        setProductStats(pStats);
+        const qStats = calculateQuoteStats(quotes, allUsers);
+        setQuoteStats(qStats);
+      } catch (error) {
+        console.error('Failed to load statistics:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadStatistics();
+  }, [state.products]);
+
   // Redirect if not admin
   if (!isAdmin) {
     return (
