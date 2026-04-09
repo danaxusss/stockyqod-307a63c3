@@ -1,19 +1,29 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AppProvider, useAppContext } from './context/AppContext';
 import { ToastProvider } from './context/ToastContext';
 import { Layout } from './components/Layout';
-import { Home } from './pages/Home';
-import { SearchPage } from './pages/Search';
-import { ProductDetail } from './pages/ProductDetail';
-import { QuoteCartPage } from './pages/QuoteCartPage';
-import { QuotesHistoryPage } from './pages/QuotesHistoryPage';
-import UserManagementPage from './pages/UserManagementPage';
-import { StatisticsPage } from './pages/StatisticsPage';
 import { LoginModal } from './components/LoginModal';
 import { FloatingQuoteCart } from './components/FloatingQuoteCart';
 import { useAuth } from './hooks/useAuth';
 import { useUserAuth } from './hooks/useUserAuth';
+
+// Lazy-loaded pages
+const Home = React.lazy(() => import('./pages/Home').then(m => ({ default: m.Home })));
+const SearchPage = React.lazy(() => import('./pages/Search').then(m => ({ default: m.SearchPage })));
+const ProductDetail = React.lazy(() => import('./pages/ProductDetail').then(m => ({ default: m.ProductDetail })));
+const QuoteCartPage = React.lazy(() => import('./pages/QuoteCartPage').then(m => ({ default: m.QuoteCartPage })));
+const QuotesHistoryPage = React.lazy(() => import('./pages/QuotesHistoryPage').then(m => ({ default: m.QuotesHistoryPage })));
+const UserManagementPage = React.lazy(() => import('./pages/UserManagementPage'));
+const StatisticsPage = React.lazy(() => import('./pages/StatisticsPage').then(m => ({ default: m.StatisticsPage })));
+
+function PageLoader() {
+  return (
+    <div className="flex items-center justify-center min-h-[50vh]">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+    </div>
+  );
+}
 
 function AppContent() {
   const { activeLoginModalRole, openLoginModal } = useAppContext();
@@ -42,20 +52,22 @@ function AppContent() {
   return (
     <>
       <Layout>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/search" element={<SearchPage />} />
-          <Route path="/product/:id" element={<ProductDetail />} />
-          {canCreateQuote() && (
-            <>
-              <Route path="/quote-cart" element={<QuoteCartPage />} />
-              <Route path="/quote-cart/:quoteId" element={<QuoteCartPage />} />
-              <Route path="/quotes-history" element={<QuotesHistoryPage />} />
-            </>
-          )}
-          <Route path="/admin/users" element={<UserManagementPage />} />
-          <Route path="/admin/statistics" element={<StatisticsPage />} />
-        </Routes>
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/search" element={<SearchPage />} />
+            <Route path="/product/:id" element={<ProductDetail />} />
+            {canCreateQuote() && (
+              <>
+                <Route path="/quote-cart" element={<QuoteCartPage />} />
+                <Route path="/quote-cart/:quoteId" element={<QuoteCartPage />} />
+                <Route path="/quotes-history" element={<QuotesHistoryPage />} />
+              </>
+            )}
+            <Route path="/admin/users" element={<UserManagementPage />} />
+            <Route path="/admin/statistics" element={<StatisticsPage />} />
+          </Routes>
+        </Suspense>
       </Layout>
 
       {canCreateQuote() && <FloatingQuoteCart />}

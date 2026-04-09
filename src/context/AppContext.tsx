@@ -1,15 +1,14 @@
 import React, { createContext, useContext, ReactNode } from 'react';
-import { AppState, Meta } from '../types';
-import { SyncStatus } from '../utils/syncManager';
+import { AppState } from '../types';
 import { useApp } from '../hooks/useApp';
 
 interface AppContextType {
   state: AppState;
   isLoading: boolean;
-  syncStatus: SyncStatus | null;
+  syncStatus: null;
   syncData: (forceSync?: boolean) => Promise<boolean>;
   checkForUpdates: () => Promise<boolean>;
-  getSyncStats: () => Promise<any>;
+  getSyncStats: () => Promise<unknown>;
   updateRole: (role: AppState['role']) => void;
   activeLoginModalRole: 'user' | 'admin' | null;
   openLoginModal: (role: 'user' | 'admin' | null) => void;

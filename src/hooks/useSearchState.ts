@@ -1,7 +1,45 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Product } from '../types';
-import { searchProducts, SearchFilters } from '../utils/database';
+import { useAppContext } from '../context/AppContext';
 import { searchStateManager } from '../utils/searchStateManager';
+
+export interface SearchFilters {
+  query?: string;
+  brand?: string;
+  stockLocation?: string;
+}
+
+function searchProductsLocally(products: Product[], filters: SearchFilters): Product[] {
+  const { query = '', brand = '', stockLocation = '' } = filters;
+
+  return products.filter(product => {
+    // Text search
+    const matchesQuery = !query || (() => {
+      const queryLower = query.toLowerCase().trim();
+      if (String(product.barcode).toLowerCase() === queryLower) return true;
+
+      const queryTokens = queryLower.split(/\s+/).filter(t => t.length > 0);
+      if (queryTokens.length === 0) return false;
+
+      const searchableText = `${product.name} ${product.brand || ''}`.toLowerCase();
+      return queryTokens.every(token => searchableText.includes(token));
+    })();
+
+    // Brand filter
+    const matchesBrand = !brand || (product.brand || '').toLowerCase() === brand.toLowerCase();
+
+    // Stock location filter
+    const matchesStockLocation = !stockLocation || (
+      product.stock_levels &&
+      Object.keys(product.stock_levels).some(loc =>
+        loc.toLowerCase() === stockLocation.toLowerCase() &&
+        (product.stock_levels[loc] || 0) > 0
+      )
+    );
+
+    return matchesQuery && matchesBrand && matchesStockLocation;
+  }).sort((a, b) => (a.price || 0) - (b.price || 0));
+}
 
 interface UseSearchStateReturn {
   query: string;
@@ -24,6 +62,7 @@ interface UseSearchStateReturn {
 }
 
 export function useSearchState(): UseSearchStateReturn {
+  const { state } = useAppContext();
   const [query, setQueryState] = useState('');
   const [selectedBrand, setSelectedBrandState] = useState('');
   const [selectedStockLocation, setSelectedStockLocationState] = useState('');
@@ -34,15 +73,13 @@ export function useSearchState(): UseSearchStateReturn {
   const [sortOrder, setSortOrderState] = useState<'asc' | 'desc'>('asc');
   const [scrollPosition, setScrollPosition] = useState(0);
   const [isInitialized, setIsInitialized] = useState(false);
-  
-  const searchTimeoutRef = useRef<NodeJS.Timeout>();
-  const scrollElementRef = useRef<Element | null>(null);
 
-  // Initialize state from storage on mount
+  const searchTimeoutRef = useRef<NodeJS.Timeout>();
+
+  // Initialize state from storage
   useEffect(() => {
     const savedState = searchStateManager.getState();
     if (savedState) {
-      console.log('Restoring search state:', savedState);
       setQueryState(savedState.query);
       setSelectedBrandState(savedState.selectedBrand || '');
       setSelectedStockLocationState(savedState.selectedStockLocation || '');
@@ -53,15 +90,14 @@ export function useSearchState(): UseSearchStateReturn {
     setIsInitialized(true);
   }, []);
 
-  // Perform search with debouncing and minimum character requirement
+  // Search from context products
   useEffect(() => {
     if (!isInitialized) return;
 
-    const handleSearch = async () => {
-      // Require at least 3 characters for text search OR a filter selection
+    const handleSearch = () => {
       const hasValidQuery = query.trim().length >= 3;
       const hasFilters = selectedBrand || selectedStockLocation;
-      
+
       if (!hasValidQuery && !hasFilters) {
         setResults([]);
         setSearchError(null);
@@ -71,133 +107,76 @@ export function useSearchState(): UseSearchStateReturn {
 
       setIsLoading(true);
       setSearchError(null);
-      
+
       try {
-        const searchFilters: SearchFilters = {
+        const products = searchProductsLocally(state.products, {
           query: hasValidQuery ? query : '',
           brand: selectedBrand,
           stockLocation: selectedStockLocation
-        };
-        
-        console.log('Starting search with filters:', searchFilters);
-        const products = await searchProducts(searchFilters);
-        console.log('Search completed, found products:', products.length);
-        
-        const sortedProducts = sortProducts(products, sortBy, sortOrder);
-        setResults(sortedProducts);
+        });
+
+        const sorted = sortProducts(products, sortBy, sortOrder);
+        setResults(sorted);
       } catch (error) {
-        console.error('Search failed:', error);
-        const errorMessage = error instanceof Error ? error.message : 'Erreur de recherche inconnue';
-        setSearchError(`Erreur lors de la recherche: ${errorMessage}`);
+        const msg = error instanceof Error ? error.message : 'Erreur de recherche inconnue';
+        setSearchError(`Erreur lors de la recherche: ${msg}`);
         setResults([]);
       } finally {
         setIsLoading(false);
       }
     };
 
-    // Clear existing timeout
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-    }
-
-    // Set new timeout for debouncing
-    searchTimeoutRef.current = setTimeout(handleSearch, 300);
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    searchTimeoutRef.current = setTimeout(handleSearch, 150);
 
     return () => {
-      if (searchTimeoutRef.current) {
-        clearTimeout(searchTimeoutRef.current);
-      }
+      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
     };
-  }, [query, selectedBrand, selectedStockLocation, sortBy, sortOrder, isInitialized]);
+  }, [query, selectedBrand, selectedStockLocation, sortBy, sortOrder, isInitialized, state.products]);
 
-  // Save state whenever it changes (excluding results)
+  // Persist state
   useEffect(() => {
     if (!isInitialized) return;
-
-    searchStateManager.saveState({
-      query,
-      selectedBrand,
-      selectedStockLocation,
-      scrollPosition,
-      sortBy,
-      sortOrder
-    });
+    searchStateManager.saveState({ query, selectedBrand, selectedStockLocation, scrollPosition, sortBy, sortOrder });
   }, [query, selectedBrand, selectedStockLocation, scrollPosition, sortBy, sortOrder, isInitialized]);
 
-  const sortProducts = (products: Product[], sortBy: string, sortOrder: string): Product[] => {
+  const sortProducts = (products: Product[], by: string, order: string): Product[] => {
     return [...products].sort((a, b) => {
-      let aValue: any;
-      let bValue: any;
+      let aVal: string | number;
+      let bVal: string | number;
 
-      switch (sortBy) {
-        case 'name':
-          aValue = a.name.toLowerCase();
-          bValue = b.name.toLowerCase();
-          break;
-        case 'price':
-          aValue = a.price;
-          bValue = b.price;
-          break;
-        case 'brand':
-          aValue = (a.brand || '').toLowerCase();
-          bValue = (b.brand || '').toLowerCase();
-          break;
+      switch (by) {
+        case 'name': aVal = a.name.toLowerCase(); bVal = b.name.toLowerCase(); break;
+        case 'price': aVal = a.price; bVal = b.price; break;
+        case 'brand': aVal = (a.brand || '').toLowerCase(); bVal = (b.brand || '').toLowerCase(); break;
         case 'stock':
-          aValue = Object.values(a.stock_levels || {}).reduce((sum, level) => sum + level, 0);
-          bValue = Object.values(b.stock_levels || {}).reduce((sum, level) => sum + level, 0);
+          aVal = Object.values(a.stock_levels || {}).reduce((s, l) => s + l, 0);
+          bVal = Object.values(b.stock_levels || {}).reduce((s, l) => s + l, 0);
           break;
-        default:
-          return 0;
+        default: return 0;
       }
 
-      if (aValue < bValue) return sortOrder === 'asc' ? -1 : 1;
-      if (aValue > bValue) return sortOrder === 'asc' ? 1 : -1;
+      if (aVal < bVal) return order === 'asc' ? -1 : 1;
+      if (aVal > bVal) return order === 'asc' ? 1 : -1;
       return 0;
     });
   };
 
-  const setQuery = useCallback((newQuery: string) => {
-    setQueryState(newQuery);
-    setScrollPosition(0); // Reset scroll when query changes
-  }, []);
+  const setQuery = useCallback((q: string) => { setQueryState(q); setScrollPosition(0); }, []);
+  const setSelectedBrand = useCallback((b: string) => { setSelectedBrandState(b); setScrollPosition(0); }, []);
+  const setSelectedStockLocation = useCallback((l: string) => { setSelectedStockLocationState(l); setScrollPosition(0); }, []);
+  const setSortBy = useCallback((s: 'name' | 'price' | 'brand' | 'stock') => { setSortByState(s); setScrollPosition(0); }, []);
+  const setSortOrder = useCallback((o: 'asc' | 'desc') => { setSortOrderState(o); setScrollPosition(0); }, []);
 
-  const setSelectedBrand = useCallback((brand: string) => {
-    setSelectedBrandState(brand);
-    setScrollPosition(0); // Reset scroll when filter changes
-  }, []);
-
-  const setSelectedStockLocation = useCallback((location: string) => {
-    setSelectedStockLocationState(location);
-    setScrollPosition(0); // Reset scroll when filter changes
-  }, []);
-  const setSortBy = useCallback((newSortBy: 'name' | 'price' | 'brand' | 'stock') => {
-    setSortByState(newSortBy);
-    setScrollPosition(0); // Reset scroll when sorting changes
-  }, []);
-
-  const setSortOrder = useCallback((newSortOrder: 'asc' | 'desc') => {
-    setSortOrderState(newSortOrder);
-    setScrollPosition(0); // Reset scroll when sorting changes
-  }, []);
-
-  const saveScrollPosition = useCallback((position: number) => {
-    setScrollPosition(position);
-    searchStateManager.saveScrollPosition(position);
+  const saveScrollPosition = useCallback((pos: number) => {
+    setScrollPosition(pos);
+    searchStateManager.saveScrollPosition(pos);
   }, []);
 
   const restoreScrollPosition = useCallback(() => {
-    // Find the main content container
-    const mainContainer = document.querySelector('main') || document.documentElement;
-    if (mainContainer && scrollPosition > 0) {
-      console.log('Restoring scroll position to:', scrollPosition);
-      
-      // Use requestAnimationFrame to ensure DOM is ready
-      requestAnimationFrame(() => {
-        mainContainer.scrollTo({
-          top: scrollPosition,
-          behavior: 'auto' // Instant scroll for restoration
-        });
-      });
+    const main = document.querySelector('main') || document.documentElement;
+    if (main && scrollPosition > 0) {
+      requestAnimationFrame(() => main.scrollTo({ top: scrollPosition, behavior: 'auto' }));
     }
   }, [scrollPosition]);
 
@@ -214,22 +193,12 @@ export function useSearchState(): UseSearchStateReturn {
   }, []);
 
   return {
-    query,
-    setQuery,
-    selectedBrand,
-    setSelectedBrand,
-    selectedStockLocation,
-    setSelectedStockLocation,
-    results,
-    isLoading,
-    searchError,
-    sortBy,
-    setSortBy,
-    sortOrder,
-    setSortOrder,
-    scrollPosition,
-    saveScrollPosition,
-    restoreScrollPosition,
+    query, setQuery,
+    selectedBrand, setSelectedBrand,
+    selectedStockLocation, setSelectedStockLocation,
+    results, isLoading, searchError,
+    sortBy, setSortBy, sortOrder, setSortOrder,
+    scrollPosition, saveScrollPosition, restoreScrollPosition,
     clearSearchState
   };
 }

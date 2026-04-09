@@ -1,4 +1,5 @@
 // @ts-nocheck
+// TODO: Remove ts-nocheck in next phase
 import { useState, useEffect, useCallback } from 'react';
 import { UserRole, AppUser, UserPermissions } from '../types';
 import { StorageManager } from '../utils/storage';

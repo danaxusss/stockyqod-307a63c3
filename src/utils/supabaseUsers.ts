@@ -1,12 +1,22 @@
-// @ts-nocheck
 import { supabase } from './supabaseClient';
 import { AppUser, CreateAppUserRequest, UpdateAppUserRequest } from '../types';
+import type { Json } from '@/integrations/supabase/types';
+
+type AppUserRow = {
+  id: string;
+  username: string;
+  pin: string;
+  is_admin: boolean;
+  can_create_quote: boolean;
+  allowed_stock_locations: string[];
+  allowed_brands: string[];
+  price_display_type: string;
+  created_at: string;
+  updated_at: string;
+};
 
 export class SupabaseUsersService {
-  // Create a new user
   static async createUser(userData: CreateAppUserRequest): Promise<AppUser> {
-    console.log('Creating new user:', userData.username);
-    
     const userToCreate = {
       username: userData.username,
       pin: userData.pin,
@@ -24,7 +34,6 @@ export class SupabaseUsersService {
       .single();
 
     if (error) {
-      console.error('Failed to create user:', error);
       if (error.code === '23505') {
         throw new Error('Un utilisateur avec ce nom existe déjà');
       }
@@ -35,13 +44,10 @@ export class SupabaseUsersService {
       throw new Error('Aucune donnée retournée lors de la création de l\'utilisateur');
     }
 
-    return this.mapSupabaseUserToAppUser(data);
+    return this.mapRow(data as unknown as AppUserRow);
   }
 
-  // Get a user by username (for authentication)
   static async getUserByUsername(username: string): Promise<AppUser | null> {
-    console.log('Fetching user by username:', username);
-    
     const { data, error } = await supabase
       .from('app_users')
       .select('*')
@@ -49,23 +55,15 @@ export class SupabaseUsersService {
       .single();
 
     if (error) {
-      if (error.code === 'PGRST116') {
-        // No rows returned
-        return null;
-      }
-      console.error('Failed to fetch user by username:', error);
+      if (error.code === 'PGRST116') return null;
       throw new Error(`Échec de la récupération de l'utilisateur: ${error.message}`);
     }
 
     if (!data) return null;
-
-    return this.mapSupabaseUserToAppUser(data);
+    return this.mapRow(data as unknown as AppUserRow);
   }
 
-  // Get a user by ID
   static async getUserById(id: string): Promise<AppUser | null> {
-    console.log('Fetching user by ID:', id);
-    
     const { data, error } = await supabase
       .from('app_users')
       .select('*')
@@ -73,45 +71,32 @@ export class SupabaseUsersService {
       .single();
 
     if (error) {
-      if (error.code === 'PGRST116') {
-        // No rows returned
-        return null;
-      }
-      console.error('Failed to fetch user by ID:', error);
+      if (error.code === 'PGRST116') return null;
       throw new Error(`Échec de la récupération de l'utilisateur: ${error.message}`);
     }
 
     if (!data) return null;
-
-    return this.mapSupabaseUserToAppUser(data);
+    return this.mapRow(data as unknown as AppUserRow);
   }
 
-  // Get all users (for management page)
   static async getAllUsers(): Promise<AppUser[]> {
-    console.log('Fetching all users');
-    
     const { data, error } = await supabase
       .from('app_users')
       .select('*')
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('Failed to fetch all users:', error);
       throw new Error(`Échec de la récupération des utilisateurs: ${error.message}`);
     }
 
-    return (data || []).map(user => this.mapSupabaseUserToAppUser(user));
+    return (data || []).map(row => this.mapRow(row as unknown as AppUserRow));
   }
 
-  // Update a user
   static async updateUser(id: string, updates: UpdateAppUserRequest): Promise<AppUser> {
-    console.log('Updating user:', id, updates);
-    
-    const updateData: any = {
+    const updateData: Record<string, unknown> = {
       updated_at: new Date().toISOString()
     };
 
-    // Only include fields that are being updated
     if (updates.username !== undefined) updateData.username = updates.username;
     if (updates.pin !== undefined) updateData.pin = updates.pin;
     if (updates.is_admin !== undefined) updateData.is_admin = updates.is_admin;
@@ -120,15 +105,14 @@ export class SupabaseUsersService {
     if (updates.allowed_brands !== undefined) updateData.allowed_brands = updates.allowed_brands;
     if (updates.price_display_type !== undefined) updateData.price_display_type = updates.price_display_type;
 
-    const { data, error } = await supabase
-      .from('app_users')
+    const { data, error } = await (supabase
+      .from('app_users') as any)
       .update(updateData)
       .eq('id', id)
       .select()
       .single();
 
     if (error) {
-      console.error('Failed to update user:', error);
       if (error.code === '23505') {
         throw new Error('Un utilisateur avec ce nom existe déjà');
       }
@@ -139,66 +123,41 @@ export class SupabaseUsersService {
       throw new Error('Aucune donnée retournée lors de la mise à jour de l\'utilisateur');
     }
 
-    return this.mapSupabaseUserToAppUser(data);
+    return this.mapRow(data as unknown as AppUserRow);
   }
 
-  // Delete a user
   static async deleteUser(id: string): Promise<void> {
-    console.log('Deleting user:', id);
-    
     const { error } = await supabase
       .from('app_users')
       .delete()
       .eq('id', id);
 
     if (error) {
-      console.error('Failed to delete user:', error);
       throw new Error(`Échec de la suppression de l'utilisateur: ${error.message}`);
     }
-
-    console.log('User deleted successfully');
   }
 
-  // Authenticate user (verify username and PIN)
   static async authenticateUser(username: string, pin: string): Promise<AppUser | null> {
-    console.log('Authenticating user:', username);
-    
     const user = await this.getUserByUsername(username);
-    
-    if (!user) {
-      console.log('User not found:', username);
-      return null;
-    }
-
-    // In a production app, you should hash the PIN and compare hashes
-    // For this implementation, we're doing a direct comparison
-    if (user.pin !== pin) {
-      console.log('Invalid PIN for user:', username);
-      return null;
-    }
-
-    console.log('User authenticated successfully:', username);
+    if (!user) return null;
+    if (user.pin !== pin) return null;
     return user;
   }
 
-  // Get unique stock locations from products (helper for UI)
   static async getAvailableStockLocations(): Promise<string[]> {
-    console.log('Fetching available stock locations');
-    
     const { data, error } = await supabase
       .from('products')
       .select('stock_levels');
 
     if (error) {
-      console.error('Failed to fetch stock locations:', error);
       throw new Error(`Échec de la récupération des emplacements de stock: ${error.message}`);
     }
 
     const locations = new Set<string>();
-    
     (data || []).forEach(product => {
-      if (product.stock_levels && typeof product.stock_levels === 'object') {
-        Object.keys(product.stock_levels).forEach(location => {
+      const levels = product.stock_levels as Record<string, number> | null;
+      if (levels && typeof levels === 'object') {
+        Object.keys(levels).forEach(location => {
           if (location && location.trim()) {
             locations.add(location.trim());
           }
@@ -209,10 +168,26 @@ export class SupabaseUsersService {
     return Array.from(locations).sort();
   }
 
-  // Check if username is available
+  static async getAvailableBrands(): Promise<string[]> {
+    const { data, error } = await supabase
+      .from('products')
+      .select('brand');
+
+    if (error) {
+      throw new Error(`Échec de la récupération des marques: ${error.message}`);
+    }
+
+    const brands = new Set<string>();
+    (data || []).forEach(product => {
+      if (product.brand && typeof product.brand === 'string' && product.brand.trim()) {
+        brands.add(product.brand.trim());
+      }
+    });
+
+    return Array.from(brands).sort();
+  }
+
   static async isUsernameAvailable(username: string, excludeId?: string): Promise<boolean> {
-    console.log('Checking username availability:', username);
-    
     let query = supabase
       .from('app_users')
       .select('id')
@@ -225,14 +200,12 @@ export class SupabaseUsersService {
     const { data, error } = await query;
 
     if (error) {
-      console.error('Failed to check username availability:', error);
       throw new Error(`Échec de la vérification du nom d'utilisateur: ${error.message}`);
     }
 
     return !data || data.length === 0;
   }
 
-  // Get user statistics
   static async getUserStats(): Promise<{
     totalUsers: number;
     adminUsers: number;
@@ -240,24 +213,17 @@ export class SupabaseUsersService {
     usersWithQuoteAccess: number;
     usersWithRestrictedStock: number;
   }> {
-    console.log('Fetching user statistics');
-    
     const users = await this.getAllUsers();
-    
-    const stats = {
+    return {
       totalUsers: users.length,
       adminUsers: users.filter(u => u.is_admin).length,
       regularUsers: users.filter(u => !u.is_admin).length,
       usersWithQuoteAccess: users.filter(u => u.can_create_quote).length,
       usersWithRestrictedStock: users.filter(u => u.allowed_stock_locations.length > 0).length
     };
-
-    console.log('User statistics:', stats);
-    return stats;
   }
 
-  // Helper method to map Supabase data to AppUser interface
-  private static mapSupabaseUserToAppUser(data: any): AppUser {
+  private static mapRow(data: AppUserRow): AppUser {
     return {
       id: data.id,
       username: data.username,
@@ -266,13 +232,12 @@ export class SupabaseUsersService {
       can_create_quote: data.can_create_quote,
       allowed_stock_locations: data.allowed_stock_locations || [],
       allowed_brands: data.allowed_brands || [],
-      price_display_type: data.price_display_type || 'normal',
+      price_display_type: (data.price_display_type || 'normal') as AppUser['price_display_type'],
       created_at: new Date(data.created_at),
       updated_at: new Date(data.updated_at)
     };
   }
 
-  // Validate user data before creation/update
   static validateUserData(userData: CreateAppUserRequest | UpdateAppUserRequest): string[] {
     const errors: string[] = [];
 
@@ -312,28 +277,5 @@ export class SupabaseUsersService {
     }
 
     return errors;
-  }
-  // Get unique brands from products (helper for UI)
-  static async getAvailableBrands(): Promise<string[]> {
-    console.log('Fetching available brands');
-    
-    const { data, error } = await supabase
-      .from('products')
-      .select('brand');
-
-    if (error) {
-      console.error('Failed to fetch brands:', error);
-      throw new Error(`Échec de la récupération des marques: ${error.message}`);
-    }
-
-    const brands = new Set<string>();
-    
-    (data || []).forEach(product => {
-      if (product.brand && typeof product.brand === 'string' && product.brand.trim()) {
-        brands.add(product.brand.trim());
-      }
-    });
-
-    return Array.from(brands).sort();
   }
 }
