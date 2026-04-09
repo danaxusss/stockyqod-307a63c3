@@ -254,8 +254,7 @@ export function ExcelUploadModal({ onClose, onSuccess }: ExcelUploadModalProps) 
         message: 'Tous les produits ont été supprimés de la base de données avec succès'
       });
       
-      // Clear local IndexedDB as well
-      await saveProducts([]);
+      await ActivityLogger.log('products_deleted', 'All products deleted');
       
       // Reset parsed data since we've cleared everything
       setParsedData(null);
@@ -288,8 +287,7 @@ export function ExcelUploadModal({ onClose, onSuccess }: ExcelUploadModalProps) 
       // Upload to Supabase
       await ProductUploadService.uploadProducts(parsedData);
       
-      // Save to local IndexedDB
-      await saveProducts(parsedData);
+      await ActivityLogger.log('products_imported', `${parsedData.length} products imported`);
 
       showToast({
         type: 'success',
