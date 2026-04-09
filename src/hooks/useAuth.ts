@@ -46,7 +46,7 @@ export function useAuth() {
       triggerUpdate();
     });
 
-    return unsubscribe;
+    return () => { unsubscribe(); };
   }, [triggerUpdate]);
 
   // Listen for custom auth events
