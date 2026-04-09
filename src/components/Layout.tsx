@@ -3,6 +3,7 @@ import { RefreshCw, Home } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { Header } from './Header';
 import { useAuth } from '../hooks/useAuth';
+import { useUserAuth } from '../hooks/useUserAuth';
 import { useAppContext } from '../context/AppContext';
 
 interface LayoutProps {
@@ -10,7 +11,8 @@ interface LayoutProps {
 }
 
 export function Layout({ children }: LayoutProps) {
-  const { isAdmin, isUserAuthenticated } = useAuth();
+  const { isAdmin } = useAuth();
+  const { isAuthenticated: isUserAuthenticated } = useUserAuth();
   const { syncData } = useAppContext();
   const location = useLocation();
   
