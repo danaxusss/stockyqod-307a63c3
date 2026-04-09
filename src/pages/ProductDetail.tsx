@@ -26,182 +26,72 @@ export function ProductDetail() {
   const { addToCart } = useQuoteCart();
   const { showToast } = useToast();
   const quoteManager = QuoteManager.getInstance();
-  
-  // Get user's price display type to determine what to show
   const userPriceDisplayType = getPriceDisplayType();
-
-  // Check if we came from search page
   const [cameFromSearch, setCameFromSearch] = useState(false);
 
   useEffect(() => {
-    // Check if there's a saved search state
     const searchState = searchStateManager.getState();
     setCameFromSearch(!!searchState);
   }, []);
 
-  // Save margin percentage to localStorage whenever it changes
   useEffect(() => {
     localStorage.setItem('inventory_margin_percentage', marginPercentage.toString());
   }, [marginPercentage]);
 
   useEffect(() => {
     const loadProduct = async () => {
-      if (!id) {
-        setNotFound(true);
-        setIsLoading(false);
-        return;
-      }
-
-      setIsLoading(true);
-      setNotFound(false);
-      setError(null);
-      
+      if (!id) { setNotFound(true); setIsLoading(false); return; }
+      setIsLoading(true); setNotFound(false); setError(null);
       try {
-        console.log('Chargement du produit avec ID:', id);
-        console.log('ID décodé:', decodeURIComponent(id));
-        
-        // Search in loaded products from context
         const decodedId = decodeURIComponent(id);
         const foundProduct = state.products.find(p => p.barcode === id || p.barcode === decodedId) || null;
-        
-        console.log('Produit trouvé:', foundProduct);
-        
         if (foundProduct) {
-          // Check if user has access to any stock location for this product
-          const hasAccessibleStock = Object.keys(foundProduct.stock_levels || {}).some(location => 
-            canAccessStockLocation(location)
-          );
-          
-          // Check if user has access to this brand
+          const hasAccessibleStock = Object.keys(foundProduct.stock_levels || {}).some(location => canAccessStockLocation(location));
           const hasAccessibleBrand = canAccessBrand(foundProduct.brand || '');
-          
-          if (!hasAccessibleStock) {
-            setError('Vous n\'avez pas accès aux emplacements de stock de ce produit');
-            setNotFound(true);
-            setIsLoading(false);
-            return;
-          }
-          
-          if (!hasAccessibleBrand) {
-            setError('Vous n\'avez pas accès à cette marque de produit');
-            setNotFound(true);
-            setIsLoading(false);
-            return;
-          }
-          
+          if (!hasAccessibleStock) { setError('Vous n\'avez pas accès aux emplacements de stock de ce produit'); setNotFound(true); setIsLoading(false); return; }
+          if (!hasAccessibleBrand) { setError('Vous n\'avez pas accès à cette marque de produit'); setNotFound(true); setIsLoading(false); return; }
           setProduct(foundProduct);
-        } else {
-          setNotFound(true);
-        }
+        } else { setNotFound(true); }
       } catch (error) {
-        console.error('Échec du chargement du produit:', error);
         setError(error instanceof Error ? error.message : 'Échec du chargement du produit');
         setNotFound(true);
-      } finally {
-        setIsLoading(false);
-      }
+      } finally { setIsLoading(false); }
     };
-
     loadProduct();
   }, [id, canAccessStockLocation]);
 
-  const calculateFinalPrice = () => {
-    if (!product) return 0;
-    return quoteManager.calculateFinalPrice(product.buyprice, marginPercentage);
-  };
-
-  const calculateMargin = (sellingPrice: number, purchasePrice: number) => {
-    if (purchasePrice === 0) return 0;
-    return ((sellingPrice - purchasePrice) / purchasePrice) * 100;
-  };
+  const calculateFinalPrice = () => { if (!product) return 0; return quoteManager.calculateFinalPrice(product.buyprice, marginPercentage); };
+  const calculateMargin = (sellingPrice: number, purchasePrice: number) => { if (purchasePrice === 0) return 0; return ((sellingPrice - purchasePrice) / purchasePrice) * 100; };
 
   const handleCopy = async () => {
-    if (!product) return;
-
-    if (!canCreateQuote()) {
-      showToast({
-        type: 'error',
-        title: 'Accès refusé',
-        message: 'Vous n\'avez pas l\'autorisation de copier des produits pour les devis'
-      });
-      return;
-    }
+    if (!product || !canCreateQuote()) { showToast({ type: 'error', title: 'Accès refusé', message: 'Vous n\'avez pas l\'autorisation' }); return; }
     const finalPrice = calculateFinalPrice();
-    // Format: Brand, ID, Title, quantity (0), price
     const copyText = `${product.brand}\t${product.barcode}\t${product.name}\t0\t${finalPrice.toFixed(2)}`;
-    
-    try {
-      await navigator.clipboard.writeText(copyText);
-      showToast({
-        type: 'success',
-        message: 'Produit copié dans le presse-papiers'
-      });
-    } catch (error) {
-      console.error('Échec de la copie dans le presse-papiers:', error);
-      // Fallback for older browsers
-      const textArea = document.createElement('textarea');
-      textArea.value = copyText;
-      document.body.appendChild(textArea);
-      textArea.select();
-      document.execCommand('copy');
-      document.body.removeChild(textArea);
-      showToast({
-        type: 'success',
-        message: 'Produit copié dans le presse-papiers'
-      });
+    try { await navigator.clipboard.writeText(copyText); showToast({ type: 'success', message: 'Produit copié dans le presse-papiers' }); } catch {
+      const textArea = document.createElement('textarea'); textArea.value = copyText; document.body.appendChild(textArea); textArea.select(); document.execCommand('copy'); document.body.removeChild(textArea);
+      showToast({ type: 'success', message: 'Produit copié dans le presse-papiers' });
     }
   };
 
   const handleAddToCart = () => {
-    if (!product) return;
-
-    if (!canCreateQuote()) {
-      showToast({
-        type: 'error',
-        title: 'Accès refusé',
-        message: 'Vous n\'avez pas l\'autorisation de créer des devis'
-      });
-      return;
-    }
-    // Always use 'normal' price type since toggle is removed
+    if (!product || !canCreateQuote()) { showToast({ type: 'error', title: 'Accès refusé', message: 'Vous n\'avez pas l\'autorisation de créer des devis' }); return; }
     addToCart(product, 'normal', marginPercentage);
-    
-    showToast({
-      type: 'success',
-      title: 'Ajouté au panier',
-      message: `${product.name} ajouté au panier de devis`
-    });
-
-    // Trigger haptic feedback if available
-    if ('vibrate' in navigator) {
-      navigator.vibrate(100);
-    }
+    showToast({ type: 'success', title: 'Ajouté au panier', message: `${product.name} ajouté au panier de devis` });
+    if ('vibrate' in navigator) navigator.vibrate(100);
   };
 
-  const handleBackToSearch = () => {
-    navigate('/search');
-  };
+  const handleBackToSearch = () => navigate('/search');
+  const handleBackNavigation = () => { if (cameFromSearch) navigate('/search'); else navigate(-1); };
 
-  const handleBackNavigation = () => {
-    if (cameFromSearch) {
-      navigate('/search');
-    } else {
-      navigate(-1);
-    }
-  };
-
-  // Generate margin percentage options
   const marginOptions = [];
-  for (let i = 5; i <= 100; i += 5) {
-    marginOptions.push(i);
-  }
+  for (let i = 5; i <= 100; i += 5) marginOptions.push(i);
 
   if (isLoading) {
     return (
       <div className="max-w-5xl mx-auto">
         <div className="text-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="text-gray-600 dark:text-gray-400 mt-4">Chargement du produit...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="text-muted-foreground mt-4">Chargement du produit...</p>
         </div>
       </div>
     );
@@ -210,161 +100,103 @@ export function ProductDetail() {
   if (notFound || !product) {
     return (
       <div className="max-w-5xl mx-auto">
-        <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-xl p-8 text-center">
-          <Package className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-            Produit Non Trouvé
-          </h1>
-          <p className="text-gray-600 dark:text-gray-400 mb-2">
-            Aucun produit trouvé avec l'identifiant : <code className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">{id}</code>
-          </p>
+        <div className="glass rounded-2xl shadow-xl p-8 text-center">
+          <Package className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+          <h1 className="text-2xl font-bold text-foreground mb-2">Produit Non Trouvé</h1>
+          <p className="text-muted-foreground mb-2">Aucun produit trouvé avec l'identifiant : <code className="bg-secondary px-2 py-1 rounded">{id}</code></p>
           {error && (
-            <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-center justify-center space-x-2">
-              <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
-              <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+            <div className="mb-4 p-3 bg-destructive/10 border border-destructive/20 rounded-lg flex items-center justify-center space-x-2">
+              <AlertCircle className="h-4 w-4 text-destructive" /><p className="text-sm text-destructive">{error}</p>
             </div>
           )}
           <div className="flex flex-wrap gap-3 justify-center mt-6">
-            <button
-              onClick={() => navigate('/')}
-              className="flex items-center space-x-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-            >
-              <Home className="h-4 w-4" />
-              <span>Accueil</span>
+            <button onClick={() => navigate('/')} className="flex items-center space-x-2 px-6 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors">
+              <Home className="h-4 w-4" /><span>Accueil</span>
             </button>
             {cameFromSearch && (
-              <button
-                onClick={handleBackToSearch}
-                className="flex items-center space-x-2 px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
-              >
-                <Search className="h-4 w-4" />
-                <span>Retour à la Recherche</span>
+              <button onClick={handleBackToSearch} className="flex items-center space-x-2 px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors">
+                <Search className="h-4 w-4" /><span>Retour à la Recherche</span>
               </button>
             )}
-            <button
-              onClick={() => navigate('/search')}
-              className="px-6 py-2 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors"
-            >
-              Rechercher Produits
-            </button>
           </div>
         </div>
       </div>
     );
   }
 
-  // Filter stock locations based on user permissions
-  const accessibleStockLocations = Object.entries(product.stock_levels || {})
-    .filter(([location]) => canAccessStockLocation(location));
+  const accessibleStockLocations = Object.entries(product.stock_levels || {}).filter(([location]) => canAccessStockLocation(location));
   const totalStock = accessibleStockLocations.reduce((sum, [, level]) => sum + level, 0);
   const displayPrice = getDisplayPrice(product);
   const finalPrice = calculateFinalPrice();
-  
-  // Calculate margins using corrected formula
   const normalMargin = calculateMargin(product.price, product.buyprice);
   const resellerMargin = calculateMargin(product.reseller_price, product.buyprice);
-  const calculatedMargin = calculateMargin(finalPrice, product.buyprice);
+
+  const colorSchemes = [
+    { bg: 'bg-violet-500/10', text: 'text-violet-400', textDark: 'text-violet-300' },
+    { bg: 'bg-orange-500/10', text: 'text-orange-400', textDark: 'text-orange-300' },
+    { bg: 'bg-rose-500/10', text: 'text-rose-400', textDark: 'text-rose-300' },
+    { bg: 'bg-amber-500/10', text: 'text-amber-400', textDark: 'text-amber-300' },
+    { bg: 'bg-pink-500/10', text: 'text-pink-400', textDark: 'text-pink-300' },
+    { bg: 'bg-indigo-500/10', text: 'text-indigo-400', textDark: 'text-indigo-300' },
+  ];
 
   return (
     <div className="max-w-5xl mx-auto">
-      {/* Back Button */}
       <div className="mb-6">
-        <button
-          onClick={handleBackNavigation}
-          className="flex items-center space-x-2 text-blue-600 dark:text-blue-400 hover:underline"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          <span>{cameFromSearch ? 'Retour à la Recherche' : 'Retour'}</span>
+        <button onClick={handleBackNavigation} className="flex items-center space-x-2 text-primary hover:underline">
+          <ArrowLeft className="h-4 w-4" /><span>{cameFromSearch ? 'Retour à la Recherche' : 'Retour'}</span>
         </button>
       </div>
 
-      <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-xl overflow-hidden">
+      <div className="glass rounded-2xl shadow-xl overflow-hidden">
         {/* Header */}
-        <div className="bg-gradient-to-r from-blue-500 to-blue-600 p-6 text-white">
+        <div className="bg-primary p-6 text-primary-foreground" style={{ backgroundImage: 'var(--gradient-primary)' }}>
           <div className="flex items-center space-x-4">
-            <div className="p-3 bg-white/20 rounded-xl">
-              <Package className="h-8 w-8" />
-            </div>
+            <div className="p-3 bg-white/20 rounded-xl"><Package className="h-8 w-8" /></div>
             <div>
               <h1 className="text-2xl font-bold">{product.name}</h1>
-              {product.brand && <p className="text-blue-100 text-lg">{product.brand}</p>}
+              {product.brand && <p className="text-primary-foreground/70 text-lg">{product.brand}</p>}
             </div>
           </div>
         </div>
 
         <div className="p-6">
-          {/* Price Calculator Section - Only for users with quote permissions */}
+          {/* Price Calculator */}
           {canCreateQuote() && userPriceDisplayType !== 'reseller' && (
-            <div className="mb-8 p-6 rounded-xl border bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 border-indigo-200 dark:border-indigo-800">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center space-x-2">
-                  <Calculator className="h-5 w-5" />
-                  <span>Calculateur de Prix</span>
-                </h2>
-              </div>
-
-              {/* Margin Percentage Selector */}
+            <div className="mb-8 p-6 rounded-xl border bg-accent/30 border-primary/20">
+              <h2 className="text-lg font-semibold text-foreground flex items-center space-x-2 mb-6">
+                <Calculator className="h-5 w-5" /><span>Calculateur de Prix</span>
+              </h2>
               <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-                  Pourcentage de Marge
-                </label>
-                <select
-                  value={marginPercentage}
-                  onChange={(e) => setMarginPercentage(parseInt(e.target.value))}
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white dark:bg-slate-700 text-gray-900 dark:text-white"
-                >
-                  {marginOptions.map((percentage) => (
-                    <option key={percentage} value={percentage}>
-                      {percentage}%
-                    </option>
-                  ))}
+                <label className="block text-sm font-medium text-muted-foreground mb-3">Pourcentage de Marge</label>
+                <select value={marginPercentage} onChange={(e) => setMarginPercentage(parseInt(e.target.value))}
+                  className="w-full px-4 py-3 border border-input rounded-lg focus:ring-2 focus:ring-ring bg-background text-foreground">
+                  {marginOptions.map((p) => <option key={p} value={p}>{p}%</option>)}
                 </select>
               </div>
-
-              {/* Price Calculation Display */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <div className="text-center p-4 bg-white dark:bg-slate-700 rounded-lg shadow-sm">
-                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Prix d'Achat</div>
-                  <div className="text-xl font-bold text-gray-900 dark:text-white">
-                    {product.buyprice.toFixed(2)} Dh
-                  </div>
+                <div className="text-center p-4 bg-secondary rounded-lg">
+                  <div className="text-sm text-muted-foreground mb-1">Prix d'Achat</div>
+                  <div className="text-xl font-bold text-foreground">{product.buyprice.toFixed(2)} Dh</div>
                 </div>
-                
-                <div className="text-center p-4 bg-white dark:bg-slate-700 rounded-lg shadow-sm">
-                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Marge Appliquée</div>
-                  <div className="text-xl font-bold text-orange-600 dark:text-orange-400">
-                    +{marginPercentage}%
-                  </div>
+                <div className="text-center p-4 bg-secondary rounded-lg">
+                  <div className="text-sm text-muted-foreground mb-1">Marge Appliquée</div>
+                  <div className="text-xl font-bold text-orange-400">+{marginPercentage}%</div>
                 </div>
-                
-                <div className="text-center p-4 bg-white dark:bg-slate-700 rounded-lg shadow-sm">
-                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Prix Final</div>
-                  <div className="text-xl font-bold text-emerald-600 dark:text-emerald-400">
-                    {finalPrice.toFixed(2)} Dh
-                  </div>
+                <div className="text-center p-4 bg-secondary rounded-lg">
+                  <div className="text-sm text-muted-foreground mb-1">Prix Final</div>
+                  <div className="text-xl font-bold text-emerald-400">{finalPrice.toFixed(2)} Dh</div>
                 </div>
               </div>
-
-              {/* Action Buttons */}
               <div className="flex flex-col sm:flex-row gap-3">
-                <button
-                  onClick={handleCopy}
-                  className="flex-1 flex items-center justify-center space-x-2 px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors"
-                >
-                  <Copy className="h-4 w-4" />
-                  <span>Copier pour Excel</span>
+                <button onClick={handleCopy} className="flex-1 flex items-center justify-center space-x-2 px-4 py-3 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors">
+                  <Copy className="h-4 w-4" /><span>Copier pour Excel</span>
                 </button>
-
-                <button
-                  onClick={handleAddToCart}
-                  className="flex-1 flex items-center justify-center space-x-2 px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors"
-                >
-                  <Plus className="h-4 w-4" />
-                  <span>Ajouter au Panier</span>
+                <button onClick={handleAddToCart} className="flex-1 flex items-center justify-center space-x-2 px-4 py-3 bg-violet-600 hover:bg-violet-700 text-white rounded-lg transition-colors">
+                  <Plus className="h-4 w-4" /><span>Ajouter au Panier</span>
                 </button>
               </div>
-
-              <p className="text-sm text-gray-600 dark:text-gray-400 mt-3 text-center">
+              <p className="text-sm text-muted-foreground mt-3 text-center">
                 Prix calculé: {product.buyprice.toFixed(2)} Dh + {marginPercentage}% = {finalPrice.toFixed(2)} Dh
               </p>
             </div>
@@ -372,195 +204,100 @@ export function ProductDetail() {
 
           {/* Main Details Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-            {/* Basic Information */}
             <div className="space-y-6">
-              <h3 className="text-xl font-semibold text-gray-900 dark:text-white border-b border-gray-200 dark:border-gray-700 pb-2">
-                Informations Produit
-              </h3>
-              
+              <h3 className="text-xl font-semibold text-foreground border-b border-border pb-2">Informations Produit</h3>
               <div className="space-y-4">
-                <div className="flex items-center space-x-3 p-4 bg-gray-50 dark:bg-slate-700 rounded-xl">
-                  <Package className="h-6 w-6 text-gray-600 dark:text-gray-300" />
-                  <div>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Identifiant</p>
-                    <p className="text-xl font-semibold text-gray-900 dark:text-white break-all">{product.barcode}</p>
-                  </div>
+                <div className="flex items-center space-x-3 p-4 bg-secondary rounded-xl">
+                  <Package className="h-6 w-6 text-muted-foreground" />
+                  <div><p className="text-sm text-muted-foreground">Identifiant</p><p className="text-xl font-semibold text-foreground break-all">{product.barcode}</p></div>
                 </div>
-
-                <div className="flex items-center space-x-3 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
-                  <Package className="h-6 w-6 text-blue-600 dark:text-blue-300" />
-                  <div>
-                    <p className="text-sm text-blue-600 dark:text-blue-400">Quantité Totale</p>
-                    <p className="text-2xl font-bold text-blue-900 dark:text-blue-100">
-                      {totalStock}
-                    </p>
-                  </div>
+                <div className="flex items-center space-x-3 p-4 bg-primary/10 rounded-xl">
+                  <Package className="h-6 w-6 text-primary" />
+                  <div><p className="text-sm text-primary">Quantité Totale</p><p className="text-2xl font-bold text-foreground">{totalStock}</p></div>
                 </div>
-                
-                <div className="flex items-center space-x-3 p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl">
-                  <DollarSign className="h-6 w-6 text-emerald-600 dark:text-emerald-300" />
-                  <div>
-                    <p className="text-sm text-emerald-600 dark:text-emerald-400">Prix Affiché</p>
-                    <p className="text-2xl font-bold text-emerald-900 dark:text-emerald-100">
-                      {displayPrice.toFixed(2)} Dh
-                    </p>
-                  </div>
+                <div className="flex items-center space-x-3 p-4 bg-emerald-500/10 rounded-xl">
+                  <DollarSign className="h-6 w-6 text-emerald-400" />
+                  <div><p className="text-sm text-emerald-400">Prix Affiché</p><p className="text-2xl font-bold text-foreground">{displayPrice.toFixed(2)} Dh</p></div>
                 </div>
               </div>
             </div>
 
-            {/* Stock by Location */}
             <div className="space-y-6">
-              <h3 className="text-xl font-semibold text-gray-900 dark:text-white border-b border-gray-200 dark:border-gray-700 pb-2">
-                Stock par Emplacement
-              </h3>
-              
+              <h3 className="text-xl font-semibold text-foreground border-b border-border pb-2">Stock par Emplacement</h3>
               <div className="space-y-4">
                 {accessibleStockLocations.length > 0 ? (
                   accessibleStockLocations.map(([location, level], index) => {
-                    const colors = [
-                      { bg: 'bg-purple-50 dark:bg-purple-900/20', text: 'text-purple-600 dark:text-purple-300', textDark: 'text-purple-900 dark:text-purple-100' },
-                      { bg: 'bg-orange-50 dark:bg-orange-900/20', text: 'text-orange-600 dark:text-orange-300', textDark: 'text-orange-900 dark:text-orange-100' },
-                      { bg: 'bg-red-50 dark:bg-red-900/20', text: 'text-red-600 dark:text-red-300', textDark: 'text-red-900 dark:text-red-100' },
-                      { bg: 'bg-yellow-50 dark:bg-yellow-900/20', text: 'text-yellow-600 dark:text-yellow-300', textDark: 'text-yellow-900 dark:text-yellow-100' },
-                      { bg: 'bg-pink-50 dark:bg-pink-900/20', text: 'text-pink-600 dark:text-pink-300', textDark: 'text-pink-900 dark:text-pink-100' },
-                      { bg: 'bg-indigo-50 dark:bg-indigo-900/20', text: 'text-indigo-600 dark:text-indigo-300', textDark: 'text-indigo-900 dark:text-indigo-100' }
-                    ];
-                    const colorScheme = colors[index % colors.length];
-                    
+                    const cs = colorSchemes[index % colorSchemes.length];
                     return (
-                      <div key={location} className={`flex items-center space-x-3 p-4 ${colorScheme.bg} rounded-xl`}>
-                        <MapPin className={`h-6 w-6 ${colorScheme.text}`} />
+                      <div key={location} className={`flex items-center space-x-3 p-4 ${cs.bg} rounded-xl`}>
+                        <MapPin className={`h-6 w-6 ${cs.text}`} />
                         <div>
-                          <p className={`text-sm ${colorScheme.text} capitalize font-medium`}>
-                            {location.replace(/_/g, ' ')}
-                          </p>
-                          <p className={`text-2xl font-bold ${colorScheme.textDark}`}>
-                            {level}
-                          </p>
+                          <p className={`text-sm ${cs.text} capitalize font-medium`}>{location.replace(/_/g, ' ')}</p>
+                          <p className={`text-2xl font-bold ${cs.textDark}`}>{level}</p>
                         </div>
                       </div>
                     );
                   })
                 ) : (
-                  <div className="flex items-center space-x-3 p-4 bg-gray-50 dark:bg-slate-700 rounded-xl">
-                    <MapPin className="h-6 w-6 text-gray-600 dark:text-gray-300" />
-                    <div>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">Emplacements Stock</p>
-                      <p className="text-xl font-semibold text-gray-900 dark:text-white">Aucun emplacement accessible</p>
-                    </div>
+                  <div className="flex items-center space-x-3 p-4 bg-secondary rounded-xl">
+                    <MapPin className="h-6 w-6 text-muted-foreground" />
+                    <div><p className="text-sm text-muted-foreground">Emplacements Stock</p><p className="text-xl font-semibold text-foreground">Aucun emplacement accessible</p></div>
                   </div>
                 )}
               </div>
             </div>
           </div>
 
-          {/* Pricing Details - Show All Prices */}
+          {/* Pricing Details */}
           {userPriceDisplayType !== 'reseller' && (
-            <div className="border-t border-gray-200 dark:border-gray-700 pt-8 mb-8">
-              <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">Tous les Détails de Prix</h3>
-              
+            <div className="border-t border-border pt-8 mb-8">
+              <h3 className="text-xl font-semibold text-foreground mb-6">Tous les Détails de Prix</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {/* Regular Selling Price */}
-                <div className="flex items-center space-x-3 p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl">
-                  <DollarSign className="h-6 w-6 text-emerald-600 dark:text-emerald-300" />
-                  <div>
-                    <p className="text-sm text-emerald-600 dark:text-emerald-400">Prix Normal</p>
-                    <p className="text-2xl font-bold text-emerald-900 dark:text-emerald-100">
-                      {product.price.toFixed(2)} Dh
-                    </p>
-                  </div>
+                <div className="flex items-center space-x-3 p-4 bg-emerald-500/10 rounded-xl">
+                  <DollarSign className="h-6 w-6 text-emerald-400" />
+                  <div><p className="text-sm text-emerald-400">Prix Normal</p><p className="text-2xl font-bold text-foreground">{product.price.toFixed(2)} Dh</p></div>
                 </div>
-
-                {/* Reseller Price */}
-                <div className="flex items-center space-x-3 p-4 bg-purple-50 dark:bg-purple-900/20 rounded-xl">
-                  <Users className="h-6 w-6 text-purple-600 dark:text-purple-300" />
-                  <div>
-                    <p className="text-sm text-purple-600 dark:text-purple-400">Prix Revendeur</p>
-                    <p className="text-2xl font-bold text-purple-900 dark:text-purple-100">
-                      {product.reseller_price.toFixed(2)} Dh
-                    </p>
-                  </div>
+                <div className="flex items-center space-x-3 p-4 bg-violet-500/10 rounded-xl">
+                  <Users className="h-6 w-6 text-violet-400" />
+                  <div><p className="text-sm text-violet-400">Prix Revendeur</p><p className="text-2xl font-bold text-foreground">{product.reseller_price.toFixed(2)} Dh</p></div>
                 </div>
-
-                {/* Buy Price */}
-                <div className="flex items-center space-x-3 p-4 bg-orange-50 dark:bg-orange-900/20 rounded-xl">
-                  <ShoppingCart className="h-6 w-6 text-orange-600 dark:text-orange-300" />
-                  <div>
-                    <p className="text-sm text-orange-600 dark:text-orange-400">Prix d'Achat</p>
-                    <p className="text-2xl font-bold text-orange-900 dark:text-orange-100">
-                      {product.buyprice.toFixed(2)} Dh
-                    </p>
-                  </div>
+                <div className="flex items-center space-x-3 p-4 bg-orange-500/10 rounded-xl">
+                  <ShoppingCart className="h-6 w-6 text-orange-400" />
+                  <div><p className="text-sm text-orange-400">Prix d'Achat</p><p className="text-2xl font-bold text-foreground">{product.buyprice.toFixed(2)} Dh</p></div>
                 </div>
-
-                {/* Regular Profit Margin */}
-                <div className="flex items-center space-x-3 p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl">
-                  <TrendingUp className="h-6 w-6 text-indigo-600 dark:text-indigo-300" />
-                  <div>
-                    <p className="text-sm text-indigo-600 dark:text-indigo-400">Marge Normale</p>
-                    <p className="text-2xl font-bold text-indigo-900 dark:text-indigo-100">
-                      {normalMargin.toFixed(1)}%
-                    </p>
-                  </div>
+                <div className="flex items-center space-x-3 p-4 bg-indigo-500/10 rounded-xl">
+                  <TrendingUp className="h-6 w-6 text-indigo-400" />
+                  <div><p className="text-sm text-indigo-400">Marge Normale</p><p className="text-2xl font-bold text-foreground">{normalMargin.toFixed(1)}%</p></div>
                 </div>
-
-                {/* Reseller Profit Margin */}
-                <div className="flex items-center space-x-3 p-4 bg-rose-50 dark:bg-rose-900/20 rounded-xl">
-                  <TrendingUp className="h-6 w-6 text-rose-600 dark:text-rose-300" />
-                  <div>
-                    <p className="text-sm text-rose-600 dark:text-rose-400">Marge Revendeur</p>
-                    <p className="text-2xl font-bold text-rose-900 dark:text-rose-100">
-                      {resellerMargin.toFixed(1)}%
-                    </p>
-                  </div>
+                <div className="flex items-center space-x-3 p-4 bg-rose-500/10 rounded-xl">
+                  <TrendingUp className="h-6 w-6 text-rose-400" />
+                  <div><p className="text-sm text-rose-400">Marge Revendeur</p><p className="text-2xl font-bold text-foreground">{resellerMargin.toFixed(1)}%</p></div>
                 </div>
-
-                {/* Provider */}
-                <div className="flex items-center space-x-3 p-4 bg-teal-50 dark:bg-teal-900/20 rounded-xl">
-                  <Building className="h-6 w-6 text-teal-600 dark:text-teal-300" />
-                  <div>
-                    <p className="text-sm text-teal-600 dark:text-teal-400">Fournisseur</p>
-                    <p className="text-lg font-bold text-teal-900 dark:text-teal-100 truncate">
-                      {product.provider || 'Non spécifié'}
-                    </p>
-                  </div>
+                <div className="flex items-center space-x-3 p-4 bg-teal-500/10 rounded-xl">
+                  <Building className="h-6 w-6 text-teal-400" />
+                  <div><p className="text-sm text-teal-400">Fournisseur</p><p className="text-lg font-bold text-foreground truncate">{product.provider || 'Non spécifié'}</p></div>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Tech Sheet Link */}
+          {/* Tech Sheet */}
           {product.techsheet && (
-            <div className="border-t border-gray-200 dark:border-gray-700 pt-6 mt-6">
-              <a
-                href={product.techsheet}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center space-x-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-              >
-                <Package className="h-4 w-4" />
-                <span>Ouvrir Fiche Technique</span>
+            <div className="border-t border-border pt-6 mt-6">
+              <a href={product.techsheet} target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center space-x-2 px-6 py-3 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors">
+                <Package className="h-4 w-4" /><span>Ouvrir Fiche Technique</span>
               </a>
             </div>
           )}
 
-          {/* Action Buttons - Simplified */}
-          <div className="border-t border-gray-200 dark:border-gray-700 pt-6 mt-6 flex flex-wrap gap-3">
-            <button
-              onClick={() => navigate('/')}
-              className="flex items-center space-x-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-            >
-              <Home className="h-4 w-4" />
-              <span>Accueil</span>
+          {/* Action Buttons */}
+          <div className="border-t border-border pt-6 mt-6 flex flex-wrap gap-3">
+            <button onClick={() => navigate('/')} className="flex items-center space-x-2 px-6 py-3 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors">
+              <Home className="h-4 w-4" /><span>Accueil</span>
             </button>
-            
-            <button
-              onClick={handleBackToSearch}
-              className="flex items-center space-x-2 px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
-            >
-              <Search className="h-4 w-4" />
-              <span>Retour à la Recherche</span>
+            <button onClick={handleBackToSearch} className="flex items-center space-x-2 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors">
+              <Search className="h-4 w-4" /><span>Retour à la Recherche</span>
             </button>
           </div>
         </div>
