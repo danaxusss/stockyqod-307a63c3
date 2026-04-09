@@ -86,7 +86,9 @@ export function QuoteCartPage() {
 
   // Users state for sales person dropdown
   const [availableUsers, setAvailableUsers] = useState<{ username: string; displayName: string }[]>([]);
-  const { currentUser, authenticatedUser } = useAuth();
+  const [customSellerName, setCustomSellerName] = useState('');
+  const [useCustomSeller, setUseCustomSeller] = useState(false);
+  const { currentUser, authenticatedUser, isAdmin } = useAuth();
 
   // Load quote data if editing
   useEffect(() => {
