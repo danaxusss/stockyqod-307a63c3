@@ -82,7 +82,7 @@ export function ExcelUploadModal({ onClose, onSuccess }: ExcelUploadModalProps) 
                 const headerLower = String(header).toLowerCase().trim();
                 if (headerLower.includes('barcode')) columnMapping.barcode = index;
                 else if (headerLower.includes('product') && headerLower.includes('name')) columnMapping.productName = index;
-                else if (headerLower.includes('brand')) columnMapping.brand = index;
+                else if (headerLower.includes('brand') || headerLower.includes('categorie') || headerLower.includes('catégorie') || headerLower === 'marque') columnMapping.brand = index;
                 else if (headerLower.includes('stock') && headerLower.includes('location')) columnMapping.stockLocation = index;
                 else if (headerLower.includes('stock') && headerLower.includes('level')) columnMapping.stockLevel = index;
                 else if (
