@@ -338,10 +338,10 @@ export function SearchPage() {
                     <div className="flex items-center gap-1.5 shrink-0">
                       {canCreateQuote() && (
                         <button onClick={(e) => handleAddToCart(product, e)}
-                          className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
+                          className={`p-1.5 rounded-lg transition-all duration-200 ${
                             isAdded ? 'bg-emerald-600 text-white' : 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm'
                           }`}>
-                          {isAdded ? <><span>✓</span><span className="hidden sm:inline">Ajouté</span></> : <><Plus className="h-3.5 w-3.5" /><span className="hidden sm:inline">Ajouter</span></>}
+                          {isAdded ? <span className="text-xs px-0.5">✓</span> : <Plus className="h-4 w-4" />}
                         </button>
                       )}
                       <Link to={`/product/${encodeURIComponent(product.barcode)}`} className="p-1.5 text-muted-foreground hover:text-primary transition-colors">
