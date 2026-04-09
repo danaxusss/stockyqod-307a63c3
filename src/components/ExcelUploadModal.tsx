@@ -466,14 +466,13 @@ export function ExcelUploadModal({ onClose, onSuccess }: ExcelUploadModalProps) 
               <div className="max-h-40 overflow-y-auto">
                 {parsedData.slice(0, 5).map((product, index) => (
                   <div key={index} className="text-sm text-blue-800 dark:text-blue-200 py-1">
-                    <strong>{product.barcode}</strong> - {product.name} - 
-                    Achat: {product.buyprice.toFixed(2)} Dh | 
-                    Vente: {product.price.toFixed(2)} Dh | 
-                    Revendeur: {product.reseller_price.toFixed(2)} Dh | 
-                    Fournisseur: {product.provider} | 
-                    Stock: {Object.entries(product.stock_levels).map(([location, level]) => 
-                      `${location}: ${level}`
-                    ).join(', ')}
+                    <strong>{product.barcode}</strong> - {product.name}
+                    {product.brand && <> | Marque: {product.brand}</>}
+                    {product.provider && <> | Fournisseur: {product.provider}</>}
+                    {' | '}Achat: {product.buyprice.toFixed(2)} Dh
+                    {' | '}Vente: {product.price.toFixed(2)} Dh
+                    {' | '}Revendeur: {product.reseller_price.toFixed(2)} Dh
+                    {' | '}Stock: {Object.entries(product.stock_levels).map(([location, level]) => `${location}: ${level}`).join(', ')}
                   </div>
                 ))}
                 {parsedData.length > 5 && (
