@@ -1437,8 +1437,7 @@ export function QuoteCartPage() {
                   companySettings?.email ? `Email: ${companySettings.email}` : '',
                   companySettings?.address ? `Adresse: ${companySettings.address}` : '',
                 ].filter(Boolean).join('\n'));
-                const email = customer.email || '';
-                window.open(`mailto:${email}?subject=${subject}&body=${body}`, '_self');
+                window.open(`mailto:?subject=${subject}&body=${body}`, '_self');
               }}
               className="flex-1 flex items-center justify-center space-x-2 px-4 py-2.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
             >
