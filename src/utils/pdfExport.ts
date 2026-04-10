@@ -531,31 +531,48 @@ export class PdfExportService {
 
     // === TECH SHEETS LINK ===
     if (techSheetsUrl) {
-      y += 3;
-      const ctaText = '📄  Consulter les fiches techniques';
-      const ctaPaddingX = 3;
-      const ctaPaddingY = 1.8;
-      doc.setFontSize(7.5);
+      y += 5;
+      const ctaLabel = 'Consulter les fiches techniques';
+      const ctaPaddingX = 5;
+      const ctaBoxHeight = 8;
+      const iconSize = 4;
+      
+      doc.setFontSize(9);
       doc.setFont(font, 'bold');
-      const ctaTextWidth = doc.getTextWidth(ctaText);
-      const ctaBoxWidth = ctaTextWidth + ctaPaddingX * 2;
-      const ctaBoxHeight = 5.5;
+      const ctaTextWidth = doc.getTextWidth(ctaLabel);
+      const ctaBoxWidth = ctaTextWidth + ctaPaddingX * 2 + iconSize + 3;
+      const ctaY = y;
 
       // Draw rounded button background
       doc.setFillColor(200, 30, 30);
-      doc.roundedRect(margin, y - ctaBoxHeight + ctaPaddingY + 0.5, ctaBoxWidth, ctaBoxHeight, 1.2, 1.2, 'F');
+      doc.roundedRect(margin, ctaY, ctaBoxWidth, ctaBoxHeight, 1.5, 1.5, 'F');
+
+      // Draw document icon (simple rectangle with fold)
+      const iconX = margin + ctaPaddingX;
+      const iconY = ctaY + (ctaBoxHeight - iconSize) / 2;
+      doc.setFillColor(255, 255, 255);
+      doc.rect(iconX, iconY, 3, iconSize, 'F');
+      doc.setFillColor(200, 30, 30);
+      doc.triangle(iconX + 1.5, iconY, iconX + 3, iconY, iconX + 3, iconY + 1.5, 'F');
 
       // Draw white text as clickable link
       doc.setTextColor(255, 255, 255);
-      doc.textWithLink(ctaText, margin + ctaPaddingX, y, { url: techSheetsUrl });
+      const textY = ctaY + ctaBoxHeight / 2 + 1.2;
+      doc.textWithLink(ctaLabel, iconX + iconSize + 2, textY, { url: techSheetsUrl });
 
+      // Make the whole button area clickable
+      doc.link(margin, ctaY, ctaBoxWidth, ctaBoxHeight, { url: techSheetsUrl });
+
+      // Subtitle with expiry + digital notice
+      y = ctaY + ctaBoxHeight + 2;
+      doc.setFontSize(6);
+      doc.setFont(font, 'italic');
+      doc.setTextColor(130, 130, 130);
+      let subtitle = 'Lien cliquable sur la version numerique du devis';
       if (techSheetsExpiryLabel) {
-        y += ctaBoxHeight + 1;
-        doc.setFontSize(6);
-        doc.setFont(font, 'italic');
-        doc.setTextColor(150, 150, 150);
-        doc.text(`(lien valable ${techSheetsExpiryLabel === 'permanent' ? 'en permanence' : techSheetsExpiryLabel})`, margin, y);
+        subtitle += ` - valable ${techSheetsExpiryLabel === 'permanent' ? 'en permanence' : techSheetsExpiryLabel}`;
       }
+      doc.text(subtitle, margin, y);
       y += 4;
     }
 
