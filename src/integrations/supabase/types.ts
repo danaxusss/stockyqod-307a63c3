@@ -200,6 +200,30 @@ export type Database = {
         }
         Relationships: []
       }
+      product_name_overrides: {
+        Row: {
+          created_at: string
+          custom_name: string
+          id: string
+          original_name: string
+          type: string
+        }
+        Insert: {
+          created_at?: string
+          custom_name: string
+          id?: string
+          original_name: string
+          type: string
+        }
+        Update: {
+          created_at?: string
+          custom_name?: string
+          id?: string
+          original_name?: string
+          type?: string
+        }
+        Relationships: []
+      }
       products: {
         Row: {
           barcode: string
