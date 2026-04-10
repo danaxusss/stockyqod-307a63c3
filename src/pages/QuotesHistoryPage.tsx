@@ -9,6 +9,7 @@ import { PdfExportService } from '../utils/pdfExport';
 import { CompanySettingsService, CompanySettings, DEFAULT_SHARE_TEMPLATES } from '../utils/companySettings';
 import { ExcelExportService } from '../utils/excelExport';
 import { useAuth } from '../hooks/useAuth';
+import { buildWhatsAppShareUrl, openWhatsAppShare } from '../utils/whatsappShare';
 
 const QUOTES_PER_PAGE = 10;
 type SortField = 'quoteNumber' | 'customerName' | 'createdAt' | 'totalAmount' | 'status';
@@ -167,26 +168,15 @@ export function QuotesHistoryPage() {
 
   const handleWhatsAppShare = async (quote: Quote) => {
     const messageText = buildWhatsAppShareText(quote);
-    const phone = normalizeWhatsAppPhone(quote.customer.phoneNumber || '');
-    const shareUrl = phone
-      ? `https://api.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(messageText)}`
-      : `https://api.whatsapp.com/send?text=${encodeURIComponent(messageText)}`;
+    const shareUrl = buildWhatsAppShareUrl(quote.customer.phoneNumber || '', messageText);
 
-    try {
-      const popup = window.open('about:blank', '_blank', 'noopener,noreferrer');
-      if (popup) {
-        popup.location.href = shareUrl;
-        return;
+    if (!openWhatsAppShare(shareUrl)) {
+      try {
+        await navigator.clipboard.writeText(messageText);
+        setMessage({ type: 'success', text: 'Message WhatsApp copié. Ouvrez WhatsApp puis collez-le.' });
+      } catch {
+        setMessage({ type: 'error', text: "Impossible d'ouvrir ou copier le message WhatsApp." });
       }
-    } catch (error) {
-      console.error('WhatsApp share popup failed:', error);
-    }
-
-    try {
-      await navigator.clipboard.writeText(messageText);
-      setMessage({ type: 'success', text: 'Message WhatsApp copié. Ouvrez WhatsApp puis collez-le.' });
-    } catch {
-      setMessage({ type: 'error', text: 'Impossible d’ouvrir ou copier le message WhatsApp.' });
     }
   };
 
