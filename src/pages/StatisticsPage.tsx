@@ -424,7 +424,7 @@ export function StatisticsPage() {
                 <div className="flex items-center space-x-2">
                   <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
                   <div>
-                    <p className="text-[11px] text-yellow-600 dark:text-yellow-400">Brouillons</p>
+                    <p className="text-[11px] text-yellow-600 dark:text-yellow-400">En attente</p>
                     <p className="text-base font-bold text-yellow-900 dark:text-yellow-100">{formatNumber(quoteStats.draftQuotes)} ({((quoteStats.draftQuotes / quoteStats.totalQuotes) * 100).toFixed(1)}%)</p>
                   </div>
                 </div>
