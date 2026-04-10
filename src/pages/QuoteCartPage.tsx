@@ -37,6 +37,7 @@ import { useQuoteCart } from '../hooks/useQuoteCart';
 import { searchProductsLocally } from '../hooks/useSearchState';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
 
 const ITEMS_PER_PAGE = 40;
 
@@ -96,6 +97,11 @@ export function QuoteCartPage() {
   const [clientSuggestions, setClientSuggestions] = useState<Client[]>([]);
   const [showClientSuggestions, setShowClientSuggestions] = useState(false);
   const [clientSearchTimeout, setClientSearchTimeout] = useState<NodeJS.Timeout | null>(null);
+
+  // Tech sheets link state
+  const [attachTechSheets, setAttachTechSheets] = useState(false);
+  const [techSheetsExpiry, setTechSheetsExpiry] = useState<string>('30');
+  const [linkedSheetIds, setLinkedSheetIds] = useState<string[]>([]);
 
   // Load quote data if editing
   useEffect(() => {
@@ -158,6 +164,24 @@ export function QuoteCartPage() {
   useEffect(() => {
     CompanySettingsService.getSettings().then(setCompanySettings).catch(console.error);
   }, []);
+
+  // Check linked tech sheets when items change
+  useEffect(() => {
+    const checkLinkedSheets = async () => {
+      const barcodes = items.map(i => i.product.barcode).filter(Boolean);
+      if (barcodes.length === 0) { setLinkedSheetIds([]); setAttachTechSheets(false); return; }
+      try {
+        const { data } = await supabase
+          .from('technical_sheet_products')
+          .select('sheet_id')
+          .in('product_barcode', barcodes);
+        const uniqueIds = [...new Set((data || []).map(r => r.sheet_id))];
+        setLinkedSheetIds(uniqueIds);
+        setAttachTechSheets(uniqueIds.length > 0);
+      } catch { setLinkedSheetIds([]); }
+    };
+    checkLinkedSheets();
+  }, [items]);
 
   // Load available users for sales person dropdown
   useEffect(() => {
@@ -622,7 +646,23 @@ export function QuoteCartPage() {
         notes
       };
 
-      await PdfExportService.exportQuoteToPdf(quoteData, freshSettings || companySettings);
+      // Generate tech sheets share link if enabled
+      let techSheetsUrl: string | undefined;
+      let techSheetsExpiryLabel: string | undefined;
+      if (attachTechSheets && linkedSheetIds.length > 0) {
+        const token = crypto.randomUUID();
+        const expiresAt = techSheetsExpiry === 'never' ? null : new Date(Date.now() + parseInt(techSheetsExpiry) * 86400000).toISOString();
+        await supabase.from('sheet_share_links').insert({
+          token,
+          sheet_ids: linkedSheetIds,
+          title: `Devis ${quoteNumber}`,
+          expires_at: expiresAt,
+        });
+        techSheetsUrl = `${window.location.origin}/share/${token}`;
+        techSheetsExpiryLabel = techSheetsExpiry === 'never' ? 'permanent' : `${techSheetsExpiry} jours`;
+      }
+
+      await PdfExportService.exportQuoteToPdf(quoteData, freshSettings || companySettings, techSheetsUrl, techSheetsExpiryLabel);
       showToast({
         type: 'success',
         title: 'Export réussi',
@@ -1193,6 +1233,38 @@ export function QuoteCartPage() {
           placeholder="Notes ou commentaires..."
         />
       </div>
+
+      {/* Tech Sheets Attachment */}
+      {linkedSheetIds.length > 0 && (
+        <div className="glass rounded-xl shadow-lg p-3">
+          <div className="flex items-center justify-between">
+            <label className="flex items-center space-x-2 text-sm text-foreground cursor-pointer">
+              <input
+                type="checkbox"
+                checked={attachTechSheets}
+                onChange={(e) => setAttachTechSheets(e.target.checked)}
+                className="rounded border-input"
+              />
+              <span>📎 Joindre fiches techniques ({linkedSheetIds.length} fiche{linkedSheetIds.length > 1 ? 's' : ''})</span>
+            </label>
+            {attachTechSheets && (
+              <div className="flex items-center space-x-2">
+                <span className="text-xs text-muted-foreground">Expiration :</span>
+                <select
+                  value={techSheetsExpiry}
+                  onChange={(e) => setTechSheetsExpiry(e.target.value)}
+                  className="px-2 py-1 text-xs border border-input rounded-lg bg-secondary text-foreground"
+                >
+                  <option value="7">7 jours</option>
+                  <option value="30">30 jours</option>
+                  <option value="90">90 jours</option>
+                  <option value="never">Jamais</option>
+                </select>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Action Buttons */}
       <div className="flex flex-col sm:flex-row gap-2">

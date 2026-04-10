@@ -61,7 +61,7 @@ export class PdfExportService {
     return `${intPart},${parts[1]}`;
   }
 
-  static async exportQuoteToPdf(quote: Quote, settings?: CompanySettings | null): Promise<void> {
+  static async exportQuoteToPdf(quote: Quote, settings?: CompanySettings | null, techSheetsUrl?: string, techSheetsExpiryLabel?: string): Promise<void> {
     const style: QuoteStyle = settings?.quote_style || {
       accentColor: '#3B82F6', fontFamily: 'helvetica', showBorders: true,
       borderRadius: 1, headerSize: 'large', totalsStyle: 'highlighted',
@@ -527,6 +527,27 @@ export class PdfExportService {
       const noteLines = doc.splitTextToSize(quote.notes, contentWidth - 12);
       doc.text(noteLines, margin + 12, y);
       y += 3 + noteLines.length * 3.5;
+    }
+
+    // === TECH SHEETS LINK ===
+    if (techSheetsUrl) {
+      y += 2;
+      doc.setFontSize(7);
+      doc.setFont(font, 'normal');
+      doc.setTextColor(120, 120, 120);
+      const linkLabel = 'Fiches techniques : ';
+      doc.text(linkLabel, margin, y);
+      const labelWidth = doc.getTextWidth(linkLabel);
+      doc.setTextColor(80, 120, 200);
+      doc.textWithLink(techSheetsUrl, margin + labelWidth, y, { url: techSheetsUrl });
+      if (techSheetsExpiryLabel) {
+        y += 3.5;
+        doc.setFontSize(6);
+        doc.setFont(font, 'italic');
+        doc.setTextColor(150, 150, 150);
+        doc.text(`(lien valable ${techSheetsExpiryLabel === 'permanent' ? 'en permanence' : techSheetsExpiryLabel})`, margin, y);
+      }
+      y += 4;
     }
 
     // Fix page numbers
