@@ -105,6 +105,13 @@ export function QuoteCartPage() {
         if (currentUsername) {
           setCustomer(prev => ({ ...prev, salesPerson: currentUsername }));
         }
+        // If admin has a saved custom seller name, pre-fill it
+        const adminUser = currentUser || authenticatedUser;
+        if (adminUser?.is_admin && adminUser?.custom_seller_name) {
+          setCustomer(prev => ({ ...prev, salesPerson: adminUser.custom_seller_name! }));
+          setUseCustomSeller(true);
+          setCustomSellerName(adminUser.custom_seller_name);
+        }
         return;
       }
 
