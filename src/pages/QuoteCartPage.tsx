@@ -760,21 +760,21 @@ export function QuoteCartPage() {
       </div>
 
       {/* Customer Information */}
-      <div className="glass rounded-xl shadow-lg p-4">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-semibold text-foreground flex items-center space-x-2">
-            <User className="h-5 w-5" />
+      <div className="glass rounded-xl shadow-lg p-3">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-foreground flex items-center space-x-2">
+            <User className="h-4 w-4" />
             <span>Informations Client</span>
           </h2>
           <button
             onClick={handleClearForm}
-            className="px-3 py-1 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+            className="px-2 py-1 text-xs text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
           >
             Effacer
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           <div>
             <label className="block text-sm font-medium text-foreground mb-2">
               Nom Complet *
