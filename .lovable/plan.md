@@ -1,43 +1,46 @@
 
 
-## Plan: Embed Technical Sheets Share Link in Quote PDF
+## Plan: Show Original Brand Name as Internal Reference
 
 ### Summary
-When exporting a quote to PDF, automatically detect which products have linked technical sheets, generate a share link for those sheets, and embed a clickable link in the PDF. Add an expiry option on the quote page and make the link section non-printable in the digital PDF.
+When a brand has been renamed via product settings, show the original name as a subtle tooltip/badge next to the custom name — visible only to internal users (search, catalogue, quote cart), but hidden from client-facing outputs (PDF exports, public share pages).
 
 ### Changes
 
-#### 1. QuoteCartPage.tsx — Add tech sheets toggle & expiry option
+#### 1. Create a shared hook: `useProductOverrides`
+- New file `src/hooks/useProductOverrides.ts`
+- Loads `product_name_overrides` from the database once, caches in state
+- Exposes a helper: `getOriginalName(type: 'brand'|'provider', currentName: string) => string | null`
+- Returns the `original_name` if `currentName` matches any `custom_name` in the overrides table
 
-- Before the export button area, add a collapsible section:
-  - **"Joindre fiches techniques"** checkbox/toggle (default: on if any items have linked sheets)
-  - **Expiry dropdown**: Never / 7 jours / 30 jours / 90 jours
-- On export, if toggle is on:
-  - Query `technical_sheet_products` for all product barcodes in the quote
-  - Collect unique sheet IDs
-  - Create a `sheet_share_links` entry with those sheet IDs, the chosen expiry, and title = quote number
-  - Pass the generated share URL to `PdfExportService.exportQuoteToPdf()`
+#### 2. Search page (`Search.tsx`)
+- Import `useProductOverrides`
+- Next to the brand badge, if `getOriginalName('brand', product.brand)` returns a value, show a small muted text like `(ex: CHM)` or a tooltip on the brand badge
 
-#### 2. PdfExportService (pdfExport.ts) — Render link in PDF
+#### 3. Products Catalogue (`ProductsPage.tsx`)
+- Same approach: in the brand column, append `(ex: CHM)` in smaller muted text when an override exists
 
-- Add optional `techSheetsUrl?: string` parameter to `exportQuoteToPdf`
-- After the notes section (before page number fix), if `techSheetsUrl` is provided:
-  - Draw a small section with text: "📎 Fiches techniques : " followed by a clickable link (using `doc.textWithLink()`)
-  - Use a light gray color and small font (6-7pt) so it's subtle
-  - jsPDF supports clickable links via `doc.textWithLink()` which work in digital PDFs
-  - Add a small italic note: "(lien valable X jours)" or "(lien permanent)"
+#### 4. Quote Cart page (`QuoteCartPage.tsx`)
+- In the cart item display where `product.brand` is shown, append the original name hint
+- **Not** included in the PDF export — only in the on-screen cart view
 
-### Technical Details
+#### 5. Product Detail page (`ProductDetail.tsx`)
+- In the brand badge area, show the original name as a subtitle or tooltip
 
-- `doc.textWithLink(text, x, y, { url })` creates a clickable hyperlink in jsPDF — works in all PDF viewers digitally
-- When printed, the link text will still appear but won't be clickable (inherent PDF behavior) — this is acceptable. To minimize print clutter, use small/subtle styling.
-- The share URL format: `{window.location.origin}/share/{token}`
-- The share link creation reuses existing `sheet_share_links` table logic from TechnicalSheetsPage
+### Visual Design
+The original name will appear as a small, muted annotation — e.g.:
+```
+[Restom] (ex: CHM)
+```
+Using `text-muted-foreground text-[10px]` styling so it's clearly secondary information.
 
 ### Files
 
 | File | Action |
 |------|--------|
-| `src/pages/QuoteCartPage.tsx` | Add toggle + expiry UI, generate share link on export |
-| `src/utils/pdfExport.ts` | Accept optional URL, render clickable link after notes |
+| `src/hooks/useProductOverrides.ts` | Create — shared hook to load overrides and resolve original names |
+| `src/pages/Search.tsx` | Add original brand hint next to brand badge |
+| `src/pages/ProductsPage.tsx` | Add original brand hint in brand column |
+| `src/pages/QuoteCartPage.tsx` | Add original brand hint in cart items (screen only) |
+| `src/pages/ProductDetail.tsx` | Add original brand hint in header |
 
