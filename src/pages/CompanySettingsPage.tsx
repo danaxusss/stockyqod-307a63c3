@@ -427,18 +427,22 @@ function ProductSettingsTab() {
     setIsLoading(false);
   };
 
-  const getDisplayName = (type: string, originalName: string) => {
-    const override = overrides.find(o => o.type === type && o.original_name === originalName);
-    return override?.custom_name || originalName;
+  const getOverrideForCurrent = (type: string, currentName: string) => {
+    return overrides.find(o => o.type === type && o.custom_name === currentName);
   };
 
-  const hasOverride = (type: string, originalName: string) => {
-    return overrides.some(o => o.type === type && o.original_name === originalName);
+  const getOriginalName = (type: string, currentName: string) => {
+    const override = getOverrideForCurrent(type, currentName);
+    return override?.original_name || null;
+  };
+
+  const hasOverride = (type: string, currentName: string) => {
+    return overrides.some(o => o.type === type && o.custom_name === currentName);
   };
 
   const startEdit = (type: string, name: string) => {
     setEditingItem({ type, name });
-    setEditValue(getDisplayName(type, name));
+    setEditValue(name);
   };
 
   const cancelEdit = () => {
@@ -450,28 +454,27 @@ function ProductSettingsTab() {
     if (!editingItem || !editValue.trim()) return;
     setSaving(true);
     try {
-      const { type, name } = editingItem;
-      const customName = editValue.trim();
+      const { type, name: currentName } = editingItem;
+      const newName = editValue.trim();
+      const existingOverride = getOverrideForCurrent(type, currentName);
+      const originalName = existingOverride?.original_name || currentName;
 
-      if (customName === name) {
-        // Remove override if reset to original
-        const existing = overrides.find(o => o.type === type && o.original_name === name);
-        if (existing) {
-          await supabase.from('product_name_overrides').delete().eq('id', existing.id);
+      if (newName === originalName) {
+        // Reverting to original — remove override
+        if (existingOverride) {
+          await supabase.from('product_name_overrides').delete().eq('id', existingOverride.id);
         }
-      } else {
-        // Upsert override
+        const field = type === 'brand' ? 'brand' : 'provider';
+        await supabase.from('products').update({ [field]: originalName }).eq(field, currentName);
+      } else if (newName !== currentName) {
+        // Upsert override with original → new mapping
         await (supabase.from('product_name_overrides') as any).upsert({
           type,
-          original_name: name,
-          custom_name: customName,
+          original_name: originalName,
+          custom_name: newName,
         }, { onConflict: 'type,original_name' });
-      }
-
-      // Apply rename to all products
-      if (customName !== name) {
         const field = type === 'brand' ? 'brand' : 'provider';
-        await supabase.from('products').update({ [field]: customName }).eq(field, name);
+        await supabase.from('products').update({ [field]: newName }).eq(field, currentName);
       }
 
       showToast({ type: 'success', message: 'Nom mis à jour' });
@@ -483,13 +486,12 @@ function ProductSettingsTab() {
     setSaving(false);
   };
 
-  const removeOverride = async (type: string, originalName: string) => {
-    const existing = overrides.find(o => o.type === type && o.original_name === originalName);
+  const removeOverride = async (type: string, currentName: string) => {
+    const existing = getOverrideForCurrent(type, currentName);
     if (!existing) return;
     try {
-      // Revert products back to original name
       const field = type === 'brand' ? 'brand' : 'provider';
-      await supabase.from('products').update({ [field]: originalName }).eq(field, existing.custom_name);
+      await supabase.from('products').update({ [field]: existing.original_name }).eq(field, currentName);
       await supabase.from('product_name_overrides').delete().eq('id', existing.id);
       showToast({ type: 'success', message: 'Nom restauré' });
       await loadData();
@@ -535,7 +537,7 @@ function ProductSettingsTab() {
         ) : items.map(name => {
           const isEditing = editingItem?.type === type && editingItem?.name === name;
           const overridden = hasOverride(type, name);
-          const displayName = getDisplayName(type, name);
+          const originalName = getOriginalName(type, name);
           return (
             <div key={name} className={`flex items-center justify-between p-2 rounded-lg border ${overridden ? 'border-primary/30 bg-primary/5' : 'border-border'}`}>
               {isEditing ? (
@@ -554,9 +556,9 @@ function ProductSettingsTab() {
               ) : (
                 <>
                   <div className="flex-1 min-w-0">
-                    <span className="text-sm text-foreground">{displayName}</span>
-                    {overridden && (
-                      <span className="ml-2 text-[10px] text-muted-foreground">(original: {name})</span>
+                    <span className="text-sm text-foreground">{name}</span>
+                    {originalName && (
+                      <span className="ml-2 text-[10px] text-muted-foreground">(ex: {originalName})</span>
                     )}
                   </div>
                   <div className="flex items-center gap-1">
