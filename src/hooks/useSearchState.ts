@@ -9,36 +9,37 @@ export interface SearchFilters {
   stockLocation?: string;
 }
 
-function searchProductsLocally(products: Product[], filters: SearchFilters): Product[] {
+export function searchProductsLocally(products: Product[], filters: SearchFilters): Product[] {
   const { query = '', brand = '', stockLocation = '' } = filters;
+  const queryLower = query.toLowerCase().trim();
+  const queryTokens = queryLower.length > 0 ? queryLower.split(/\s+/).filter(t => t.length > 0) : [];
+  const brandLower = brand.toLowerCase();
+  const stockLocationLower = stockLocation.toLowerCase();
 
   return products.filter(product => {
-    // Text search
-    const matchesQuery = !query || (() => {
-      const queryLower = query.toLowerCase().trim();
-      if (String(product.barcode).toLowerCase() === queryLower) return true;
-
-      const queryTokens = queryLower.split(/\s+/).filter(t => t.length > 0);
-      if (queryTokens.length === 0) return false;
-
-      const searchableText = `${product.name} ${product.brand || ''}`.toLowerCase();
-      return queryTokens.every(token => searchableText.includes(token));
-    })();
-
-    // Brand filter
-    const matchesBrand = !brand || (product.brand || '').toLowerCase() === brand.toLowerCase();
+    // Brand filter (fast check first)
+    if (brandLower && (product.brand || '').toLowerCase() !== brandLower) return false;
 
     // Stock location filter
-    const matchesStockLocation = !stockLocation || (
-      product.stock_levels &&
-      Object.keys(product.stock_levels).some(loc =>
-        loc.toLowerCase() === stockLocation.toLowerCase() &&
-        (product.stock_levels[loc] || 0) > 0
-      )
-    );
+    if (stockLocationLower) {
+      if (!product.stock_levels) return false;
+      const hasStock = Object.keys(product.stock_levels).some(loc =>
+        loc.toLowerCase() === stockLocationLower && (product.stock_levels[loc] || 0) > 0
+      );
+      if (!hasStock) return false;
+    }
 
-    return matchesQuery && matchesBrand && matchesStockLocation;
-  }).sort((a, b) => (a.price || 0) - (b.price || 0));
+    // Text search
+    if (queryTokens.length > 0) {
+      // Exact barcode match — fast path
+      if (String(product.barcode).toLowerCase() === queryLower) return true;
+
+      const searchableText = `${product.name} ${product.brand || ''}`.toLowerCase();
+      if (!queryTokens.every(token => searchableText.includes(token))) return false;
+    }
+
+    return true;
+  });
 }
 
 interface UseSearchStateReturn {
