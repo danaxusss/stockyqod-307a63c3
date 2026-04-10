@@ -1,95 +1,63 @@
 
 
-## Plan: Technical Sheets Management System
+## Plan: Multiple Enhancements
 
-### Overview
-Build a full technical sheets module with its own storage, many-to-many product linking, and public sharing — all fresh, not reusing Bolt's infrastructure.
+### 1. Add sector filter to Technical Sheets
+Add a new "Secteur" filter dropdown with options: Cafeteria, Restaurant, Patisserie, Boucherie, Hotellerie, Autre.
 
----
+**Changes:**
+- **Migration**: Add `sector` text column to `technical_sheets` table (default `''`)
+- **TechnicalSheetsPage.tsx**: Add `SECTORS` constant, add sector filter dropdown, add sector field to upload modal, display sector badge on cards
 
-### 1. Database Migration
+### 2. Bulk import for Technical Sheets
+Allow uploading multiple PDF files at once. Each file creates a technical_sheet entry with the filename as title.
 
-**New tables:**
+**Changes:**
+- **TechnicalSheetsPage.tsx**: Add "Import en masse" button, multi-file input (`multiple` attribute), loop through files to upload each one with shared manufacturer/category/sector metadata
 
-- **`technical_sheets`** — id (uuid), title (text), manufacturer (text), category (text), file_url (text), file_size (bigint), file_type (text), view_count (int default 0), download_count (int default 0), created_at, updated_at
-- **`technical_sheet_products`** — id (uuid), sheet_id (uuid FK → technical_sheets), product_barcode (text), created_at. UNIQUE(sheet_id, product_barcode)
-- **`sheet_share_links`** — id (uuid), token (text UNIQUE), title (text nullable), sheet_ids (uuid[]), expires_at (timestamptz nullable), view_count (int default 0), created_at
+### 3. Multi-select products to link to a sheet
+In the sheet detail modal's product search, add checkboxes so users can select multiple products from results and link them all at once (instead of one-by-one which clears search).
 
-**New storage bucket:** `technical-sheets` (fresh bucket, separate from existing `techsheets`)
+**Changes:**
+- **TechnicalSheetsPage.tsx**: Add `selectedProductsToLink` state (Set of barcodes), render checkboxes next to search results, add "Lier X produits" bulk action button, keep search results visible after linking
 
-All tables get public RLS policies (matching existing app pattern). Bucket gets public read/write/delete policies.
+### 4. Remove Lovable branding from public share page loading
+Replace the `PageLoader` spinner on the share route with a plain spinner (no Lovable logo).
 
-**Data migration:** SQL to migrate existing `products.techsheet` URLs into the new `technical_sheets` table and create corresponding `technical_sheet_products` junction entries.
+**Changes:**
+- **App.tsx**: Replace `<PageLoader />` fallback for the share route with a simple inline spinner `<div className="min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-400" /></div>`
 
----
+### 5. Fix PDF viewing (Edge blocking)
+The "Voir" button opens the raw storage URL which Edge blocks. Instead of `target="_blank"` direct link, use an inline PDF viewer or force download.
 
-### 2. New Page: Fiches Techniques (`/sheets`)
+**Changes:**
+- **TechnicalSheetsPage.tsx** and **PublicSharePage.tsx**: Change "Voir" to download the file (using `fetch` + blob + `URL.createObjectURL`) or embed in an iframe modal. The simplest fix: add `?download=` param or use a download approach. Best approach: open an in-app modal with an `<iframe src={url}>` for PDF preview.
 
-`src/pages/TechnicalSheetsPage.tsx` — Full management page:
-- **List view**: Table/cards of all sheets, searchable by title/manufacturer/category
-- **Filters**: By manufacturer, category
-- **Upload**: File picker, set title/manufacturer/category metadata on upload
-- **Sheet detail modal**: View metadata, see linked products, link/unlink products via product search
-- **Share feature**: Select multiple sheets → generate share link with optional title and expiration (Never / 1 day / 7 days / 30 days). Copy link. Manage existing share links.
-- **Stats**: View/download counts displayed per sheet
+### 6. Add paperclip icon + add-to-cart on Products Catalogue page
+**Changes:**
+- **ProductsPage.tsx**: 
+  - Fetch `technical_sheet_products` junction data on mount to get sheet counts per barcode
+  - Show Paperclip icon in the actions column for products with linked sheets
+  - Add "Add to cart" (ShoppingCart/Plus icon) button in the actions column
+  - Import `useQuoteCart` and `useAuth` for cart + price logic
 
----
+### 7. Redesign Home page
+Reorganize into clear sections with priority-based layout.
 
-### 3. New Page: Public Share (`/share/:token`)
-
-`src/pages/PublicSharePage.tsx`:
-- No auth required (route placed before auth gate in App.tsx)
-- Displays shared sheets as cards with title, manufacturer, category
-- Download individual files
-- Shows collection title, expiry status
-- Increments view count on load
-
----
-
-### 4. Product Detail Updates
-
-Replace current single-techsheet upload with a **Linked Sheets** section:
-- List all linked sheets (from junction table)
-- Search existing sheets and link them
-- Upload a new sheet directly (auto-linked to current product)
-- Unlink/download sheets
-- Remove old single-file upload logic
-
----
-
-### 5. Search Page Updates
-
-Update paperclip icon to query junction table for linked sheets count. Clicking shows a mini list of linked sheets for quick download.
-
----
-
-### 6. Navigation & Routing
-
-- Add "Fiches Techniques" nav link in Header (FileText icon, route `/sheets`)
-- Add routes: `/sheets`, `/share/:token` (public, before auth gate)
-
----
-
-### 7. Types
-
-Add to `src/types/index.ts`:
-```
-TechnicalSheet { id, title, manufacturer, category, file_url, file_size, file_type, view_count, download_count, created_at, updated_at }
-SheetShareLink { id, token, title, sheet_ids, expires_at, view_count, created_at }
-```
-
----
+**Changes to Home.tsx:**
+- **Main navigation cards** (large, prominent): Rechercher, Catalogue Produits, Fiches Techniques, Clients, Devis (history + new), Paramètres
+- **Admin tools section** (smaller, at bottom): Synchroniser, Upload Excel, Statistiques
+- **Debug/danger section** (smallest, very bottom, collapsible): Debug, Vider la Base
+- Keep existing stats bar
 
 ### Files Summary
 
 | File | Action |
 |------|--------|
-| Migration SQL | Create 3 tables + bucket + migrate existing data |
-| `src/types/index.ts` | Add TechnicalSheet, SheetShareLink types |
-| `src/pages/TechnicalSheetsPage.tsx` | Create — sheets management |
-| `src/pages/PublicSharePage.tsx` | Create — public share viewer |
-| `src/pages/ProductDetail.tsx` | Modify — linked sheets section |
-| `src/pages/Search.tsx` | Modify — multi-sheet paperclip |
-| `src/components/Header.tsx` | Modify — add nav link |
-| `src/App.tsx` | Modify — add routes |
+| Migration SQL | Add `sector` column to `technical_sheets` |
+| `src/pages/TechnicalSheetsPage.tsx` | Sector filter, bulk import, multi-select product linking, PDF viewer modal |
+| `src/pages/PublicSharePage.tsx` | PDF viewer fix, remove Lovable branding from loading |
+| `src/pages/ProductsPage.tsx` | Add paperclip icon + add-to-cart button |
+| `src/pages/Home.tsx` | Redesign with organized sections |
+| `src/App.tsx` | Plain spinner for share route fallback |
 
