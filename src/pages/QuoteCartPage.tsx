@@ -1373,78 +1373,105 @@ export function QuoteCartPage() {
         </button>
       </div>
 
-      {/* Sharing Options - visible only after saving */}
-      {lastSaved && items.length > 0 && (
+      {/* Sharing Options - always visible */}
+      {items.length > 0 && (
         <div className="glass rounded-xl shadow-lg p-3">
-          <h2 className="text-sm font-semibold text-foreground mb-2 flex items-center space-x-2">
-            <Send className="h-4 w-4" />
-            <span>Partager le devis</span>
-          </h2>
-          <div className="flex flex-col sm:flex-row gap-2">
+          <div className="flex items-center justify-between mb-1.5">
+            <h2 className="text-xs font-semibold text-foreground flex items-center space-x-1.5">
+              <Send className="h-3.5 w-3.5" />
+              <span>Partager</span>
+            </h2>
+            {!lastSaved && (
+              <span className="text-[10px] text-amber-500 flex items-center space-x-1">
+                <Info className="h-3 w-3" />
+                <span>Sauvegardez avant d'envoyer</span>
+              </span>
+            )}
+          </div>
+          <div className="flex gap-2">
             <button
               onClick={() => {
+                if (!lastSaved) {
+                  showToast({ type: 'warning', title: 'Devis non sauvegardé', message: 'Veuillez sauvegarder le devis avant de le partager.' });
+                  return;
+                }
                 const tvaRate = companySettings?.tva_rate ?? 20;
                 const totalHT = totalAmount / (1 + tvaRate / 100);
-                const phone = (customer.phoneNumber || '').replace(/[^0-9]/g, '');
-                const message = [
+                const companyName = companySettings?.company_name?.trim() || 'Restonet';
+                const phone = (customer.phoneNumber || '').replace(/\D/g, '');
+                const normalizedPhone = phone.startsWith('00') ? phone.slice(2) : phone.startsWith('0') ? `212${phone.slice(1)}` : phone;
+                const msg = [
                   `Bonjour ${customer.fullName || ''},`,
                   '',
-                  `Suite à votre demande, veuillez trouver ci-dessous le récapitulatif de votre devis :`,
+                  `Voici le récapitulatif de votre devis ${companyName}.`,
                   '',
                   `📋 Devis N° : ${quoteNumber}`,
                   `💰 Montant HT : ${ExcelExportService.formatCurrency(totalHT)} Dh`,
                   `💰 Montant TTC : ${ExcelExportService.formatCurrency(totalAmount)} Dh`,
                   `📦 Articles : ${totalItems}`,
                   '',
-                  `Pour toute question, n'hésitez pas à nous contacter.`,
+                  `N'hésitez pas à nous contacter pour plus d'informations.`,
                   '',
-                  `Cordialement,`,
-                  `Restonet`,
+                  'Cordialement,',
+                  companyName,
                   companySettings?.phone ? `📞 ${companySettings.phone}` : '',
                   companySettings?.email ? `✉️ ${companySettings.email}` : '',
                 ].filter(Boolean).join('\n');
-                const encoded = encodeURIComponent(message);
-                const url = phone
-                  ? `https://wa.me/${phone.startsWith('0') ? '212' + phone.slice(1) : phone}?text=${encoded}`
-                  : `https://wa.me/?text=${encoded}`;
-                window.open(url, '_blank');
+                const url = normalizedPhone
+                  ? `https://wa.me/${normalizedPhone}?text=${encodeURIComponent(msg)}`
+                  : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+                try {
+                  const popup = window.open('about:blank', '_blank', 'noopener,noreferrer');
+                  if (popup) { popup.location.href = url; return; }
+                } catch {}
+                navigator.clipboard.writeText(msg).then(() => {
+                  showToast({ type: 'success', title: 'Copié', message: 'Message copié — ouvrez WhatsApp et collez-le.' });
+                }).catch(() => {
+                  showToast({ type: 'error', title: 'Erreur', message: 'Impossible d\'ouvrir WhatsApp.' });
+                });
               }}
-              className="flex-1 flex items-center justify-center space-x-2 px-4 py-2.5 text-sm bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors"
+              className="flex-1 flex items-center justify-center space-x-1.5 px-3 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors"
             >
-              <MessageCircle className="h-4 w-4" />
+              <MessageCircle className="h-3.5 w-3.5" />
               <span>WhatsApp</span>
             </button>
             <button
               onClick={() => {
+                if (!lastSaved) {
+                  showToast({ type: 'warning', title: 'Devis non sauvegardé', message: 'Veuillez sauvegarder le devis avant de le partager.' });
+                  return;
+                }
                 const tvaRate = companySettings?.tva_rate ?? 20;
                 const totalHT = totalAmount / (1 + tvaRate / 100);
-                const subject = encodeURIComponent(`Devis Restonet - ${quoteNumber}`);
+                const companyName = companySettings?.company_name?.trim() || 'Restonet';
+                const subject = encodeURIComponent(`Devis ${companyName} - ${quoteNumber}`);
                 const body = encodeURIComponent([
                   `Bonjour ${customer.fullName || ''},`,
                   '',
-                  `Veuillez trouver ci-joint votre devis Restonet.`,
+                  `Veuillez trouver ci-joint votre devis ${companyName}.`,
                   '',
                   `Devis N° : ${quoteNumber}`,
                   `Montant HT : ${ExcelExportService.formatCurrency(totalHT)} Dh`,
                   `Montant TTC : ${ExcelExportService.formatCurrency(totalAmount)} Dh`,
                   `Nombre d'articles : ${totalItems}`,
                   '',
-                  `Pour toute question, n'hésitez pas à nous contacter.`,
+                  `N'hésitez pas à nous contacter pour plus d'informations.`,
                   '',
-                  `Cordialement,`,
-                  `Restonet`,
-                  companySettings?.phone ? `Tél: ${companySettings.phone}` : '',
-                  companySettings?.email ? `Email: ${companySettings.email}` : '',
-                  companySettings?.address ? `Adresse: ${companySettings.address}` : '',
+                  'Cordialement,',
+                  companyName,
+                  companySettings?.phone ? `Tél : ${companySettings.phone}` : '',
+                  companySettings?.email ? `Email : ${companySettings.email}` : '',
+                  companySettings?.address ? `Adresse : ${companySettings.address}` : '',
                 ].filter(Boolean).join('\n'));
-                window.open(`mailto:?subject=${subject}&body=${body}`, '_self');
+                window.location.href = `mailto:?subject=${subject}&body=${body}`;
               }}
-              className="flex-1 flex items-center justify-center space-x-2 px-4 py-2.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+              className="flex-1 flex items-center justify-center space-x-1.5 px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
             >
-              <Mail className="h-4 w-4" />
+              <Mail className="h-3.5 w-3.5" />
               <span>Email</span>
             </button>
           </div>
+          <p className="text-[10px] text-muted-foreground mt-1.5">💡 Exportez le PDF puis joignez-le manuellement à votre message.</p>
         </div>
       )}
     </div>
