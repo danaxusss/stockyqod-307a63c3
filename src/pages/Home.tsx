@@ -1,5 +1,5 @@
 import React, { useState, useEffect, forwardRef } from 'react';
-import { Search, RefreshCw, Package, Upload, Bug, Trash2, BarChart3, FileText, ShoppingCart, LucideIcon } from 'lucide-react';
+import { Search, RefreshCw, Package, Upload, Bug, Trash2, BarChart3, FileText, ShoppingCart, LucideIcon, Users, Settings, FolderOpen, ChevronDown, ChevronUp } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useAppContext } from '../context/AppContext';
@@ -16,19 +16,46 @@ interface ActionCardProps {
   title: string;
   desc: string;
   disabled?: boolean;
+  size?: 'large' | 'normal' | 'small';
   children?: React.ReactNode;
 }
 
 const ActionCard = forwardRef<HTMLDivElement, ActionCardProps>(
-  ({ to, onClick, icon: Icon, iconGradient, title, desc, disabled, children }, ref) => {
-    const cls = `group glass rounded-xl p-3.5 shadow hover:shadow-lg transition-all duration-300 hover:scale-[1.02] text-left ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`;
+  ({ to, onClick, icon: Icon, iconGradient, title, desc, disabled, size = 'normal', children }, ref) => {
+    const sizeClasses = {
+      large: 'p-5',
+      normal: 'p-3.5',
+      small: 'p-2.5',
+    };
+    const iconSizeClasses = {
+      large: 'w-11 h-11 mb-3',
+      normal: 'w-9 h-9 mb-2',
+      small: 'w-7 h-7 mb-1.5',
+    };
+    const titleClasses = {
+      large: 'text-base font-bold mb-1',
+      normal: 'text-sm font-semibold mb-0.5',
+      small: 'text-xs font-semibold mb-0.5',
+    };
+    const descClasses = {
+      large: 'text-sm',
+      normal: 'text-xs',
+      small: 'text-[11px]',
+    };
+    const iconInner = {
+      large: 'h-5 w-5',
+      normal: 'h-4 w-4',
+      small: 'h-3.5 w-3.5',
+    };
+
+    const cls = `group glass rounded-xl ${sizeClasses[size]} shadow hover:shadow-lg transition-all duration-300 hover:scale-[1.02] text-left ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`;
     const content = (
       <>
-        <div className={`flex items-center justify-center w-9 h-9 ${iconGradient} rounded-lg mb-2 transition-all`}>
-          <Icon className="h-4 w-4 text-primary-foreground" />
+        <div className={`flex items-center justify-center ${iconSizeClasses[size]} ${iconGradient} rounded-lg transition-all`}>
+          <Icon className={`${iconInner[size]} text-primary-foreground`} />
         </div>
-        <h3 className="text-sm font-semibold text-foreground mb-0.5">{title}</h3>
-        <p className="text-muted-foreground text-xs">{desc}</p>
+        <h3 className={`${titleClasses[size]} text-foreground`}>{title}</h3>
+        <p className={`text-muted-foreground ${descClasses[size]}`}>{desc}</p>
         {children}
       </>
     );
@@ -48,6 +75,7 @@ export function Home() {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showDebugInfo, setShowDebugInfo] = useState(false);
   const [debugInfo, setDebugInfo] = useState<any>(null);
+  const [showTechnicalSection, setShowTechnicalSection] = useState(false);
 
   useEffect(() => {
     console.log('Home page - Auth version changed:', authVersion, 'isAdmin:', isAdmin);
@@ -179,31 +207,25 @@ export function Home() {
         <p className="text-muted-foreground text-sm">Recherchez et gérez votre inventaire facilement</p>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-3 mb-5">
-        <ActionCard to="/search" icon={Search} iconGradient="bg-primary" title="Rechercher" desc="Nom, marque ou barcode" />
-
-        {canCreateQuote() && !isAdmin && (
+      {/* Main Navigation - Primary Actions */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+        <ActionCard to="/search" icon={Search} iconGradient="bg-primary" title="Rechercher" desc="Nom, marque ou barcode" size="large" />
+        <ActionCard to="/products" icon={FolderOpen} iconGradient="bg-indigo-600" title="Catalogue Produits" desc="Parcourir et modifier" size="large" />
+        <ActionCard to="/sheets" icon={FileText} iconGradient="bg-teal-600" title="Fiches Techniques" desc="Documents et partage" size="large" />
+        <ActionCard to="/clients" icon={Users} iconGradient="bg-sky-600" title="Clients" desc="Gestion des clients" size="large" />
+        {canCreateQuote() && (
           <>
-            <ActionCard to="/quotes-history" icon={FileText} iconGradient="bg-emerald-600" title="Historique Devis" desc="Consultez vos devis" />
-            <ActionCard to="/quote-cart" icon={ShoppingCart} iconGradient="bg-violet-600" title="Nouveau Devis" desc="Créer un devis" />
+            <ActionCard to="/quotes-history" icon={FileText} iconGradient="bg-emerald-600" title="Devis" desc="Historique et gestion" size="large" />
+            <ActionCard to="/quote-cart" icon={ShoppingCart} iconGradient="bg-violet-600" title="Nouveau Devis" desc="Créer un devis" size="large" />
           </>
         )}
-
         {isAdmin && (
-          <>
-            <ActionCard onClick={handleSync} disabled={isSyncing || !state.isOnline} icon={RefreshCw} iconGradient="bg-orange-600"
-              title="Synchroniser" desc={isSyncing ? 'Sync...' : 'Depuis le serveur'} />
-            <ActionCard onClick={() => setShowUploadModal(true)} icon={Upload} iconGradient="bg-violet-600" title="Upload Excel" desc="Importer produits" />
-            <ActionCard onClick={handleDebugAnalysis} icon={Bug} iconGradient="bg-rose-600" title="Debug" desc="Identifier problèmes" />
-            <ActionCard onClick={handleClearDatabase} disabled={isClearing} icon={Trash2} iconGradient="bg-red-700"
-              title="Vider la Base" desc={isClearing ? 'Suppression...' : 'IRRÉVERSIBLE'} />
-            <ActionCard to="/admin/statistics" icon={BarChart3} iconGradient="bg-primary" title="Statistiques" desc="Stats détaillées" />
-          </>
+          <ActionCard to="/admin/settings" icon={Settings} iconGradient="bg-gray-600" title="Paramètres" desc="Configuration société" size="large" />
         )}
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         {[
           { label: 'Produits', value: formatNumber(state.products.length) },
           { label: 'Stock Total', value: formatNumber(totalStock) },
@@ -216,6 +238,37 @@ export function Home() {
           </div>
         ))}
       </div>
+
+      {/* Admin Tools */}
+      {isAdmin && (
+        <div className="mb-4">
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">Outils Admin</h2>
+          <div className="grid grid-cols-3 gap-2">
+            <ActionCard onClick={handleSync} disabled={isSyncing || !state.isOnline} icon={RefreshCw} iconGradient="bg-orange-600"
+              title="Synchroniser" desc={isSyncing ? 'Sync...' : 'Serveur'} size="small" />
+            <ActionCard onClick={() => setShowUploadModal(true)} icon={Upload} iconGradient="bg-violet-600" title="Upload Excel" desc="Importer" size="small" />
+            <ActionCard to="/admin/statistics" icon={BarChart3} iconGradient="bg-primary" title="Statistiques" desc="Données" size="small" />
+          </div>
+        </div>
+      )}
+
+      {/* Debug / Danger Zone - Collapsible */}
+      {isAdmin && (
+        <div className="mb-4">
+          <button onClick={() => setShowTechnicalSection(!showTechnicalSection)}
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mb-2">
+            {showTechnicalSection ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+            <span className="uppercase tracking-wider font-semibold">Technique & Debug</span>
+          </button>
+          {showTechnicalSection && (
+            <div className="grid grid-cols-2 gap-2">
+              <ActionCard onClick={handleDebugAnalysis} icon={Bug} iconGradient="bg-rose-600" title="Debug" desc="Analyse" size="small" />
+              <ActionCard onClick={handleClearDatabase} disabled={isClearing} icon={Trash2} iconGradient="bg-red-700"
+                title="Vider la Base" desc={isClearing ? 'Suppression...' : 'IRRÉVERSIBLE'} size="small" />
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Debug Information */}
       {showDebugInfo && debugInfo && isAdmin && (

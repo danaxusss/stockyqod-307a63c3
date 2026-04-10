@@ -1,10 +1,12 @@
 // @ts-nocheck
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Package, Search, Edit, Check, X, Loader, SortAsc, SortDesc, ChevronLeft, ChevronRight, Filter } from 'lucide-react';
+import { Package, Search, Edit, Check, X, Loader, SortAsc, SortDesc, ChevronLeft, ChevronRight, Filter, Paperclip, ShoppingCart } from 'lucide-react';
 import { Product } from '../types';
 import { useAppContext } from '../context/AppContext';
 import { supabase } from '../integrations/supabase/client';
 import { useToast } from '../context/ToastContext';
+import { useQuoteCart } from '../hooks/useQuoteCart';
+import { useAuth } from '../hooks/useAuth';
 
 const PRODUCTS_PER_PAGE = 20;
 type SortField = 'name' | 'brand' | 'price' | 'buyprice' | 'provider';
@@ -13,6 +15,8 @@ type SortOrder = 'asc' | 'desc';
 export default function ProductsPage() {
   const { state } = useAppContext();
   const { showToast } = useToast();
+  const { addItem } = useQuoteCart();
+  const { canCreateQuote, getPriceDisplayType } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [brandFilter, setBrandFilter] = useState('');
   const [providerFilter, setProviderFilter] = useState('');
@@ -22,10 +26,27 @@ export default function ProductsPage() {
   const [editingBarcode, setEditingBarcode] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<Product>>({});
   const [isSaving, setIsSaving] = useState(false);
+  const [sheetCounts, setSheetCounts] = useState<Record<string, number>>({});
 
   const products = state.products || [];
 
-  // Unique brands and providers
+  // Fetch sheet counts
+  useEffect(() => {
+    const fetchSheetCounts = async () => {
+      try {
+        const { data } = await supabase.from('technical_sheet_products').select('product_barcode');
+        if (data) {
+          const counts: Record<string, number> = {};
+          data.forEach((row: any) => {
+            counts[row.product_barcode] = (counts[row.product_barcode] || 0) + 1;
+          });
+          setSheetCounts(counts);
+        }
+      } catch { /* ignore */ }
+    };
+    fetchSheetCounts();
+  }, []);
+
   const brands = useMemo(() => [...new Set(products.map(p => p.brand).filter(Boolean))].sort(), [products]);
   const providers = useMemo(() => [...new Set(products.map(p => p.provider).filter(Boolean))].sort(), [products]);
 
@@ -76,13 +97,18 @@ export default function ProductsPage() {
       if (error) throw error;
       showToast({ type: 'success', message: 'Produit mis à jour' });
       setEditingBarcode(null);
-      // Refresh products via sync
       window.location.reload();
     } catch {
       showToast({ type: 'error', message: 'Erreur lors de la mise à jour' });
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleAddToCart = (product: Product) => {
+    const priceType = getPriceDisplayType();
+    addItem(product, priceType === 'reseller' ? 'reseller' : 'normal');
+    showToast({ type: 'success', message: `${product.name} ajouté au devis` });
   };
 
   const getSortIcon = (field: SortField) => {
@@ -169,6 +195,7 @@ export default function ProductsPage() {
                   {currentProducts.map(product => {
                     const isEditing = editingBarcode === product.barcode;
                     const totalStock = Object.values(product.stock_levels || {}).reduce((s: number, v: any) => s + (Number(v) || 0), 0);
+                    const hasSheets = (sheetCounts[product.barcode] || 0) > 0;
                     return (
                       <tr key={product.barcode} className="hover:bg-accent/50">
                         <td className="px-3 py-2 text-[11px] text-muted-foreground font-mono">{product.barcode}</td>
@@ -177,7 +204,12 @@ export default function ProductsPage() {
                             <input type="text" value={editForm.name || ''} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
                               className="w-full px-2 py-0.5 text-xs border border-input rounded bg-background text-foreground" />
                           ) : (
-                            <div className="text-xs font-medium text-foreground">{product.name}</div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-medium text-foreground">{product.name}</span>
+                              {hasSheets && (
+                                <Paperclip className="h-3 w-3 text-primary shrink-0" title={`${sheetCounts[product.barcode]} fiche(s) technique(s)`} />
+                              )}
+                            </div>
                           )}
                         </td>
                         <td className="px-3 py-2 text-xs text-foreground">{product.brand}</td>
@@ -222,9 +254,16 @@ export default function ProductsPage() {
                               </button>
                             </div>
                           ) : (
-                            <button onClick={() => startEdit(product)} className="p-1 text-primary hover:bg-primary/10 rounded" title="Modifier">
-                              <Edit className="h-3.5 w-3.5" />
-                            </button>
+                            <div className="flex items-center space-x-1">
+                              <button onClick={() => startEdit(product)} className="p-1 text-primary hover:bg-primary/10 rounded" title="Modifier">
+                                <Edit className="h-3.5 w-3.5" />
+                              </button>
+                              {canCreateQuote() && (
+                                <button onClick={() => handleAddToCart(product)} className="p-1 text-emerald-500 hover:bg-emerald-500/10 rounded" title="Ajouter au devis">
+                                  <ShoppingCart className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                            </div>
                           )}
                         </td>
                       </tr>
