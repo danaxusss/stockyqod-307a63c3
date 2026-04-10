@@ -155,7 +155,7 @@ export function useSearchState(): UseSearchStateReturn {
     return () => {
       if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
     };
-  }, [query, selectedBrand, selectedStockLocation, sortBy, sortOrder, isInitialized, state.products]);
+  }, [query, selectedBrand, selectedStockLocation, sortBy, sortOrder, isInitialized, state.products, overrides]);
 
   // Persist state
   useEffect(() => {
