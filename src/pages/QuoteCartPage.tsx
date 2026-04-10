@@ -776,7 +776,7 @@ export function QuoteCartPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
+            <label className="block text-xs font-medium text-foreground mb-1">
               Nom Complet *
             </label>
             <div className="relative">
