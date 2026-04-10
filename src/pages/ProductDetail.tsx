@@ -170,7 +170,7 @@ export function ProductDetail() {
       });
       if (insertError) throw insertError;
       await supabase.from('technical_sheet_products').insert({ sheet_id: sheetId, product_barcode: product.barcode });
-      const newSheet: TechnicalSheet = { id: sheetId, title, manufacturer: product.brand || '', category: '', file_url: urlData.publicUrl, file_size: file.size, file_type: file.type || 'application/pdf', view_count: 0, download_count: 0, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+      const newSheet: TechnicalSheet = { id: sheetId, title, manufacturer: product.brand || '', category: '', sector: '', file_url: urlData.publicUrl, file_size: file.size, file_type: file.type || 'application/pdf', view_count: 0, download_count: 0, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
       setLinkedSheets(prev => [...prev, newSheet]);
       setAllSheets(prev => [...prev, newSheet]);
       showToast({ type: 'success', message: 'Fiche technique ajoutée et liée' });

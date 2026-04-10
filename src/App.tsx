@@ -47,7 +47,7 @@ function AppContent() {
     const path = window.location.pathname;
     if (path.startsWith('/share/')) {
       return (
-        <Suspense fallback={<PageLoader />}>
+        <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-400" /></div>}>
           <Routes>
             <Route path="/share/:token" element={<PublicSharePage />} />
           </Routes>

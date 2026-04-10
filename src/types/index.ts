@@ -143,6 +143,7 @@ export interface TechnicalSheet {
   title: string;
   manufacturer: string;
   category: string;
+  sector: string;
   file_url: string;
   file_size: number;
   file_type: string;

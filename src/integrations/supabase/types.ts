@@ -377,6 +377,7 @@ export type Database = {
           file_url: string
           id: string
           manufacturer: string
+          sector: string
           title: string
           updated_at: string
           view_count: number
@@ -390,6 +391,7 @@ export type Database = {
           file_url?: string
           id?: string
           manufacturer?: string
+          sector?: string
           title?: string
           updated_at?: string
           view_count?: number
@@ -403,6 +405,7 @@ export type Database = {
           file_url?: string
           id?: string
           manufacturer?: string
+          sector?: string
           title?: string
           updated_at?: string
           view_count?: number

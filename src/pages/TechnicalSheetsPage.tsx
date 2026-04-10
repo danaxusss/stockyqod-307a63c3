@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { FileText, Upload, Search, Link2, Trash2, Download, Eye, Share2, Copy, X, Plus, Loader, ExternalLink, Calendar, Package } from 'lucide-react';
+import { FileText, Upload, Search, Link2, Trash2, Download, Eye, Share2, Copy, X, Plus, Loader, ExternalLink, Calendar, Package, CheckSquare } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../hooks/useAuth';
@@ -7,6 +7,7 @@ import { useAppContext } from '../context/AppContext';
 import { TechnicalSheet, SheetShareLink, Product } from '../types';
 
 const CATEGORIES = ['Fours', 'Réfrigération', 'Lavage', 'Préparation', 'Cuisson', 'Ventilation', 'Divers'];
+const SECTORS = ['Cafeteria', 'Restaurant', 'Patisserie', 'Boucherie', 'Hotellerie', 'Autre'];
 
 export function TechnicalSheetsPage() {
   const { showToast } = useToast();
@@ -18,6 +19,7 @@ export function TechnicalSheetsPage() {
   const [query, setQuery] = useState('');
   const [filterManufacturer, setFilterManufacturer] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
+  const [filterSector, setFilterSector] = useState('');
 
   // Upload state
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -25,14 +27,29 @@ export function TechnicalSheetsPage() {
   const [uploadTitle, setUploadTitle] = useState('');
   const [uploadManufacturer, setUploadManufacturer] = useState('');
   const [uploadCategory, setUploadCategory] = useState('');
+  const [uploadSector, setUploadSector] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Bulk import state
+  const [showBulkModal, setShowBulkModal] = useState(false);
+  const [bulkFiles, setBulkFiles] = useState<File[]>([]);
+  const [bulkManufacturer, setBulkManufacturer] = useState('');
+  const [bulkCategory, setBulkCategory] = useState('');
+  const [bulkSector, setBulkSector] = useState('');
+  const [isBulkUploading, setIsBulkUploading] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState(0);
+  const bulkFileInputRef = useRef<HTMLInputElement>(null);
 
   // Detail modal
   const [selectedSheet, setSelectedSheet] = useState<TechnicalSheet | null>(null);
   const [linkedProducts, setLinkedProducts] = useState<Product[]>([]);
   const [productSearchQuery, setProductSearchQuery] = useState('');
   const [productSearchResults, setProductSearchResults] = useState<Product[]>([]);
+  const [selectedProductsToLink, setSelectedProductsToLink] = useState<Set<string>>(new Set());
+
+  // PDF viewer modal
+  const [pdfViewerUrl, setPdfViewerUrl] = useState<string | null>(null);
 
   // Share modal
   const [showShareModal, setShowShareModal] = useState(false);
@@ -71,9 +88,10 @@ export function TechnicalSheetsPage() {
         s.category.toLowerCase().includes(query.toLowerCase());
       const matchesManufacturer = !filterManufacturer || s.manufacturer === filterManufacturer;
       const matchesCategory = !filterCategory || s.category === filterCategory;
-      return matchesQuery && matchesManufacturer && matchesCategory;
+      const matchesSector = !filterSector || s.sector === filterSector;
+      return matchesQuery && matchesManufacturer && matchesCategory && matchesSector;
     });
-  }, [sheets, query, filterManufacturer, filterCategory]);
+  }, [sheets, query, filterManufacturer, filterCategory, filterSector]);
 
   const uniqueManufacturers = React.useMemo(() => {
     const set = new Set(sheets.map(s => s.manufacturer).filter(Boolean));
@@ -110,6 +128,7 @@ export function TechnicalSheetsPage() {
           title: uploadTitle.trim(),
           manufacturer: uploadManufacturer.trim(),
           category: uploadCategory,
+          sector: uploadSector,
           file_url: urlData.publicUrl,
           file_size: uploadFile.size,
           file_type: uploadFile.type || 'application/pdf',
@@ -122,6 +141,7 @@ export function TechnicalSheetsPage() {
       setUploadTitle('');
       setUploadManufacturer('');
       setUploadCategory('');
+      setUploadSector('');
       fetchSheets();
     } catch (err) {
       console.error('Upload error:', err);
@@ -131,16 +151,75 @@ export function TechnicalSheetsPage() {
     }
   };
 
+  // Bulk import handler
+  const handleBulkImport = async () => {
+    if (bulkFiles.length === 0) {
+      showToast({ type: 'error', message: 'Sélectionnez au moins un fichier' });
+      return;
+    }
+    setIsBulkUploading(true);
+    setBulkProgress(0);
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (let i = 0; i < bulkFiles.length; i++) {
+      const file = bulkFiles[i];
+      try {
+        if (file.size > 50 * 1024 * 1024) { errorCount++; continue; }
+        const sheetId = crypto.randomUUID();
+        const ext = file.name.split('.').pop() || 'pdf';
+        const filePath = `${sheetId}.${ext}`;
+        const title = file.name.replace(/\.[^/.]+$/, '');
+
+        const { error: uploadError } = await supabase.storage
+          .from('technical-sheets')
+          .upload(filePath, file, { upsert: true });
+        if (uploadError) { errorCount++; continue; }
+
+        const { data: urlData } = supabase.storage.from('technical-sheets').getPublicUrl(filePath);
+
+        const { error: insertError } = await supabase
+          .from('technical_sheets')
+          .insert({
+            id: sheetId,
+            title,
+            manufacturer: bulkManufacturer.trim(),
+            category: bulkCategory,
+            sector: bulkSector,
+            file_url: urlData.publicUrl,
+            file_size: file.size,
+            file_type: file.type || 'application/pdf',
+          });
+        if (insertError) { errorCount++; continue; }
+        successCount++;
+      } catch {
+        errorCount++;
+      }
+      setBulkProgress(Math.round(((i + 1) / bulkFiles.length) * 100));
+    }
+
+    showToast({
+      type: errorCount > 0 ? 'warning' : 'success',
+      message: `${successCount} fichier(s) importé(s)${errorCount > 0 ? `, ${errorCount} erreur(s)` : ''}`
+    });
+    setShowBulkModal(false);
+    setBulkFiles([]);
+    setBulkManufacturer('');
+    setBulkCategory('');
+    setBulkSector('');
+    setBulkProgress(0);
+    fetchSheets();
+    setIsBulkUploading(false);
+  };
+
   const handleDeleteSheet = async (sheet: TechnicalSheet) => {
     if (!confirm(`Supprimer "${sheet.title}" ?`)) return;
     try {
-      // Delete from storage
       const url = new URL(sheet.file_url);
       const pathParts = url.pathname.split('/technical-sheets/');
       if (pathParts.length > 1) {
         await supabase.storage.from('technical-sheets').remove([pathParts[1]]);
       }
-      // Delete junction entries + sheet
       await supabase.from('technical_sheet_products').delete().eq('sheet_id', sheet.id);
       const { error } = await supabase.from('technical_sheets').delete().eq('id', sheet.id);
       if (error) throw error;
@@ -153,11 +232,29 @@ export function TechnicalSheetsPage() {
     }
   };
 
+  // View PDF in-app
+  const handleViewPdf = async (fileUrl: string) => {
+    try {
+      const response = await fetch(fileUrl);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      setPdfViewerUrl(blobUrl);
+    } catch {
+      showToast({ type: 'error', message: 'Impossible d\'ouvrir le fichier' });
+    }
+  };
+
+  const closePdfViewer = () => {
+    if (pdfViewerUrl) URL.revokeObjectURL(pdfViewerUrl);
+    setPdfViewerUrl(null);
+  };
+
   // Detail modal: load linked products
   const openSheetDetail = async (sheet: TechnicalSheet) => {
     setSelectedSheet(sheet);
     setProductSearchQuery('');
     setProductSearchResults([]);
+    setSelectedProductsToLink(new Set());
     try {
       const { data: links } = await supabase
         .from('technical_sheet_products')
@@ -178,9 +275,36 @@ export function TechnicalSheetsPage() {
     const results = state.products.filter(p =>
       (p.name.toLowerCase().includes(q) || p.barcode.toLowerCase().includes(q) || p.brand.toLowerCase().includes(q))
       && !linkedProducts.some(lp => lp.barcode === p.barcode)
-    ).slice(0, 10);
+    ).slice(0, 20);
     setProductSearchResults(results);
   }, [productSearchQuery, state.products, linkedProducts]);
+
+  const toggleProductSelect = (barcode: string) => {
+    setSelectedProductsToLink(prev => {
+      const next = new Set(prev);
+      if (next.has(barcode)) next.delete(barcode); else next.add(barcode);
+      return next;
+    });
+  };
+
+  const linkSelectedProducts = async () => {
+    if (!selectedSheet || selectedProductsToLink.size === 0) return;
+    try {
+      const inserts = Array.from(selectedProductsToLink).map(barcode => ({
+        sheet_id: selectedSheet.id,
+        product_barcode: barcode,
+      }));
+      const { error } = await supabase.from('technical_sheet_products').insert(inserts);
+      if (error) throw error;
+      const newLinked = state.products.filter(p => selectedProductsToLink.has(p.barcode));
+      setLinkedProducts(prev => [...prev, ...newLinked]);
+      setSelectedProductsToLink(new Set());
+      setProductSearchResults(prev => prev.filter(p => !selectedProductsToLink.has(p.barcode)));
+      showToast({ type: 'success', message: `${inserts.length} produit(s) lié(s)` });
+    } catch (err: any) {
+      showToast({ type: 'error', message: 'Erreur lors de la liaison' });
+    }
+  };
 
   const linkProduct = async (product: Product) => {
     if (!selectedSheet) return;
@@ -191,7 +315,6 @@ export function TechnicalSheetsPage() {
       });
       if (error) throw error;
       setLinkedProducts(prev => [...prev, product]);
-      setProductSearchQuery('');
       showToast({ type: 'success', message: `${product.name} lié` });
     } catch (err: any) {
       if (err?.code === '23505') {
@@ -293,7 +416,7 @@ export function TechnicalSheetsPage() {
           </h1>
           <p className="text-sm text-muted-foreground mt-1">{sheets.length} fiche{sheets.length !== 1 ? 's' : ''} technique{sheets.length !== 1 ? 's' : ''}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap justify-end">
           <button onClick={fetchShareLinks} className="flex items-center gap-1.5 px-3 py-2 bg-secondary hover:bg-secondary/80 text-secondary-foreground rounded-lg text-sm transition-colors">
             <Link2 className="h-3.5 w-3.5" /> Liens partagés
           </button>
@@ -303,9 +426,14 @@ export function TechnicalSheetsPage() {
             </button>
           )}
           {isAdmin && (
-            <button onClick={() => setShowUploadModal(true)} className="flex items-center gap-1.5 px-3 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm transition-colors">
-              <Upload className="h-3.5 w-3.5" /> Ajouter
-            </button>
+            <>
+              <button onClick={() => setShowBulkModal(true)} className="flex items-center gap-1.5 px-3 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm transition-colors">
+                <Upload className="h-3.5 w-3.5" /> Import en masse
+              </button>
+              <button onClick={() => setShowUploadModal(true)} className="flex items-center gap-1.5 px-3 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm transition-colors">
+                <Plus className="h-3.5 w-3.5" /> Ajouter
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -328,6 +456,11 @@ export function TechnicalSheetsPage() {
             <option value="">Toutes catégories</option>
             {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
+          <select value={filterSector} onChange={e => setFilterSector(e.target.value)}
+            className="px-3 py-2.5 border border-input rounded-lg bg-background text-foreground text-sm">
+            <option value="">Tous secteurs</option>
+            {SECTORS.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
         </div>
       </div>
 
@@ -343,7 +476,6 @@ export function TechnicalSheetsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredSheets.map(sheet => (
             <div key={sheet.id} className="glass rounded-xl p-4 hover:shadow-lg transition-all duration-200 group relative">
-              {/* Select checkbox */}
               <div className="absolute top-3 left-3">
                 <input type="checkbox" checked={selectedForShare.has(sheet.id)}
                   onChange={() => toggleShareSelect(sheet.id)}
@@ -360,6 +492,9 @@ export function TechnicalSheetsPage() {
                   {sheet.category && (
                     <span className="px-1.5 py-0.5 bg-violet-500/10 text-violet-500 text-[11px] rounded font-medium">{sheet.category}</span>
                   )}
+                  {sheet.sector && (
+                    <span className="px-1.5 py-0.5 bg-amber-500/10 text-amber-600 text-[11px] rounded font-medium">{sheet.sector}</span>
+                  )}
                 </div>
                 <div className="flex items-center gap-3 text-xs text-muted-foreground mb-3">
                   <span>{formatFileSize(sheet.file_size)}</span>
@@ -367,10 +502,10 @@ export function TechnicalSheetsPage() {
                   <span className="flex items-center gap-0.5"><Download className="h-3 w-3" /> {sheet.download_count}</span>
                 </div>
                 <div className="flex gap-1.5">
-                  <a href={sheet.file_url} target="_blank" rel="noopener noreferrer"
+                  <button onClick={() => handleViewPdf(sheet.file_url)}
                     className="flex items-center gap-1 px-2.5 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-xs transition-colors">
-                    <ExternalLink className="h-3 w-3" /> Voir
-                  </a>
+                    <Eye className="h-3 w-3" /> Voir
+                  </button>
                   <button onClick={() => openSheetDetail(sheet)}
                     className="flex items-center gap-1 px-2.5 py-1.5 bg-secondary hover:bg-secondary/80 text-secondary-foreground rounded-lg text-xs transition-colors">
                     <Package className="h-3 w-3" /> Produits
@@ -416,6 +551,14 @@ export function TechnicalSheetsPage() {
                 </select>
               </div>
               <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Secteur</label>
+                <select value={uploadSector} onChange={e => setUploadSector(e.target.value)}
+                  className="w-full px-3 py-2 border border-input rounded-lg bg-background text-foreground text-sm">
+                  <option value="">Aucun</option>
+                  {SECTORS.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-foreground mb-1">Fichier *</label>
                 <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
                   onChange={e => setUploadFile(e.target.files?.[0] || null)}
@@ -426,6 +569,59 @@ export function TechnicalSheetsPage() {
                 className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm transition-colors disabled:opacity-50">
                 {isUploading ? <Loader className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
                 {isUploading ? 'Téléchargement...' : 'Ajouter'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Import Modal */}
+      {showBulkModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => !isBulkUploading && setShowBulkModal(false)}>
+          <div className="bg-card rounded-xl p-6 max-w-md w-full shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-foreground">Import en masse</h2>
+              <button onClick={() => !isBulkUploading && setShowBulkModal(false)} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
+            </div>
+            <p className="text-sm text-muted-foreground mb-4">Sélectionnez plusieurs fichiers. Le nom du fichier sera utilisé comme titre.</p>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Fichiers *</label>
+                <input ref={bulkFileInputRef} type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+                  onChange={e => setBulkFiles(Array.from(e.target.files || []))}
+                  className="w-full text-sm text-foreground file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-primary file:text-primary-foreground file:text-sm file:cursor-pointer" />
+                {bulkFiles.length > 0 && <p className="text-xs text-muted-foreground mt-1">{bulkFiles.length} fichier(s) sélectionné(s)</p>}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Fabricant (commun)</label>
+                <input value={bulkManufacturer} onChange={e => setBulkManufacturer(e.target.value)}
+                  className="w-full px-3 py-2 border border-input rounded-lg bg-background text-foreground text-sm" placeholder="Ex: Electrolux" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Catégorie (commune)</label>
+                <select value={bulkCategory} onChange={e => setBulkCategory(e.target.value)}
+                  className="w-full px-3 py-2 border border-input rounded-lg bg-background text-foreground text-sm">
+                  <option value="">Aucune</option>
+                  {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Secteur (commun)</label>
+                <select value={bulkSector} onChange={e => setBulkSector(e.target.value)}
+                  className="w-full px-3 py-2 border border-input rounded-lg bg-background text-foreground text-sm">
+                  <option value="">Aucun</option>
+                  {SECTORS.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              {isBulkUploading && (
+                <div className="w-full bg-secondary rounded-full h-2.5">
+                  <div className="bg-primary h-2.5 rounded-full transition-all" style={{ width: `${bulkProgress}%` }} />
+                </div>
+              )}
+              <button onClick={handleBulkImport} disabled={isBulkUploading || bulkFiles.length === 0}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm transition-colors disabled:opacity-50">
+                {isBulkUploading ? <Loader className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                {isBulkUploading ? `Import... ${bulkProgress}%` : `Importer ${bulkFiles.length} fichier(s)`}
               </button>
             </div>
           </div>
@@ -445,13 +641,20 @@ export function TechnicalSheetsPage() {
             <div className="flex flex-wrap gap-2 mb-4">
               {selectedSheet.manufacturer && <span className="px-2 py-1 bg-primary/10 text-primary text-xs rounded-lg">{selectedSheet.manufacturer}</span>}
               {selectedSheet.category && <span className="px-2 py-1 bg-violet-500/10 text-violet-500 text-xs rounded-lg">{selectedSheet.category}</span>}
+              {selectedSheet.sector && <span className="px-2 py-1 bg-amber-500/10 text-amber-600 text-xs rounded-lg">{selectedSheet.sector}</span>}
               <span className="px-2 py-1 bg-secondary text-secondary-foreground text-xs rounded-lg">{formatFileSize(selectedSheet.file_size)}</span>
             </div>
 
-            <a href={selectedSheet.file_url} target="_blank" rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm transition-colors mb-4">
-              <Download className="h-3.5 w-3.5" /> Télécharger
-            </a>
+            <div className="flex gap-2 mb-4">
+              <button onClick={() => handleViewPdf(selectedSheet.file_url)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm transition-colors">
+                <Eye className="h-3.5 w-3.5" /> Voir
+              </button>
+              <a href={selectedSheet.file_url} download
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-secondary hover:bg-secondary/80 text-secondary-foreground rounded-lg text-sm transition-colors">
+                <Download className="h-3.5 w-3.5" /> Télécharger
+              </a>
+            </div>
 
             {/* Linked Products */}
             <div className="border-t border-border pt-4">
@@ -482,17 +685,44 @@ export function TechnicalSheetsPage() {
                   placeholder="Rechercher un produit à lier..."
                   className="w-full pl-9 pr-3 py-2 border border-input rounded-lg bg-background text-foreground text-sm" />
               </div>
+
+              {selectedProductsToLink.size > 0 && (
+                <button onClick={linkSelectedProducts}
+                  className="mt-2 w-full flex items-center justify-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm transition-colors">
+                  <CheckSquare className="h-3.5 w-3.5" /> Lier {selectedProductsToLink.size} produit(s)
+                </button>
+              )}
+
               {productSearchResults.length > 0 && (
-                <div className="mt-2 border border-border rounded-lg divide-y divide-border max-h-40 overflow-y-auto">
+                <div className="mt-2 border border-border rounded-lg divide-y divide-border max-h-48 overflow-y-auto">
                   {productSearchResults.map(p => (
-                    <button key={p.barcode} onClick={() => linkProduct(p)} className="w-full px-3 py-2 text-left hover:bg-accent transition-colors">
-                      <p className="text-sm font-medium text-foreground truncate">{p.name}</p>
-                      <p className="text-xs text-muted-foreground">#{p.barcode} • {p.brand}</p>
-                    </button>
+                    <div key={p.barcode} className="flex items-center px-3 py-2 hover:bg-accent transition-colors">
+                      <input type="checkbox" checked={selectedProductsToLink.has(p.barcode)}
+                        onChange={() => toggleProductSelect(p.barcode)}
+                        className="h-4 w-4 rounded border-input text-primary focus:ring-primary mr-3 shrink-0" />
+                      <button onClick={() => toggleProductSelect(p.barcode)} className="flex-1 text-left min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">{p.name}</p>
+                        <p className="text-xs text-muted-foreground">#{p.barcode} • {p.brand}</p>
+                      </button>
+                    </div>
                   ))}
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* PDF Viewer Modal */}
+      {pdfViewerUrl && (
+        <div className="fixed inset-0 bg-black/80 z-[60] flex flex-col" onClick={closePdfViewer}>
+          <div className="flex items-center justify-end p-3">
+            <button onClick={closePdfViewer} className="p-2 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-colors">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="flex-1 px-4 pb-4" onClick={e => e.stopPropagation()}>
+            <iframe src={pdfViewerUrl} className="w-full h-full rounded-lg bg-white" title="PDF Viewer" />
           </div>
         </div>
       )}
