@@ -780,7 +780,7 @@ export function QuoteCartPage() {
               Nom Complet *
             </label>
             <div className="relative">
-              <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <input
                 type="text"
                 value={customer.fullName}
@@ -790,8 +790,8 @@ export function QuoteCartPage() {
                 }}
                 onFocus={() => { if (clientSuggestions.length > 0) setShowClientSuggestions(true); }}
                 onBlur={() => setTimeout(() => setShowClientSuggestions(false), 200)}
-                className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${
-                  validationErrors.fullName ? 'border-red-500' : 'border-input'
+                className={`w-full pl-9 pr-3 py-1.5 text-sm border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${
+                  validationErrors.fullName ? 'border-destructive' : 'border-input'
                 }`}
                 placeholder="Nom complet du client"
               />
