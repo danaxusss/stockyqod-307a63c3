@@ -34,6 +34,7 @@ import { useAppContext } from '../context/AppContext';
 import { SupabaseUsersService } from '../utils/supabaseUsers';
 import { SupabaseClientsService, Client } from '../utils/supabaseClients';
 import { useQuoteCart } from '../hooks/useQuoteCart';
+import { searchProductsLocally } from '../hooks/useSearchState';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../hooks/useAuth';
 
@@ -244,10 +245,7 @@ export function QuoteCartPage() {
     }
 
     const timeout = setTimeout(() => {
-      const q = searchQuery.toLowerCase();
-      const results = state.products.filter(p =>
-        p.name.toLowerCase().includes(q) || p.barcode.includes(q) || p.brand.toLowerCase().includes(q)
-      );
+      const results = searchProductsLocally(state.products, { query: searchQuery });
       setSearchResults(results.slice(0, 20));
     }, 200);
     setProductSearchTimeout(timeout);
