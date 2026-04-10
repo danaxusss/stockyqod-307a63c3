@@ -9,6 +9,7 @@ import { useToast } from '../context/ToastContext';
 import { QuoteManager } from '../utils/quoteManager';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
+import { useProductOverrides } from '../hooks/useProductOverrides';
 
 export function ProductDetail() {
   const { id } = useParams<{ id: string }>();
@@ -34,6 +35,7 @@ export function ProductDetail() {
 
   const { addToCart } = useQuoteCart();
   const { showToast } = useToast();
+  const { getOriginalName } = useProductOverrides();
   const quoteManager = QuoteManager.getInstance();
   const userPriceDisplayType = getPriceDisplayType();
   const [cameFromSearch, setCameFromSearch] = useState(false);
@@ -268,8 +270,22 @@ export function ProductDetail() {
               </div>
               <div className="flex items-center flex-wrap gap-2 mt-0.5">
                 <span className="text-primary-foreground/70 text-sm">#{product.barcode}</span>
-                {product.brand && <span className="px-2 py-0.5 bg-white/20 text-primary-foreground text-xs rounded font-medium">{product.brand}</span>}
-                {product.provider && <span className="px-2 py-0.5 bg-white/20 text-primary-foreground text-xs rounded font-medium">{product.provider}</span>}
+                {product.brand && (
+                  <span className="px-2 py-0.5 bg-white/20 text-primary-foreground text-xs rounded font-medium">
+                    {product.brand}
+                    {getOriginalName('brand', product.brand) && (
+                      <span className="text-primary-foreground/60 text-[10px] ml-1">(ex: {getOriginalName('brand', product.brand)})</span>
+                    )}
+                  </span>
+                )}
+                {product.provider && (
+                  <span className="px-2 py-0.5 bg-white/20 text-primary-foreground text-xs rounded font-medium">
+                    {product.provider}
+                    {getOriginalName('provider', product.provider) && (
+                      <span className="text-primary-foreground/60 text-[10px] ml-1">(ex: {getOriginalName('provider', product.provider)})</span>
+                    )}
+                  </span>
+                )}
               </div>
             </div>
           </div>

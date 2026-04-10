@@ -8,6 +8,7 @@ import { supabase } from '../integrations/supabase/client';
 import { useToast } from '../context/ToastContext';
 import { useQuoteCart } from '../hooks/useQuoteCart';
 import { useAuth } from '../hooks/useAuth';
+import { useProductOverrides } from '../hooks/useProductOverrides';
 
 const PRODUCTS_PER_PAGE = 20;
 type SortField = 'name' | 'brand' | 'price' | 'buyprice' | 'provider';
@@ -19,6 +20,7 @@ export default function ProductsPage() {
   const { showToast } = useToast();
   const { addToCart } = useQuoteCart();
   const { canCreateQuote, getPriceDisplayType } = useAuth();
+  const { getOriginalName } = useProductOverrides();
   const [searchQuery, setSearchQuery] = useState('');
   const [brandFilter, setBrandFilter] = useState('');
   const [providerFilter, setProviderFilter] = useState('');
@@ -217,7 +219,12 @@ export default function ProductsPage() {
                             </div>
                           )}
                         </td>
-                        <td className="px-3 py-2 text-xs text-foreground">{product.brand}</td>
+                        <td className="px-3 py-2 text-xs text-foreground">
+                          {product.brand}
+                          {getOriginalName('brand', product.brand) && (
+                            <span className="text-muted-foreground text-[10px] ml-1">(ex: {getOriginalName('brand', product.brand)})</span>
+                          )}
+                        </td>
                         <td className="px-3 py-2">
                           {isEditing ? (
                             <input type="number" value={editForm.buyprice || 0} onChange={e => setEditForm(f => ({ ...f, buyprice: parseFloat(e.target.value) || 0 }))}
@@ -239,7 +246,12 @@ export default function ProductsPage() {
                             <input type="text" value={editForm.provider || ''} onChange={e => setEditForm(f => ({ ...f, provider: e.target.value }))}
                               className="w-24 px-2 py-0.5 text-xs border border-input rounded bg-background text-foreground" />
                           ) : (
-                            <span className="text-xs text-foreground">{product.provider || '-'}</span>
+                            <span className="text-xs text-foreground">
+                              {product.provider || '-'}
+                              {product.provider && getOriginalName('provider', product.provider) && (
+                                <span className="text-muted-foreground text-[10px] ml-1">(ex: {getOriginalName('provider', product.provider)})</span>
+                              )}
+                            </span>
                           )}
                         </td>
                         <td className="px-3 py-2">
