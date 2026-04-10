@@ -9,21 +9,60 @@ export class ProductUploadService {
 
     console.log(`Starting upload of ${products.length} products to Supabase`);
 
+    // Load brand/provider overrides to preserve custom names for existing products
+    const { data: overrides } = await supabase.from('product_name_overrides').select('*');
+    const brandOverrides = new Map<string, string>();
+    const providerOverrides = new Map<string, string>();
+    if (overrides) {
+      for (const o of overrides) {
+        if (o.type === 'brand') brandOverrides.set(o.original_name, o.custom_name);
+        else if (o.type === 'provider') providerOverrides.set(o.original_name, o.custom_name);
+      }
+    }
+
+    // Load existing barcodes to determine new vs existing products
+    const { data: existingProducts } = await supabase.from('products').select('barcode, brand, provider');
+    const existingMap = new Map<string, { brand: string; provider: string }>();
+    if (existingProducts) {
+      for (const p of existingProducts) {
+        existingMap.set(p.barcode, { brand: p.brand, provider: p.provider });
+      }
+    }
+
     const validProducts: Product[] = [];
 
     for (const product of products) {
       if (!product.barcode || typeof product.barcode !== 'string' || product.barcode.trim().length === 0) continue;
       if (!product.name || typeof product.name !== 'string' || product.name.trim().length === 0) continue;
 
+      let brand = String(product.brand || '').trim();
+      let provider = String(product.provider || '').trim();
+
+      const existing = existingMap.get(String(product.barcode).trim());
+      if (existing) {
+        // Existing product: preserve overridden brand/provider names
+        // Check if the existing brand matches a custom_name from overrides
+        const brandIsOverridden = [...brandOverrides.values()].includes(existing.brand);
+        const providerIsOverridden = [...providerOverrides.values()].includes(existing.provider);
+        if (brandIsOverridden) brand = existing.brand;
+        else if (brandOverrides.has(brand)) brand = brandOverrides.get(brand)!;
+        if (providerIsOverridden) provider = existing.provider;
+        else if (providerOverrides.has(provider)) provider = providerOverrides.get(provider)!;
+      } else {
+        // New product: apply overrides if the incoming brand/provider matches an original_name
+        if (brandOverrides.has(brand)) brand = brandOverrides.get(brand)!;
+        if (providerOverrides.has(provider)) provider = providerOverrides.get(provider)!;
+      }
+
       validProducts.push({
         barcode: String(product.barcode).trim(),
         name: String(product.name).trim(),
-        brand: String(product.brand || '').trim(),
+        brand,
         techsheet: String(product.techsheet || '').trim(),
         price: Number(product.price) || 0,
         buyprice: Number(product.buyprice) || 0,
         reseller_price: Number(product.reseller_price) || 0,
-        provider: String(product.provider || '').trim(),
+        provider,
         stock_levels: product.stock_levels || {}
       });
     }

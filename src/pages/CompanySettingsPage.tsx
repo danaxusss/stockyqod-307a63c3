@@ -1,12 +1,13 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
-import { Settings, Upload, Trash2, Save, Loader, Image, Building, Phone, Mail, Globe, Hash, FileText, Eye, Palette, Users } from 'lucide-react';
+import { Settings, Upload, Trash2, Save, Loader, Image, Building, Phone, Mail, Globe, Hash, FileText, Eye, Palette, Users, Package, Edit3, Check, X, Plus } from 'lucide-react';
 import { CompanySettingsService, CompanySettings, QuoteVisibleFields, QuoteStyle } from '../utils/companySettings';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../context/ToastContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 import UserManagementPage from './UserManagementPage';
+import { supabase } from '@/integrations/supabase/client';
 
 const FIELD_LABELS: Record<keyof QuoteVisibleFields, string> = {
   showLogo: 'Logo de l\'entreprise',
@@ -374,6 +375,9 @@ export default function CompanySettingsPage() {
           <TabsTrigger value="users" className="flex-1">
             <Users className="h-3.5 w-3.5 mr-1.5" />Utilisateurs
           </TabsTrigger>
+          <TabsTrigger value="products" className="flex-1">
+            <Package className="h-3.5 w-3.5 mr-1.5" />Produits
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="company">
@@ -383,7 +387,202 @@ export default function CompanySettingsPage() {
         <TabsContent value="users">
           <UserManagementPage />
         </TabsContent>
+
+        <TabsContent value="products">
+          <ProductSettingsTab />
+        </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+function ProductSettingsTab() {
+  const { showToast } = useToast();
+  const [brands, setBrands] = useState<string[]>([]);
+  const [providers, setProviders] = useState<string[]>([]);
+  const [overrides, setOverrides] = useState<{ id: string; type: string; original_name: string; custom_name: string }[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [editingItem, setEditingItem] = useState<{ type: string; name: string } | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [activeSection, setActiveSection] = useState<'brands' | 'providers'>('brands');
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    setIsLoading(true);
+    try {
+      // Load unique brands and providers from products
+      const { data: products } = await supabase.from('products').select('brand, provider');
+      if (products) {
+        setBrands([...new Set(products.map(p => p.brand).filter(Boolean))].sort());
+        setProviders([...new Set(products.map(p => p.provider).filter(Boolean))].sort());
+      }
+      // Load existing overrides
+      const { data: ov } = await supabase.from('product_name_overrides').select('*');
+      if (ov) setOverrides(ov);
+    } catch { /* ignore */ }
+    setIsLoading(false);
+  };
+
+  const getDisplayName = (type: string, originalName: string) => {
+    const override = overrides.find(o => o.type === type && o.original_name === originalName);
+    return override?.custom_name || originalName;
+  };
+
+  const hasOverride = (type: string, originalName: string) => {
+    return overrides.some(o => o.type === type && o.original_name === originalName);
+  };
+
+  const startEdit = (type: string, name: string) => {
+    setEditingItem({ type, name });
+    setEditValue(getDisplayName(type, name));
+  };
+
+  const cancelEdit = () => {
+    setEditingItem(null);
+    setEditValue('');
+  };
+
+  const saveEdit = async () => {
+    if (!editingItem || !editValue.trim()) return;
+    setSaving(true);
+    try {
+      const { type, name } = editingItem;
+      const customName = editValue.trim();
+
+      if (customName === name) {
+        // Remove override if reset to original
+        const existing = overrides.find(o => o.type === type && o.original_name === name);
+        if (existing) {
+          await supabase.from('product_name_overrides').delete().eq('id', existing.id);
+        }
+      } else {
+        // Upsert override
+        await (supabase.from('product_name_overrides') as any).upsert({
+          type,
+          original_name: name,
+          custom_name: customName,
+        }, { onConflict: 'type,original_name' });
+      }
+
+      // Apply rename to all products
+      if (customName !== name) {
+        const field = type === 'brand' ? 'brand' : 'provider';
+        await supabase.from('products').update({ [field]: customName }).eq(field, name);
+      }
+
+      showToast({ type: 'success', message: 'Nom mis à jour' });
+      await loadData();
+      cancelEdit();
+    } catch (err) {
+      showToast({ type: 'error', message: 'Erreur lors de la mise à jour' });
+    }
+    setSaving(false);
+  };
+
+  const removeOverride = async (type: string, originalName: string) => {
+    const existing = overrides.find(o => o.type === type && o.original_name === originalName);
+    if (!existing) return;
+    try {
+      // Revert products back to original name
+      const field = type === 'brand' ? 'brand' : 'provider';
+      await supabase.from('products').update({ [field]: originalName }).eq(field, existing.custom_name);
+      await supabase.from('product_name_overrides').delete().eq('id', existing.id);
+      showToast({ type: 'success', message: 'Nom restauré' });
+      await loadData();
+    } catch {
+      showToast({ type: 'error', message: 'Erreur' });
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader className="h-6 w-6 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  const items = activeSection === 'brands' ? brands : providers;
+  const type = activeSection === 'brands' ? 'brand' : 'provider';
+
+  return (
+    <div className="glass rounded-xl shadow-lg p-4 space-y-4">
+      <div>
+        <h2 className="text-sm font-semibold text-foreground mb-1">Gestion des noms</h2>
+        <p className="text-xs text-muted-foreground">
+          Renommez les marques et fournisseurs. Les noms modifiés seront préservés lors des imports futurs.
+        </p>
+      </div>
+
+      <div className="flex space-x-2">
+        <button onClick={() => setActiveSection('brands')}
+          className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${activeSection === 'brands' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-foreground hover:bg-accent'}`}>
+          Marques ({brands.length})
+        </button>
+        <button onClick={() => setActiveSection('providers')}
+          className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${activeSection === 'providers' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-foreground hover:bg-accent'}`}>
+          Fournisseurs ({providers.length})
+        </button>
+      </div>
+
+      <div className="space-y-1 max-h-[500px] overflow-y-auto">
+        {items.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-4 text-center">Aucun élément</p>
+        ) : items.map(name => {
+          const isEditing = editingItem?.type === type && editingItem?.name === name;
+          const overridden = hasOverride(type, name);
+          const displayName = getDisplayName(type, name);
+          return (
+            <div key={name} className={`flex items-center justify-between p-2 rounded-lg border ${overridden ? 'border-primary/30 bg-primary/5' : 'border-border'}`}>
+              {isEditing ? (
+                <div className="flex items-center gap-2 flex-1">
+                  <input type="text" value={editValue} onChange={e => setEditValue(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') cancelEdit(); }}
+                    className="flex-1 px-2 py-1 text-sm border border-input rounded bg-background text-foreground"
+                    autoFocus />
+                  <button onClick={saveEdit} disabled={saving} className="p-1 text-emerald-500 hover:bg-emerald-500/10 rounded">
+                    {saving ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                  </button>
+                  <button onClick={cancelEdit} className="p-1 text-muted-foreground hover:bg-accent rounded">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-sm text-foreground">{displayName}</span>
+                    {overridden && (
+                      <span className="ml-2 text-[10px] text-muted-foreground">(original: {name})</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => startEdit(type, name)}
+                      className="p-1 text-primary hover:bg-primary/10 rounded" title="Renommer">
+                      <Edit3 className="h-3.5 w-3.5" />
+                    </button>
+                    {overridden && (
+                      <button onClick={() => removeOverride(type, name)}
+                        className="p-1 text-destructive hover:bg-destructive/10 rounded" title="Restaurer le nom original">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {overrides.length > 0 && (
+        <div className="pt-2 border-t border-border">
+          <p className="text-xs text-muted-foreground">{overrides.length} nom(s) personnalisé(s)</p>
+        </div>
+      )}
     </div>
   );
 }
