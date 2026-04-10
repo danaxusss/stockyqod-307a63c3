@@ -69,6 +69,7 @@ export function QuoteCartPage() {
   const [commandNumber, setCommandNumber] = useState('');
   const [status, setStatus] = useState<'draft' | 'final'>('draft');
   const [notes, setNotes] = useState('');
+  const [globalMargin, setGlobalMargin] = useState<number>(20);
 
   // UI state
   const [currentPage, setCurrentPage] = useState(1);
