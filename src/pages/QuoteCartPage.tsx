@@ -107,15 +107,13 @@ export function QuoteCartPage() {
           setItems(cart.items);
         }
         // Set default sales person
-        const adminUser = currentUser || authenticatedUser;
-        if (adminUser?.custom_seller_name) {
-          setCustomer(prev => ({ ...prev, salesPerson: adminUser.custom_seller_name! }));
-          setUseCustomSeller(true);
-          setCustomSellerName(adminUser.custom_seller_name);
-        } else {
-          const currentUsername = currentUser?.username || authenticatedUser?.username || '';
-          if (currentUsername) {
-            setCustomer(prev => ({ ...prev, salesPerson: currentUsername }));
+        const loggedUser = currentUser || authenticatedUser;
+        const sellerName = loggedUser?.custom_seller_name || loggedUser?.username || '';
+        if (sellerName) {
+          setCustomer(prev => ({ ...prev, salesPerson: sellerName }));
+          if (loggedUser?.custom_seller_name) {
+            setUseCustomSeller(false);
+            setCustomSellerName(loggedUser.custom_seller_name);
           }
         }
         return;
@@ -909,7 +907,7 @@ export function QuoteCartPage() {
                 >
                   <option value="">Sélectionner un vendeur</option>
                   {availableUsers.map((user) => (
-                    <option key={user.username} value={user.username}>
+                    <option key={user.username} value={user.displayName}>
                       {user.displayName}
                     </option>
                   ))}
