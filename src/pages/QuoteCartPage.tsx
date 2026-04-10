@@ -22,7 +22,8 @@ import {
   FileText,
   Search,
   Package,
-  Info
+  Info,
+  Paperclip
 } from 'lucide-react';
 import { Quote, QuoteItem, CustomerInfo, Product } from '../types';
 import { ExcelExportService } from '../utils/excelExport';
@@ -93,7 +94,7 @@ export function QuoteCartPage() {
   const [availableUsers, setAvailableUsers] = useState<{ username: string; displayName: string }[]>([]);
   const [customSellerName, setCustomSellerName] = useState('');
   const [useCustomSeller, setUseCustomSeller] = useState(false);
-  const { currentUser, authenticatedUser, isAdmin } = useAuth();
+  const { currentUser, authenticatedUser, isAdmin, canAccessStockLocation, getDisplayPrice } = useAuth();
 
   // Client autocomplete
   const [clientSuggestions, setClientSuggestions] = useState<Client[]>([]);
@@ -262,6 +263,7 @@ export function QuoteCartPage() {
 
   // Product search functionality - live/ajax
   const [productSearchTimeout, setProductSearchTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [searchSheetCounts, setSearchSheetCounts] = useState<Record<string, number>>({});
 
   useEffect(() => {
     if (productSearchTimeout) clearTimeout(productSearchTimeout);
@@ -278,6 +280,26 @@ export function QuoteCartPage() {
 
     return () => { if (timeout) clearTimeout(timeout); };
   }, [searchQuery, state.products]);
+
+  // Load sheet counts for search results
+  useEffect(() => {
+    const loadSearchSheetCounts = async () => {
+      if (searchResults.length === 0) { setSearchSheetCounts({}); return; }
+      const barcodes = searchResults.map(p => p.barcode);
+      try {
+        const { data } = await supabase
+          .from('technical_sheet_products')
+          .select('product_barcode')
+          .in('product_barcode', barcodes);
+        const counts: Record<string, number> = {};
+        (data || []).forEach((row: any) => {
+          counts[row.product_barcode] = (counts[row.product_barcode] || 0) + 1;
+        });
+        setSearchSheetCounts(counts);
+      } catch { setSearchSheetCounts({}); }
+    };
+    loadSearchSheetCounts();
+  }, [searchResults]);
 
   // Add product from search to quote
   const addProductToQuote = (product: Product) => {
@@ -951,27 +973,53 @@ export function QuoteCartPage() {
         </div>
 
         {searchResults.length > 0 && (
-          <div className="mt-2 space-y-1 max-h-48 overflow-y-auto">
-            {searchResults.map((product) => (
-              <div
-                key={product.barcode}
-                className="flex items-center justify-between p-2 bg-card rounded-lg border border-border hover:bg-accent/50 transition-colors"
-              >
-                <div className="min-w-0 flex-1">
-                  <h4 className="text-sm font-medium text-foreground truncate">{product.name}</h4>
-                  <p className="text-xs text-muted-foreground">
-                    {product.brand} • #{product.barcode} • {product.price.toFixed(2)} Dh
-                  </p>
-                </div>
-                <button
-                  onClick={() => addProductToQuote(product)}
-                  className="ml-2 flex items-center space-x-1 px-2 py-1 bg-primary hover:bg-primary/90 text-primary-foreground rounded text-xs transition-colors"
+          <div className="mt-2 space-y-1 max-h-60 overflow-y-auto">
+            {searchResults.map((product) => {
+              const accessibleStockLevels = Object.entries(product.stock_levels || {}).filter(([location]) => canAccessStockLocation(location));
+              const totalStock = accessibleStockLevels.reduce((sum, [, level]) => sum + level, 0);
+              const displayPrice = getDisplayPrice(product);
+              return (
+                <div
+                  key={product.barcode}
+                  className="flex items-center justify-between p-2 bg-card rounded-lg border border-border hover:bg-accent/50 transition-colors gap-2"
                 >
-                  <Plus className="h-3 w-3" />
-                  <span>Ajouter</span>
-                </button>
-              </div>
-            ))}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm font-medium text-foreground truncate">{product.name}</h4>
+                      {(searchSheetCounts[product.barcode] || 0) > 0 && (
+                        <span title={`${searchSheetCounts[product.barcode]} fiche(s) technique(s)`} className="shrink-0 text-primary">
+                          <Paperclip className="h-3.5 w-3.5" />
+                        </span>
+                      )}
+                      {product.brand && (
+                        <span className="px-1.5 py-0.5 bg-primary/10 text-primary text-[11px] rounded font-medium shrink-0">
+                          {product.brand}
+                          {getOriginalName('brand', product.brand) && (
+                            <span className="text-muted-foreground text-[10px] ml-1">(ex: {getOriginalName('brand', product.brand)})</span>
+                          )}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
+                      <span>#{product.barcode}</span>
+                      <span className="font-semibold text-emerald-500">{displayPrice.toFixed(2)} Dh</span>
+                      <span>Stock: {totalStock}</span>
+                      {accessibleStockLevels.map(([location, level]) => (
+                        <span key={location} className="px-1.5 py-0.5 bg-secondary text-secondary-foreground rounded capitalize hidden md:inline">
+                          {location.replace(/_/g, ' ')}: {level}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => addProductToQuote(product)}
+                    className="ml-2 p-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-all duration-200 shadow-sm shrink-0"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
