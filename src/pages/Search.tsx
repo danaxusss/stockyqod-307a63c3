@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useCallback, useState } from 'react';
-import { Search, Package, ArrowRight, Home, AlertCircle, SortAsc, SortDesc, Filter, ScanLine, Plus, X } from 'lucide-react';
+import { Search, Package, ArrowRight, Home, AlertCircle, SortAsc, SortDesc, Filter, ScanLine, Plus, X, Paperclip } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useSearchState } from '../hooks/useSearchState';
 import { useAppContext } from '../context/AppContext';
