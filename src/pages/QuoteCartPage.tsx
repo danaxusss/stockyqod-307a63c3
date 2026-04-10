@@ -553,6 +553,22 @@ export function QuoteCartPage() {
           }
         }
       }
+
+      // Upsert client record if phone number provided
+      if (customer.phoneNumber.trim()) {
+        try {
+          await SupabaseClientsService.upsertClient({
+            full_name: customer.fullName.trim(),
+            phone_number: customer.phoneNumber.trim(),
+            address: customer.address?.trim() || '',
+            city: customer.city?.trim() || '',
+            ice: customer.ice?.trim() || '',
+          });
+        } catch (e) {
+          console.error('Failed to upsert client:', e);
+        }
+      }
+
       setLastSaved(now);
       
       if (!isAutoSave) {
