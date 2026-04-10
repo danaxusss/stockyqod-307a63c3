@@ -785,8 +785,9 @@ export function QuoteCartPage() {
               onChange={(e) => setStatus(e.target.value as 'draft' | 'final')}
               className="px-2 py-1 text-sm border border-input rounded-lg bg-secondary text-foreground"
             >
-              <option value="draft">Brouillon</option>
-              <option value="final">Final</option>
+              <option value="draft">En attente</option>
+              <option value="pending">Envoyé</option>
+              <option value="final">Confirmé</option>
             </select>
           </div>
         </div>
