@@ -187,7 +187,34 @@ export function QuoteCartPage() {
     loadUsers();
   }, [currentUser, authenticatedUser]);
 
-  // Auto-save functionality
+  // Client autocomplete handler
+  const handleClientSearch = useCallback((query: string) => {
+    if (clientSearchTimeout) clearTimeout(clientSearchTimeout);
+    if (query.trim().length < 2) { setClientSuggestions([]); setShowClientSuggestions(false); return; }
+    const timeout = setTimeout(async () => {
+      try {
+        const results = await SupabaseClientsService.searchClients(query);
+        setClientSuggestions(results);
+        setShowClientSuggestions(results.length > 0);
+      } catch { setClientSuggestions([]); }
+    }, 300);
+    setClientSearchTimeout(timeout);
+  }, [clientSearchTimeout]);
+
+  const selectClient = (client: Client) => {
+    setCustomer(prev => ({
+      ...prev,
+      fullName: client.full_name,
+      phoneNumber: client.phone_number,
+      address: client.address || prev.address,
+      city: client.city || prev.city,
+      ice: client.ice || prev.ice,
+    }));
+    setShowClientSuggestions(false);
+    setClientSuggestions([]);
+  };
+
+
   useEffect(() => {
     if (autoSaveTimer) {
       clearTimeout(autoSaveTimer);
