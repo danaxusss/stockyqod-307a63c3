@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { Package, ArrowLeft, Copy, MapPin, DollarSign, ShoppingCart, Home, AlertCircle, Users, Building, TrendingUp, Search, Calculator, Plus, Paperclip, Upload, Download, Trash2, Loader, FileText } from 'lucide-react';
-import { Product } from '../types';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import { Package, ArrowLeft, Copy, MapPin, DollarSign, ShoppingCart, Home, AlertCircle, Users, Building, TrendingUp, Search, Calculator, Plus, Paperclip, Upload, Download, Trash2, Loader, FileText, X } from 'lucide-react';
+import { Product, TechnicalSheet } from '../types';
 import { useAppContext } from '../context/AppContext';
 import { searchStateManager } from '../utils/searchStateManager';
 import { useQuoteCart } from '../hooks/useQuoteCart';
@@ -24,8 +24,13 @@ export function ProductDetail() {
     return saved ? parseInt(saved) : 30;
   });
   const [isUploading, setIsUploading] = useState(false);
-  const [isDeletingTechsheet, setIsDeletingTechsheet] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Linked sheets state
+  const [linkedSheets, setLinkedSheets] = useState<TechnicalSheet[]>([]);
+  const [sheetSearchQuery, setSheetSearchQuery] = useState('');
+  const [sheetSearchResults, setSheetSearchResults] = useState<TechnicalSheet[]>([]);
+  const [allSheets, setAllSheets] = useState<TechnicalSheet[]>([]);
 
   const { addToCart } = useQuoteCart();
   const { showToast } = useToast();
@@ -84,77 +89,97 @@ export function ProductDetail() {
     if ('vibrate' in navigator) navigator.vibrate(100);
   };
 
-  const handleUploadTechsheet = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  // Load linked sheets
+  const loadLinkedSheets = useCallback(async () => {
+    if (!product) return;
+    try {
+      const { data: links } = await supabase
+        .from('technical_sheet_products')
+        .select('sheet_id')
+        .eq('product_barcode', product.barcode);
+      const sheetIds = (links || []).map((l: any) => l.sheet_id);
+      if (sheetIds.length > 0) {
+        const { data: sheetsData } = await supabase
+          .from('technical_sheets')
+          .select('*')
+          .in('id', sheetIds);
+        setLinkedSheets((sheetsData || []) as unknown as TechnicalSheet[]);
+      } else {
+        setLinkedSheets([]);
+      }
+    } catch { setLinkedSheets([]); }
+  }, [product]);
+
+  useEffect(() => { loadLinkedSheets(); }, [loadLinkedSheets]);
+
+  // Load all sheets for search
+  useEffect(() => {
+    const loadAll = async () => {
+      const { data } = await supabase.from('technical_sheets').select('*').order('title');
+      setAllSheets((data || []) as unknown as TechnicalSheet[]);
+    };
+    loadAll();
+  }, []);
+
+  // Sheet search
+  useEffect(() => {
+    if (sheetSearchQuery.length < 2) { setSheetSearchResults([]); return; }
+    const q = sheetSearchQuery.toLowerCase();
+    const linkedIds = new Set(linkedSheets.map(s => s.id));
+    const results = allSheets.filter(s =>
+      !linkedIds.has(s.id) &&
+      (s.title.toLowerCase().includes(q) || s.manufacturer.toLowerCase().includes(q))
+    ).slice(0, 8);
+    setSheetSearchResults(results);
+  }, [sheetSearchQuery, allSheets, linkedSheets]);
+
+  const linkSheet = async (sheet: TechnicalSheet) => {
+    if (!product) return;
+    try {
+      await supabase.from('technical_sheet_products').insert({ sheet_id: sheet.id, product_barcode: product.barcode });
+      setLinkedSheets(prev => [...prev, sheet]);
+      setSheetSearchQuery('');
+      showToast({ type: 'success', message: `"${sheet.title}" lié` });
+    } catch { showToast({ type: 'error', message: 'Erreur lors de la liaison' }); }
+  };
+
+  const unlinkSheet = async (sheetId: string) => {
+    if (!product) return;
+    try {
+      await supabase.from('technical_sheet_products').delete().eq('sheet_id', sheetId).eq('product_barcode', product.barcode);
+      setLinkedSheets(prev => prev.filter(s => s.id !== sheetId));
+      showToast({ type: 'success', message: 'Fiche délié' });
+    } catch { showToast({ type: 'error', message: 'Erreur' }); }
+  };
+
+  const handleUploadAndLink = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file || !product) return;
-
-    const maxSize = 10 * 1024 * 1024; // 10MB
-    if (file.size > maxSize) {
-      showToast({ type: 'error', title: 'Fichier trop volumineux', message: 'La taille maximum est de 10 Mo' });
-      return;
-    }
-
+    if (file.size > 50 * 1024 * 1024) { showToast({ type: 'error', message: 'Fichier trop volumineux (max 50 Mo)' }); return; }
     setIsUploading(true);
     try {
+      const sheetId = crypto.randomUUID();
       const ext = file.name.split('.').pop() || 'pdf';
-      const filePath = `${product.barcode}.${ext}`;
-
-      // Upload to storage
-      const { error: uploadError } = await supabase.storage
-        .from('techsheets')
-        .upload(filePath, file, { upsert: true });
-
+      const filePath = `${sheetId}.${ext}`;
+      const { error: uploadError } = await supabase.storage.from('technical-sheets').upload(filePath, file, { upsert: true });
       if (uploadError) throw uploadError;
-
-      // Get public URL
-      const { data: urlData } = supabase.storage
-        .from('techsheets')
-        .getPublicUrl(filePath);
-
-      // Update product techsheet field
-      const { error: updateError } = await supabase
-        .from('products')
-        .update({ techsheet: urlData.publicUrl })
-        .eq('barcode', product.barcode);
-
-      if (updateError) throw updateError;
-
-      setProduct(prev => prev ? { ...prev, techsheet: urlData.publicUrl } : null);
-      showToast({ type: 'success', message: 'Fiche technique téléchargée avec succès' });
+      const { data: urlData } = supabase.storage.from('technical-sheets').getPublicUrl(filePath);
+      const title = file.name.replace(/\.[^.]+$/, '');
+      const { error: insertError } = await supabase.from('technical_sheets').insert({
+        id: sheetId, title, manufacturer: product.brand || '', category: '', file_url: urlData.publicUrl, file_size: file.size, file_type: file.type || 'application/pdf',
+      });
+      if (insertError) throw insertError;
+      await supabase.from('technical_sheet_products').insert({ sheet_id: sheetId, product_barcode: product.barcode });
+      const newSheet: TechnicalSheet = { id: sheetId, title, manufacturer: product.brand || '', category: '', file_url: urlData.publicUrl, file_size: file.size, file_type: file.type || 'application/pdf', view_count: 0, download_count: 0, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+      setLinkedSheets(prev => [...prev, newSheet]);
+      setAllSheets(prev => [...prev, newSheet]);
+      showToast({ type: 'success', message: 'Fiche technique ajoutée et liée' });
     } catch (err) {
       console.error('Upload error:', err);
-      showToast({ type: 'error', title: 'Erreur', message: 'Échec du téléchargement de la fiche technique' });
+      showToast({ type: 'error', message: 'Erreur lors du téléchargement' });
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  };
-
-  const handleDeleteTechsheet = async () => {
-    if (!product || !product.techsheet) return;
-    setIsDeletingTechsheet(true);
-    try {
-      // Extract file path from URL
-      const url = new URL(product.techsheet);
-      const pathParts = url.pathname.split('/techsheets/');
-      if (pathParts.length > 1) {
-        await supabase.storage.from('techsheets').remove([pathParts[1]]);
-      }
-
-      const { error: updateError } = await supabase
-        .from('products')
-        .update({ techsheet: '' })
-        .eq('barcode', product.barcode);
-
-      if (updateError) throw updateError;
-
-      setProduct(prev => prev ? { ...prev, techsheet: '' } : null);
-      showToast({ type: 'success', message: 'Fiche technique supprimée' });
-    } catch (err) {
-      console.error('Delete techsheet error:', err);
-      showToast({ type: 'error', title: 'Erreur', message: 'Échec de la suppression' });
-    } finally {
-      setIsDeletingTechsheet(false);
     }
   };
 
@@ -208,7 +233,7 @@ export function ProductDetail() {
   const finalPrice = calculateFinalPrice();
   const normalMargin = calculateMargin(product.price, product.buyprice);
   const resellerMargin = calculateMargin(product.reseller_price, product.buyprice);
-  const hasTechsheet = product.techsheet && product.techsheet.trim() !== '';
+  const hasLinkedSheets = linkedSheets.length > 0;
 
   const colorSchemes = [
     { bg: 'bg-violet-500/10', text: 'text-violet-400', textDark: 'text-violet-300' },
@@ -235,8 +260,8 @@ export function ProductDetail() {
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-bold truncate">{product.name}</h1>
-                {hasTechsheet && (
-                  <span className="shrink-0" title="Fiche technique disponible">
+                {hasLinkedSheets && (
+                  <span className="shrink-0" title={`${linkedSheets.length} fiche(s) technique(s)`}>
                     <Paperclip className="h-5 w-5 text-primary-foreground/80" />
                   </span>
                 )}
@@ -349,42 +374,67 @@ export function ProductDetail() {
             </div>
           )}
 
-          {/* Tech Sheet Section */}
+          {/* Linked Sheets Section */}
           <div className="mb-5">
             <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-1.5">
-              <FileText className="h-4 w-4" /> Fiche Technique
+              <FileText className="h-4 w-4" /> Fiches Techniques ({linkedSheets.length})
             </h3>
-            {hasTechsheet ? (
-              <div className="flex items-center gap-2 flex-wrap">
-                <a href={product.techsheet} target="_blank" rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm transition-colors">
-                  <Download className="h-3.5 w-3.5" /><span>Télécharger la Fiche Technique</span>
-                </a>
-                {isAdminUser && (
-                  <button onClick={handleDeleteTechsheet} disabled={isDeletingTechsheet}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-destructive/10 hover:bg-destructive/20 text-destructive rounded-lg text-sm transition-colors disabled:opacity-50">
-                    {isDeletingTechsheet ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                    <span>Supprimer</span>
-                  </button>
-                )}
+
+            {linkedSheets.length > 0 ? (
+              <div className="space-y-2 mb-3">
+                {linkedSheets.map(sheet => (
+                  <div key={sheet.id} className="flex items-center justify-between px-3 py-2 bg-secondary/50 rounded-lg">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-foreground truncate">{sheet.title}</p>
+                      <div className="flex gap-1.5 mt-0.5">
+                        {sheet.manufacturer && <span className="text-[11px] text-muted-foreground">{sheet.manufacturer}</span>}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                      <a href={sheet.file_url} target="_blank" rel="noopener noreferrer"
+                        className="p-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors">
+                        <Download className="h-3.5 w-3.5" />
+                      </a>
+                      {isAdminUser && (
+                        <button onClick={() => unlinkSheet(sheet.id)} className="p-1.5 bg-destructive/10 hover:bg-destructive/20 text-destructive rounded-lg transition-colors">
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground mb-2">Aucune fiche technique disponible.</p>
+              <p className="text-sm text-muted-foreground mb-2">Aucune fiche technique liée.</p>
             )}
+
+            {/* Search existing sheets to link */}
             {isAdminUser && (
-              <div className="mt-2">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
-                  onChange={handleUploadTechsheet}
-                  className="hidden"
-                  id="techsheet-upload"
-                />
+              <div className="space-y-2">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                  <input value={sheetSearchQuery} onChange={e => setSheetSearchQuery(e.target.value)}
+                    placeholder="Rechercher une fiche à lier..."
+                    className="w-full pl-9 pr-3 py-2 border border-input rounded-lg bg-background text-foreground text-sm" />
+                </div>
+                {sheetSearchResults.length > 0 && (
+                  <div className="border border-border rounded-lg divide-y divide-border max-h-32 overflow-y-auto">
+                    {sheetSearchResults.map(s => (
+                      <button key={s.id} onClick={() => linkSheet(s)} className="w-full px-3 py-2 text-left hover:bg-accent transition-colors">
+                        <p className="text-sm font-medium text-foreground truncate">{s.title}</p>
+                        <p className="text-xs text-muted-foreground">{s.manufacturer}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Upload new sheet */}
+                <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+                  onChange={handleUploadAndLink} className="hidden" id="techsheet-upload" />
                 <label htmlFor="techsheet-upload"
                   className={`inline-flex items-center gap-1.5 px-4 py-2 bg-accent hover:bg-accent/80 text-foreground rounded-lg text-sm transition-colors cursor-pointer ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}>
                   {isUploading ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-                  <span>{hasTechsheet ? 'Remplacer' : 'Télécharger'} une Fiche Technique</span>
+                  <span>Ajouter une nouvelle fiche</span>
                 </label>
               </div>
             )}

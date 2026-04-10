@@ -308,6 +308,107 @@ export type Database = {
         }
         Relationships: []
       }
+      sheet_share_links: {
+        Row: {
+          created_at: string
+          expires_at: string | null
+          id: string
+          sheet_ids: string[]
+          title: string | null
+          token: string
+          view_count: number
+        }
+        Insert: {
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          sheet_ids?: string[]
+          title?: string | null
+          token: string
+          view_count?: number
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          sheet_ids?: string[]
+          title?: string | null
+          token?: string
+          view_count?: number
+        }
+        Relationships: []
+      }
+      technical_sheet_products: {
+        Row: {
+          created_at: string
+          id: string
+          product_barcode: string
+          sheet_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          product_barcode: string
+          sheet_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          product_barcode?: string
+          sheet_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "technical_sheet_products_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
+            referencedRelation: "technical_sheets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      technical_sheets: {
+        Row: {
+          category: string
+          created_at: string
+          download_count: number
+          file_size: number
+          file_type: string
+          file_url: string
+          id: string
+          manufacturer: string
+          title: string
+          updated_at: string
+          view_count: number
+        }
+        Insert: {
+          category?: string
+          created_at?: string
+          download_count?: number
+          file_size?: number
+          file_type?: string
+          file_url?: string
+          id?: string
+          manufacturer?: string
+          title?: string
+          updated_at?: string
+          view_count?: number
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          download_count?: number
+          file_size?: number
+          file_type?: string
+          file_url?: string
+          id?: string
+          manufacturer?: string
+          title?: string
+          updated_at?: string
+          view_count?: number
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

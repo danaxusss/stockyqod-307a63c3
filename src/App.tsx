@@ -20,6 +20,8 @@ const StatisticsPage = React.lazy(() => import('./pages/StatisticsPage').then(m 
 const CompanySettingsPage = React.lazy(() => import('./pages/CompanySettingsPage'));
 const ClientsPage = React.lazy(() => import('./pages/ClientsPage'));
 const ProductsPage = React.lazy(() => import('./pages/ProductsPage'));
+const TechnicalSheetsPage = React.lazy(() => import('./pages/TechnicalSheetsPage'));
+const PublicSharePage = React.lazy(() => import('./pages/PublicSharePage'));
 
 function PageLoader() {
   return (
@@ -41,6 +43,18 @@ function AppContent() {
   };
 
   if (!isUserAuthenticated) {
+    // Allow public share page without auth
+    const path = window.location.pathname;
+    if (path.startsWith('/share/')) {
+      return (
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
+            <Route path="/share/:token" element={<PublicSharePage />} />
+          </Routes>
+        </Suspense>
+      );
+    }
+
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <LoginModal 
@@ -70,6 +84,8 @@ function AppContent() {
             )}
             <Route path="/clients" element={<ClientsPage />} />
             <Route path="/products" element={<ProductsPage />} />
+            <Route path="/sheets" element={<TechnicalSheetsPage />} />
+            <Route path="/share/:token" element={<PublicSharePage />} />
             <Route path="/admin/statistics" element={<StatisticsPage />} />
             <Route path="/admin/settings" element={<CompanySettingsPage />} />
           </Routes>
