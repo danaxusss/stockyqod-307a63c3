@@ -100,6 +100,100 @@ export function QuotesHistoryPage() {
     }
   };
 
+  const getCompanyShareIdentity = () => {
+    const companyName = companySettings?.company_name?.trim() || 'Restonet';
+    const companyPhone = companySettings?.phone?.trim() || companySettings?.phone_gsm?.trim() || companySettings?.phone2?.trim() || companySettings?.phone_dir?.trim() || '';
+    const companyEmail = companySettings?.email?.trim() || '';
+
+    return { companyName, companyPhone, companyEmail };
+  };
+
+  const normalizeWhatsAppPhone = (rawPhone: string) => {
+    const digits = rawPhone.replace(/\D/g, '');
+    if (!digits) return '';
+    if (digits.startsWith('00')) return digits.slice(2);
+    if (digits.startsWith('212')) return digits;
+    if (digits.startsWith('0')) return `212${digits.slice(1)}`;
+    return digits;
+  };
+
+  const buildWhatsAppShareText = (quote: Quote) => {
+    const { companyName, companyPhone, companyEmail } = getCompanyShareIdentity();
+    const customerName = quote.customer.fullName?.trim();
+
+    return [
+      customerName ? `Bonjour ${customerName},` : 'Bonjour,',
+      '',
+      `Voici le récapitulatif de votre devis ${companyName}.`,
+      '',
+      `📋 Devis N° : ${quote.quoteNumber}`,
+      `💰 Montant TTC : ${formatCurrency(quote.totalAmount)} Dh`,
+      `📅 Date : ${formatDate(quote.createdAt)}`,
+      '',
+      `Si vous avez besoin d'informations complémentaires, nous restons à votre disposition.`,
+      '',
+      'Cordialement,',
+      companyName,
+      companyPhone ? `📞 ${companyPhone}` : '',
+      companyEmail ? `✉️ ${companyEmail}` : '',
+    ].filter(Boolean).join('\n');
+  };
+
+  const buildEmailShareContent = (quote: Quote) => {
+    const { companyName, companyPhone, companyEmail } = getCompanyShareIdentity();
+    const customerName = quote.customer.fullName?.trim();
+
+    return {
+      subject: `Devis ${companyName} - ${quote.quoteNumber}`,
+      body: [
+        customerName ? `Bonjour ${customerName},` : 'Bonjour,',
+        '',
+        `Veuillez trouver le récapitulatif de votre devis ${companyName}.`,
+        '',
+        `Devis N° : ${quote.quoteNumber}`,
+        `Montant TTC : ${formatCurrency(quote.totalAmount)} Dh`,
+        `Date : ${formatDate(quote.createdAt)}`,
+        '',
+        `N'hésitez pas à nous contacter si vous avez besoin d'informations complémentaires.`,
+        '',
+        'Cordialement,',
+        companyName,
+        companyPhone ? `Tél : ${companyPhone}` : '',
+        companyEmail ? `Email : ${companyEmail}` : '',
+      ].filter(Boolean).join('\n')
+    };
+  };
+
+  const handleWhatsAppShare = async (quote: Quote) => {
+    const messageText = buildWhatsAppShareText(quote);
+    const phone = normalizeWhatsAppPhone(quote.customer.phoneNumber || '');
+    const shareUrl = phone
+      ? `https://wa.me/${phone}?text=${encodeURIComponent(messageText)}`
+      : `https://wa.me/?text=${encodeURIComponent(messageText)}`;
+
+    try {
+      const popup = window.open('about:blank', '_blank', 'noopener,noreferrer');
+      if (popup) {
+        popup.location.href = shareUrl;
+        return;
+      }
+    } catch (error) {
+      console.error('WhatsApp share popup failed:', error);
+    }
+
+    try {
+      await navigator.clipboard.writeText(messageText);
+      setMessage({ type: 'success', text: 'Message WhatsApp copié. Ouvrez WhatsApp puis collez-le.' });
+    } catch {
+      setMessage({ type: 'error', text: 'Impossible d’ouvrir ou copier le message WhatsApp.' });
+    }
+  };
+
+  const handleEmailShare = (quote: Quote) => {
+    const { subject, body } = buildEmailShareContent(quote);
+    window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  };
+
   const totalPages = Math.ceil(filteredQuotes.length / QUOTES_PER_PAGE);
   const startIndex = (currentPage - 1) * QUOTES_PER_PAGE;
   const currentQuotes = filteredQuotes.slice(startIndex, startIndex + QUOTES_PER_PAGE);
