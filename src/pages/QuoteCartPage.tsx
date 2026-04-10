@@ -233,31 +233,27 @@ export function QuoteCartPage() {
     };
   }, [customer, items]);
 
-  // Product search functionality
-  const handleProductSearch = async () => {
-    if (searchQuery.trim().length < 3) {
+  // Product search functionality - live/ajax
+  const [productSearchTimeout, setProductSearchTimeout] = useState<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    if (productSearchTimeout) clearTimeout(productSearchTimeout);
+    if (searchQuery.trim().length < 2) {
       setSearchResults([]);
       return;
     }
 
-    setIsSearching(true);
-    try {
+    const timeout = setTimeout(() => {
       const q = searchQuery.toLowerCase();
       const results = state.products.filter(p =>
         p.name.toLowerCase().includes(q) || p.barcode.includes(q) || p.brand.toLowerCase().includes(q)
       );
       setSearchResults(results.slice(0, 20));
-    } catch (error) {
-      console.error('Search failed:', error);
-      showToast({
-        type: 'error',
-        title: 'Erreur de recherche',
-        message: 'Erreur lors de la recherche'
-      });
-    } finally {
-      setIsSearching(false);
-    }
-  };
+    }, 200);
+    setProductSearchTimeout(timeout);
+
+    return () => { if (timeout) clearTimeout(timeout); };
+  }, [searchQuery, state.products]);
 
   // Add product from search to quote
   const addProductToQuote = (product: Product) => {
