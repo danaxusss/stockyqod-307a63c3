@@ -1,38 +1,65 @@
 
 
-## Plan: Show HT Prices in Tables, Calculate TVA and TTC
+## Plan: Client Management, Product Browser, Quote Sharing, and Toast Improvements
 
-### Context
-Imported product prices (`price`, `reseller_price`) are already TTC (tax-inclusive). Currently the app displays everything as TTC throughout. The goal is to convert prices to HT for display in item tables, then show the TVA breakdown and TTC total at the bottom.
+This is a large, multi-feature request. Here is the structured plan:
 
-### Formula
-Given a TTC price and TVA rate (default 20%):
-- **PU HT** = `unitPrice / (1 + tvaRate / 100)`
-- **Total HT** = sum of all item subtotals / (1 + tvaRate / 100)
-- **TVA** = Total HT × tvaRate / 100
-- **Total TTC** = Total HT + TVA (which equals the original sum)
+---
 
-### Changes
+### 1. Client Management System
 
-**1. `src/pages/QuoteCartPage.tsx`** — Quote creation/edit UI
-- Load `companySettings` to get `tva_rate` (already loaded in the component)
-- Change table header "Prix Unitaire" → "PU HT" and "Sous-total" → "Total HT"
-- Display `item.unitPrice / (1 + tvaRate/100)` in the price column and subtotals accordingly
-- In the totals section at the bottom, show three lines: **Total HT**, **TVA X%**, **Total TTC** instead of just "Total"
-- The internal `unitPrice` and `subtotal` values stay as TTC for storage — only the display converts to HT
+**Database**: Create a `clients` table with columns: `id` (uuid), `full_name`, `phone_number` (unique, used as identifier), `address`, `city`, `ice`, `email`, `created_at`, `updated_at`. RLS policies for public read/insert/update.
 
-**2. `src/utils/pdfExport.ts`** — PDF export
-- Change item table headers from "PU TTC" / "TOTAL TTC" → "PU HT" / "TOTAL HT"
-- For each item row, divide `unitPrice` and row total by `(1 + tvaRate/100)` to show HT values
-- The totals section already correctly derives HT/TVA/TTC from the TTC total — no change needed there
+**Client list page** (`/clients`): Browse all clients with search, pagination, and sorting. Edit client details inline or via modal. Add new clients manually.
 
-**3. `src/utils/excelExport.ts`** — Excel export
-- Change headers from "PU TTC" / "TOTAL TTC" → "PU HT" / "TOTAL HT"
-- Divide item prices by `(1 + tvaRate/100)` when writing to cells
-- Totals calculation already works correctly (derives HT from TTC)
+**Quote integration**: In `QuoteCartPage`, when typing a client name or phone, show autocomplete suggestions from the `clients` table. Selecting a client auto-fills all fields. On quote save, upsert the client record (create if new, update if phone exists).
 
-### What stays the same
-- Stored prices in the database remain TTC (no data migration)
-- `unitPrice` and `subtotal` on `QuoteItem` remain TTC internally
-- The TVA rate comes from `company_settings.tva_rate` (default 20%)
+**Navigation**: Add "Clients" link to the header/nav.
+
+---
+
+### 2. Product Browser Page
+
+**New page** (`/products`): Full product catalog with:
+- Paginated table/grid of all products
+- Search by name, barcode, brand
+- Filters: brand, provider, stock location
+- Sorting: name, price, stock, brand
+- Inline editing of product details (name, price, buy price, reseller price, provider)
+- Save edits to the database
+
+**Navigation**: Add "Produits" link to the header/nav.
+
+---
+
+### 3. Send Quote via WhatsApp/Email
+
+On the quote detail and quotes history pages, add "Send" buttons:
+- **WhatsApp**: Open `https://wa.me/{phone}?text={encodedMessage}` with a formatted message including quote number, total, and a friendly greeting.
+- **Email**: Open `mailto:{email}?subject={subject}&body={encodedBody}` with a similar formatted message.
+
+Both use the client's phone/email from the quote's customer info.
+
+---
+
+### 4. Toast Notification Changes
+
+- **Position**: Move from `top-4 right-4` to `top-4 left-1/2 -translate-x-1/2` (top center)
+- **Size**: Reduce padding, font sizes, and max-width. Remove title for shorter toasts. Make them more compact single-line style.
+- **Animation**: Change from `slide-in-from-right` to `slide-in-from-top`
+
+---
+
+### 5. Quote Page Optimization
+
+Apply the same compact, efficient layout patterns used in other pages (consistent spacing, glass cards, responsive grids) to the quote creation page.
+
+---
+
+### Technical Details
+
+- **New migration**: `clients` table with unique constraint on `phone_number`
+- **New files**: `src/pages/ClientsPage.tsx`, `src/pages/ProductsPage.tsx`
+- **Modified files**: `src/App.tsx` (routes), `src/components/Header.tsx` (nav links), `src/pages/QuoteCartPage.tsx` (client autocomplete + share buttons), `src/pages/QuotesHistoryPage.tsx` (share buttons), `src/context/ToastContext.tsx` (position), `src/components/Toast.tsx` (compact size)
+- **New utility**: Client service in `src/utils/supabaseClients.ts`
 
