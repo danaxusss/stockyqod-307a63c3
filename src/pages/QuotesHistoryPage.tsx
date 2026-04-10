@@ -169,8 +169,8 @@ export function QuotesHistoryPage() {
     const messageText = buildWhatsAppShareText(quote);
     const phone = normalizeWhatsAppPhone(quote.customer.phoneNumber || '');
     const shareUrl = phone
-      ? `https://wa.me/${phone}?text=${encodeURIComponent(messageText)}`
-      : `https://wa.me/?text=${encodeURIComponent(messageText)}`;
+      ? `https://api.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(messageText)}`
+      : `https://api.whatsapp.com/send?text=${encodeURIComponent(messageText)}`;
 
     try {
       const popup = window.open('about:blank', '_blank', 'noopener,noreferrer');
