@@ -106,17 +106,17 @@ export function QuoteCartPage() {
         if (cart.items.length > 0) {
           setItems(cart.items);
         }
-        // Set default sales person to current user
-        const currentUsername = currentUser?.username || authenticatedUser?.username || '';
-        if (currentUsername) {
-          setCustomer(prev => ({ ...prev, salesPerson: currentUsername }));
-        }
-        // If admin has a saved custom seller name, pre-fill it
+        // Set default sales person
         const adminUser = currentUser || authenticatedUser;
-        if (adminUser?.is_admin && adminUser?.custom_seller_name) {
+        if (adminUser?.custom_seller_name) {
           setCustomer(prev => ({ ...prev, salesPerson: adminUser.custom_seller_name! }));
           setUseCustomSeller(true);
           setCustomSellerName(adminUser.custom_seller_name);
+        } else {
+          const currentUsername = currentUser?.username || authenticatedUser?.username || '';
+          if (currentUsername) {
+            setCustomer(prev => ({ ...prev, salesPerson: currentUsername }));
+          }
         }
         return;
       }
