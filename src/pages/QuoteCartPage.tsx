@@ -809,7 +809,7 @@ export function QuoteCartPage() {
               )}
             </div>
             {validationErrors.fullName && (
-              <p className="mt-1 text-sm text-red-600 dark:text-red-400">{validationErrors.fullName}</p>
+              <p className="mt-0.5 text-xs text-destructive">{validationErrors.fullName}</p>
             )}
           </div>
 
