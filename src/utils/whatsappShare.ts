@@ -36,6 +36,21 @@ export function openWhatsAppShareInNewTab(shareUrl: string): boolean {
   return true;
 }
 
+export function openWhatsAppShare(shareUrl: string): boolean {
+  if (openWhatsAppShareInNewTab(shareUrl)) {
+    return true;
+  }
+
+  try {
+    window.location.assign(shareUrl);
+    return true;
+  } catch (error) {
+    console.error('WhatsApp share current-tab navigation failed:', error);
+  }
+
+  return false;
+}
+
 export function openPreparingWhatsAppWindow(): Window | null {
   const popup = window.open('', '_blank');
 
