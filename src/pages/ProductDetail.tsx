@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { Package, ArrowLeft, Copy, MapPin, DollarSign, ShoppingCart, Home, AlertCircle, Users, Building, TrendingUp, Search, Calculator, Plus, Paperclip, Upload, Download, Trash2, Loader, FileText } from 'lucide-react';
-import { Product } from '../types';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import { Package, ArrowLeft, Copy, MapPin, DollarSign, ShoppingCart, Home, AlertCircle, Users, Building, TrendingUp, Search, Calculator, Plus, Paperclip, Upload, Download, Trash2, Loader, FileText, X } from 'lucide-react';
+import { Product, TechnicalSheet } from '../types';
 import { useAppContext } from '../context/AppContext';
 import { searchStateManager } from '../utils/searchStateManager';
 import { useQuoteCart } from '../hooks/useQuoteCart';
@@ -24,8 +24,13 @@ export function ProductDetail() {
     return saved ? parseInt(saved) : 30;
   });
   const [isUploading, setIsUploading] = useState(false);
-  const [isDeletingTechsheet, setIsDeletingTechsheet] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Linked sheets state
+  const [linkedSheets, setLinkedSheets] = useState<TechnicalSheet[]>([]);
+  const [sheetSearchQuery, setSheetSearchQuery] = useState('');
+  const [sheetSearchResults, setSheetSearchResults] = useState<TechnicalSheet[]>([]);
+  const [allSheets, setAllSheets] = useState<TechnicalSheet[]>([]);
 
   const { addToCart } = useQuoteCart();
   const { showToast } = useToast();
