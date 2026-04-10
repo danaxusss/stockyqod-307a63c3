@@ -260,8 +260,8 @@ export function ProductDetail() {
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-bold truncate">{product.name}</h1>
-                {hasTechsheet && (
-                  <span className="shrink-0" title="Fiche technique disponible">
+                {hasLinkedSheets && (
+                  <span className="shrink-0" title={`${linkedSheets.length} fiche(s) technique(s)`}>
                     <Paperclip className="h-5 w-5 text-primary-foreground/80" />
                   </span>
                 )}
@@ -374,45 +374,71 @@ export function ProductDetail() {
             </div>
           )}
 
-          {/* Tech Sheet Section */}
+          {/* Linked Sheets Section */}
           <div className="mb-5">
             <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-1.5">
-              <FileText className="h-4 w-4" /> Fiche Technique
+              <FileText className="h-4 w-4" /> Fiches Techniques ({linkedSheets.length})
             </h3>
-            {hasTechsheet ? (
-              <div className="flex items-center gap-2 flex-wrap">
-                <a href={product.techsheet} target="_blank" rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm transition-colors">
-                  <Download className="h-3.5 w-3.5" /><span>Télécharger la Fiche Technique</span>
-                </a>
-                {isAdminUser && (
-                  <button onClick={handleDeleteTechsheet} disabled={isDeletingTechsheet}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-destructive/10 hover:bg-destructive/20 text-destructive rounded-lg text-sm transition-colors disabled:opacity-50">
-                    {isDeletingTechsheet ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                    <span>Supprimer</span>
-                  </button>
-                )}
+
+            {linkedSheets.length > 0 ? (
+              <div className="space-y-2 mb-3">
+                {linkedSheets.map(sheet => (
+                  <div key={sheet.id} className="flex items-center justify-between px-3 py-2 bg-secondary/50 rounded-lg">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-foreground truncate">{sheet.title}</p>
+                      <div className="flex gap-1.5 mt-0.5">
+                        {sheet.manufacturer && <span className="text-[11px] text-muted-foreground">{sheet.manufacturer}</span>}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                      <a href={sheet.file_url} target="_blank" rel="noopener noreferrer"
+                        className="p-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors">
+                        <Download className="h-3.5 w-3.5" />
+                      </a>
+                      {isAdminUser && (
+                        <button onClick={() => unlinkSheet(sheet.id)} className="p-1.5 bg-destructive/10 hover:bg-destructive/20 text-destructive rounded-lg transition-colors">
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground mb-2">Aucune fiche technique disponible.</p>
+              <p className="text-sm text-muted-foreground mb-2">Aucune fiche technique liée.</p>
             )}
+
+            {/* Search existing sheets to link */}
             {isAdminUser && (
-              <div className="mt-2">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
-                  onChange={handleUploadTechsheet}
-                  className="hidden"
-                  id="techsheet-upload"
-                />
+              <div className="space-y-2">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                  <input value={sheetSearchQuery} onChange={e => setSheetSearchQuery(e.target.value)}
+                    placeholder="Rechercher une fiche à lier..."
+                    className="w-full pl-9 pr-3 py-2 border border-input rounded-lg bg-background text-foreground text-sm" />
+                </div>
+                {sheetSearchResults.length > 0 && (
+                  <div className="border border-border rounded-lg divide-y divide-border max-h-32 overflow-y-auto">
+                    {sheetSearchResults.map(s => (
+                      <button key={s.id} onClick={() => linkSheet(s)} className="w-full px-3 py-2 text-left hover:bg-accent transition-colors">
+                        <p className="text-sm font-medium text-foreground truncate">{s.title}</p>
+                        <p className="text-xs text-muted-foreground">{s.manufacturer}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Upload new sheet */}
+                <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+                  onChange={handleUploadAndLink} className="hidden" id="techsheet-upload" />
                 <label htmlFor="techsheet-upload"
                   className={`inline-flex items-center gap-1.5 px-4 py-2 bg-accent hover:bg-accent/80 text-foreground rounded-lg text-sm transition-colors cursor-pointer ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}>
                   {isUploading ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-                  <span>{hasTechsheet ? 'Remplacer' : 'Télécharger'} une Fiche Technique</span>
+                  <span>Ajouter une nouvelle fiche</span>
                 </label>
               </div>
             )}
+          </div>
           </div>
 
           {/* Action Buttons */}
