@@ -132,6 +132,9 @@ export class CompanySettingsService {
 
     if (error || !data) return null;
 
+    const rawStyle = data.quote_style as Record<string, unknown> || {};
+    const { share_templates: rawShareTemplates, ...styleOnly } = rawStyle as any;
+
     return {
       ...data,
       logo_size: (data as any).logo_size || 'medium',
@@ -148,7 +151,11 @@ export class CompanySettingsService {
       },
       quote_style: {
         ...DEFAULT_QUOTE_STYLE,
-        ...(data.quote_style as Record<string, unknown>),
+        ...styleOnly,
+      },
+      share_templates: {
+        ...DEFAULT_SHARE_TEMPLATES,
+        ...(rawShareTemplates || {}),
       },
     } as CompanySettings;
   }
@@ -164,8 +171,13 @@ export class CompanySettingsService {
     if (settings.quote_visible_fields) {
       updateData.quote_visible_fields = settings.quote_visible_fields as unknown as Record<string, boolean>;
     }
-    if (settings.quote_style) {
-      updateData.quote_style = settings.quote_style as unknown as Record<string, unknown>;
+    if (settings.quote_style || settings.share_templates) {
+      const mergedStyle: Record<string, unknown> = {
+        ...(settings.quote_style || {}),
+        share_templates: settings.share_templates || undefined,
+      };
+      updateData.quote_style = mergedStyle;
+      delete updateData.share_templates;
     }
 
     const { error } = await supabase
