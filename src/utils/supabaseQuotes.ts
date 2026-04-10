@@ -66,6 +66,13 @@ export class SupabaseQuotesService {
     }
   }
 
+  static async updateQuoteStatus(id: string, status: string): Promise<void> {
+    const { error } = await (supabase.from('quotes') as any)
+      .update({ status, updated_at: new Date().toISOString() })
+      .eq('id', id);
+    if (error) throw new Error(`Failed to update quote status: ${error.message}`);
+  }
+
   static async getQuote(id: string): Promise<Quote | null> {
     const { data, error } = await supabase
       .from('quotes')

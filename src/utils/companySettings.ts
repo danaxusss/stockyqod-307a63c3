@@ -32,6 +32,56 @@ const DEFAULT_QUOTE_STYLE: QuoteStyle = {
   totalsStyle: 'highlighted',
 };
 
+export interface ShareTemplates {
+  whatsapp: string;
+  email_subject: string;
+  email_body: string;
+}
+
+export const DEFAULT_SHARE_TEMPLATES: ShareTemplates = {
+  whatsapp: `Bonjour {client},
+
+Voici le récapitulatif de votre devis {entreprise}.
+
+📋 Devis N° : {numero}
+💰 Montant HT : {montant_ht} Dh
+💰 Montant TTC : {montant_ttc} Dh
+📦 Articles : {nb_articles}
+
+N'hésitez pas à nous contacter pour plus d'informations.
+
+Cordialement,
+{entreprise}
+📞 {telephone}
+✉️ {email}`,
+  email_subject: `Devis {entreprise} - {numero}`,
+  email_body: `Bonjour {client},
+
+Veuillez trouver ci-dessous le récapitulatif de votre devis {entreprise}.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+  DEVIS N° {numero}
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Montant HT :    {montant_ht} Dh
+  TVA ({tva}%) :     {montant_tva} Dh
+  ────────────────────────
+  TOTAL TTC :     {montant_ttc} Dh
+
+  Articles :      {nb_articles}
+  Date :          {date}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+N'hésitez pas à nous contacter si vous avez des questions.
+
+Cordialement,
+{entreprise}
+Tél : {telephone}
+Email : {email}
+{adresse}`,
+};
+
 export interface CompanySettings {
   id: string;
   company_name: string;
@@ -51,6 +101,7 @@ export interface CompanySettings {
   logo_size: 'small' | 'medium' | 'large';
   quote_visible_fields: QuoteVisibleFields;
   quote_style: QuoteStyle;
+  share_templates: ShareTemplates;
   payment_terms: string;
   tva_rate: number;
   quote_validity_days: number;
