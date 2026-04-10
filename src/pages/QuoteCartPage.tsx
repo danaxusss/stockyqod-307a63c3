@@ -23,7 +23,10 @@ import {
   Search,
   Package,
   Info,
-  Paperclip
+  Paperclip,
+  Send,
+  MessageCircle,
+  Mail
 } from 'lucide-react';
 import { Quote, QuoteItem, CustomerInfo, Product } from '../types';
 import { ExcelExportService } from '../utils/excelExport';
@@ -1369,6 +1372,82 @@ export function QuoteCartPage() {
           <span>Sauvegarder</span>
         </button>
       </div>
+
+      {/* Sharing Options - visible only after saving */}
+      {lastSaved && items.length > 0 && (
+        <div className="glass rounded-xl shadow-lg p-3">
+          <h2 className="text-sm font-semibold text-foreground mb-2 flex items-center space-x-2">
+            <Send className="h-4 w-4" />
+            <span>Partager le devis</span>
+          </h2>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <button
+              onClick={() => {
+                const tvaRate = companySettings?.tva_rate ?? 20;
+                const totalHT = totalAmount / (1 + tvaRate / 100);
+                const phone = (customer.phoneNumber || '').replace(/[^0-9]/g, '');
+                const message = [
+                  `Bonjour ${customer.fullName || ''},`,
+                  '',
+                  `Suite à votre demande, veuillez trouver ci-dessous le récapitulatif de votre devis :`,
+                  '',
+                  `📋 Devis N° : ${quoteNumber}`,
+                  `💰 Montant HT : ${ExcelExportService.formatCurrency(totalHT)} Dh`,
+                  `💰 Montant TTC : ${ExcelExportService.formatCurrency(totalAmount)} Dh`,
+                  `📦 Articles : ${totalItems}`,
+                  '',
+                  `Pour toute question, n'hésitez pas à nous contacter.`,
+                  '',
+                  `Cordialement,`,
+                  `Restonet`,
+                  companySettings?.phone ? `📞 ${companySettings.phone}` : '',
+                  companySettings?.email ? `✉️ ${companySettings.email}` : '',
+                ].filter(Boolean).join('\n');
+                const encoded = encodeURIComponent(message);
+                const url = phone
+                  ? `https://wa.me/${phone.startsWith('0') ? '212' + phone.slice(1) : phone}?text=${encoded}`
+                  : `https://wa.me/?text=${encoded}`;
+                window.open(url, '_blank');
+              }}
+              className="flex-1 flex items-center justify-center space-x-2 px-4 py-2.5 text-sm bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors"
+            >
+              <MessageCircle className="h-4 w-4" />
+              <span>WhatsApp</span>
+            </button>
+            <button
+              onClick={() => {
+                const tvaRate = companySettings?.tva_rate ?? 20;
+                const totalHT = totalAmount / (1 + tvaRate / 100);
+                const subject = encodeURIComponent(`Devis Restonet - ${quoteNumber}`);
+                const body = encodeURIComponent([
+                  `Bonjour ${customer.fullName || ''},`,
+                  '',
+                  `Veuillez trouver ci-joint votre devis Restonet.`,
+                  '',
+                  `Devis N° : ${quoteNumber}`,
+                  `Montant HT : ${ExcelExportService.formatCurrency(totalHT)} Dh`,
+                  `Montant TTC : ${ExcelExportService.formatCurrency(totalAmount)} Dh`,
+                  `Nombre d'articles : ${totalItems}`,
+                  '',
+                  `Pour toute question, n'hésitez pas à nous contacter.`,
+                  '',
+                  `Cordialement,`,
+                  `Restonet`,
+                  companySettings?.phone ? `Tél: ${companySettings.phone}` : '',
+                  companySettings?.email ? `Email: ${companySettings.email}` : '',
+                  companySettings?.address ? `Adresse: ${companySettings.address}` : '',
+                ].filter(Boolean).join('\n'));
+                const email = customer.email || '';
+                window.open(`mailto:${email}?subject=${subject}&body=${body}`, '_self');
+              }}
+              className="flex-1 flex items-center justify-center space-x-2 px-4 py-2.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+            >
+              <Mail className="h-4 w-4" />
+              <span>Email</span>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
