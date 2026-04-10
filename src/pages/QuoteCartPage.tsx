@@ -31,7 +31,7 @@ import {
 import { Quote, QuoteItem, CustomerInfo, Product } from '../types';
 import { ExcelExportService } from '../utils/excelExport';
 import { PdfExportService } from '../utils/pdfExport';
-import { CompanySettingsService, CompanySettings } from '../utils/companySettings';
+import { CompanySettingsService, CompanySettings, DEFAULT_SHARE_TEMPLATES } from '../utils/companySettings';
 import { SupabaseQuotesService } from '../utils/supabaseQuotes';
 import { ActivityLogger } from '../utils/activityLogger';
 import { useAppContext } from '../context/AppContext';
