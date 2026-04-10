@@ -107,6 +107,7 @@ function CompanySettingsTab() {
         logo_size: settings.logo_size,
         quote_visible_fields: settings.quote_visible_fields,
         quote_style: settings.quote_style,
+        share_templates: settings.share_templates,
         payment_terms: settings.payment_terms,
         tva_rate: settings.tva_rate,
         quote_validity_days: settings.quote_validity_days,
