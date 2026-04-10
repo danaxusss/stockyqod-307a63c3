@@ -89,77 +89,97 @@ export function ProductDetail() {
     if ('vibrate' in navigator) navigator.vibrate(100);
   };
 
-  const handleUploadTechsheet = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  // Load linked sheets
+  const loadLinkedSheets = useCallback(async () => {
+    if (!product) return;
+    try {
+      const { data: links } = await supabase
+        .from('technical_sheet_products')
+        .select('sheet_id')
+        .eq('product_barcode', product.barcode);
+      const sheetIds = (links || []).map((l: any) => l.sheet_id);
+      if (sheetIds.length > 0) {
+        const { data: sheetsData } = await supabase
+          .from('technical_sheets')
+          .select('*')
+          .in('id', sheetIds);
+        setLinkedSheets((sheetsData || []) as unknown as TechnicalSheet[]);
+      } else {
+        setLinkedSheets([]);
+      }
+    } catch { setLinkedSheets([]); }
+  }, [product]);
+
+  useEffect(() => { loadLinkedSheets(); }, [loadLinkedSheets]);
+
+  // Load all sheets for search
+  useEffect(() => {
+    const loadAll = async () => {
+      const { data } = await supabase.from('technical_sheets').select('*').order('title');
+      setAllSheets((data || []) as unknown as TechnicalSheet[]);
+    };
+    loadAll();
+  }, []);
+
+  // Sheet search
+  useEffect(() => {
+    if (sheetSearchQuery.length < 2) { setSheetSearchResults([]); return; }
+    const q = sheetSearchQuery.toLowerCase();
+    const linkedIds = new Set(linkedSheets.map(s => s.id));
+    const results = allSheets.filter(s =>
+      !linkedIds.has(s.id) &&
+      (s.title.toLowerCase().includes(q) || s.manufacturer.toLowerCase().includes(q))
+    ).slice(0, 8);
+    setSheetSearchResults(results);
+  }, [sheetSearchQuery, allSheets, linkedSheets]);
+
+  const linkSheet = async (sheet: TechnicalSheet) => {
+    if (!product) return;
+    try {
+      await supabase.from('technical_sheet_products').insert({ sheet_id: sheet.id, product_barcode: product.barcode });
+      setLinkedSheets(prev => [...prev, sheet]);
+      setSheetSearchQuery('');
+      showToast({ type: 'success', message: `"${sheet.title}" lié` });
+    } catch { showToast({ type: 'error', message: 'Erreur lors de la liaison' }); }
+  };
+
+  const unlinkSheet = async (sheetId: string) => {
+    if (!product) return;
+    try {
+      await supabase.from('technical_sheet_products').delete().eq('sheet_id', sheetId).eq('product_barcode', product.barcode);
+      setLinkedSheets(prev => prev.filter(s => s.id !== sheetId));
+      showToast({ type: 'success', message: 'Fiche délié' });
+    } catch { showToast({ type: 'error', message: 'Erreur' }); }
+  };
+
+  const handleUploadAndLink = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file || !product) return;
-
-    const maxSize = 10 * 1024 * 1024; // 10MB
-    if (file.size > maxSize) {
-      showToast({ type: 'error', title: 'Fichier trop volumineux', message: 'La taille maximum est de 10 Mo' });
-      return;
-    }
-
+    if (file.size > 50 * 1024 * 1024) { showToast({ type: 'error', message: 'Fichier trop volumineux (max 50 Mo)' }); return; }
     setIsUploading(true);
     try {
+      const sheetId = crypto.randomUUID();
       const ext = file.name.split('.').pop() || 'pdf';
-      const filePath = `${product.barcode}.${ext}`;
-
-      // Upload to storage
-      const { error: uploadError } = await supabase.storage
-        .from('techsheets')
-        .upload(filePath, file, { upsert: true });
-
+      const filePath = `${sheetId}.${ext}`;
+      const { error: uploadError } = await supabase.storage.from('technical-sheets').upload(filePath, file, { upsert: true });
       if (uploadError) throw uploadError;
-
-      // Get public URL
-      const { data: urlData } = supabase.storage
-        .from('techsheets')
-        .getPublicUrl(filePath);
-
-      // Update product techsheet field
-      const { error: updateError } = await supabase
-        .from('products')
-        .update({ techsheet: urlData.publicUrl })
-        .eq('barcode', product.barcode);
-
-      if (updateError) throw updateError;
-
-      setProduct(prev => prev ? { ...prev, techsheet: urlData.publicUrl } : null);
-      showToast({ type: 'success', message: 'Fiche technique téléchargée avec succès' });
+      const { data: urlData } = supabase.storage.from('technical-sheets').getPublicUrl(filePath);
+      const title = file.name.replace(/\.[^.]+$/, '');
+      const { error: insertError } = await supabase.from('technical_sheets').insert({
+        id: sheetId, title, manufacturer: product.brand || '', category: '', file_url: urlData.publicUrl, file_size: file.size, file_type: file.type || 'application/pdf',
+      });
+      if (insertError) throw insertError;
+      await supabase.from('technical_sheet_products').insert({ sheet_id: sheetId, product_barcode: product.barcode });
+      const newSheet: TechnicalSheet = { id: sheetId, title, manufacturer: product.brand || '', category: '', file_url: urlData.publicUrl, file_size: file.size, file_type: file.type || 'application/pdf', view_count: 0, download_count: 0, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+      setLinkedSheets(prev => [...prev, newSheet]);
+      setAllSheets(prev => [...prev, newSheet]);
+      showToast({ type: 'success', message: 'Fiche technique ajoutée et liée' });
     } catch (err) {
       console.error('Upload error:', err);
-      showToast({ type: 'error', title: 'Erreur', message: 'Échec du téléchargement de la fiche technique' });
+      showToast({ type: 'error', message: 'Erreur lors du téléchargement' });
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  };
-
-  const handleDeleteTechsheet = async () => {
-    if (!product || !product.techsheet) return;
-    setIsDeletingTechsheet(true);
-    try {
-      // Extract file path from URL
-      const url = new URL(product.techsheet);
-      const pathParts = url.pathname.split('/techsheets/');
-      if (pathParts.length > 1) {
-        await supabase.storage.from('techsheets').remove([pathParts[1]]);
-      }
-
-      const { error: updateError } = await supabase
-        .from('products')
-        .update({ techsheet: '' })
-        .eq('barcode', product.barcode);
-
-      if (updateError) throw updateError;
-
-      setProduct(prev => prev ? { ...prev, techsheet: '' } : null);
-      showToast({ type: 'success', message: 'Fiche technique supprimée' });
-    } catch (err) {
-      console.error('Delete techsheet error:', err);
-      showToast({ type: 'error', title: 'Erreur', message: 'Échec de la suppression' });
-    } finally {
-      setIsDeletingTechsheet(false);
     }
   };
 
@@ -213,7 +233,7 @@ export function ProductDetail() {
   const finalPrice = calculateFinalPrice();
   const normalMargin = calculateMargin(product.price, product.buyprice);
   const resellerMargin = calculateMargin(product.reseller_price, product.buyprice);
-  const hasTechsheet = product.techsheet && product.techsheet.trim() !== '';
+  const hasLinkedSheets = linkedSheets.length > 0;
 
   const colorSchemes = [
     { bg: 'bg-violet-500/10', text: 'text-violet-400', textDark: 'text-violet-300' },
