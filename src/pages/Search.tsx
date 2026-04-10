@@ -8,6 +8,7 @@ import { useQuoteCart } from '../hooks/useQuoteCart';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../hooks/useAuth';
 import { Product } from '../types';
+import { supabase } from '@/integrations/supabase/client';
 
 export function SearchPage() {
   const navigate = useNavigate();
@@ -18,6 +19,7 @@ export function SearchPage() {
   const [showScanner, setShowScanner] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [addedProductIds, setAddedProductIds] = useState<Set<string>>(new Set());
+  const [productSheetCounts, setProductSheetCounts] = useState<Record<string, number>>({});
   
   const { addToCart } = useQuoteCart();
   const { showToast } = useToast();
