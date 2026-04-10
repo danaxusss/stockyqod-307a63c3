@@ -360,7 +360,7 @@ export function ProductDetail() {
                   className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm transition-colors">
                   <Download className="h-3.5 w-3.5" /><span>Télécharger la Fiche Technique</span>
                 </a>
-                {isAdmin() && (
+                {isAdminUser && (
                   <button onClick={handleDeleteTechsheet} disabled={isDeletingTechsheet}
                     className="inline-flex items-center gap-1.5 px-3 py-2 bg-destructive/10 hover:bg-destructive/20 text-destructive rounded-lg text-sm transition-colors disabled:opacity-50">
                     {isDeletingTechsheet ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
@@ -371,7 +371,7 @@ export function ProductDetail() {
             ) : (
               <p className="text-sm text-muted-foreground mb-2">Aucune fiche technique disponible.</p>
             )}
-            {isAdmin() && (
+            {isAdminUser && (
               <div className="mt-2">
                 <input
                   ref={fileInputRef}
