@@ -814,127 +814,71 @@ export function QuoteCartPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
-              Numéro de Téléphone *
-            </label>
+            <label className="block text-xs font-medium text-foreground mb-1">Téléphone *</label>
             <div className="relative">
-              <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <input
-                type="text"
-                value={customer.phoneNumber}
+              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <input type="text" value={customer.phoneNumber}
                 onChange={(e) => setCustomer(prev => ({ ...prev, phoneNumber: e.target.value }))}
-                className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${
-                  validationErrors.phoneNumber ? 'border-red-500' : 'border-input'
-                }`}
-                placeholder="Numéro de téléphone"
-              />
+                className={`w-full pl-9 pr-3 py-1.5 text-sm border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${validationErrors.phoneNumber ? 'border-destructive' : 'border-input'}`}
+                placeholder="Numéro de téléphone" />
             </div>
-            {validationErrors.phoneNumber && (
-              <p className="mt-1 text-sm text-red-600 dark:text-red-400">{validationErrors.phoneNumber}</p>
-            )}
+            {validationErrors.phoneNumber && <p className="mt-0.5 text-xs text-destructive">{validationErrors.phoneNumber}</p>}
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
-              Adresse / Ville (Optionnel)
-            </label>
+            <label className="block text-xs font-medium text-foreground mb-1">Adresse / Ville</label>
             <div className="relative">
-              <Building className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <input
-                type="text"
-                value={customer.address}
+              <Building className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <input type="text" value={customer.address}
                 onChange={(e) => setCustomer(prev => ({ ...prev, address: e.target.value }))}
-                className="w-full pl-10 pr-4 py-2 border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
-                placeholder="Adresse, Ville"
-              />
+                className="w-full pl-9 pr-3 py-1.5 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
+                placeholder="Adresse, Ville" />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
-              ICE (Optionnel)
-            </label>
-            <input
-              type="text"
-              value={customer.ice || ''}
+            <label className="block text-xs font-medium text-foreground mb-1">ICE</label>
+            <input type="text" value={customer.ice || ''}
               onChange={(e) => setCustomer(prev => ({ ...prev, ice: e.target.value }))}
-              className="w-full px-4 py-2 border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
-              placeholder="Numéro ICE"
-            />
+              className="w-full px-3 py-1.5 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
+              placeholder="Numéro ICE" />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
-              Vendeur *
-            </label>
+            <label className="block text-xs font-medium text-foreground mb-1">Vendeur *</label>
             {isAdmin && useCustomSeller ? (
               <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={customer.salesPerson}
+                <input type="text" value={customer.salesPerson}
                   onChange={(e) => setCustomer(prev => ({ ...prev, salesPerson: e.target.value }))}
-                  className={`flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${
-                    validationErrors.salesPerson ? 'border-red-500' : 'border-input'
-                  }`}
-                  placeholder="Nom du vendeur personnalisé"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    setUseCustomSeller(false);
-                    setCustomer(prev => ({ ...prev, salesPerson: '' }));
-                  }}
-                  className="px-3 py-2 text-sm border border-input rounded-lg hover:bg-secondary text-foreground"
-                >
-                  Liste
-                </button>
+                  className={`flex-1 px-3 py-1.5 text-sm border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${validationErrors.salesPerson ? 'border-destructive' : 'border-input'}`}
+                  placeholder="Nom du vendeur" />
+                <button type="button" onClick={() => { setUseCustomSeller(false); setCustomer(prev => ({ ...prev, salesPerson: '' })); }}
+                  className="px-2 py-1.5 text-xs border border-input rounded-lg hover:bg-accent text-foreground">Liste</button>
               </div>
             ) : (
               <div className="flex gap-2">
-                <select
-                  value={customer.salesPerson}
+                <select value={customer.salesPerson}
                   onChange={(e) => setCustomer(prev => ({ ...prev, salesPerson: e.target.value }))}
-                  className={`flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${
-                    validationErrors.salesPerson ? 'border-red-500' : 'border-input'
-                  }`}
-                >
+                  className={`flex-1 px-3 py-1.5 text-sm border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${validationErrors.salesPerson ? 'border-destructive' : 'border-input'}`}>
                   <option value="">Sélectionner un vendeur</option>
                   {availableUsers.map((user) => (
-                    <option key={user.username} value={user.displayName}>
-                      {user.displayName}
-                    </option>
+                    <option key={user.username} value={user.displayName}>{user.displayName}</option>
                   ))}
                 </select>
                 {isAdmin && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setUseCustomSeller(true);
-                      setCustomer(prev => ({ ...prev, salesPerson: '' }));
-                    }}
-                    className="px-3 py-2 text-sm border border-input rounded-lg hover:bg-secondary text-foreground whitespace-nowrap"
-                  >
-                    Autre
-                  </button>
+                  <button type="button" onClick={() => { setUseCustomSeller(true); setCustomer(prev => ({ ...prev, salesPerson: '' })); }}
+                    className="px-2 py-1.5 text-xs border border-input rounded-lg hover:bg-accent text-foreground whitespace-nowrap">Autre</button>
                 )}
               </div>
             )}
-            {validationErrors.salesPerson && (
-              <p className="mt-1 text-sm text-red-600 dark:text-red-400">{validationErrors.salesPerson}</p>
-            )}
+            {validationErrors.salesPerson && <p className="mt-0.5 text-xs text-destructive">{validationErrors.salesPerson}</p>}
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
-              Numéro de Commande
-            </label>
-            <input
-              type="text"
-              value={commandNumber}
-              onChange={(e) => setCommandNumber(e.target.value)}
-              className="w-full px-4 py-2 border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
-              placeholder="Numéro de commande (optionnel)"
-            />
+            <label className="block text-xs font-medium text-foreground mb-1">N° Commande</label>
+            <input type="text" value={commandNumber} onChange={(e) => setCommandNumber(e.target.value)}
+              className="w-full px-3 py-1.5 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
+              placeholder="Optionnel" />
           </div>
         </div>
       </div>
