@@ -141,7 +141,7 @@ export function QuotesHistoryPage() {
           </div>
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as any)}
             className="px-2.5 py-1.5 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-background text-foreground">
-            <option value="all">Tous</option><option value="draft">Brouillon</option><option value="final">Final</option>
+            <option value="all">Tous</option><option value="draft">En attente</option><option value="pending">Envoyé</option><option value="final">Confirmé</option>
           </select>
           <input type="date" value={dateRange.start} onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
             className="px-2.5 py-1.5 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-background text-foreground" />
@@ -195,8 +195,8 @@ export function QuotesHistoryPage() {
                       <td className="px-3 py-2.5 text-xs text-foreground">{formatDate(quote.createdAt)}</td>
                       <td className="px-3 py-2.5 text-xs font-medium text-foreground">{formatCurrency(quote.totalAmount)} Dh</td>
                       <td className="px-3 py-2.5">
-                        <span className={`inline-flex px-1.5 py-0.5 text-[11px] font-semibold rounded-full ${quote.status === 'final' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'}`}>
-                          {quote.status === 'final' ? 'Final' : 'Brouillon'}
+                        <span className={`inline-flex px-1.5 py-0.5 text-[11px] font-semibold rounded-full ${quote.status === 'final' ? 'bg-emerald-500/10 text-emerald-400' : quote.status === 'pending' ? 'bg-blue-500/10 text-blue-400' : 'bg-amber-500/10 text-amber-400'}`}>
+                          {quote.status === 'final' ? 'Confirmé' : quote.status === 'pending' ? 'Envoyé' : 'En attente'}
                         </span>
                       </td>
                       {isAdmin && <td className="px-3 py-2.5 text-xs text-foreground">{quote.customer.salesPerson}</td>}
@@ -256,8 +256,8 @@ export function QuotesHistoryPage() {
           {[
             { icon: FileText, label: 'Total Devis', value: filteredQuotes.length, color: 'text-primary bg-primary/10' },
             { icon: DollarSign, label: 'Valeur Totale', value: `${formatCurrency(filteredQuotes.reduce((s,q) => s + q.totalAmount, 0))} Dh`, color: 'text-emerald-400 bg-emerald-500/10' },
-            { icon: Edit, label: 'Brouillons', value: filteredQuotes.filter(q => q.status === 'draft').length, color: 'text-amber-400 bg-amber-500/10' },
-            { icon: Check, label: 'Finalisés', value: filteredQuotes.filter(q => q.status === 'final').length, color: 'text-violet-400 bg-violet-500/10' },
+            { icon: Edit, label: 'En attente', value: filteredQuotes.filter(q => q.status === 'draft').length, color: 'text-amber-400 bg-amber-500/10' },
+            { icon: Check, label: 'Confirmés', value: filteredQuotes.filter(q => q.status === 'final').length, color: 'text-violet-400 bg-violet-500/10' },
           ].map(({ icon: Icon, label, value, color }) => (
             <div key={label} className="glass rounded-lg p-3">
               <div className="flex items-center space-x-2">
