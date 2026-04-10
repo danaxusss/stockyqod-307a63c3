@@ -439,7 +439,6 @@ export function ProductDetail() {
               </div>
             )}
           </div>
-          </div>
 
           {/* Action Buttons */}
           <div className="border-t border-border pt-4 flex flex-wrap gap-2">
