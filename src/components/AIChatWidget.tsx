@@ -184,13 +184,15 @@ export function AIChatWidget() {
     <>
       {/* Floating button */}
       {!isOpen && (
-        <button
-          onClick={() => setIsOpen(true)}
-          className="fixed bottom-24 left-6 z-50 bg-primary hover:bg-primary/90 text-primary-foreground rounded-full p-4 shadow-lg transition-transform hover:scale-105"
-          title="Assistant IA produits"
-        >
-          <MessageSquare className="h-6 w-6" />
-        </button>
+        <div className="fixed bottom-6 left-6 z-40">
+          <button
+            onClick={() => setIsOpen(true)}
+            className="relative flex items-center justify-center w-12 h-12 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+            title="Assistant IA produits"
+          >
+            <MessageSquare className="h-6 w-6" />
+          </button>
+        </div>
       )}
 
       {/* Chat panel */}
