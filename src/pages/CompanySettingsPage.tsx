@@ -537,7 +537,7 @@ function ProductSettingsTab() {
         ) : items.map(name => {
           const isEditing = editingItem?.type === type && editingItem?.name === name;
           const overridden = hasOverride(type, name);
-          const displayName = getDisplayName(type, name);
+          const originalName = getOriginalName(type, name);
           return (
             <div key={name} className={`flex items-center justify-between p-2 rounded-lg border ${overridden ? 'border-primary/30 bg-primary/5' : 'border-border'}`}>
               {isEditing ? (
@@ -556,9 +556,9 @@ function ProductSettingsTab() {
               ) : (
                 <>
                   <div className="flex-1 min-w-0">
-                    <span className="text-sm text-foreground">{displayName}</span>
-                    {overridden && (
-                      <span className="ml-2 text-[10px] text-muted-foreground">(original: {name})</span>
+                    <span className="text-sm text-foreground">{name}</span>
+                    {originalName && (
+                      <span className="ml-2 text-[10px] text-muted-foreground">(ex: {originalName})</span>
                     )}
                   </div>
                   <div className="flex items-center gap-1">
