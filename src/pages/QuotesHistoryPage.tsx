@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, Search, Filter, Eye, Edit, Trash2, FileDown, Plus, Calendar, User, DollarSign, Hash, SortAsc, SortDesc, AlertCircle, Check, Loader, X } from 'lucide-react';
+import { FileText, Search, Filter, Eye, Edit, Trash2, FileDown, Plus, Calendar, User, DollarSign, Hash, SortAsc, SortDesc, AlertCircle, Check, Loader, X, MessageCircle, Mail } from 'lucide-react';
 import { Quote } from '../types';
 import { SupabaseQuotesService } from '../utils/supabaseQuotes';
 import { ActivityLogger } from '../utils/activityLogger';
@@ -205,6 +205,26 @@ export function QuotesHistoryPage() {
                           <button onClick={() => navigate(`/quote-cart/${quote.id}`)} className="p-1 text-primary hover:bg-primary/10 rounded transition-colors" title="Modifier"><Edit className="h-3.5 w-3.5" /></button>
                           <button onClick={() => handleExport(quote)} disabled={isExporting === quote.id} className="p-1 text-emerald-400 hover:bg-emerald-500/10 rounded transition-colors disabled:opacity-50" title="Exporter">
                             {isExporting === quote.id ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <FileDown className="h-3.5 w-3.5" />}
+                          </button>
+                          <button
+                            onClick={() => {
+                              const phone = (quote.customer.phoneNumber || '').replace(/[^0-9]/g, '');
+                              const msg = `Bonjour ${quote.customer.fullName},\n\nVeuillez trouver ci-joint votre devis N° ${quote.quoteNumber} d'un montant de ${formatCurrency(quote.totalAmount)} Dh.\n\nCordialement.`;
+                              window.open(`https://wa.me/${phone.startsWith('0') ? '212' + phone.slice(1) : phone}?text=${encodeURIComponent(msg)}`, '_blank');
+                            }}
+                            className="p-1 text-emerald-500 hover:bg-emerald-500/10 rounded transition-colors" title="WhatsApp"
+                          >
+                            <MessageCircle className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              const subject = `Devis N° ${quote.quoteNumber}`;
+                              const body = `Bonjour ${quote.customer.fullName},\n\nVeuillez trouver ci-joint votre devis N° ${quote.quoteNumber} d'un montant de ${formatCurrency(quote.totalAmount)} Dh.\n\nCordialement.`;
+                              window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_blank');
+                            }}
+                            className="p-1 text-primary hover:bg-primary/10 rounded transition-colors" title="Email"
+                          >
+                            <Mail className="h-3.5 w-3.5" />
                           </button>
                           <button onClick={() => handleDelete(quote)} className="p-1 text-destructive hover:bg-destructive/10 rounded transition-colors" title="Supprimer"><Trash2 className="h-3.5 w-3.5" /></button>
                         </div>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Package, RefreshCw, LogOut, Shield, FileText, Users, User, Wifi, WifiOff, Cloud, CloudOff, Settings } from 'lucide-react';
+import { Package, RefreshCw, LogOut, Shield, FileText, Users, User, Wifi, WifiOff, Cloud, CloudOff, Settings, UserCheck, ShoppingBag } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useUserAuth } from '../hooks/useUserAuth';
@@ -107,6 +107,14 @@ export function Header() {
                 <FileText className="h-3.5 w-3.5" />
               </Link>
             )}
+
+            <Link to="/clients" className={navLinkClass('/clients')} title="Clients">
+              <UserCheck className="h-3.5 w-3.5" />
+            </Link>
+
+            <Link to="/products" className={navLinkClass('/products')} title="Produits">
+              <ShoppingBag className="h-3.5 w-3.5" />
+            </Link>
 
             {isAdmin && (
               <Link to="/admin/users" className={navLinkClass('/admin/users')} title="Gestion des utilisateurs">

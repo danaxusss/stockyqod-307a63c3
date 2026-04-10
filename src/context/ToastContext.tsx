@@ -41,7 +41,7 @@ export function ToastProvider({ children }: ToastProviderProps) {
       {children}
       
       {/* Toast Container */}
-      <div className="fixed top-4 right-4 z-50 space-y-3 max-w-sm w-full pointer-events-none">
+      <div className="fixed top-3 left-1/2 -translate-x-1/2 z-50 space-y-2 w-full max-w-xs pointer-events-none">
         {toasts.map(toast => (
           <div key={toast.id} className="pointer-events-auto">
             <Toast toast={toast} onClose={removeToast} />
