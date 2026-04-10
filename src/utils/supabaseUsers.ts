@@ -94,6 +94,7 @@ export class SupabaseUsersService {
         ...(updates.allowed_stock_locations !== undefined && { allowed_stock_locations: updates.allowed_stock_locations }),
         ...(updates.allowed_brands !== undefined && { allowed_brands: updates.allowed_brands }),
         ...(updates.price_display_type !== undefined && { price_display_type: updates.price_display_type }),
+        ...(updates.custom_seller_name !== undefined && { custom_seller_name: updates.custom_seller_name }),
       }
     });
 

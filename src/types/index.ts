@@ -126,6 +126,7 @@ export interface UpdateAppUserRequest {
   allowed_stock_locations?: string[];
   allowed_brands?: string[];
   price_display_type?: 'normal' | 'reseller' | 'buy' | 'calculated';
+  custom_seller_name?: string;
 }
 
 export interface UserPermissions {
