@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Package, ArrowLeft, Copy, MapPin, DollarSign, ShoppingCart, Home, AlertCircle, Users, Building, TrendingUp, Search, Calculator, Plus } from 'lucide-react';
+import { Package, ArrowLeft, Copy, MapPin, DollarSign, ShoppingCart, Home, AlertCircle, Users, Building, TrendingUp, Search, Calculator, Plus, Paperclip, Upload, Download, Trash2, Loader, FileText } from 'lucide-react';
 import { Product } from '../types';
 import { useAppContext } from '../context/AppContext';
 import { searchStateManager } from '../utils/searchStateManager';
@@ -8,11 +8,12 @@ import { useQuoteCart } from '../hooks/useQuoteCart';
 import { useToast } from '../context/ToastContext';
 import { QuoteManager } from '../utils/quoteManager';
 import { useAuth } from '../hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
 
 export function ProductDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { canAccessStockLocation, canAccessBrand, canCreateQuote, getDisplayPrice, getPriceDisplayType } = useAuth();
+  const { canAccessStockLocation, canAccessBrand, canCreateQuote, getDisplayPrice, getPriceDisplayType, isAdmin: isAdminUser } = useAuth();
   const { state } = useAppContext();
   const [product, setProduct] = useState<Product | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -22,6 +23,9 @@ export function ProductDetail() {
     const saved = localStorage.getItem('inventory_margin_percentage');
     return saved ? parseInt(saved) : 30;
   });
+  const [isUploading, setIsUploading] = useState(false);
+  const [isDeletingTechsheet, setIsDeletingTechsheet] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { addToCart } = useQuoteCart();
   const { showToast } = useToast();
@@ -80,6 +84,80 @@ export function ProductDetail() {
     if ('vibrate' in navigator) navigator.vibrate(100);
   };
 
+  const handleUploadTechsheet = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !product) return;
+
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    if (file.size > maxSize) {
+      showToast({ type: 'error', title: 'Fichier trop volumineux', message: 'La taille maximum est de 10 Mo' });
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const ext = file.name.split('.').pop() || 'pdf';
+      const filePath = `${product.barcode}.${ext}`;
+
+      // Upload to storage
+      const { error: uploadError } = await supabase.storage
+        .from('techsheets')
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('techsheets')
+        .getPublicUrl(filePath);
+
+      // Update product techsheet field
+      const { error: updateError } = await supabase
+        .from('products')
+        .update({ techsheet: urlData.publicUrl })
+        .eq('barcode', product.barcode);
+
+      if (updateError) throw updateError;
+
+      setProduct(prev => prev ? { ...prev, techsheet: urlData.publicUrl } : null);
+      showToast({ type: 'success', message: 'Fiche technique téléchargée avec succès' });
+    } catch (err) {
+      console.error('Upload error:', err);
+      showToast({ type: 'error', title: 'Erreur', message: 'Échec du téléchargement de la fiche technique' });
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleDeleteTechsheet = async () => {
+    if (!product || !product.techsheet) return;
+    setIsDeletingTechsheet(true);
+    try {
+      // Extract file path from URL
+      const url = new URL(product.techsheet);
+      const pathParts = url.pathname.split('/techsheets/');
+      if (pathParts.length > 1) {
+        await supabase.storage.from('techsheets').remove([pathParts[1]]);
+      }
+
+      const { error: updateError } = await supabase
+        .from('products')
+        .update({ techsheet: '' })
+        .eq('barcode', product.barcode);
+
+      if (updateError) throw updateError;
+
+      setProduct(prev => prev ? { ...prev, techsheet: '' } : null);
+      showToast({ type: 'success', message: 'Fiche technique supprimée' });
+    } catch (err) {
+      console.error('Delete techsheet error:', err);
+      showToast({ type: 'error', title: 'Erreur', message: 'Échec de la suppression' });
+    } finally {
+      setIsDeletingTechsheet(false);
+    }
+  };
+
   const handleBackToSearch = () => navigate('/search');
   const handleBackNavigation = () => { if (cameFromSearch) navigate('/search'); else navigate(-1); };
 
@@ -130,6 +208,7 @@ export function ProductDetail() {
   const finalPrice = calculateFinalPrice();
   const normalMargin = calculateMargin(product.price, product.buyprice);
   const resellerMargin = calculateMargin(product.reseller_price, product.buyprice);
+  const hasTechsheet = product.techsheet && product.techsheet.trim() !== '';
 
   const colorSchemes = [
     { bg: 'bg-violet-500/10', text: 'text-violet-400', textDark: 'text-violet-300' },
@@ -153,8 +232,15 @@ export function ProductDetail() {
         <div className="bg-primary px-5 py-4 text-primary-foreground" style={{ backgroundImage: 'var(--gradient-primary)' }}>
           <div className="flex items-center space-x-3">
             <div className="p-2 bg-white/20 rounded-lg"><Package className="h-6 w-6" /></div>
-            <div className="min-w-0">
-              <h1 className="text-xl font-bold truncate">{product.name}</h1>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-bold truncate">{product.name}</h1>
+                {hasTechsheet && (
+                  <span className="shrink-0" title="Fiche technique disponible">
+                    <Paperclip className="h-5 w-5 text-primary-foreground/80" />
+                  </span>
+                )}
+              </div>
               <div className="flex items-center flex-wrap gap-2 mt-0.5">
                 <span className="text-primary-foreground/70 text-sm">#{product.barcode}</span>
                 {product.brand && <span className="px-2 py-0.5 bg-white/20 text-primary-foreground text-xs rounded font-medium">{product.brand}</span>}
@@ -263,15 +349,46 @@ export function ProductDetail() {
             </div>
           )}
 
-          {/* Tech Sheet */}
-          {product.techsheet && (
-            <div className="mb-4">
-              <a href={product.techsheet} target="_blank" rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm transition-colors">
-                <Package className="h-3.5 w-3.5" /><span>Fiche Technique</span>
-              </a>
-            </div>
-          )}
+          {/* Tech Sheet Section */}
+          <div className="mb-5">
+            <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-1.5">
+              <FileText className="h-4 w-4" /> Fiche Technique
+            </h3>
+            {hasTechsheet ? (
+              <div className="flex items-center gap-2 flex-wrap">
+                <a href={product.techsheet} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm transition-colors">
+                  <Download className="h-3.5 w-3.5" /><span>Télécharger la Fiche Technique</span>
+                </a>
+                {isAdminUser && (
+                  <button onClick={handleDeleteTechsheet} disabled={isDeletingTechsheet}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-destructive/10 hover:bg-destructive/20 text-destructive rounded-lg text-sm transition-colors disabled:opacity-50">
+                    {isDeletingTechsheet ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                    <span>Supprimer</span>
+                  </button>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground mb-2">Aucune fiche technique disponible.</p>
+            )}
+            {isAdminUser && (
+              <div className="mt-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+                  onChange={handleUploadTechsheet}
+                  className="hidden"
+                  id="techsheet-upload"
+                />
+                <label htmlFor="techsheet-upload"
+                  className={`inline-flex items-center gap-1.5 px-4 py-2 bg-accent hover:bg-accent/80 text-foreground rounded-lg text-sm transition-colors cursor-pointer ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                  {isUploading ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                  <span>{hasTechsheet ? 'Remplacer' : 'Télécharger'} une Fiche Technique</span>
+                </label>
+              </div>
+            )}
+          </div>
 
           {/* Action Buttons */}
           <div className="border-t border-border pt-4 flex flex-wrap gap-2">
