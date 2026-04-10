@@ -169,14 +169,13 @@ export function QuoteCartPage() {
           .filter(user => user.can_create_quote)
           .map(user => ({
             username: user.username,
-            displayName: user.username
+            displayName: user.custom_seller_name || user.username
           }))
-          .sort((a, b) => a.username.localeCompare(b.username));
+          .sort((a, b) => a.displayName.localeCompare(b.displayName));
         
         setAvailableUsers(quoteEnabledUsers);
       } catch (error) {
         console.error('Failed to load users:', error);
-        // Fallback: if we can't load users, at least include current user
         const currentUsername = currentUser?.username || authenticatedUser?.username;
         if (currentUsername) {
           setAvailableUsers([{ username: currentUsername, displayName: currentUsername }]);
