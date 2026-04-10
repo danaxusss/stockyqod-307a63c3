@@ -137,3 +137,34 @@ export interface UserPermissions {
   priceDisplayType: 'normal' | 'reseller' | 'buy' | 'calculated';
   isAdmin: boolean;
 }
+
+export interface TechnicalSheet {
+  id: string;
+  title: string;
+  manufacturer: string;
+  category: string;
+  file_url: string;
+  file_size: number;
+  file_type: string;
+  view_count: number;
+  download_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TechnicalSheetProduct {
+  id: string;
+  sheet_id: string;
+  product_barcode: string;
+  created_at: string;
+}
+
+export interface SheetShareLink {
+  id: string;
+  token: string;
+  title: string | null;
+  sheet_ids: string[];
+  expires_at: string | null;
+  view_count: number;
+  created_at: string;
+}
