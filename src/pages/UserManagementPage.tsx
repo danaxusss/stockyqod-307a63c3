@@ -33,6 +33,7 @@ interface UserFormData {
   allowed_stock_locations: string[];
   allowed_brands: string[];
   price_display_type: string;
+  custom_seller_name: string;
 }
 
 const initialFormData: UserFormData = {
@@ -42,7 +43,8 @@ const initialFormData: UserFormData = {
   can_create_quote: true,
   allowed_stock_locations: [],
   allowed_brands: [],
-  price_display_type: 'normal'
+  price_display_type: 'normal',
+  custom_seller_name: ''
 };
 
 export default function UserManagementPage() {
@@ -147,7 +149,8 @@ export default function UserManagementPage() {
         is_admin: formData.is_admin,
         can_create_quote: formData.can_create_quote,
         allowed_stock_locations: formData.allowed_stock_locations,
-        price_display_type: formData.price_display_type
+        price_display_type: formData.price_display_type,
+        custom_seller_name: formData.custom_seller_name.trim()
       };
 
       await SupabaseUsersService.createUser(userData);
@@ -184,7 +187,8 @@ export default function UserManagementPage() {
       can_create_quote: user.can_create_quote,
       allowed_stock_locations: user.allowed_stock_locations,
       allowed_brands: user.allowed_brands || [],
-      price_display_type: user.price_display_type
+      price_display_type: user.price_display_type,
+      custom_seller_name: user.custom_seller_name || ''
     });
   };
 
@@ -209,7 +213,8 @@ export default function UserManagementPage() {
         can_create_quote: formData.can_create_quote,
         allowed_stock_locations: formData.allowed_stock_locations,
         allowed_brands: formData.allowed_brands,
-        price_display_type: formData.price_display_type
+        price_display_type: formData.price_display_type,
+        custom_seller_name: formData.custom_seller_name.trim()
       };
 
       await SupabaseUsersService.updateUser(editingUser.id, updates);
@@ -566,6 +571,23 @@ export default function UserManagementPage() {
                       </span>
                     </div>
                   </div>
+                </div>
+
+                {/* Sales Person Name */}
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-2">
+                    Nom du commercial
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.custom_seller_name}
+                    onChange={(e) => handleInputChange('custom_seller_name', e.target.value)}
+                    className="w-full px-3 py-2 border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
+                    placeholder="Nom affiché sur les devis"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Sera sélectionné par défaut lors de la création de devis
+                  </p>
                 </div>
 
                 {/* Price Display Type */}
