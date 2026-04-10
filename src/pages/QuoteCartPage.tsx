@@ -263,6 +263,7 @@ export function QuoteCartPage() {
 
   // Product search functionality - live/ajax
   const [productSearchTimeout, setProductSearchTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [searchSheetCounts, setSearchSheetCounts] = useState<Record<string, number>>({});
 
   useEffect(() => {
     if (productSearchTimeout) clearTimeout(productSearchTimeout);
@@ -279,6 +280,26 @@ export function QuoteCartPage() {
 
     return () => { if (timeout) clearTimeout(timeout); };
   }, [searchQuery, state.products]);
+
+  // Load sheet counts for search results
+  useEffect(() => {
+    const loadSearchSheetCounts = async () => {
+      if (searchResults.length === 0) { setSearchSheetCounts({}); return; }
+      const barcodes = searchResults.map(p => p.barcode);
+      try {
+        const { data } = await supabase
+          .from('technical_sheet_products')
+          .select('product_barcode')
+          .in('product_barcode', barcodes);
+        const counts: Record<string, number> = {};
+        (data || []).forEach((row: any) => {
+          counts[row.product_barcode] = (counts[row.product_barcode] || 0) + 1;
+        });
+        setSearchSheetCounts(counts);
+      } catch { setSearchSheetCounts({}); }
+    };
+    loadSearchSheetCounts();
+  }, [searchResults]);
 
   // Add product from search to quote
   const addProductToQuote = (product: Product) => {
