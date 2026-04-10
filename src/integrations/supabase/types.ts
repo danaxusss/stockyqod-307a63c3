@@ -297,6 +297,7 @@ export type Database = {
           allowed_stock_locations: string[]
           can_create_quote: boolean
           created_at: string
+          custom_seller_name: string
           id: string
           is_admin: boolean
           price_display_type: string
@@ -311,6 +312,7 @@ export type Database = {
           allowed_stock_locations: string[]
           can_create_quote: boolean
           created_at: string
+          custom_seller_name: string
           id: string
           is_admin: boolean
           price_display_type: string
@@ -325,6 +327,7 @@ export type Database = {
           allowed_stock_locations: string[]
           can_create_quote: boolean
           created_at: string
+          custom_seller_name: string
           id: string
           is_admin: boolean
           price_display_type: string
