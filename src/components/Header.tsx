@@ -117,12 +117,6 @@ export function Header() {
             </Link>
 
             {isAdmin && (
-              <Link to="/admin/users" className={navLinkClass('/admin/users')} title="Gestion des utilisateurs">
-                <Users className="h-3.5 w-3.5" />
-              </Link>
-            )}
-
-            {isAdmin && (
               <Link to="/admin/settings" className={navLinkClass('/admin/settings')} title="Paramètres">
                 <Settings className="h-3.5 w-3.5" />
               </Link>

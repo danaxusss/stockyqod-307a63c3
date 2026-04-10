@@ -70,7 +70,6 @@ function AppContent() {
             )}
             <Route path="/clients" element={<ClientsPage />} />
             <Route path="/products" element={<ProductsPage />} />
-            <Route path="/admin/users" element={<UserManagementPage />} />
             <Route path="/admin/statistics" element={<StatisticsPage />} />
             <Route path="/admin/settings" element={<CompanySettingsPage />} />
           </Routes>
