@@ -29,5 +29,5 @@ export function useProductOverrides() {
     return match ? match.original_name : null;
   };
 
-  return { getOriginalName };
+  return { overrides, getOriginalName };
 }
