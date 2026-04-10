@@ -219,9 +219,6 @@ export function Home() {
             <ActionCard to="/quote-cart" icon={ShoppingCart} iconGradient="bg-violet-600" title="Nouveau Devis" desc="Créer un devis" size="large" />
           </>
         )}
-        {isAdmin && (
-          <ActionCard to="/admin/settings" icon={Settings} iconGradient="bg-gray-600" title="Paramètres" desc="Configuration société" size="large" />
-        )}
       </div>
 
       {/* Stats */}
@@ -243,11 +240,12 @@ export function Home() {
       {isAdmin && (
         <div className="mb-4">
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">Outils Admin</h2>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-4 gap-2">
             <ActionCard onClick={handleSync} disabled={isSyncing || !state.isOnline} icon={RefreshCw} iconGradient="bg-orange-600"
               title="Synchroniser" desc={isSyncing ? 'Sync...' : 'Serveur'} size="small" />
             <ActionCard onClick={() => setShowUploadModal(true)} icon={Upload} iconGradient="bg-violet-600" title="Upload Excel" desc="Importer" size="small" />
             <ActionCard to="/admin/statistics" icon={BarChart3} iconGradient="bg-primary" title="Statistiques" desc="Données" size="small" />
+            <ActionCard to="/admin/settings" icon={Settings} iconGradient="bg-gray-600" title="Paramètres" desc="Configuration" size="small" />
           </div>
         </div>
       )}
