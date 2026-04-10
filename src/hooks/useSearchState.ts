@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Product } from '../types';
 import { useAppContext } from '../context/AppContext';
 import { searchStateManager } from '../utils/searchStateManager';
+import { useProductOverrides } from './useProductOverrides';
 
 export interface SearchFilters {
   query?: string;
@@ -84,6 +85,7 @@ interface UseSearchStateReturn {
 
 export function useSearchState(): UseSearchStateReturn {
   const { state } = useAppContext();
+  const { overrides } = useProductOverrides();
   const [query, setQueryState] = useState('');
   const [selectedBrand, setSelectedBrandState] = useState('');
   const [selectedStockLocation, setSelectedStockLocationState] = useState('');
@@ -134,7 +136,7 @@ export function useSearchState(): UseSearchStateReturn {
           query: hasValidQuery ? query : '',
           brand: selectedBrand,
           stockLocation: selectedStockLocation
-        });
+        }, overrides);
 
         const sorted = sortProducts(products, sortBy, sortOrder);
         setResults(sorted);
