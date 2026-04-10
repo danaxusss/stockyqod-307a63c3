@@ -22,7 +22,8 @@ import {
   FileText,
   Search,
   Package,
-  Info
+  Info,
+  Paperclip
 } from 'lucide-react';
 import { Quote, QuoteItem, CustomerInfo, Product } from '../types';
 import { ExcelExportService } from '../utils/excelExport';
@@ -93,7 +94,7 @@ export function QuoteCartPage() {
   const [availableUsers, setAvailableUsers] = useState<{ username: string; displayName: string }[]>([]);
   const [customSellerName, setCustomSellerName] = useState('');
   const [useCustomSeller, setUseCustomSeller] = useState(false);
-  const { currentUser, authenticatedUser, isAdmin } = useAuth();
+  const { currentUser, authenticatedUser, isAdmin, canAccessStockLocation, getDisplayPrice } = useAuth();
 
   // Client autocomplete
   const [clientSuggestions, setClientSuggestions] = useState<Client[]>([]);
