@@ -24,7 +24,12 @@ export function SearchPage() {
   
   const { addToCart } = useQuoteCart();
   const { showToast } = useToast();
-  const { getOriginalName } = useProductOverrides();
+  const { getOriginalName, getAllNames, getDisplayName } = useProductOverrides();
+
+  const canAccessBrandVariant = useCallback((brand: string) => {
+    const relatedNames = getAllNames('brand', brand);
+    return relatedNames.some(name => canAccessBrand(name));
+  }, [canAccessBrand, getAllNames]);
   
   const {
     query, setQuery, selectedBrand, setSelectedBrand,
@@ -40,12 +45,12 @@ export function SearchPage() {
       const hasAccessibleStock = Object.keys(product.stock_levels || {}).some(location => 
         canAccessStockLocation(location) && (product.stock_levels[location] || 0) > 0
       );
-      const hasAccessibleBrand = canAccessBrand(product.brand || '');
+      const hasAccessibleBrand = canAccessBrandVariant(product.brand || '');
       if (!hasAccessibleStock || !hasAccessibleBrand) return;
       if (product.brand && product.brand.trim()) brands.add(product.brand.trim());
     });
     return Array.from(brands).sort();
-  }, [state.products, canAccessStockLocation, canAccessBrand]);
+  }, [state.products, canAccessStockLocation, canAccessBrandVariant]);
 
   const uniqueStockLocations = React.useMemo(() => {
     const locations = new Set<string>();
@@ -134,9 +139,9 @@ export function SearchPage() {
       const hasAccessibleStock = Object.keys(product.stock_levels || {}).some(location => 
         canAccessStockLocation(location) && (product.stock_levels[location] || 0) > 0
       );
-      return hasAccessibleStock && canAccessBrand(product.brand || '');
+      return hasAccessibleStock && canAccessBrandVariant(product.brand || '');
     });
-  }, [results, canAccessStockLocation, canAccessBrand]);
+  }, [results, canAccessStockLocation, canAccessBrandVariant]);
 
   // Load sheet counts for visible products
   useEffect(() => {
@@ -215,7 +220,7 @@ export function SearchPage() {
               <select value={selectedBrand} onChange={(e) => setSelectedBrand(e.target.value)}
                 className="w-full px-4 py-3 border-2 border-input rounded-xl focus:ring-4 focus:ring-ring/30 focus:border-ring transition-all bg-background text-foreground shadow-sm">
                 <option value="">Toutes les marques</option>
-                {uniqueBrands.map((brand) => <option key={brand} value={brand}>{brand}</option>)}
+                {uniqueBrands.map((brand) => <option key={brand} value={brand}>{getDisplayName('brand', brand)}</option>)}
               </select>
               {selectedBrand && (
                 <button onClick={() => setSelectedBrand('')} className="absolute right-8 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground p-1 hover:bg-accent rounded-full transition-colors" title="Effacer le filtre">
@@ -249,7 +254,7 @@ export function SearchPage() {
             <span className="text-sm font-medium text-muted-foreground">Filtres actifs:</span>
             {selectedBrand && (
               <span className="inline-flex items-center px-3 py-1.5 bg-primary/10 text-primary text-xs font-medium rounded-full border border-primary/20">
-                Marque: {selectedBrand}
+                Marque: {getDisplayName('brand', selectedBrand)}
                 <button onClick={() => setSelectedBrand('')} className="ml-2 hover:text-primary/70 p-0.5 rounded-full transition-colors"><X className="h-3 w-3" /></button>
               </span>
             )}
@@ -315,7 +320,7 @@ export function SearchPage() {
           <p className="text-muted-foreground mb-4">
             Aucun produit trouvé pour les critères sélectionnés
             {query && <><br />Recherche: "{query}"</>}
-            {selectedBrand && <><br />Marque: {selectedBrand}</>}
+            {selectedBrand && <><br />Marque: {getDisplayName('brand', selectedBrand)}</>}
             {selectedStockLocation && <><br />Emplacement: {selectedStockLocation.replace(/_/g, ' ')}</>}
           </p>
           <button onClick={() => navigate('/')} className="flex items-center space-x-2 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors mx-auto">

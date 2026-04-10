@@ -53,7 +53,7 @@ export function QuoteCartPage() {
   const { cart, emptyCart } = useQuoteCart();
   const { showToast } = useToast();
   const { state } = useAppContext();
-  const { getOriginalName } = useProductOverrides();
+  const { getOriginalName, overrides } = useProductOverrides();
 
   // Quote state
   const [quote, setQuote] = useState<Quote | null>(null);
@@ -273,13 +273,13 @@ export function QuoteCartPage() {
     }
 
     const timeout = setTimeout(() => {
-      const results = searchProductsLocally(state.products, { query: searchQuery });
+      const results = searchProductsLocally(state.products, { query: searchQuery }, overrides);
       setSearchResults(results.slice(0, 20));
     }, 200);
     setProductSearchTimeout(timeout);
 
     return () => { if (timeout) clearTimeout(timeout); };
-  }, [searchQuery, state.products]);
+  }, [searchQuery, state.products, overrides]);
 
   // Load sheet counts for search results
   useEffect(() => {
