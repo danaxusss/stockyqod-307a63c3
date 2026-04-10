@@ -81,6 +81,7 @@ export function QuoteCartPage() {
   const [isExporting, setIsExporting] = useState(false);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
 
   // Company settings for PDF export
   const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null);
@@ -1381,7 +1382,7 @@ export function QuoteCartPage() {
               <Send className="h-3.5 w-3.5" />
               <span>Exporter & Partager</span>
             </h2>
-            {!lastSaved && (
+            {isDirty && (
               <span className="text-[10px] text-amber-500 flex items-center space-x-1">
                 <Info className="h-3 w-3" />
                 <span>Sauvegardez avant d'envoyer</span>
@@ -1391,8 +1392,8 @@ export function QuoteCartPage() {
           <div className="flex gap-2">
             <button
               onClick={async () => {
-                if (!lastSaved) {
-                  showToast({ type: 'warning', title: 'Devis non sauvegardé', message: 'Veuillez sauvegarder le devis avant de le partager.' });
+                if (isDirty) {
+                  showToast({ type: 'warning', title: 'Modifications non sauvegardées', message: 'Veuillez sauvegarder le devis avant de le partager.' });
                   return;
                 }
                 // Export PDF first
@@ -1427,8 +1428,8 @@ export function QuoteCartPage() {
                 const phone = (customer.phoneNumber || '').replace(/\D/g, '');
                 const normalizedPhone = phone.startsWith('00') ? phone.slice(2) : phone.startsWith('0') ? `212${phone.slice(1)}` : phone;
                 const url = normalizedPhone
-                  ? `https://wa.me/${normalizedPhone}?text=${encodeURIComponent(msg)}`
-                  : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+                  ? `https://api.whatsapp.com/send?phone=${normalizedPhone}&text=${encodeURIComponent(msg)}`
+                  : `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
                 try {
                   const popup = window.open('about:blank', '_blank', 'noopener,noreferrer');
                   if (popup) { popup.location.href = url; }
