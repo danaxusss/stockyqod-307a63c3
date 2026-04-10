@@ -9,6 +9,7 @@ import { useToast } from '../context/ToastContext';
 import { useAuth } from '../hooks/useAuth';
 import { Product } from '../types';
 import { supabase } from '@/integrations/supabase/client';
+import { useProductOverrides } from '../hooks/useProductOverrides';
 
 export function SearchPage() {
   const navigate = useNavigate();
@@ -23,6 +24,7 @@ export function SearchPage() {
   
   const { addToCart } = useQuoteCart();
   const { showToast } = useToast();
+  const { getOriginalName } = useProductOverrides();
   
   const {
     query, setQuery, selectedBrand, setSelectedBrand,
@@ -348,8 +350,22 @@ export function SearchPage() {
                             <Paperclip className="h-3.5 w-3.5" />
                           </Link>
                         )}
-                        {product.brand && <span className="px-1.5 py-0.5 bg-primary/10 text-primary text-[11px] rounded font-medium shrink-0">{product.brand}</span>}
-                        {product.provider && <span className="px-1.5 py-0.5 bg-orange-500/10 text-orange-500 text-[11px] rounded font-medium shrink-0 hidden sm:inline">{product.provider}</span>}
+                        {product.brand && (
+                          <span className="px-1.5 py-0.5 bg-primary/10 text-primary text-[11px] rounded font-medium shrink-0">
+                            {product.brand}
+                            {getOriginalName('brand', product.brand) && (
+                              <span className="text-muted-foreground text-[10px] ml-1">(ex: {getOriginalName('brand', product.brand)})</span>
+                            )}
+                          </span>
+                        )}
+                        {product.provider && (
+                          <span className="px-1.5 py-0.5 bg-orange-500/10 text-orange-500 text-[11px] rounded font-medium shrink-0 hidden sm:inline">
+                            {product.provider}
+                            {getOriginalName('provider', product.provider) && (
+                              <span className="text-muted-foreground text-[10px] ml-1">(ex: {getOriginalName('provider', product.provider)})</span>
+                            )}
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
                         <span>#{product.barcode}</span>

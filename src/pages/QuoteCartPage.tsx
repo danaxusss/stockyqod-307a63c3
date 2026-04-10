@@ -38,6 +38,7 @@ import { searchProductsLocally } from '../hooks/useSearchState';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
+import { useProductOverrides } from '../hooks/useProductOverrides';
 
 const ITEMS_PER_PAGE = 40;
 
@@ -51,6 +52,7 @@ export function QuoteCartPage() {
   const { cart, emptyCart } = useQuoteCart();
   const { showToast } = useToast();
   const { state } = useAppContext();
+  const { getOriginalName } = useProductOverrides();
 
   // Quote state
   const [quote, setQuote] = useState<Quote | null>(null);
@@ -1064,7 +1066,11 @@ export function QuoteCartPage() {
                             {item.product.name}
                           </div>
                           <div className="text-sm text-muted-foreground">
-                            {item.product.brand} • #{item.product.barcode}
+                            {item.product.brand}
+                            {getOriginalName('brand', item.product.brand) && (
+                              <span className="text-[10px] ml-1">(ex: {getOriginalName('brand', item.product.brand)})</span>
+                            )}
+                            {' '}• #{item.product.barcode}
                           </div>
                         </div>
                       </td>
