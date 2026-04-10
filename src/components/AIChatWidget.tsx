@@ -186,7 +186,7 @@ export function AIChatWidget() {
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-24 right-6 z-50 bg-primary hover:bg-primary/90 text-primary-foreground rounded-full p-4 shadow-lg transition-transform hover:scale-105"
+          className="fixed bottom-24 left-6 z-50 bg-primary hover:bg-primary/90 text-primary-foreground rounded-full p-4 shadow-lg transition-transform hover:scale-105"
           title="Assistant IA produits"
         >
           <MessageSquare className="h-6 w-6" />
@@ -195,7 +195,7 @@ export function AIChatWidget() {
 
       {/* Chat panel */}
       {isOpen && (
-        <div className="fixed bottom-6 right-6 z-50 w-[400px] max-h-[560px] bg-background border border-border rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+        <div className="fixed bottom-6 left-6 z-50 w-[400px] max-h-[560px] bg-background border border-border rounded-2xl shadow-2xl flex flex-col overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 bg-primary text-primary-foreground">
             <div className="flex items-center gap-2">
