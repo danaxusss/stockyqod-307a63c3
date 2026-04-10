@@ -107,15 +107,13 @@ export function QuoteCartPage() {
           setItems(cart.items);
         }
         // Set default sales person
-        const adminUser = currentUser || authenticatedUser;
-        if (adminUser?.custom_seller_name) {
-          setCustomer(prev => ({ ...prev, salesPerson: adminUser.custom_seller_name! }));
-          setUseCustomSeller(true);
-          setCustomSellerName(adminUser.custom_seller_name);
-        } else {
-          const currentUsername = currentUser?.username || authenticatedUser?.username || '';
-          if (currentUsername) {
-            setCustomer(prev => ({ ...prev, salesPerson: currentUsername }));
+        const loggedUser = currentUser || authenticatedUser;
+        const sellerName = loggedUser?.custom_seller_name || loggedUser?.username || '';
+        if (sellerName) {
+          setCustomer(prev => ({ ...prev, salesPerson: sellerName }));
+          if (loggedUser?.custom_seller_name) {
+            setUseCustomSeller(false);
+            setCustomSellerName(loggedUser.custom_seller_name);
           }
         }
         return;
@@ -169,14 +167,13 @@ export function QuoteCartPage() {
           .filter(user => user.can_create_quote)
           .map(user => ({
             username: user.username,
-            displayName: user.username
+            displayName: user.custom_seller_name || user.username
           }))
-          .sort((a, b) => a.username.localeCompare(b.username));
+          .sort((a, b) => a.displayName.localeCompare(b.displayName));
         
         setAvailableUsers(quoteEnabledUsers);
       } catch (error) {
         console.error('Failed to load users:', error);
-        // Fallback: if we can't load users, at least include current user
         const currentUsername = currentUser?.username || authenticatedUser?.username;
         if (currentUsername) {
           setAvailableUsers([{ username: currentUsername, displayName: currentUsername }]);
@@ -236,31 +233,27 @@ export function QuoteCartPage() {
     };
   }, [customer, items]);
 
-  // Product search functionality
-  const handleProductSearch = async () => {
-    if (searchQuery.trim().length < 3) {
+  // Product search functionality - live/ajax
+  const [productSearchTimeout, setProductSearchTimeout] = useState<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    if (productSearchTimeout) clearTimeout(productSearchTimeout);
+    if (searchQuery.trim().length < 2) {
       setSearchResults([]);
       return;
     }
 
-    setIsSearching(true);
-    try {
+    const timeout = setTimeout(() => {
       const q = searchQuery.toLowerCase();
       const results = state.products.filter(p =>
         p.name.toLowerCase().includes(q) || p.barcode.includes(q) || p.brand.toLowerCase().includes(q)
       );
       setSearchResults(results.slice(0, 20));
-    } catch (error) {
-      console.error('Search failed:', error);
-      showToast({
-        type: 'error',
-        title: 'Erreur de recherche',
-        message: 'Erreur lors de la recherche'
-      });
-    } finally {
-      setIsSearching(false);
-    }
-  };
+    }, 200);
+    setProductSearchTimeout(timeout);
+
+    return () => { if (timeout) clearTimeout(timeout); };
+  }, [searchQuery, state.products]);
 
   // Add product from search to quote
   const addProductToQuote = (product: Product) => {
@@ -701,35 +694,34 @@ export function QuoteCartPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto space-y-4">
+    <div className="max-w-7xl mx-auto space-y-3">
       {/* Header */}
-      <div className="glass rounded-xl shadow-lg p-4">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center space-x-3">
-            <div className="p-3 bg-primary rounded-xl">
-              <ShoppingCart className="h-6 w-6 text-primary-foreground" />
+      <div className="glass rounded-xl shadow-lg p-3">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center space-x-2.5">
+            <div className="p-2 bg-primary rounded-lg">
+              <ShoppingCart className="h-4 w-4 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-foreground">
+              <h1 className="text-base font-bold text-foreground">
                 {isEditing ? 'Modifier le Devis' : 'Nouveau Devis'}
               </h1>
-              <p className="text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 {isEditing ? `Devis ${quoteNumber}` : 'Créer un nouveau devis'}
               </p>
             </div>
           </div>
 
-          {/* Status Badge */}
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-2">
             {lastSaved && (
-              <span className="text-sm text-muted-foreground">
-                Dernière sauvegarde: {lastSaved.toLocaleTimeString('fr-FR')}
+              <span className="text-xs text-muted-foreground hidden sm:inline">
+                Sauvé: {lastSaved.toLocaleTimeString('fr-FR')}
               </span>
             )}
             <select
               value={status}
               onChange={(e) => setStatus(e.target.value as 'draft' | 'final')}
-              className="px-3 py-1 border border-input rounded-lg bg-secondary text-foreground"
+              className="px-2 py-1 text-sm border border-input rounded-lg bg-secondary text-foreground"
             >
               <option value="draft">Brouillon</option>
               <option value="final">Final</option>
@@ -738,30 +730,28 @@ export function QuoteCartPage() {
         </div>
 
         {/* Quote Details */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="flex items-center space-x-3 p-3 bg-secondary rounded-lg">
-            <Hash className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+        <div className="grid grid-cols-3 gap-2">
+          <div className="flex items-center space-x-2 p-2 bg-secondary rounded-lg">
+            <Hash className="h-4 w-4 text-primary" />
             <div>
-              <p className="text-sm text-muted-foreground">Numéro de Devis</p>
-              <p className="font-semibold text-foreground">{quoteNumber}</p>
+              <p className="text-[10px] text-muted-foreground">N° Devis</p>
+              <p className="text-xs font-semibold text-foreground">{quoteNumber}</p>
             </div>
           </div>
-
-          <div className="flex items-center space-x-3 p-3 bg-secondary rounded-lg">
-            <Calendar className="h-5 w-5 text-green-600 dark:text-green-400" />
+          <div className="flex items-center space-x-2 p-2 bg-secondary rounded-lg">
+            <Calendar className="h-4 w-4 text-primary" />
             <div>
-              <p className="text-sm text-muted-foreground">Date</p>
-              <p className="font-semibold text-foreground">
+              <p className="text-[10px] text-muted-foreground">Date</p>
+              <p className="text-xs font-semibold text-foreground">
                 {ExcelExportService.formatDate(quote?.createdAt || new Date())}
               </p>
             </div>
           </div>
-
-          <div className="flex items-center space-x-3 p-3 bg-secondary rounded-lg">
-            <DollarSign className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+          <div className="flex items-center space-x-2 p-2 bg-secondary rounded-lg">
+            <DollarSign className="h-4 w-4 text-primary" />
             <div>
-              <p className="text-sm text-muted-foreground">Total</p>
-              <p className="font-semibold text-foreground">
+              <p className="text-[10px] text-muted-foreground">Total</p>
+              <p className="text-xs font-semibold text-foreground">
                 {ExcelExportService.formatCurrency(totalAmount)} Dh
               </p>
             </div>
@@ -770,27 +760,27 @@ export function QuoteCartPage() {
       </div>
 
       {/* Customer Information */}
-      <div className="glass rounded-xl shadow-lg p-4">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-semibold text-foreground flex items-center space-x-2">
-            <User className="h-5 w-5" />
+      <div className="glass rounded-xl shadow-lg p-3">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-foreground flex items-center space-x-2">
+            <User className="h-4 w-4" />
             <span>Informations Client</span>
           </h2>
           <button
             onClick={handleClearForm}
-            className="px-3 py-1 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+            className="px-2 py-1 text-xs text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
           >
             Effacer
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
+            <label className="block text-xs font-medium text-foreground mb-1">
               Nom Complet *
             </label>
             <div className="relative">
-              <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <input
                 type="text"
                 value={customer.fullName}
@@ -800,8 +790,8 @@ export function QuoteCartPage() {
                 }}
                 onFocus={() => { if (clientSuggestions.length > 0) setShowClientSuggestions(true); }}
                 onBlur={() => setTimeout(() => setShowClientSuggestions(false), 200)}
-                className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${
-                  validationErrors.fullName ? 'border-red-500' : 'border-input'
+                className={`w-full pl-9 pr-3 py-1.5 text-sm border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${
+                  validationErrors.fullName ? 'border-destructive' : 'border-input'
                 }`}
                 placeholder="Nom complet du client"
               />
@@ -819,208 +809,129 @@ export function QuoteCartPage() {
               )}
             </div>
             {validationErrors.fullName && (
-              <p className="mt-1 text-sm text-red-600 dark:text-red-400">{validationErrors.fullName}</p>
+              <p className="mt-0.5 text-xs text-destructive">{validationErrors.fullName}</p>
             )}
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
-              Numéro de Téléphone *
-            </label>
+            <label className="block text-xs font-medium text-foreground mb-1">Téléphone *</label>
             <div className="relative">
-              <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <input
-                type="text"
-                value={customer.phoneNumber}
+              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <input type="text" value={customer.phoneNumber}
                 onChange={(e) => setCustomer(prev => ({ ...prev, phoneNumber: e.target.value }))}
-                className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${
-                  validationErrors.phoneNumber ? 'border-red-500' : 'border-input'
-                }`}
-                placeholder="Numéro de téléphone"
-              />
+                className={`w-full pl-9 pr-3 py-1.5 text-sm border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${validationErrors.phoneNumber ? 'border-destructive' : 'border-input'}`}
+                placeholder="Numéro de téléphone" />
             </div>
-            {validationErrors.phoneNumber && (
-              <p className="mt-1 text-sm text-red-600 dark:text-red-400">{validationErrors.phoneNumber}</p>
-            )}
+            {validationErrors.phoneNumber && <p className="mt-0.5 text-xs text-destructive">{validationErrors.phoneNumber}</p>}
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
-              Adresse / Ville (Optionnel)
-            </label>
+            <label className="block text-xs font-medium text-foreground mb-1">Adresse / Ville</label>
             <div className="relative">
-              <Building className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <input
-                type="text"
-                value={customer.address}
+              <Building className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <input type="text" value={customer.address}
                 onChange={(e) => setCustomer(prev => ({ ...prev, address: e.target.value }))}
-                className="w-full pl-10 pr-4 py-2 border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
-                placeholder="Adresse, Ville"
-              />
+                className="w-full pl-9 pr-3 py-1.5 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
+                placeholder="Adresse, Ville" />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
-              ICE (Optionnel)
-            </label>
-            <input
-              type="text"
-              value={customer.ice || ''}
+            <label className="block text-xs font-medium text-foreground mb-1">ICE</label>
+            <input type="text" value={customer.ice || ''}
               onChange={(e) => setCustomer(prev => ({ ...prev, ice: e.target.value }))}
-              className="w-full px-4 py-2 border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
-              placeholder="Numéro ICE"
-            />
+              className="w-full px-3 py-1.5 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
+              placeholder="Numéro ICE" />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
-              Vendeur *
-            </label>
+            <label className="block text-xs font-medium text-foreground mb-1">Vendeur *</label>
             {isAdmin && useCustomSeller ? (
               <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={customer.salesPerson}
+                <input type="text" value={customer.salesPerson}
                   onChange={(e) => setCustomer(prev => ({ ...prev, salesPerson: e.target.value }))}
-                  className={`flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${
-                    validationErrors.salesPerson ? 'border-red-500' : 'border-input'
-                  }`}
-                  placeholder="Nom du vendeur personnalisé"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    setUseCustomSeller(false);
-                    setCustomer(prev => ({ ...prev, salesPerson: '' }));
-                  }}
-                  className="px-3 py-2 text-sm border border-input rounded-lg hover:bg-secondary text-foreground"
-                >
-                  Liste
-                </button>
+                  className={`flex-1 px-3 py-1.5 text-sm border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${validationErrors.salesPerson ? 'border-destructive' : 'border-input'}`}
+                  placeholder="Nom du vendeur" />
+                <button type="button" onClick={() => { setUseCustomSeller(false); setCustomer(prev => ({ ...prev, salesPerson: '' })); }}
+                  className="px-2 py-1.5 text-xs border border-input rounded-lg hover:bg-accent text-foreground">Liste</button>
               </div>
             ) : (
               <div className="flex gap-2">
-                <select
-                  value={customer.salesPerson}
+                <select value={customer.salesPerson}
                   onChange={(e) => setCustomer(prev => ({ ...prev, salesPerson: e.target.value }))}
-                  className={`flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${
-                    validationErrors.salesPerson ? 'border-red-500' : 'border-input'
-                  }`}
-                >
+                  className={`flex-1 px-3 py-1.5 text-sm border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${validationErrors.salesPerson ? 'border-destructive' : 'border-input'}`}>
                   <option value="">Sélectionner un vendeur</option>
                   {availableUsers.map((user) => (
-                    <option key={user.username} value={user.username}>
-                      {user.displayName}
-                    </option>
+                    <option key={user.username} value={user.displayName}>{user.displayName}</option>
                   ))}
                 </select>
                 {isAdmin && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setUseCustomSeller(true);
-                      setCustomer(prev => ({ ...prev, salesPerson: '' }));
-                    }}
-                    className="px-3 py-2 text-sm border border-input rounded-lg hover:bg-secondary text-foreground whitespace-nowrap"
-                  >
-                    Autre
-                  </button>
+                  <button type="button" onClick={() => { setUseCustomSeller(true); setCustomer(prev => ({ ...prev, salesPerson: '' })); }}
+                    className="px-2 py-1.5 text-xs border border-input rounded-lg hover:bg-accent text-foreground whitespace-nowrap">Autre</button>
                 )}
               </div>
             )}
-            {validationErrors.salesPerson && (
-              <p className="mt-1 text-sm text-red-600 dark:text-red-400">{validationErrors.salesPerson}</p>
-            )}
+            {validationErrors.salesPerson && <p className="mt-0.5 text-xs text-destructive">{validationErrors.salesPerson}</p>}
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
-              Numéro de Commande
-            </label>
-            <input
-              type="text"
-              value={commandNumber}
-              onChange={(e) => setCommandNumber(e.target.value)}
-              className="w-full px-4 py-2 border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
-              placeholder="Numéro de commande (optionnel)"
-            />
+            <label className="block text-xs font-medium text-foreground mb-1">N° Commande</label>
+            <input type="text" value={commandNumber} onChange={(e) => setCommandNumber(e.target.value)}
+              className="w-full px-3 py-1.5 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
+              placeholder="Optionnel" />
           </div>
         </div>
       </div>
 
       {/* Product Search and Add */}
-      <div className="glass rounded-xl shadow-lg p-4">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg sm:text-base font-semibold text-foreground flex items-center space-x-2">
-            <Package className="h-5 w-5" />
+      <div className="glass rounded-xl shadow-lg p-3">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-foreground flex items-center space-x-2">
+            <Package className="h-4 w-4" />
             <span>Ajouter des Produits</span>
           </h2>
-          <div className="flex flex-col sm:flex-row gap-2 sm:space-x-2">
-            <button
-              onClick={() => setShowProductSearch(!showProductSearch)}
-              className="flex items-center justify-center space-x-1 sm:space-x-2 px-2 py-1.5 sm:px-4 sm:py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors text-sm sm:text-base"
-            >
-              <Search className="h-4 w-4" />
-              <span className="hidden xs:inline sm:inline">Rechercher</span>
-              <span className="xs:hidden sm:hidden">Rech.</span>
-            </button>
-            <button
-              onClick={addCustomProduct}
-              className="flex items-center justify-center space-x-1 sm:space-x-2 px-2 py-1.5 sm:px-4 sm:py-2 bg-green-600 hover:bg-green-700 text-primary-foreground rounded-lg transition-colors text-sm sm:text-base"
-            >
-              <Plus className="h-4 w-4" />
-              <span className="hidden xs:inline sm:inline">Produit Personnalisé</span>
-              <span className="xs:hidden sm:hidden">Produit</span>
-            </button>
-          </div>
+          <button
+            onClick={addCustomProduct}
+            className="flex items-center space-x-1 px-2.5 py-1.5 bg-green-600 hover:bg-green-700 text-primary-foreground rounded-lg transition-colors text-xs"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span>Produit Manuel</span>
+          </button>
         </div>
 
-        {/* Product Search */}
-        {showProductSearch && (
-          <div className="mb-4 p-4 bg-secondary rounded-lg">
-            <div className="flex space-x-2 mb-4">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleProductSearch()}
-                className="flex-1 px-4 py-2 border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
-                placeholder="Rechercher un produit..."
-              />
-              <button
-                onClick={handleProductSearch}
-                disabled={isSearching}
-                className="px-4 py-2 bg-primary hover:bg-primary/90 disabled:bg-gray-400 text-primary-foreground rounded-lg transition-colors"
-              >
-                {isSearching ? <Loader className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-              </button>
-            </div>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-4 py-2 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
+            placeholder="Rechercher par nom, code-barres ou marque..."
+          />
+        </div>
 
-            {searchResults.length > 0 && (
-              <div className="space-y-2 max-h-60 overflow-y-auto">
-                {searchResults.map((product) => (
-                  <div
-                    key={product.barcode}
-                    className="flex items-center justify-between p-3 bg-white dark:bg-slate-600 rounded-lg border border-gray-200 dark:border-gray-500"
-                  >
-                    <div>
-                      <h4 className="font-medium text-foreground">{product.name}</h4>
-                      <p className="text-sm text-muted-foreground">
-                        {product.brand} • #{product.barcode} • {product.price.toFixed(2)} Dh
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => addProductToQuote(product)}
-                      className="flex items-center space-x-1 px-3 py-1 bg-green-600 hover:bg-green-700 text-primary-foreground rounded transition-colors"
-                    >
-                      <Plus className="h-3 w-3" />
-                      <span>Ajouter</span>
-                    </button>
-                  </div>
-                ))}
+        {searchResults.length > 0 && (
+          <div className="mt-2 space-y-1 max-h-48 overflow-y-auto">
+            {searchResults.map((product) => (
+              <div
+                key={product.barcode}
+                className="flex items-center justify-between p-2 bg-card rounded-lg border border-border hover:bg-accent/50 transition-colors"
+              >
+                <div className="min-w-0 flex-1">
+                  <h4 className="text-sm font-medium text-foreground truncate">{product.name}</h4>
+                  <p className="text-xs text-muted-foreground">
+                    {product.brand} • #{product.barcode} • {product.price.toFixed(2)} Dh
+                  </p>
+                </div>
+                <button
+                  onClick={() => addProductToQuote(product)}
+                  className="ml-2 flex items-center space-x-1 px-2 py-1 bg-primary hover:bg-primary/90 text-primary-foreground rounded text-xs transition-colors"
+                >
+                  <Plus className="h-3 w-3" />
+                  <span>Ajouter</span>
+                </button>
               </div>
-            )}
+            ))}
           </div>
         )}
       </div>
@@ -1270,81 +1181,36 @@ export function QuoteCartPage() {
         )}
       </div>
 
-      {/* Notes Section */}
-      <div className="glass rounded-xl shadow-lg p-4">
-        <h2 className="text-base font-semibold text-foreground mb-4 flex items-center space-x-2">
-          <Edit3 className="h-5 w-5" />
-          <span>Notes (Optionnel)</span>
+      {/* Notes & Actions */}
+      <div className="glass rounded-xl shadow-lg p-3">
+        <h2 className="text-sm font-semibold text-foreground mb-2 flex items-center space-x-2">
+          <Edit3 className="h-4 w-4" />
+          <span>Notes</span>
         </h2>
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          className="w-full px-4 py-2 border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
-          rows={4}
-          placeholder="Ajoutez des notes ou commentaires pour ce devis..."
+          className="w-full px-3 py-1.5 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
+          rows={2}
+          placeholder="Notes ou commentaires..."
         />
       </div>
 
-      {/* PDF Export Section */}
-      <div className="glass rounded-xl shadow-lg p-4">
-        <h2 className="text-base font-semibold text-foreground flex items-center space-x-2 mb-4">
-          <FileDown className="h-5 w-5" />
-          <span>Export PDF</span>
-        </h2>
-
-        <div className="space-y-3">
-          <button
-            onClick={handleExport}
-            disabled={isExporting || items.length === 0}
-            className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-lg transition-colors"
-          >
-            {isExporting ? (
-              <>
-                <Loader className="h-4 w-4 animate-spin" />
-                <span>Export en cours...</span>
-              </>
-            ) : (
-              <>
-                <FileDown className="h-4 w-4" />
-                <span>Exporter en PDF</span>
-              </>
-            )}
-          </button>
-        </div>
-      </div>
-
       {/* Action Buttons */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        <button
-          onClick={() => navigate('/quotes-history')}
-          className="flex-1 px-6 py-2 border border-input text-foreground hover:bg-accent rounded-lg transition-colors"
-        >
-          Retour à l'Historique
+      <div className="flex flex-col sm:flex-row gap-2">
+        <button onClick={() => navigate('/quotes-history')}
+          className="flex-1 px-4 py-2 text-sm border border-input text-foreground hover:bg-accent rounded-lg transition-colors">
+          Historique
         </button>
-        
-        <button
-          onClick={() => navigate('/search')}
-          className="flex-1 px-6 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors"
-        >
-          Ajouter des Produits
+        <button onClick={handleExport} disabled={isExporting || items.length === 0}
+          className="flex-1 flex items-center justify-center space-x-1.5 px-4 py-2 text-sm bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-lg transition-colors">
+          {isExporting ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <FileDown className="h-3.5 w-3.5" />}
+          <span>Export PDF</span>
         </button>
-
-        <button
-          onClick={() => handleSave(false)}
-          disabled={isSaving}
-          className="flex-1 flex items-center justify-center space-x-2 px-6 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-primary-foreground rounded-lg transition-colors"
-        >
-          {isSaving ? (
-            <>
-              <Loader className="h-4 w-4 animate-spin" />
-              <span>Sauvegarde...</span>
-            </>
-          ) : (
-            <>
-              <Save className="h-4 w-4" />
-              <span>Sauvegarder</span>
-            </>
-          )}
+        <button onClick={() => handleSave(false)} disabled={isSaving}
+          className="flex-1 flex items-center justify-center space-x-1.5 px-4 py-2 text-sm bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-lg transition-colors">
+          {isSaving ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+          <span>Sauvegarder</span>
         </button>
       </div>
     </div>
