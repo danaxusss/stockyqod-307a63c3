@@ -943,77 +943,54 @@ export function QuoteCartPage() {
       </div>
 
       {/* Product Search and Add */}
-      <div className="glass rounded-xl shadow-lg p-4">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg sm:text-base font-semibold text-foreground flex items-center space-x-2">
-            <Package className="h-5 w-5" />
+      <div className="glass rounded-xl shadow-lg p-3">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-foreground flex items-center space-x-2">
+            <Package className="h-4 w-4" />
             <span>Ajouter des Produits</span>
           </h2>
-          <div className="flex flex-col sm:flex-row gap-2 sm:space-x-2">
-            <button
-              onClick={() => setShowProductSearch(!showProductSearch)}
-              className="flex items-center justify-center space-x-1 sm:space-x-2 px-2 py-1.5 sm:px-4 sm:py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors text-sm sm:text-base"
-            >
-              <Search className="h-4 w-4" />
-              <span className="hidden xs:inline sm:inline">Rechercher</span>
-              <span className="xs:hidden sm:hidden">Rech.</span>
-            </button>
-            <button
-              onClick={addCustomProduct}
-              className="flex items-center justify-center space-x-1 sm:space-x-2 px-2 py-1.5 sm:px-4 sm:py-2 bg-green-600 hover:bg-green-700 text-primary-foreground rounded-lg transition-colors text-sm sm:text-base"
-            >
-              <Plus className="h-4 w-4" />
-              <span className="hidden xs:inline sm:inline">Produit Personnalisé</span>
-              <span className="xs:hidden sm:hidden">Produit</span>
-            </button>
-          </div>
+          <button
+            onClick={addCustomProduct}
+            className="flex items-center space-x-1 px-2.5 py-1.5 bg-green-600 hover:bg-green-700 text-primary-foreground rounded-lg transition-colors text-xs"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span>Produit Manuel</span>
+          </button>
         </div>
 
-        {/* Product Search */}
-        {showProductSearch && (
-          <div className="mb-4 p-4 bg-secondary rounded-lg">
-            <div className="flex space-x-2 mb-4">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleProductSearch()}
-                className="flex-1 px-4 py-2 border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
-                placeholder="Rechercher un produit..."
-              />
-              <button
-                onClick={handleProductSearch}
-                disabled={isSearching}
-                className="px-4 py-2 bg-primary hover:bg-primary/90 disabled:bg-gray-400 text-primary-foreground rounded-lg transition-colors"
-              >
-                {isSearching ? <Loader className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-              </button>
-            </div>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-4 py-2 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
+            placeholder="Rechercher par nom, code-barres ou marque..."
+          />
+        </div>
 
-            {searchResults.length > 0 && (
-              <div className="space-y-2 max-h-60 overflow-y-auto">
-                {searchResults.map((product) => (
-                  <div
-                    key={product.barcode}
-                    className="flex items-center justify-between p-3 bg-white dark:bg-slate-600 rounded-lg border border-gray-200 dark:border-gray-500"
-                  >
-                    <div>
-                      <h4 className="font-medium text-foreground">{product.name}</h4>
-                      <p className="text-sm text-muted-foreground">
-                        {product.brand} • #{product.barcode} • {product.price.toFixed(2)} Dh
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => addProductToQuote(product)}
-                      className="flex items-center space-x-1 px-3 py-1 bg-green-600 hover:bg-green-700 text-primary-foreground rounded transition-colors"
-                    >
-                      <Plus className="h-3 w-3" />
-                      <span>Ajouter</span>
-                    </button>
-                  </div>
-                ))}
+        {searchResults.length > 0 && (
+          <div className="mt-2 space-y-1 max-h-48 overflow-y-auto">
+            {searchResults.map((product) => (
+              <div
+                key={product.barcode}
+                className="flex items-center justify-between p-2 bg-card rounded-lg border border-border hover:bg-accent/50 transition-colors"
+              >
+                <div className="min-w-0 flex-1">
+                  <h4 className="text-sm font-medium text-foreground truncate">{product.name}</h4>
+                  <p className="text-xs text-muted-foreground">
+                    {product.brand} • #{product.barcode} • {product.price.toFixed(2)} Dh
+                  </p>
+                </div>
+                <button
+                  onClick={() => addProductToQuote(product)}
+                  className="ml-2 flex items-center space-x-1 px-2 py-1 bg-primary hover:bg-primary/90 text-primary-foreground rounded text-xs transition-colors"
+                >
+                  <Plus className="h-3 w-3" />
+                  <span>Ajouter</span>
+                </button>
               </div>
-            )}
+            ))}
           </div>
         )}
       </div>
