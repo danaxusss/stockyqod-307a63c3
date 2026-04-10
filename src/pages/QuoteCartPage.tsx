@@ -1181,81 +1181,36 @@ export function QuoteCartPage() {
         )}
       </div>
 
-      {/* Notes Section */}
-      <div className="glass rounded-xl shadow-lg p-4">
-        <h2 className="text-base font-semibold text-foreground mb-4 flex items-center space-x-2">
-          <Edit3 className="h-5 w-5" />
-          <span>Notes (Optionnel)</span>
+      {/* Notes & Actions */}
+      <div className="glass rounded-xl shadow-lg p-3">
+        <h2 className="text-sm font-semibold text-foreground mb-2 flex items-center space-x-2">
+          <Edit3 className="h-4 w-4" />
+          <span>Notes</span>
         </h2>
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          className="w-full px-4 py-2 border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
-          rows={4}
-          placeholder="Ajoutez des notes ou commentaires pour ce devis..."
+          className="w-full px-3 py-1.5 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
+          rows={2}
+          placeholder="Notes ou commentaires..."
         />
       </div>
 
-      {/* PDF Export Section */}
-      <div className="glass rounded-xl shadow-lg p-4">
-        <h2 className="text-base font-semibold text-foreground flex items-center space-x-2 mb-4">
-          <FileDown className="h-5 w-5" />
-          <span>Export PDF</span>
-        </h2>
-
-        <div className="space-y-3">
-          <button
-            onClick={handleExport}
-            disabled={isExporting || items.length === 0}
-            className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-lg transition-colors"
-          >
-            {isExporting ? (
-              <>
-                <Loader className="h-4 w-4 animate-spin" />
-                <span>Export en cours...</span>
-              </>
-            ) : (
-              <>
-                <FileDown className="h-4 w-4" />
-                <span>Exporter en PDF</span>
-              </>
-            )}
-          </button>
-        </div>
-      </div>
-
       {/* Action Buttons */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        <button
-          onClick={() => navigate('/quotes-history')}
-          className="flex-1 px-6 py-2 border border-input text-foreground hover:bg-accent rounded-lg transition-colors"
-        >
-          Retour à l'Historique
+      <div className="flex flex-col sm:flex-row gap-2">
+        <button onClick={() => navigate('/quotes-history')}
+          className="flex-1 px-4 py-2 text-sm border border-input text-foreground hover:bg-accent rounded-lg transition-colors">
+          Historique
         </button>
-        
-        <button
-          onClick={() => navigate('/search')}
-          className="flex-1 px-6 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors"
-        >
-          Ajouter des Produits
+        <button onClick={handleExport} disabled={isExporting || items.length === 0}
+          className="flex-1 flex items-center justify-center space-x-1.5 px-4 py-2 text-sm bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-lg transition-colors">
+          {isExporting ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <FileDown className="h-3.5 w-3.5" />}
+          <span>Export PDF</span>
         </button>
-
-        <button
-          onClick={() => handleSave(false)}
-          disabled={isSaving}
-          className="flex-1 flex items-center justify-center space-x-2 px-6 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-primary-foreground rounded-lg transition-colors"
-        >
-          {isSaving ? (
-            <>
-              <Loader className="h-4 w-4 animate-spin" />
-              <span>Sauvegarde...</span>
-            </>
-          ) : (
-            <>
-              <Save className="h-4 w-4" />
-              <span>Sauvegarder</span>
-            </>
-          )}
+        <button onClick={() => handleSave(false)} disabled={isSaving}
+          className="flex-1 flex items-center justify-center space-x-1.5 px-4 py-2 text-sm bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-lg transition-colors">
+          {isSaving ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+          <span>Sauvegarder</span>
         </button>
       </div>
     </div>
