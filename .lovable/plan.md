@@ -1,46 +1,60 @@
 
 
-## Plan: Show Original Brand Name as Internal Reference
+## Plan: Search by Old Brand Names + Fix Background Contrast
 
-### Summary
-When a brand has been renamed via product settings, show the original name as a subtle tooltip/badge next to the custom name — visible only to internal users (search, catalogue, quote cart), but hidden from client-facing outputs (PDF exports, public share pages).
+### 1. Make old brand names searchable
 
-### Changes
+**File: `src/hooks/useSearchState.ts`**
 
-#### 1. Create a shared hook: `useProductOverrides`
-- New file `src/hooks/useProductOverrides.ts`
-- Loads `product_name_overrides` from the database once, caches in state
-- Exposes a helper: `getOriginalName(type: 'brand'|'provider', currentName: string) => string | null`
-- Returns the `original_name` if `currentName` matches any `custom_name` in the overrides table
+Modify `searchProductsLocally` to accept an optional overrides list. When building the searchable text for each product, also append any original brand/provider names from the overrides table so that typing "CHM" finds products now branded "Restom".
 
-#### 2. Search page (`Search.tsx`)
-- Import `useProductOverrides`
-- Next to the brand badge, if `getOriginalName('brand', product.brand)` returns a value, show a small muted text like `(ex: CHM)` or a tooltip on the brand badge
+**File: `src/hooks/useSearchState.ts` (hook)**
 
-#### 3. Products Catalogue (`ProductsPage.tsx`)
-- Same approach: in the brand column, append `(ex: CHM)` in smaller muted text when an override exists
+Import and use `useProductOverrides` to pass overrides into the search function.
 
-#### 4. Quote Cart page (`QuoteCartPage.tsx`)
-- In the cart item display where `product.brand` is shown, append the original name hint
-- **Not** included in the PDF export — only in the on-screen cart view
+Alternatively, since `searchProductsLocally` is a pure function called inside the hook, the hook will:
+- Load overrides via the existing `useProductOverrides` hook (or inline the same logic)
+- Build a lookup map: `custom_name → original_name`
+- In the search filter, expand the searchable text to include the original brand name if it exists
 
-#### 5. Product Detail page (`ProductDetail.tsx`)
-- In the brand badge area, show the original name as a subtitle or tooltip
-
-### Visual Design
-The original name will appear as a small, muted annotation — e.g.:
+The change to `searchProductsLocally`:
 ```
-[Restom] (ex: CHM)
+// Before
+const searchableText = `${product.name} ${product.brand || ''}`.toLowerCase();
+
+// After — also include original brand name from overrides
+const originalBrand = brandOverrideMap.get((product.brand || '').toLowerCase()) || '';
+const searchableText = `${product.name} ${product.brand || ''} ${originalBrand}`.toLowerCase();
 ```
-Using `text-muted-foreground text-[10px]` styling so it's clearly secondary information.
+
+This also needs to work in `ProductsPage.tsx` if it has its own filtering logic.
+
+**File: `src/pages/ProductsPage.tsx`** — Apply same override-aware search to the catalog filter.
+
+### 2. Fix background/card contrast (global)
+
+The screenshot shows dark mode with background at `240 50% 4%` and cards at `240 40% 8%` — only 4% lightness difference, making cards barely distinguishable.
+
+**File: `src/index.css`** — Increase contrast between background and cards in dark mode:
+
+| Token | Current | New |
+|-------|---------|-----|
+| `--background` | `240 50% 4%` | `240 50% 3%` (darker) |
+| `--card` | `240 40% 8%` | `240 40% 11%` (lighter) |
+| `--popover` | `240 40% 8%` | `240 40% 11%` |
+| `--secondary` | `240 30% 14%` | `240 30% 16%` |
+| `--muted` | `240 30% 12%` | `240 30% 14%` |
+| `--border` | `240 30% 16%` | `240 30% 18%` |
+| `--input` | `240 30% 16%` | `240 30% 18%` |
+
+This widens the gap from ~4% to ~8% lightness difference, making cards, inputs, and interactive elements clearly stand out from the page background across all pages.
 
 ### Files
 
 | File | Action |
 |------|--------|
-| `src/hooks/useProductOverrides.ts` | Create — shared hook to load overrides and resolve original names |
-| `src/pages/Search.tsx` | Add original brand hint next to brand badge |
-| `src/pages/ProductsPage.tsx` | Add original brand hint in brand column |
-| `src/pages/QuoteCartPage.tsx` | Add original brand hint in cart items (screen only) |
-| `src/pages/ProductDetail.tsx` | Add original brand hint in header |
+| `src/index.css` | Adjust dark mode HSL values for better contrast |
+| `src/hooks/useSearchState.ts` | Include original brand names in searchable text |
+| `src/hooks/useProductOverrides.ts` | Add `overrides` array to return value for external use |
+| `src/pages/ProductsPage.tsx` | Apply override-aware filtering if local filter exists |
 
