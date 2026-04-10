@@ -1462,10 +1462,16 @@ export function QuoteCartPage() {
                 // Auto-update status to "pending" (Envoyé)
                 if (quote?.id && status !== 'final') {
                   try {
+                    console.log('[WhatsApp] Updating quote status to pending, id:', quote.id);
                     await SupabaseQuotesService.updateQuoteStatus(quote.id, 'pending');
                     setStatus('pending' as any);
                     showToast({ type: 'success', title: 'Statut mis à jour', message: 'Le devis est maintenant marqué comme "Envoyé".' });
-                  } catch {}
+                  } catch (err) {
+                    console.error('[WhatsApp] Failed to update quote status:', err);
+                    showToast({ type: 'error', title: 'Erreur', message: 'Impossible de mettre à jour le statut du devis.' });
+                  }
+                } else {
+                  console.log('[WhatsApp] Skipping status update — quote.id:', quote?.id, 'status:', status);
                 }
               }}
               disabled={isExporting}
@@ -1515,9 +1521,13 @@ export function QuoteCartPage() {
                 // Auto-update status to "pending" (Envoyé)
                 if (quote?.id && status !== 'final') {
                   try {
+                    console.log('[Email] Updating quote status to pending, id:', quote.id);
                     await SupabaseQuotesService.updateQuoteStatus(quote.id, 'pending');
                     setStatus('pending' as any);
-                  } catch {}
+                    showToast({ type: 'success', title: 'Statut mis à jour', message: 'Le devis est maintenant marqué comme "Envoyé".' });
+                  } catch (err) {
+                    console.error('[Email] Failed to update quote status:', err);
+                  }
                 }
               }}
               disabled={isExporting}
