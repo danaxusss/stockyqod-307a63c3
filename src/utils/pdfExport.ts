@@ -531,17 +531,26 @@ export class PdfExportService {
 
     // === TECH SHEETS LINK ===
     if (techSheetsUrl) {
-      y += 2;
-      doc.setFontSize(7);
-      doc.setFont(font, 'normal');
-      doc.setTextColor(120, 120, 120);
-      const linkLabel = 'Fiches techniques : ';
-      doc.text(linkLabel, margin, y);
-      const labelWidth = doc.getTextWidth(linkLabel);
-      doc.setTextColor(80, 120, 200);
-      doc.textWithLink(techSheetsUrl, margin + labelWidth, y, { url: techSheetsUrl });
+      y += 3;
+      const ctaText = '📄  Consulter les fiches techniques';
+      const ctaPaddingX = 3;
+      const ctaPaddingY = 1.8;
+      doc.setFontSize(7.5);
+      doc.setFont(font, 'bold');
+      const ctaTextWidth = doc.getTextWidth(ctaText);
+      const ctaBoxWidth = ctaTextWidth + ctaPaddingX * 2;
+      const ctaBoxHeight = 5.5;
+
+      // Draw rounded button background
+      doc.setFillColor(200, 30, 30);
+      doc.roundedRect(margin, y - ctaBoxHeight + ctaPaddingY + 0.5, ctaBoxWidth, ctaBoxHeight, 1.2, 1.2, 'F');
+
+      // Draw white text as clickable link
+      doc.setTextColor(255, 255, 255);
+      doc.textWithLink(ctaText, margin + ctaPaddingX, y, { url: techSheetsUrl });
+
       if (techSheetsExpiryLabel) {
-        y += 3.5;
+        y += ctaBoxHeight + 1;
         doc.setFontSize(6);
         doc.setFont(font, 'italic');
         doc.setTextColor(150, 150, 150);
