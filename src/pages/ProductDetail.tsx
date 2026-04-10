@@ -13,7 +13,7 @@ import { supabase } from '@/integrations/supabase/client';
 export function ProductDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { canAccessStockLocation, canAccessBrand, canCreateQuote, getDisplayPrice, getPriceDisplayType, isAdmin } = useAuth();
+  const { canAccessStockLocation, canAccessBrand, canCreateQuote, getDisplayPrice, getPriceDisplayType, isAdmin: isAdminUser } = useAuth();
   const { state } = useAppContext();
   const [product, setProduct] = useState<Product | null>(null);
   const [isLoading, setIsLoading] = useState(true);
