@@ -32,6 +32,7 @@ import { SupabaseQuotesService } from '../utils/supabaseQuotes';
 import { ActivityLogger } from '../utils/activityLogger';
 import { useAppContext } from '../context/AppContext';
 import { SupabaseUsersService } from '../utils/supabaseUsers';
+import { SupabaseClientsService, Client } from '../utils/supabaseClients';
 import { useQuoteCart } from '../hooks/useQuoteCart';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../hooks/useAuth';
@@ -89,6 +90,11 @@ export function QuoteCartPage() {
   const [customSellerName, setCustomSellerName] = useState('');
   const [useCustomSeller, setUseCustomSeller] = useState(false);
   const { currentUser, authenticatedUser, isAdmin } = useAuth();
+
+  // Client autocomplete
+  const [clientSuggestions, setClientSuggestions] = useState<Client[]>([]);
+  const [showClientSuggestions, setShowClientSuggestions] = useState(false);
+  const [clientSearchTimeout, setClientSearchTimeout] = useState<NodeJS.Timeout | null>(null);
 
   // Load quote data if editing
   useEffect(() => {
