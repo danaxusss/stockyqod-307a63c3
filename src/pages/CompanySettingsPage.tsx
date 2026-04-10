@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
-import { Settings, Upload, Trash2, Save, Loader, Image, Building, Phone, Mail, Globe, Hash, FileText, Eye, Palette } from 'lucide-react';
+import { Settings, Upload, Trash2, Save, Loader, Image, Building, Phone, Mail, Globe, Hash, FileText, Eye, Palette, Users } from 'lucide-react';
 import { CompanySettingsService, CompanySettings, QuoteVisibleFields, QuoteStyle } from '../utils/companySettings';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../context/ToastContext';
