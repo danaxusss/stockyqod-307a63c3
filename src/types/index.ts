@@ -103,6 +103,7 @@ export interface AppUser {
   allowed_stock_locations: string[];
   allowed_brands: string[];
   price_display_type: 'normal' | 'reseller' | 'buy' | 'calculated';
+  custom_seller_name?: string;
   created_at: Date;
   updated_at: Date;
 }
