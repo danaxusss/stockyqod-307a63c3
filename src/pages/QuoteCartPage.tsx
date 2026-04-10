@@ -43,6 +43,7 @@ import { useToast } from '../context/ToastContext';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { useProductOverrides } from '../hooks/useProductOverrides';
+import { buildWhatsAppShareUrl, openPreparingWhatsAppWindow, redirectPreparingWindowToWhatsApp, openWhatsAppShare } from '../utils/whatsappShare';
 
 const ITEMS_PER_PAGE = 40;
 
@@ -1411,7 +1412,10 @@ export function QuoteCartPage() {
                   showToast({ type: 'warning', title: 'Modifications non sauvegardées', message: 'Veuillez sauvegarder le devis avant de le partager.' });
                   return;
                 }
-                // Export PDF first
+                // Pre-open WhatsApp window BEFORE any async work (user gesture context)
+                const waPopup = openPreparingWhatsAppWindow();
+
+                // Export PDF
                 setIsExporting(true);
                 try {
                   const freshSettings = await CompanySettingsService.getSettings().catch(() => companySettings);
@@ -1440,21 +1444,19 @@ export function QuoteCartPage() {
                   .replace(/{email}/g, companySettings?.email || '')
                   .replace(/{adresse}/g, companySettings?.address || '');
 
-                const phone = (customer.phoneNumber || '').replace(/\D/g, '');
-                const normalizedPhone = phone.startsWith('00') ? phone.slice(2) : phone.startsWith('0') ? `212${phone.slice(1)}` : phone;
-                const url = normalizedPhone
-                  ? `https://api.whatsapp.com/send?phone=${normalizedPhone}&text=${encodeURIComponent(msg)}`
-                  : `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
-                try {
-                  const popup = window.open('about:blank', '_blank', 'noopener,noreferrer');
-                  if (popup) { popup.location.href = url; }
-                  else { throw new Error('blocked'); }
-                } catch {
-                  navigator.clipboard.writeText(msg).then(() => {
-                    showToast({ type: 'success', title: 'Copié', message: 'Message copié — ouvrez WhatsApp et collez-le.' });
-                  }).catch(() => {
-                    showToast({ type: 'error', title: 'Erreur', message: 'Impossible d\'ouvrir WhatsApp.' });
-                  });
+                const waUrl = buildWhatsAppShareUrl(customer.phoneNumber || '', msg);
+
+                // Redirect the pre-opened window to WhatsApp
+                const redirected = redirectPreparingWindowToWhatsApp(waUrl, waPopup);
+                if (!redirected) {
+                  // Fallback: try opening directly (may be blocked as we lost user-gesture context)
+                  if (!openWhatsAppShare(waUrl)) {
+                    navigator.clipboard.writeText(msg).then(() => {
+                      showToast({ type: 'success', title: 'Copié', message: 'Message copié — ouvrez WhatsApp et collez-le.' });
+                    }).catch(() => {
+                      showToast({ type: 'error', title: 'Erreur', message: 'Impossible d\'ouvrir WhatsApp.' });
+                    });
+                  }
                 }
 
                 // Auto-update status to "pending" (Envoyé)
