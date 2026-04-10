@@ -321,6 +321,11 @@ export function SearchPage() {
                     <Link to={`/product/${encodeURIComponent(product.barcode)}`} className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <h3 className="font-semibold text-foreground text-sm truncate">{product.name}</h3>
+                        {product.techsheet && product.techsheet.trim() !== '' && (
+                          <a href={product.techsheet} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} title="Fiche technique disponible" className="shrink-0 text-primary hover:text-primary/80 transition-colors">
+                            <Paperclip className="h-3.5 w-3.5" />
+                          </a>
+                        )}
                         {product.brand && <span className="px-1.5 py-0.5 bg-primary/10 text-primary text-[11px] rounded font-medium shrink-0">{product.brand}</span>}
                         {product.provider && <span className="px-1.5 py-0.5 bg-orange-500/10 text-orange-500 text-[11px] rounded font-medium shrink-0 hidden sm:inline">{product.provider}</span>}
                       </div>
