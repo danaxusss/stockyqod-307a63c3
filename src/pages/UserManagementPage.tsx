@@ -308,7 +308,7 @@ export default function UserManagementPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto space-y-4">
+    <div className="space-y-4">
       {/* Header */}
       <div className="glass rounded-xl shadow-lg p-4">
         <div className="flex items-center justify-between mb-4">
