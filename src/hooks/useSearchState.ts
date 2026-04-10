@@ -16,6 +16,52 @@ interface OverrideEntry {
   custom_name: string;
 }
 
+type OverrideType = 'brand' | 'provider';
+
+const normalizeOverrideName = (value: string) => value.toLowerCase().trim();
+
+function buildOverrideLookup(overrides: OverrideEntry[]) {
+  const lookup = {
+    brand: {
+      byCustom: new Map<string, OverrideEntry>(),
+      byOriginal: new Map<string, OverrideEntry>(),
+    },
+    provider: {
+      byCustom: new Map<string, OverrideEntry>(),
+      byOriginal: new Map<string, OverrideEntry>(),
+    },
+  };
+
+  for (const override of overrides) {
+    if (override.type !== 'brand' && override.type !== 'provider') continue;
+
+    const customName = normalizeOverrideName(override.custom_name);
+    const originalName = normalizeOverrideName(override.original_name);
+
+    if (customName) lookup[override.type].byCustom.set(customName, override);
+    if (originalName) lookup[override.type].byOriginal.set(originalName, override);
+  }
+
+  return lookup;
+}
+
+function getRelatedNames(
+  lookup: ReturnType<typeof buildOverrideLookup>,
+  type: OverrideType,
+  value: string,
+): string[] {
+  const normalizedValue = normalizeOverrideName(value || '');
+  if (!normalizedValue) return [];
+
+  const match = lookup[type].byCustom.get(normalizedValue) || lookup[type].byOriginal.get(normalizedValue);
+  if (!match) return [normalizedValue];
+
+  return Array.from(new Set([
+    normalizeOverrideName(match.custom_name),
+    normalizeOverrideName(match.original_name),
+  ].filter(Boolean)));
+}
+
 export function searchProductsLocally(
   products: Product[],
   filters: SearchFilters,
@@ -24,20 +70,16 @@ export function searchProductsLocally(
   const { query = '', brand = '', stockLocation = '' } = filters;
   const queryLower = query.toLowerCase().trim();
   const queryTokens = queryLower.length > 0 ? queryLower.split(/\s+/).filter(t => t.length > 0) : [];
-  const brandLower = brand.toLowerCase();
-  const stockLocationLower = stockLocation.toLowerCase();
-
-  // Build lookup maps for original names
-  const brandOverrideMap = new Map<string, string>();
-  const providerOverrideMap = new Map<string, string>();
-  for (const o of overrides) {
-    if (o.type === 'brand') brandOverrideMap.set(o.custom_name.toLowerCase(), o.original_name.toLowerCase());
-    else if (o.type === 'provider') providerOverrideMap.set(o.custom_name.toLowerCase(), o.original_name.toLowerCase());
-  }
+  const brandLower = brand.toLowerCase().trim();
+  const stockLocationLower = stockLocation.toLowerCase().trim();
+  const overrideLookup = buildOverrideLookup(overrides);
 
   return products.filter(product => {
+    const brandNames = getRelatedNames(overrideLookup, 'brand', product.brand || '');
+    const providerNames = getRelatedNames(overrideLookup, 'provider', product.provider || '');
+
     // Brand filter (fast check first)
-    if (brandLower && (product.brand || '').toLowerCase() !== brandLower) return false;
+    if (brandLower && !brandNames.includes(brandLower)) return false;
 
     // Stock location filter
     if (stockLocationLower) {
@@ -53,9 +95,7 @@ export function searchProductsLocally(
       // Exact barcode match — fast path
       if (String(product.barcode).toLowerCase() === queryLower) return true;
 
-      const originalBrand = brandOverrideMap.get((product.brand || '').toLowerCase()) || '';
-      const originalProvider = providerOverrideMap.get((product.provider || '').toLowerCase()) || '';
-      const searchableText = `${product.name} ${product.brand || ''} ${originalBrand} ${product.provider || ''} ${originalProvider}`.toLowerCase();
+      const searchableText = `${product.name} ${brandNames.join(' ')} ${providerNames.join(' ')}`.toLowerCase();
       if (!queryTokens.every(token => searchableText.includes(token))) return false;
     }
 

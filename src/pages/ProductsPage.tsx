@@ -20,7 +20,7 @@ export default function ProductsPage() {
   const { showToast } = useToast();
   const { addToCart } = useQuoteCart();
   const { canCreateQuote, getPriceDisplayType } = useAuth();
-  const { getOriginalName, overrides } = useProductOverrides();
+  const { getOriginalName, getAllNames, getDisplayName } = useProductOverrides();
   const [searchQuery, setSearchQuery] = useState('');
   const [brandFilter, setBrandFilter] = useState('');
   const [providerFilter, setProviderFilter] = useState('');
@@ -57,23 +57,18 @@ export default function ProductsPage() {
   const filtered = useMemo(() => {
     let list = [...products];
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      // Build override lookup maps
-      const brandMap = new Map<string, string>();
-      const providerMap = new Map<string, string>();
-      for (const o of overrides) {
-        if (o.type === 'brand') brandMap.set(o.custom_name.toLowerCase(), o.original_name.toLowerCase());
-        else if (o.type === 'provider') providerMap.set(o.custom_name.toLowerCase(), o.original_name.toLowerCase());
-      }
+      const q = searchQuery.toLowerCase().trim();
       list = list.filter(p => {
-        const originalBrand = brandMap.get(p.brand.toLowerCase()) || '';
-        const originalProvider = providerMap.get((p.provider || '').toLowerCase()) || '';
-        const searchable = `${p.name} ${p.brand} ${originalBrand} ${p.provider || ''} ${originalProvider} ${p.barcode}`.toLowerCase();
+        const brandNames = getAllNames('brand', p.brand || '').join(' ');
+        const providerNames = getAllNames('provider', p.provider || '').join(' ');
+        const searchable = `${p.name} ${brandNames} ${providerNames} ${p.barcode}`.toLowerCase();
         return searchable.includes(q);
       });
     }
-    if (brandFilter) list = list.filter(p => p.brand === brandFilter);
-    if (providerFilter) list = list.filter(p => p.provider === providerFilter);
+    const normalizedBrandFilter = brandFilter.toLowerCase().trim();
+    const normalizedProviderFilter = providerFilter.toLowerCase().trim();
+    if (normalizedBrandFilter) list = list.filter(p => getAllNames('brand', p.brand || '').some(name => name.toLowerCase() === normalizedBrandFilter));
+    if (normalizedProviderFilter) list = list.filter(p => getAllNames('provider', p.provider || '').some(name => name.toLowerCase() === normalizedProviderFilter));
     list.sort((a, b) => {
       const aV = a[sortField] ?? '';
       const bV = b[sortField] ?? '';
@@ -82,7 +77,7 @@ export default function ProductsPage() {
       return 0;
     });
     return list;
-  }, [products, searchQuery, brandFilter, providerFilter, sortField, sortOrder, overrides]);
+  }, [products, searchQuery, brandFilter, providerFilter, sortField, sortOrder, getAllNames]);
 
   const totalPages = Math.ceil(filtered.length / PRODUCTS_PER_PAGE);
   const startIdx = (currentPage - 1) * PRODUCTS_PER_PAGE;
@@ -159,12 +154,12 @@ export default function ProductsPage() {
           <select value={brandFilter} onChange={e => { setBrandFilter(e.target.value); setCurrentPage(1); }}
             className="px-2.5 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground">
             <option value="">Toutes les marques</option>
-            {brands.map(b => <option key={b} value={b}>{b}</option>)}
+            {brands.map(b => <option key={b} value={b}>{getDisplayName('brand', b)}</option>)}
           </select>
           <select value={providerFilter} onChange={e => { setProviderFilter(e.target.value); setCurrentPage(1); }}
             className="px-2.5 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground">
             <option value="">Tous les fournisseurs</option>
-            {providers.map(p => <option key={p} value={p}>{p}</option>)}
+            {providers.map(p => <option key={p} value={p}>{getDisplayName('provider', p)}</option>)}
           </select>
         </div>
         {(searchQuery || brandFilter || providerFilter) && (

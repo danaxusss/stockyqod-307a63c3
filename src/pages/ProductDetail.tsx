@@ -35,7 +35,7 @@ export function ProductDetail() {
 
   const { addToCart } = useQuoteCart();
   const { showToast } = useToast();
-  const { getOriginalName } = useProductOverrides();
+  const { getOriginalName, getAllNames } = useProductOverrides();
   const quoteManager = QuoteManager.getInstance();
   const userPriceDisplayType = getPriceDisplayType();
   const [cameFromSearch, setCameFromSearch] = useState(false);
@@ -58,7 +58,7 @@ export function ProductDetail() {
         const foundProduct = state.products.find(p => p.barcode === id || p.barcode === decodedId) || null;
         if (foundProduct) {
           const hasAccessibleStock = Object.keys(foundProduct.stock_levels || {}).some(location => canAccessStockLocation(location));
-          const hasAccessibleBrand = canAccessBrand(foundProduct.brand || '');
+          const hasAccessibleBrand = getAllNames('brand', foundProduct.brand || '').some(name => canAccessBrand(name));
           if (!hasAccessibleStock) { setError('Vous n\'avez pas accès aux emplacements de stock de ce produit'); setNotFound(true); setIsLoading(false); return; }
           if (!hasAccessibleBrand) { setError('Vous n\'avez pas accès à cette marque de produit'); setNotFound(true); setIsLoading(false); return; }
           setProduct(foundProduct);
@@ -69,7 +69,7 @@ export function ProductDetail() {
       } finally { setIsLoading(false); }
     };
     loadProduct();
-  }, [id, canAccessStockLocation]);
+  }, [id, canAccessStockLocation, canAccessBrand, getAllNames, state.products]);
 
   const calculateFinalPrice = () => { if (!product) return 0; return quoteManager.calculateFinalPrice(product.buyprice, marginPercentage); };
   const calculateMargin = (sellingPrice: number, purchasePrice: number) => { if (purchasePrice === 0) return 0; return ((sellingPrice - purchasePrice) / purchasePrice) * 100; };
