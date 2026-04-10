@@ -168,6 +168,20 @@ export function QuoteCartPage() {
     loadQuote();
   }, [quoteId, isEditing, navigate, cart.items, showToast, currentUser, authenticatedUser]);
 
+  // Track dirty state — mark as dirty when user edits data after initial load
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
+  useEffect(() => {
+    if (!isLoading && !initialLoadDone) {
+      // Give initial load a tick to settle
+      const t = setTimeout(() => setInitialLoadDone(true), 500);
+      return () => clearTimeout(t);
+    }
+  }, [isLoading, initialLoadDone]);
+
+  useEffect(() => {
+    if (initialLoadDone) setIsDirty(true);
+  }, [items, customer, notes, commandNumber, status, globalMargin]);
+
   // Load company settings for PDF export
   useEffect(() => {
     CompanySettingsService.getSettings().then(setCompanySettings).catch(console.error);
