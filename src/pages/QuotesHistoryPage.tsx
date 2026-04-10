@@ -110,15 +110,6 @@ export function QuotesHistoryPage() {
     return { companyName, companyPhone, companyEmail };
   };
 
-  const normalizeWhatsAppPhone = (rawPhone: string) => {
-    const digits = rawPhone.replace(/\D/g, '');
-    if (!digits) return '';
-    if (digits.startsWith('00')) return digits.slice(2);
-    if (digits.startsWith('212')) return digits;
-    if (digits.startsWith('0')) return `212${digits.slice(1)}`;
-    return digits;
-  };
-
   const buildWhatsAppShareText = (quote: Quote) => {
     const { companyName, companyPhone, companyEmail } = getCompanyShareIdentity();
     const customerName = quote.customer.fullName?.trim();
