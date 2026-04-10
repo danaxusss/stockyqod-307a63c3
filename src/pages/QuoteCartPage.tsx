@@ -1474,8 +1474,8 @@ export function QuoteCartPage() {
             </button>
             <button
               onClick={async () => {
-                if (!lastSaved) {
-                  showToast({ type: 'warning', title: 'Devis non sauvegardé', message: 'Veuillez sauvegarder le devis avant de le partager.' });
+                if (isDirty) {
+                  showToast({ type: 'warning', title: 'Modifications non sauvegardées', message: 'Veuillez sauvegarder le devis avant de le partager.' });
                   return;
                 }
                 // Export PDF first
