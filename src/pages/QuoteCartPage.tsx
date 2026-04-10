@@ -632,6 +632,7 @@ export function QuoteCartPage() {
       }
 
       setLastSaved(now);
+      setIsDirty(false);
       
       if (!isAutoSave) {
         showToast({
