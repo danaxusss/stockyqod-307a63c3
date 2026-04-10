@@ -10,14 +10,12 @@ export function normalizeWhatsAppPhone(rawPhone: string): string {
 }
 
 export function buildWhatsAppShareUrl(rawPhone: string, messageText: string): string {
-  const params = new URLSearchParams({ text: messageText });
   const phone = normalizeWhatsAppPhone(rawPhone);
+  const encodedText = messageText.replace(/\n/g, '%0a').replace(/ /g, '%20');
 
-  if (phone) {
-    params.set('phone', phone);
-  }
-
-  return `${WHATSAPP_BASE_URL}?${params.toString()}`;
+  return phone
+    ? `${WHATSAPP_BASE_URL}?phone=${phone}&text=${encodedText}`
+    : `${WHATSAPP_BASE_URL}?text=${encodedText}`;
 }
 
 export function openWhatsAppShareInNewTab(shareUrl: string): boolean {
