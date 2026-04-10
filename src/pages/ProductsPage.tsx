@@ -1,5 +1,6 @@
 // @ts-nocheck
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Package, Search, Edit, Check, X, Loader, SortAsc, SortDesc, ChevronLeft, ChevronRight, Filter, Paperclip, ShoppingCart } from 'lucide-react';
 import { Product } from '../types';
 import { useAppContext } from '../context/AppContext';
@@ -13,9 +14,10 @@ type SortField = 'name' | 'brand' | 'price' | 'buyprice' | 'provider';
 type SortOrder = 'asc' | 'desc';
 
 export default function ProductsPage() {
+  const navigate = useNavigate();
   const { state } = useAppContext();
   const { showToast } = useToast();
-  const { addItem } = useQuoteCart();
+  const { addToCart } = useQuoteCart();
   const { canCreateQuote, getPriceDisplayType } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [brandFilter, setBrandFilter] = useState('');
@@ -107,7 +109,7 @@ export default function ProductsPage() {
 
   const handleAddToCart = (product: Product) => {
     const priceType = getPriceDisplayType();
-    addItem(product, priceType === 'reseller' ? 'reseller' : 'normal');
+    addToCart(product, priceType === 'reseller' ? 'reseller' : 'normal', 20);
     showToast({ type: 'success', message: `${product.name} ajouté au devis` });
   };
 
@@ -207,7 +209,10 @@ export default function ProductsPage() {
                             <div className="flex items-center gap-1.5">
                               <span className="text-xs font-medium text-foreground">{product.name}</span>
                               {hasSheets && (
-                                <Paperclip className="h-3 w-3 text-primary shrink-0" title={`${sheetCounts[product.barcode]} fiche(s) technique(s)`} />
+                                <button onClick={() => navigate('/sheets')} title={`${sheetCounts[product.barcode]} fiche(s) technique(s)`}
+                                  className="p-0.5 hover:bg-primary/10 rounded transition-colors">
+                                  <Paperclip className="h-3 w-3 text-primary shrink-0" />
+                                </button>
                               )}
                             </div>
                           )}
