@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Package, RefreshCw, LogOut, Shield, FileText, Users, User, Wifi, WifiOff, Cloud, CloudOff, Settings, UserCheck, ShoppingBag } from 'lucide-react';
+import { Package, RefreshCw, LogOut, Shield, FileText, User, Wifi, WifiOff, Cloud, CloudOff, Settings, UserCheck, ShoppingBag } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useUserAuth } from '../hooks/useUserAuth';
