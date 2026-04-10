@@ -31,7 +31,7 @@ import {
 import { Quote, QuoteItem, CustomerInfo, Product } from '../types';
 import { ExcelExportService } from '../utils/excelExport';
 import { PdfExportService } from '../utils/pdfExport';
-import { CompanySettingsService, CompanySettings } from '../utils/companySettings';
+import { CompanySettingsService, CompanySettings, DEFAULT_SHARE_TEMPLATES } from '../utils/companySettings';
 import { SupabaseQuotesService } from '../utils/supabaseQuotes';
 import { ActivityLogger } from '../utils/activityLogger';
 import { useAppContext } from '../context/AppContext';
@@ -1379,7 +1379,7 @@ export function QuoteCartPage() {
           <div className="flex items-center justify-between mb-1.5">
             <h2 className="text-xs font-semibold text-foreground flex items-center space-x-1.5">
               <Send className="h-3.5 w-3.5" />
-              <span>Partager</span>
+              <span>Exporter & Partager</span>
             </h2>
             {!lastSaved && (
               <span className="text-[10px] text-amber-500 flex items-center space-x-1">
@@ -1390,88 +1390,126 @@ export function QuoteCartPage() {
           </div>
           <div className="flex gap-2">
             <button
-              onClick={() => {
+              onClick={async () => {
                 if (!lastSaved) {
                   showToast({ type: 'warning', title: 'Devis non sauvegardé', message: 'Veuillez sauvegarder le devis avant de le partager.' });
                   return;
                 }
+                // Export PDF first
+                setIsExporting(true);
+                try {
+                  const freshSettings = await CompanySettingsService.getSettings().catch(() => companySettings);
+                  const quoteData: Quote = { id: quote?.id || `quote-${Date.now()}`, quoteNumber, commandNumber: commandNumber || undefined, createdAt: quote?.createdAt || new Date(), updatedAt: new Date(), status, customer, items, totalAmount, notes };
+                  await PdfExportService.exportQuoteToPdf(quoteData, freshSettings || companySettings);
+                } catch { /* PDF export failed, continue to share anyway */ }
+                setIsExporting(false);
+
+                // Build message from template
                 const tvaRate = companySettings?.tva_rate ?? 20;
                 const totalHT = totalAmount / (1 + tvaRate / 100);
+                const totalTVA = totalAmount - totalHT;
+                const tpl = companySettings?.share_templates?.whatsapp || DEFAULT_SHARE_TEMPLATES.whatsapp;
                 const companyName = companySettings?.company_name?.trim() || 'Restonet';
+                const msg = tpl
+                  .replace(/{client}/g, customer.fullName || '')
+                  .replace(/{entreprise}/g, companyName)
+                  .replace(/{numero}/g, quoteNumber)
+                  .replace(/{montant_ht}/g, ExcelExportService.formatCurrency(totalHT))
+                  .replace(/{montant_ttc}/g, ExcelExportService.formatCurrency(totalAmount))
+                  .replace(/{montant_tva}/g, ExcelExportService.formatCurrency(totalTVA))
+                  .replace(/{tva}/g, String(tvaRate))
+                  .replace(/{nb_articles}/g, String(totalItems))
+                  .replace(/{date}/g, ExcelExportService.formatDate(quote?.createdAt || new Date()))
+                  .replace(/{telephone}/g, companySettings?.phone || '')
+                  .replace(/{email}/g, companySettings?.email || '')
+                  .replace(/{adresse}/g, companySettings?.address || '');
+
                 const phone = (customer.phoneNumber || '').replace(/\D/g, '');
                 const normalizedPhone = phone.startsWith('00') ? phone.slice(2) : phone.startsWith('0') ? `212${phone.slice(1)}` : phone;
-                const msg = [
-                  `Bonjour ${customer.fullName || ''},`,
-                  '',
-                  `Voici le récapitulatif de votre devis ${companyName}.`,
-                  '',
-                  `📋 Devis N° : ${quoteNumber}`,
-                  `💰 Montant HT : ${ExcelExportService.formatCurrency(totalHT)} Dh`,
-                  `💰 Montant TTC : ${ExcelExportService.formatCurrency(totalAmount)} Dh`,
-                  `📦 Articles : ${totalItems}`,
-                  '',
-                  `N'hésitez pas à nous contacter pour plus d'informations.`,
-                  '',
-                  'Cordialement,',
-                  companyName,
-                  companySettings?.phone ? `📞 ${companySettings.phone}` : '',
-                  companySettings?.email ? `✉️ ${companySettings.email}` : '',
-                ].filter(Boolean).join('\n');
                 const url = normalizedPhone
                   ? `https://wa.me/${normalizedPhone}?text=${encodeURIComponent(msg)}`
                   : `https://wa.me/?text=${encodeURIComponent(msg)}`;
                 try {
                   const popup = window.open('about:blank', '_blank', 'noopener,noreferrer');
-                  if (popup) { popup.location.href = url; return; }
-                } catch {}
-                navigator.clipboard.writeText(msg).then(() => {
-                  showToast({ type: 'success', title: 'Copié', message: 'Message copié — ouvrez WhatsApp et collez-le.' });
-                }).catch(() => {
-                  showToast({ type: 'error', title: 'Erreur', message: 'Impossible d\'ouvrir WhatsApp.' });
-                });
+                  if (popup) { popup.location.href = url; }
+                  else { throw new Error('blocked'); }
+                } catch {
+                  navigator.clipboard.writeText(msg).then(() => {
+                    showToast({ type: 'success', title: 'Copié', message: 'Message copié — ouvrez WhatsApp et collez-le.' });
+                  }).catch(() => {
+                    showToast({ type: 'error', title: 'Erreur', message: 'Impossible d\'ouvrir WhatsApp.' });
+                  });
+                }
+
+                // Auto-update status to "pending" (Envoyé)
+                if (quote?.id && status !== 'final') {
+                  try {
+                    await SupabaseQuotesService.updateQuoteStatus(quote.id, 'pending');
+                    setStatus('pending' as any);
+                    showToast({ type: 'success', title: 'Statut mis à jour', message: 'Le devis est maintenant marqué comme "Envoyé".' });
+                  } catch {}
+                }
               }}
-              className="flex-1 flex items-center justify-center space-x-1.5 px-3 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors"
+              disabled={isExporting}
+              className="flex-1 flex items-center justify-center space-x-1.5 px-3 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg transition-colors"
             >
-              <MessageCircle className="h-3.5 w-3.5" />
-              <span>WhatsApp</span>
+              {isExporting ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <><FileDown className="h-3 w-3" /><MessageCircle className="h-3.5 w-3.5" /></>}
+              <span>PDF + WhatsApp</span>
             </button>
             <button
-              onClick={() => {
+              onClick={async () => {
                 if (!lastSaved) {
                   showToast({ type: 'warning', title: 'Devis non sauvegardé', message: 'Veuillez sauvegarder le devis avant de le partager.' });
                   return;
                 }
+                // Export PDF first
+                setIsExporting(true);
+                try {
+                  const freshSettings = await CompanySettingsService.getSettings().catch(() => companySettings);
+                  const quoteData: Quote = { id: quote?.id || `quote-${Date.now()}`, quoteNumber, commandNumber: commandNumber || undefined, createdAt: quote?.createdAt || new Date(), updatedAt: new Date(), status, customer, items, totalAmount, notes };
+                  await PdfExportService.exportQuoteToPdf(quoteData, freshSettings || companySettings);
+                } catch { /* continue */ }
+                setIsExporting(false);
+
+                // Build email from template
                 const tvaRate = companySettings?.tva_rate ?? 20;
                 const totalHT = totalAmount / (1 + tvaRate / 100);
+                const totalTVA = totalAmount - totalHT;
                 const companyName = companySettings?.company_name?.trim() || 'Restonet';
-                const subject = encodeURIComponent(`Devis ${companyName} - ${quoteNumber}`);
-                const body = encodeURIComponent([
-                  `Bonjour ${customer.fullName || ''},`,
-                  '',
-                  `Veuillez trouver ci-joint votre devis ${companyName}.`,
-                  '',
-                  `Devis N° : ${quoteNumber}`,
-                  `Montant HT : ${ExcelExportService.formatCurrency(totalHT)} Dh`,
-                  `Montant TTC : ${ExcelExportService.formatCurrency(totalAmount)} Dh`,
-                  `Nombre d'articles : ${totalItems}`,
-                  '',
-                  `N'hésitez pas à nous contacter pour plus d'informations.`,
-                  '',
-                  'Cordialement,',
-                  companyName,
-                  companySettings?.phone ? `Tél : ${companySettings.phone}` : '',
-                  companySettings?.email ? `Email : ${companySettings.email}` : '',
-                  companySettings?.address ? `Adresse : ${companySettings.address}` : '',
-                ].filter(Boolean).join('\n'));
-                window.location.href = `mailto:?subject=${subject}&body=${body}`;
+                const subjectTpl = companySettings?.share_templates?.email_subject || DEFAULT_SHARE_TEMPLATES.email_subject;
+                const bodyTpl = companySettings?.share_templates?.email_body || DEFAULT_SHARE_TEMPLATES.email_body;
+                const replacer = (t: string) => t
+                  .replace(/{client}/g, customer.fullName || '')
+                  .replace(/{entreprise}/g, companyName)
+                  .replace(/{numero}/g, quoteNumber)
+                  .replace(/{montant_ht}/g, ExcelExportService.formatCurrency(totalHT))
+                  .replace(/{montant_ttc}/g, ExcelExportService.formatCurrency(totalAmount))
+                  .replace(/{montant_tva}/g, ExcelExportService.formatCurrency(totalTVA))
+                  .replace(/{tva}/g, String(tvaRate))
+                  .replace(/{nb_articles}/g, String(totalItems))
+                  .replace(/{date}/g, ExcelExportService.formatDate(quote?.createdAt || new Date()))
+                  .replace(/{telephone}/g, companySettings?.phone || '')
+                  .replace(/{email}/g, companySettings?.email || '')
+                  .replace(/{adresse}/g, companySettings?.address || '');
+
+                window.location.href = `mailto:?subject=${encodeURIComponent(replacer(subjectTpl))}&body=${encodeURIComponent(replacer(bodyTpl))}`;
+
+                // Auto-update status to "pending" (Envoyé)
+                if (quote?.id && status !== 'final') {
+                  try {
+                    await SupabaseQuotesService.updateQuoteStatus(quote.id, 'pending');
+                    setStatus('pending' as any);
+                  } catch {}
+                }
               }}
-              className="flex-1 flex items-center justify-center space-x-1.5 px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+              disabled={isExporting}
+              className="flex-1 flex items-center justify-center space-x-1.5 px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg transition-colors"
             >
-              <Mail className="h-3.5 w-3.5" />
-              <span>Email</span>
+              {isExporting ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <><FileDown className="h-3 w-3" /><Mail className="h-3.5 w-3.5" /></>}
+              <span>PDF + Email</span>
             </button>
           </div>
-          <p className="text-[10px] text-muted-foreground mt-1.5">💡 Exportez le PDF puis joignez-le manuellement à votre message.</p>
+          <p className="text-[10px] text-muted-foreground mt-1.5">📎 Le PDF sera téléchargé — joignez-le à votre message. Templates personnalisables dans Paramètres.</p>
         </div>
       )}
     </div>

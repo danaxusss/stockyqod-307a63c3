@@ -6,7 +6,8 @@ import { Quote } from '../types';
 import { SupabaseQuotesService } from '../utils/supabaseQuotes';
 import { ActivityLogger } from '../utils/activityLogger';
 import { PdfExportService } from '../utils/pdfExport';
-import { CompanySettingsService, CompanySettings } from '../utils/companySettings';
+import { CompanySettingsService, CompanySettings, DEFAULT_SHARE_TEMPLATES } from '../utils/companySettings';
+import { ExcelExportService } from '../utils/excelExport';
 import { useAuth } from '../hooks/useAuth';
 
 const QUOTES_PER_PAGE = 10;

@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
-import { Settings, Upload, Trash2, Save, Loader, Image, Building, Phone, Mail, Globe, Hash, FileText, Eye, Palette, Users, Package, Edit3, Check, X, Plus } from 'lucide-react';
-import { CompanySettingsService, CompanySettings, QuoteVisibleFields, QuoteStyle } from '../utils/companySettings';
+import { Settings, Upload, Trash2, Save, Loader, Image, Building, Phone, Mail, Globe, Hash, FileText, Eye, Palette, Users, Package, Edit3, Check, X, Plus, MessageCircle, Send } from 'lucide-react';
+import { CompanySettingsService, CompanySettings, QuoteVisibleFields, QuoteStyle, DEFAULT_SHARE_TEMPLATES } from '../utils/companySettings';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../context/ToastContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -107,6 +107,7 @@ function CompanySettingsTab() {
         logo_size: settings.logo_size,
         quote_visible_fields: settings.quote_visible_fields,
         quote_style: settings.quote_style,
+        share_templates: settings.share_templates,
         payment_terms: settings.payment_terms,
         tva_rate: settings.tva_rate,
         quote_validity_days: settings.quote_validity_days,
@@ -325,6 +326,57 @@ function CompanySettingsTab() {
               <span className="text-sm text-foreground">{FIELD_LABELS[field]}</span>
             </label>
           ))}
+        </div>
+      </div>
+
+      {/* Share Templates */}
+      <div className="glass rounded-xl shadow-lg p-4">
+        <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center space-x-2">
+          <Send className="h-5 w-5" /><span>Templates de Partage</span>
+        </h2>
+        <p className="text-[11px] text-muted-foreground mb-3">
+          Variables disponibles : <code className="bg-secondary px-1 rounded">{'{client}'}</code> <code className="bg-secondary px-1 rounded">{'{entreprise}'}</code> <code className="bg-secondary px-1 rounded">{'{numero}'}</code> <code className="bg-secondary px-1 rounded">{'{montant_ht}'}</code> <code className="bg-secondary px-1 rounded">{'{montant_ttc}'}</code> <code className="bg-secondary px-1 rounded">{'{montant_tva}'}</code> <code className="bg-secondary px-1 rounded">{'{tva}'}</code> <code className="bg-secondary px-1 rounded">{'{nb_articles}'}</code> <code className="bg-secondary px-1 rounded">{'{date}'}</code> <code className="bg-secondary px-1 rounded">{'{telephone}'}</code> <code className="bg-secondary px-1 rounded">{'{email}'}</code> <code className="bg-secondary px-1 rounded">{'{adresse}'}</code>
+        </p>
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-foreground mb-1 flex items-center space-x-1.5">
+              <MessageCircle className="h-3.5 w-3.5 text-emerald-500" /><span>Message WhatsApp</span>
+            </label>
+            <textarea
+              value={settings.share_templates?.whatsapp || DEFAULT_SHARE_TEMPLATES.whatsapp}
+              onChange={e => setSettings({ ...settings, share_templates: { ...settings.share_templates, whatsapp: e.target.value } })}
+              className={inputClass}
+              rows={8}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-foreground mb-1 flex items-center space-x-1.5">
+              <Mail className="h-3.5 w-3.5 text-blue-500" /><span>Objet Email</span>
+            </label>
+            <input
+              type="text"
+              value={settings.share_templates?.email_subject || DEFAULT_SHARE_TEMPLATES.email_subject}
+              onChange={e => setSettings({ ...settings, share_templates: { ...settings.share_templates, email_subject: e.target.value } })}
+              className={inputClass}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-foreground mb-1 flex items-center space-x-1.5">
+              <Mail className="h-3.5 w-3.5 text-blue-500" /><span>Corps Email</span>
+            </label>
+            <textarea
+              value={settings.share_templates?.email_body || DEFAULT_SHARE_TEMPLATES.email_body}
+              onChange={e => setSettings({ ...settings, share_templates: { ...settings.share_templates, email_body: e.target.value } })}
+              className={inputClass}
+              rows={12}
+            />
+          </div>
+          <button
+            onClick={() => setSettings({ ...settings, share_templates: { ...DEFAULT_SHARE_TEMPLATES } })}
+            className="text-xs text-primary hover:underline"
+          >
+            Réinitialiser les templates par défaut
+          </button>
         </div>
       </div>
 
