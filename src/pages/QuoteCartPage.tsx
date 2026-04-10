@@ -308,7 +308,7 @@ export function QuoteCartPage() {
       id: `${product.barcode}-${Date.now()}`,
       product,
       priceType: 'normal',
-      marginPercentage: 20,
+      marginPercentage: globalMargin,
       finalPrice: product.price,
       addedAt: new Date(),
       unitPrice: product.price,
@@ -402,7 +402,7 @@ export function QuoteCartPage() {
         id: `custom-${Date.now()}`,
         product: customProduct,
         priceType: 'normal',
-        marginPercentage: 20,
+        marginPercentage: globalMargin,
         finalPrice: unitPrice,
         addedAt: new Date(),
         unitPrice: unitPrice,
@@ -510,6 +510,24 @@ export function QuoteCartPage() {
           };
         }
         return item;
+      })
+    );
+  };
+
+  // Apply global margin to all items
+  const applyGlobalMargin = (newMargin: number) => {
+    setGlobalMargin(newMargin);
+    setItems(prevItems =>
+      prevItems.map(item => {
+        const newUnitPrice = item.product.buyprice + (item.product.buyprice * (newMargin / 100));
+        const discount = item.discount ?? 0;
+        const discountedPrice = newUnitPrice * (1 - discount / 100);
+        return {
+          ...item,
+          marginPercentage: newMargin,
+          unitPrice: newUnitPrice,
+          subtotal: discountedPrice * item.quantity
+        };
       })
     );
   };
@@ -1039,6 +1057,18 @@ export function QuoteCartPage() {
             </h2>
 
             <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-1.5 px-2 py-1 bg-secondary rounded-lg border border-input">
+                <span className="text-xs text-muted-foreground whitespace-nowrap">Marge globale</span>
+                <select
+                  value={globalMargin}
+                  onChange={(e) => applyGlobalMargin(parseInt(e.target.value))}
+                  className="w-16 px-1 py-0.5 text-sm border border-input rounded bg-background text-orange-600 dark:text-orange-400 font-medium"
+                >
+                  {marginOptions.map((p) => (
+                    <option key={p} value={p}>{p}%</option>
+                  ))}
+                </select>
+              </div>
               <button
                 onClick={handleCopyItems}
                 disabled={items.length === 0}
