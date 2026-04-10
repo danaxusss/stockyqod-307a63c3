@@ -506,6 +506,20 @@ export function QuoteCartPage() {
       await SupabaseQuotesService.saveQuote(quoteData);
       await ActivityLogger.log('quote_created', `Quote ${quoteNumber} saved`, 'quote', quoteData.id);
       setQuote(quoteData);
+
+      // Save custom seller name to admin profile if using "Autre"
+      if (useCustomSeller && isAdmin && customer.salesPerson.trim()) {
+        const adminUser = currentUser || authenticatedUser;
+        if (adminUser && adminUser.custom_seller_name !== customer.salesPerson.trim()) {
+          try {
+            await SupabaseUsersService.updateUser(adminUser.id, {
+              custom_seller_name: customer.salesPerson.trim(),
+            } as any);
+          } catch (e) {
+            console.error('Failed to save custom seller name:', e);
+          }
+        }
+      }
       setLastSaved(now);
       
       if (!isAutoSave) {
