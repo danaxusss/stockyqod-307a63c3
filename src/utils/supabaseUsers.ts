@@ -9,6 +9,7 @@ type SafeAppUserRow = {
   allowed_stock_locations: string[];
   allowed_brands: string[];
   price_display_type: string;
+  custom_seller_name: string;
   created_at: string;
   updated_at: string;
 };
@@ -93,6 +94,7 @@ export class SupabaseUsersService {
         ...(updates.allowed_stock_locations !== undefined && { allowed_stock_locations: updates.allowed_stock_locations }),
         ...(updates.allowed_brands !== undefined && { allowed_brands: updates.allowed_brands }),
         ...(updates.price_display_type !== undefined && { price_display_type: updates.price_display_type }),
+        ...(updates.custom_seller_name !== undefined && { custom_seller_name: updates.custom_seller_name }),
       }
     });
 
@@ -187,6 +189,7 @@ export class SupabaseUsersService {
       allowed_stock_locations: data.allowed_stock_locations || [],
       allowed_brands: data.allowed_brands || [],
       price_display_type: (data.price_display_type || 'normal') as AppUser['price_display_type'],
+      custom_seller_name: data.custom_seller_name || '',
       created_at: new Date(data.created_at),
       updated_at: new Date(data.updated_at)
     };

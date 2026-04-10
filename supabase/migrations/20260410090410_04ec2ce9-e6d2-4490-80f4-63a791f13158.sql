@@ -1,0 +1,1 @@
+ALTER TABLE public.app_users ADD COLUMN custom_seller_name text NOT NULL DEFAULT '';

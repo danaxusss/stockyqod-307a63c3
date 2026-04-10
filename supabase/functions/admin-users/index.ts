@@ -125,7 +125,7 @@ serve(async (req) => {
     }
 
     if (action === "update_user") {
-      const { user_id, username, pin: newPin, is_admin, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type } = payload;
+      const { user_id, username, pin: newPin, is_admin, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name } = payload;
       if (!user_id) return jsonResponse({ error: "user_id required" }, 400);
 
       const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -146,12 +146,13 @@ serve(async (req) => {
       if (allowed_stock_locations !== undefined) updateData.allowed_stock_locations = allowed_stock_locations;
       if (allowed_brands !== undefined) updateData.allowed_brands = allowed_brands;
       if (price_display_type !== undefined) updateData.price_display_type = price_display_type;
+      if (custom_seller_name !== undefined) updateData.custom_seller_name = custom_seller_name;
 
       const { data, error } = await supabase
         .from("app_users")
         .update(updateData)
         .eq("id", user_id)
-        .select("id, username, is_admin, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, created_at, updated_at")
+        .select("id, username, is_admin, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, created_at, updated_at")
         .single();
 
       if (error) {
