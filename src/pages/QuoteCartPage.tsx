@@ -694,35 +694,34 @@ export function QuoteCartPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto space-y-4">
+    <div className="max-w-7xl mx-auto space-y-3">
       {/* Header */}
-      <div className="glass rounded-xl shadow-lg p-4">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center space-x-3">
-            <div className="p-3 bg-primary rounded-xl">
-              <ShoppingCart className="h-6 w-6 text-primary-foreground" />
+      <div className="glass rounded-xl shadow-lg p-3">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center space-x-2.5">
+            <div className="p-2 bg-primary rounded-lg">
+              <ShoppingCart className="h-4 w-4 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-foreground">
+              <h1 className="text-base font-bold text-foreground">
                 {isEditing ? 'Modifier le Devis' : 'Nouveau Devis'}
               </h1>
-              <p className="text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 {isEditing ? `Devis ${quoteNumber}` : 'Créer un nouveau devis'}
               </p>
             </div>
           </div>
 
-          {/* Status Badge */}
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-2">
             {lastSaved && (
-              <span className="text-sm text-muted-foreground">
-                Dernière sauvegarde: {lastSaved.toLocaleTimeString('fr-FR')}
+              <span className="text-xs text-muted-foreground hidden sm:inline">
+                Sauvé: {lastSaved.toLocaleTimeString('fr-FR')}
               </span>
             )}
             <select
               value={status}
               onChange={(e) => setStatus(e.target.value as 'draft' | 'final')}
-              className="px-3 py-1 border border-input rounded-lg bg-secondary text-foreground"
+              className="px-2 py-1 text-sm border border-input rounded-lg bg-secondary text-foreground"
             >
               <option value="draft">Brouillon</option>
               <option value="final">Final</option>
@@ -731,30 +730,28 @@ export function QuoteCartPage() {
         </div>
 
         {/* Quote Details */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="flex items-center space-x-3 p-3 bg-secondary rounded-lg">
-            <Hash className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+        <div className="grid grid-cols-3 gap-2">
+          <div className="flex items-center space-x-2 p-2 bg-secondary rounded-lg">
+            <Hash className="h-4 w-4 text-primary" />
             <div>
-              <p className="text-sm text-muted-foreground">Numéro de Devis</p>
-              <p className="font-semibold text-foreground">{quoteNumber}</p>
+              <p className="text-[10px] text-muted-foreground">N° Devis</p>
+              <p className="text-xs font-semibold text-foreground">{quoteNumber}</p>
             </div>
           </div>
-
-          <div className="flex items-center space-x-3 p-3 bg-secondary rounded-lg">
-            <Calendar className="h-5 w-5 text-green-600 dark:text-green-400" />
+          <div className="flex items-center space-x-2 p-2 bg-secondary rounded-lg">
+            <Calendar className="h-4 w-4 text-primary" />
             <div>
-              <p className="text-sm text-muted-foreground">Date</p>
-              <p className="font-semibold text-foreground">
+              <p className="text-[10px] text-muted-foreground">Date</p>
+              <p className="text-xs font-semibold text-foreground">
                 {ExcelExportService.formatDate(quote?.createdAt || new Date())}
               </p>
             </div>
           </div>
-
-          <div className="flex items-center space-x-3 p-3 bg-secondary rounded-lg">
-            <DollarSign className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+          <div className="flex items-center space-x-2 p-2 bg-secondary rounded-lg">
+            <DollarSign className="h-4 w-4 text-primary" />
             <div>
-              <p className="text-sm text-muted-foreground">Total</p>
-              <p className="font-semibold text-foreground">
+              <p className="text-[10px] text-muted-foreground">Total</p>
+              <p className="text-xs font-semibold text-foreground">
                 {ExcelExportService.formatCurrency(totalAmount)} Dh
               </p>
             </div>
