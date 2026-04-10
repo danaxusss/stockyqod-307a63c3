@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Product } from '../types';
 import { useAppContext } from '../context/AppContext';
 import { searchStateManager } from '../utils/searchStateManager';
+import { useProductOverrides } from './useProductOverrides';
 
 export interface SearchFilters {
   query?: string;
@@ -9,12 +10,30 @@ export interface SearchFilters {
   stockLocation?: string;
 }
 
-export function searchProductsLocally(products: Product[], filters: SearchFilters): Product[] {
+interface OverrideEntry {
+  type: string;
+  original_name: string;
+  custom_name: string;
+}
+
+export function searchProductsLocally(
+  products: Product[],
+  filters: SearchFilters,
+  overrides: OverrideEntry[] = []
+): Product[] {
   const { query = '', brand = '', stockLocation = '' } = filters;
   const queryLower = query.toLowerCase().trim();
   const queryTokens = queryLower.length > 0 ? queryLower.split(/\s+/).filter(t => t.length > 0) : [];
   const brandLower = brand.toLowerCase();
   const stockLocationLower = stockLocation.toLowerCase();
+
+  // Build lookup maps for original names
+  const brandOverrideMap = new Map<string, string>();
+  const providerOverrideMap = new Map<string, string>();
+  for (const o of overrides) {
+    if (o.type === 'brand') brandOverrideMap.set(o.custom_name.toLowerCase(), o.original_name.toLowerCase());
+    else if (o.type === 'provider') providerOverrideMap.set(o.custom_name.toLowerCase(), o.original_name.toLowerCase());
+  }
 
   return products.filter(product => {
     // Brand filter (fast check first)
@@ -34,7 +53,9 @@ export function searchProductsLocally(products: Product[], filters: SearchFilter
       // Exact barcode match — fast path
       if (String(product.barcode).toLowerCase() === queryLower) return true;
 
-      const searchableText = `${product.name} ${product.brand || ''}`.toLowerCase();
+      const originalBrand = brandOverrideMap.get((product.brand || '').toLowerCase()) || '';
+      const originalProvider = providerOverrideMap.get((product.provider || '').toLowerCase()) || '';
+      const searchableText = `${product.name} ${product.brand || ''} ${originalBrand} ${product.provider || ''} ${originalProvider}`.toLowerCase();
       if (!queryTokens.every(token => searchableText.includes(token))) return false;
     }
 
@@ -64,6 +85,7 @@ interface UseSearchStateReturn {
 
 export function useSearchState(): UseSearchStateReturn {
   const { state } = useAppContext();
+  const { overrides } = useProductOverrides();
   const [query, setQueryState] = useState('');
   const [selectedBrand, setSelectedBrandState] = useState('');
   const [selectedStockLocation, setSelectedStockLocationState] = useState('');
@@ -114,7 +136,7 @@ export function useSearchState(): UseSearchStateReturn {
           query: hasValidQuery ? query : '',
           brand: selectedBrand,
           stockLocation: selectedStockLocation
-        });
+        }, overrides);
 
         const sorted = sortProducts(products, sortBy, sortOrder);
         setResults(sorted);
@@ -133,7 +155,7 @@ export function useSearchState(): UseSearchStateReturn {
     return () => {
       if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
     };
-  }, [query, selectedBrand, selectedStockLocation, sortBy, sortOrder, isInitialized, state.products]);
+  }, [query, selectedBrand, selectedStockLocation, sortBy, sortOrder, isInitialized, state.products, overrides]);
 
   // Persist state
   useEffect(() => {

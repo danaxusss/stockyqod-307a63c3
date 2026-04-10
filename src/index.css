@@ -53,41 +53,41 @@
 
   .dark {
     /* Midnight Indigo — Dark mode (the "real" theme) */
-    --background: 240 50% 4%;
+    --background: 240 50% 3%;
     --foreground: 220 20% 92%;
     
-    --card: 240 40% 8%;
+    --card: 240 40% 11%;
     --card-foreground: 220 20% 92%;
     
-    --popover: 240 40% 8%;
+    --popover: 240 40% 11%;
     --popover-foreground: 220 20% 92%;
     
     --primary: 239 84% 67%;
     --primary-foreground: 0 0% 100%;
     
-    --secondary: 240 30% 14%;
+    --secondary: 240 30% 16%;
     --secondary-foreground: 220 20% 85%;
     
-    --muted: 240 30% 12%;
+    --muted: 240 30% 14%;
     --muted-foreground: 220 15% 55%;
     
-    --accent: 240 40% 14%;
+    --accent: 240 40% 16%;
     --accent-foreground: 239 84% 75%;
     
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
     
-    --border: 240 30% 16%;
-    --input: 240 30% 16%;
+    --border: 240 30% 18%;
+    --input: 240 30% 18%;
     --ring: 239 84% 67%;
     
     --sidebar-background: 240 50% 3%;
     --sidebar-foreground: 220 20% 90%;
     --sidebar-primary: 239 84% 67%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 40% 10%;
+    --sidebar-accent: 240 40% 12%;
     --sidebar-accent-foreground: 220 20% 90%;
-    --sidebar-border: 240 30% 12%;
+    --sidebar-border: 240 30% 14%;
     --sidebar-ring: 239 84% 67%;
     
     --shadow-glow: 0 0 40px -5px hsl(239 84% 67% / 0.25);

@@ -20,7 +20,7 @@ export default function ProductsPage() {
   const { showToast } = useToast();
   const { addToCart } = useQuoteCart();
   const { canCreateQuote, getPriceDisplayType } = useAuth();
-  const { getOriginalName } = useProductOverrides();
+  const { getOriginalName, overrides } = useProductOverrides();
   const [searchQuery, setSearchQuery] = useState('');
   const [brandFilter, setBrandFilter] = useState('');
   const [providerFilter, setProviderFilter] = useState('');
@@ -58,7 +58,19 @@ export default function ProductsPage() {
     let list = [...products];
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      list = list.filter(p => p.name.toLowerCase().includes(q) || p.barcode.includes(q) || p.brand.toLowerCase().includes(q));
+      // Build override lookup maps
+      const brandMap = new Map<string, string>();
+      const providerMap = new Map<string, string>();
+      for (const o of overrides) {
+        if (o.type === 'brand') brandMap.set(o.custom_name.toLowerCase(), o.original_name.toLowerCase());
+        else if (o.type === 'provider') providerMap.set(o.custom_name.toLowerCase(), o.original_name.toLowerCase());
+      }
+      list = list.filter(p => {
+        const originalBrand = brandMap.get(p.brand.toLowerCase()) || '';
+        const originalProvider = providerMap.get((p.provider || '').toLowerCase()) || '';
+        const searchable = `${p.name} ${p.brand} ${originalBrand} ${p.provider || ''} ${originalProvider} ${p.barcode}`.toLowerCase();
+        return searchable.includes(q);
+      });
     }
     if (brandFilter) list = list.filter(p => p.brand === brandFilter);
     if (providerFilter) list = list.filter(p => p.provider === providerFilter);
@@ -70,7 +82,7 @@ export default function ProductsPage() {
       return 0;
     });
     return list;
-  }, [products, searchQuery, brandFilter, providerFilter, sortField, sortOrder]);
+  }, [products, searchQuery, brandFilter, providerFilter, sortField, sortOrder, overrides]);
 
   const totalPages = Math.ceil(filtered.length / PRODUCTS_PER_PAGE);
   const startIdx = (currentPage - 1) * PRODUCTS_PER_PAGE;
