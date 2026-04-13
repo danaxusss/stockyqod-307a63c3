@@ -24,8 +24,10 @@ serve(async (req) => {
       });
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
+    const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
+    if (!OPENROUTER_API_KEY) throw new Error("OPENROUTER_API_KEY not configured");
+
+    const AI_MODEL = Deno.env.get("AI_MODEL") || "google/gemini-2.0-flash-exp:free";
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -33,13 +35,13 @@ serve(async (req) => {
 
     // Extract the last user message
     const lastUserMsg = [...messages].reverse().find((m: any) => m.role === "user")?.content || "";
-    
+
     // Normalize: remove accents, lowercase
     const normalized = removeAccents(lastUserMsg).toLowerCase();
-    
-    // Extract meaningful search keywords (>2 chars, skip common words)
+
+    // Extract meaningful search keywords (>2 chars, skip common French stop words)
     const stopWords = new Set(["les", "des", "une", "pour", "avec", "dans", "sur", "par", "que", "qui", "est", "sont", "pas", "plus", "mon", "ton", "son", "nos", "vos", "cette", "ces", "tout", "tous", "quel", "quels", "quelle", "quelles", "cherche", "besoin", "voudrais", "veux", "faut", "client", "produit", "produits", "article", "articles", "avez", "vous", "nous", "ils", "elle", "elles", "aussi", "mais", "donc", "comme", "bien", "tres", "peu", "trop", "prix", "cher", "pas", "gamme"]);
-    
+
     const keywords = normalized
       .replace(/[^a-z0-9\s-]/g, " ")
       .split(/\s+/)
@@ -49,27 +51,26 @@ serve(async (req) => {
     console.log("Search keywords:", keywords);
 
     let products: any[] = [];
-    
+
     if (keywords.length > 0) {
-      // Strategy: ALL keywords must appear in the product name (AND logic)
-      // Build a chain of .ilike filters on name
+      // AND logic: all keywords must appear in product name
       let query = supabase
         .from("products")
         .select("barcode, name, brand, price, reseller_price, buyprice, provider, stock_levels");
-      
+
       for (const kw of keywords) {
         query = query.ilike("name", `%${kw}%`);
       }
-      
+
       const { data, error } = await query.limit(50);
-      
+
       if (error) {
         console.error("DB search error:", error);
       } else {
         products = data || [];
       }
 
-      // If AND logic returns nothing, try with the longest keyword alone (likely the most specific)
+      // Fallback: if AND returns nothing, try the longest keyword alone
       if (products.length === 0) {
         const sortedByLen = [...keywords].sort((a, b) => b.length - a.length);
         const mainKw = sortedByLen[0];
@@ -85,7 +86,7 @@ serve(async (req) => {
 
     console.log(`Found ${products.length} products`);
 
-    // Build product catalog for context - include barcode prominently for extraction
+    // Build product catalog context — include barcode tags for extraction by the chat widget
     const productCatalog = products.length > 0
       ? products.map((p: any, i: number) => {
           const totalStock = Object.values(p.stock_levels || {}).reduce((sum: number, v: any) => sum + (Number(v) || 0), 0);
@@ -106,7 +107,7 @@ INSTRUCTIONS STRICTES:
 - Code: [BARCODE:xxxxx]
 - Marque: ...
 - Prix public: ... DH
-- Prix revendeur: ... DH  
+- Prix revendeur: ... DH
 - Stock: ...
 
 2. Tu DOIS inclure le tag [BARCODE:xxxxx] pour chaque produit exactement comme dans les résultats.
@@ -120,14 +121,16 @@ INSTRUCTIONS STRICTES:
 6. Réponds en français, sois concis.
 7. Ne montre PAS le prix d'achat (buyprice).`;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
         "Content-Type": "application/json",
+        "HTTP-Referer": "https://stockyqod.app",
+        "X-Title": "Stocky QOD",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash-lite",
+        model: AI_MODEL,
         messages: [
           { role: "system", content: systemPrompt },
           ...messages,
@@ -150,7 +153,7 @@ INSTRUCTIONS STRICTES:
         });
       }
       const t = await response.text();
-      console.error("AI gateway error:", response.status, t);
+      console.error("OpenRouter error:", response.status, t);
       return new Response(JSON.stringify({ error: "Erreur du service IA" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
