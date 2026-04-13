@@ -78,7 +78,7 @@ export interface Quote {
   commandNumber?: string;
   createdAt: Date;
   updatedAt: Date;
-  status: 'draft' | 'pending' | 'final';
+  status: 'draft' | 'final';
   customer: CustomerInfo;
   items: QuoteItem[];
   totalAmount: number;

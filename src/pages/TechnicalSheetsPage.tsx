@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { FileText, Upload, Search, Link2, Trash2, Download, Eye, Share2, Copy, X, Plus, Loader, ExternalLink, Calendar, Package, CheckSquare } from 'lucide-react';
-import { sheetsApi } from '@/lib/apiClient';
+import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../hooks/useAuth';
 import { useAppContext } from '../context/AppContext';
@@ -63,7 +63,11 @@ export function TechnicalSheetsPage() {
   const fetchSheets = useCallback(async () => {
     setLoading(true);
     try {
-      const { sheets: data } = await sheetsApi.getAll();
+      const { data, error } = await supabase
+        .from('technical_sheets')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
       setSheets((data || []) as unknown as TechnicalSheet[]);
     } catch (err) {
       console.error('Error fetching sheets:', err);
@@ -106,16 +110,30 @@ export function TechnicalSheetsPage() {
     }
     setIsUploading(true);
     try {
-      const { url, size, mimetype } = await sheetsApi.uploadFile(uploadFile);
-      await sheetsApi.create({
-        title: uploadTitle.trim(),
-        manufacturer: uploadManufacturer.trim(),
-        category: uploadCategory,
-        sector: uploadSector,
-        file_url: url,
-        file_size: size,
-        file_type: mimetype || uploadFile.type || 'application/pdf',
-      });
+      const sheetId = crypto.randomUUID();
+      const ext = uploadFile.name.split('.').pop() || 'pdf';
+      const filePath = `${sheetId}.${ext}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('technical-sheets')
+        .upload(filePath, uploadFile, { upsert: true });
+      if (uploadError) throw uploadError;
+
+      const { data: urlData } = supabase.storage.from('technical-sheets').getPublicUrl(filePath);
+
+      const { error: insertError } = await supabase
+        .from('technical_sheets')
+        .insert({
+          id: sheetId,
+          title: uploadTitle.trim(),
+          manufacturer: uploadManufacturer.trim(),
+          category: uploadCategory,
+          sector: uploadSector,
+          file_url: urlData.publicUrl,
+          file_size: uploadFile.size,
+          file_type: uploadFile.type || 'application/pdf',
+        });
+      if (insertError) throw insertError;
 
       showToast({ type: 'success', message: 'Fiche technique ajoutée avec succès' });
       setShowUploadModal(false);
@@ -148,17 +166,31 @@ export function TechnicalSheetsPage() {
       const file = bulkFiles[i];
       try {
         if (file.size > 50 * 1024 * 1024) { errorCount++; continue; }
+        const sheetId = crypto.randomUUID();
+        const ext = file.name.split('.').pop() || 'pdf';
+        const filePath = `${sheetId}.${ext}`;
         const title = file.name.replace(/\.[^/.]+$/, '');
-        const { url, size, mimetype } = await sheetsApi.uploadFile(file);
-        await sheetsApi.create({
-          title,
-          manufacturer: bulkManufacturer.trim(),
-          category: bulkCategory,
-          sector: bulkSector,
-          file_url: url,
-          file_size: size,
-          file_type: mimetype || file.type || 'application/pdf',
-        });
+
+        const { error: uploadError } = await supabase.storage
+          .from('technical-sheets')
+          .upload(filePath, file, { upsert: true });
+        if (uploadError) { errorCount++; continue; }
+
+        const { data: urlData } = supabase.storage.from('technical-sheets').getPublicUrl(filePath);
+
+        const { error: insertError } = await supabase
+          .from('technical_sheets')
+          .insert({
+            id: sheetId,
+            title,
+            manufacturer: bulkManufacturer.trim(),
+            category: bulkCategory,
+            sector: bulkSector,
+            file_url: urlData.publicUrl,
+            file_size: file.size,
+            file_type: file.type || 'application/pdf',
+          });
+        if (insertError) { errorCount++; continue; }
         successCount++;
       } catch {
         errorCount++;
@@ -183,7 +215,14 @@ export function TechnicalSheetsPage() {
   const handleDeleteSheet = async (sheet: TechnicalSheet) => {
     if (!confirm(`Supprimer "${sheet.title}" ?`)) return;
     try {
-      await sheetsApi.delete(sheet.id);
+      const url = new URL(sheet.file_url);
+      const pathParts = url.pathname.split('/technical-sheets/');
+      if (pathParts.length > 1) {
+        await supabase.storage.from('technical-sheets').remove([pathParts[1]]);
+      }
+      await supabase.from('technical_sheet_products').delete().eq('sheet_id', sheet.id);
+      const { error } = await supabase.from('technical_sheets').delete().eq('id', sheet.id);
+      if (error) throw error;
       showToast({ type: 'success', message: 'Fiche technique supprimée' });
       if (selectedSheet?.id === sheet.id) setSelectedSheet(null);
       fetchSheets();
@@ -217,8 +256,11 @@ export function TechnicalSheetsPage() {
     setProductSearchResults([]);
     setSelectedProductsToLink(new Set());
     try {
-      const { sheet: fullSheet } = await sheetsApi.getById(sheet.id);
-      const barcodes = ((fullSheet as any).products || []).map((l: any) => l.product_barcode);
+      const { data: links } = await supabase
+        .from('technical_sheet_products')
+        .select('product_barcode')
+        .eq('sheet_id', sheet.id);
+      const barcodes = (links || []).map((l: any) => l.product_barcode);
       const linked = state.products.filter(p => barcodes.includes(p.barcode));
       setLinkedProducts(linked);
     } catch {
@@ -248,13 +290,17 @@ export function TechnicalSheetsPage() {
   const linkSelectedProducts = async () => {
     if (!selectedSheet || selectedProductsToLink.size === 0) return;
     try {
-      const barcodes = Array.from(selectedProductsToLink);
-      await sheetsApi.linkProducts(selectedSheet.id, barcodes);
+      const inserts = Array.from(selectedProductsToLink).map(barcode => ({
+        sheet_id: selectedSheet.id,
+        product_barcode: barcode,
+      }));
+      const { error } = await supabase.from('technical_sheet_products').insert(inserts);
+      if (error) throw error;
       const newLinked = state.products.filter(p => selectedProductsToLink.has(p.barcode));
       setLinkedProducts(prev => [...prev, ...newLinked]);
       setSelectedProductsToLink(new Set());
       setProductSearchResults(prev => prev.filter(p => !selectedProductsToLink.has(p.barcode)));
-      showToast({ type: 'success', message: `${barcodes.length} produit(s) lié(s)` });
+      showToast({ type: 'success', message: `${inserts.length} produit(s) lié(s)` });
     } catch (err: any) {
       showToast({ type: 'error', message: 'Erreur lors de la liaison' });
     }
@@ -263,18 +309,27 @@ export function TechnicalSheetsPage() {
   const linkProduct = async (product: Product) => {
     if (!selectedSheet) return;
     try {
-      await sheetsApi.linkProducts(selectedSheet.id, [product.barcode]);
+      const { error } = await supabase.from('technical_sheet_products').insert({
+        sheet_id: selectedSheet.id,
+        product_barcode: product.barcode,
+      });
+      if (error) throw error;
       setLinkedProducts(prev => [...prev, product]);
       showToast({ type: 'success', message: `${product.name} lié` });
     } catch (err: any) {
-      showToast({ type: 'error', message: 'Erreur lors de la liaison' });
+      if (err?.code === '23505') {
+        showToast({ type: 'info', message: 'Déjà lié' });
+      } else {
+        showToast({ type: 'error', message: 'Erreur lors de la liaison' });
+      }
     }
   };
 
   const unlinkProduct = async (barcode: string) => {
     if (!selectedSheet) return;
     try {
-      await sheetsApi.unlinkProduct(selectedSheet.id, barcode);
+      await supabase.from('technical_sheet_products').delete()
+        .eq('sheet_id', selectedSheet.id).eq('product_barcode', barcode);
       setLinkedProducts(prev => prev.filter(p => p.barcode !== barcode));
       showToast({ type: 'success', message: 'Produit délié' });
     } catch {
@@ -304,12 +359,13 @@ export function TechnicalSheetsPage() {
       else if (shareExpiry === '7d') expiresAt = new Date(Date.now() + 7 * 86400000).toISOString();
       else if (shareExpiry === '30d') expiresAt = new Date(Date.now() + 30 * 86400000).toISOString();
 
-      await sheetsApi.createShareLink({
+      const { error } = await supabase.from('sheet_share_links').insert({
         token,
         title: shareTitle.trim() || null,
         sheet_ids: Array.from(selectedForShare),
         expires_at: expiresAt,
       });
+      if (error) throw error;
 
       const shareUrl = `${window.location.origin}/share/${token}`;
       await navigator.clipboard.writeText(shareUrl);
@@ -328,15 +384,15 @@ export function TechnicalSheetsPage() {
 
   const fetchShareLinks = async () => {
     try {
-      const { links } = await sheetsApi.getShareLinks();
-      setShareLinks((links || []) as unknown as SheetShareLink[]);
+      const { data } = await supabase.from('sheet_share_links').select('*').order('created_at', { ascending: false });
+      setShareLinks((data || []) as unknown as SheetShareLink[]);
       setShowShareLinks(true);
     } catch { /* ignore */ }
   };
 
   const deleteShareLink = async (id: string) => {
     try {
-      await sheetsApi.deleteShareLink(id);
+      await supabase.from('sheet_share_links').delete().eq('id', id);
       setShareLinks(prev => prev.filter(l => l.id !== id));
       showToast({ type: 'success', message: 'Lien supprimé' });
     } catch {

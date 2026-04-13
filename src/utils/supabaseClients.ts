@@ -1,4 +1,4 @@
-import { clientsApi } from '@/lib/apiClient';
+import { supabase } from './supabaseClient';
 
 export interface Client {
   id: string;
@@ -32,45 +32,90 @@ export interface UpdateClientRequest {
 
 export class SupabaseClientsService {
   static async getAllClients(): Promise<Client[]> {
-    const { clients } = await clientsApi.getAll();
-    return clients as Client[];
+    const { data, error } = await supabase
+      .from('clients')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
   }
 
   static async searchClients(query: string): Promise<Client[]> {
-    const { clients } = await clientsApi.search(query);
-    return clients as Client[];
+    const q = query.trim();
+    if (!q) return [];
+    const { data, error } = await supabase
+      .from('clients')
+      .select('*')
+      .or(`full_name.ilike.%${q}%,phone_number.ilike.%${q}%`)
+      .order('full_name')
+      .limit(10);
+    if (error) throw error;
+    return data || [];
+  }
+
+  static async getClientByPhone(phone: string): Promise<Client | null> {
+    const { data, error } = await supabase
+      .from('clients')
+      .select('*')
+      .eq('phone_number', phone)
+      .maybeSingle();
+    if (error) throw error;
+    return data;
   }
 
   static async upsertClient(client: CreateClientRequest): Promise<Client> {
-    const { client: c } = await clientsApi.upsert({
-      full_name: client.full_name,
-      phone_number: client.phone_number,
-      address: client.address ?? '',
-      city: client.city ?? '',
-      ice: client.ice ?? '',
-      email: client.email ?? '',
-    });
-    return c as Client;
+    const { data, error } = await supabase
+      .from('clients')
+      .upsert(
+        {
+          full_name: client.full_name,
+          phone_number: client.phone_number,
+          address: client.address || '',
+          city: client.city || '',
+          ice: client.ice || '',
+          email: client.email || '',
+        },
+        { onConflict: 'phone_number' }
+      )
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
   }
 
   static async createClient(client: CreateClientRequest): Promise<Client> {
-    const { client: c } = await clientsApi.create({
-      full_name: client.full_name,
-      phone_number: client.phone_number,
-      address: client.address ?? '',
-      city: client.city ?? '',
-      ice: client.ice ?? '',
-      email: client.email ?? '',
-    });
-    return c as Client;
+    const { data, error } = await supabase
+      .from('clients')
+      .insert({
+        full_name: client.full_name,
+        phone_number: client.phone_number,
+        address: client.address || '',
+        city: client.city || '',
+        ice: client.ice || '',
+        email: client.email || '',
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
   }
 
   static async updateClient(id: string, updates: UpdateClientRequest): Promise<Client> {
-    const { client: c } = await clientsApi.update(id, updates);
-    return c as Client;
+    const { data, error } = await supabase
+      .from('clients')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
   }
 
   static async deleteClient(id: string): Promise<void> {
-    await clientsApi.delete(id);
+    const { error } = await supabase
+      .from('clients')
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
   }
 }

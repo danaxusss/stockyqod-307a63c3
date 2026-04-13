@@ -7,7 +7,7 @@ import { useToast } from '../context/ToastContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 import UserManagementPage from './UserManagementPage';
-import { productsApi, overridesApi } from '@/lib/apiClient';
+import { supabase } from '@/integrations/supabase/client';
 
 const FIELD_LABELS: Record<keyof QuoteVisibleFields, string> = {
   showLogo: 'Logo de l\'entreprise',
@@ -466,14 +466,15 @@ function ProductSettingsTab() {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [{ brands }, { providers }, { overrides: ov }] = await Promise.all([
-        productsApi.getBrands(),
-        productsApi.getProviders(),
-        overridesApi.getAll(),
-      ]);
-      setBrands(brands);
-      setProviders(providers);
-      setOverrides(ov as any[]);
+      // Load unique brands and providers from products
+      const { data: products } = await supabase.from('products').select('brand, provider');
+      if (products) {
+        setBrands([...new Set(products.map(p => p.brand).filter(Boolean))].sort());
+        setProviders([...new Set(products.map(p => p.provider).filter(Boolean))].sort());
+      }
+      // Load existing overrides
+      const { data: ov } = await supabase.from('product_name_overrides').select('*');
+      if (ov) setOverrides(ov);
     } catch { /* ignore */ }
     setIsLoading(false);
   };
@@ -510,18 +511,22 @@ function ProductSettingsTab() {
       const existingOverride = getOverrideForCurrent(type, currentName);
       const originalName = existingOverride?.original_name || currentName;
 
-      const field: 'brand' | 'provider' = type === 'brand' ? 'brand' : 'provider';
       if (newName === originalName) {
-        // Reverting to original — remove override and update products
+        // Reverting to original — remove override
         if (existingOverride) {
-          await overridesApi.revert({ id: existingOverride.id, field, custom_name: currentName, original_name: originalName });
-        } else {
-          await overridesApi.apply({ field, current_name: currentName, new_name: originalName });
+          await supabase.from('product_name_overrides').delete().eq('id', existingOverride.id);
         }
+        const field = type === 'brand' ? 'brand' : 'provider';
+        await supabase.from('products').update({ [field]: originalName }).eq(field, currentName);
       } else if (newName !== currentName) {
-        // Upsert override with original → new mapping, then update products
-        await overridesApi.upsert({ type, original_name: originalName, custom_name: newName });
-        await overridesApi.apply({ field, current_name: currentName, new_name: newName });
+        // Upsert override with original → new mapping
+        await (supabase.from('product_name_overrides') as any).upsert({
+          type,
+          original_name: originalName,
+          custom_name: newName,
+        }, { onConflict: 'type,original_name' });
+        const field = type === 'brand' ? 'brand' : 'provider';
+        await supabase.from('products').update({ [field]: newName }).eq(field, currentName);
       }
 
       showToast({ type: 'success', message: 'Nom mis à jour' });
@@ -537,8 +542,9 @@ function ProductSettingsTab() {
     const existing = getOverrideForCurrent(type, currentName);
     if (!existing) return;
     try {
-      const field: 'brand' | 'provider' = type === 'brand' ? 'brand' : 'provider';
-      await overridesApi.revert({ id: existing.id, field, custom_name: currentName, original_name: existing.original_name });
+      const field = type === 'brand' ? 'brand' : 'provider';
+      await supabase.from('products').update({ [field]: existing.original_name }).eq(field, currentName);
+      await supabase.from('product_name_overrides').delete().eq('id', existing.id);
       showToast({ type: 'success', message: 'Nom restauré' });
       await loadData();
     } catch {

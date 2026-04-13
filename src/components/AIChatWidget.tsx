@@ -5,9 +5,10 @@ import { useQuoteCart } from '../hooks/useQuoteCart';
 import { useAuth } from '../hooks/useAuth';
 import { Product } from '../types';
 import ReactMarkdown from 'react-markdown';
-import { AI_CHAT_URL } from '@/lib/apiClient';
 
 type Msg = { role: 'user' | 'assistant'; content: string };
+
+const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-product-suggest`;
 
 async function streamChat({
   messages,
@@ -20,10 +21,11 @@ async function streamChat({
   onDone: () => void;
   onError: (err: string) => void;
 }) {
-  const resp = await fetch(AI_CHAT_URL, {
+  const resp = await fetch(CHAT_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
     },
     body: JSON.stringify({ messages }),
   });
