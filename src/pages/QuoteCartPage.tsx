@@ -43,6 +43,7 @@ import { useToast } from '../context/ToastContext';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { useProductOverrides } from '../hooks/useProductOverrides';
+import { applyQuoteItemDisplayOverride, getQuoteItemBarcode, getQuoteItemBrand, getQuoteItemName } from '../utils/quoteItemDisplay';
 import { buildWhatsAppShareUrl, openPreparingWhatsAppWindow, redirectPreparingWindowToWhatsApp, openWhatsAppShare } from '../utils/whatsappShare';
 
 const ITEMS_PER_PAGE = 40;
@@ -507,6 +508,19 @@ export function QuoteCartPage() {
           discount: newDiscount, 
           subtotal: discountedPrice * item.quantity 
         };
+      })
+    );
+  };
+
+  const updateItemDisplayField = (
+    itemId: string,
+    field: 'quoteName' | 'quoteBrand' | 'quoteBarcode',
+    value: string,
+  ) => {
+    setItems(prevItems =>
+      prevItems.map(item => {
+        if (item.id !== itemId) return item;
+        return applyQuoteItemDisplayOverride(item, field, value);
       })
     );
   };
@@ -1132,7 +1146,7 @@ export function QuoteCartPage() {
                       N°
                     </th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Nom du Produit
+                      Produit
                     </th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                       Marge %
@@ -1161,16 +1175,32 @@ export function QuoteCartPage() {
                         {startIndex + index + 1}
                       </td>
                       <td className="px-4 py-4">
-                        <div>
-                          <div className="text-sm font-medium text-foreground">
-                            {item.product.name}
-                          </div>
-                          <div className="text-sm text-muted-foreground">
-                            {item.product.brand}
-                            {getOriginalName('brand', item.product.brand) && (
-                              <span className="text-[10px] ml-1">(ex: {getOriginalName('brand', item.product.brand)})</span>
-                            )}
-                            {' '}• #{item.product.barcode}
+                        <div className="min-w-[18rem] space-y-2">
+                          <input
+                            type="text"
+                            value={getQuoteItemName(item)}
+                            onChange={(e) => updateItemDisplayField(item.id, 'quoteName', e.target.value)}
+                            className="w-full px-2 py-1 text-sm font-medium border border-input rounded bg-secondary text-foreground focus:ring-2 focus:ring-ring"
+                            placeholder="Nom du produit"
+                            aria-label="Nom du produit"
+                          />
+                          <div className="grid grid-cols-2 gap-2">
+                            <input
+                              type="text"
+                              value={getQuoteItemBrand(item)}
+                              onChange={(e) => updateItemDisplayField(item.id, 'quoteBrand', e.target.value)}
+                              className="w-full px-2 py-1 text-sm border border-input rounded bg-secondary text-foreground focus:ring-2 focus:ring-ring"
+                              placeholder="Marque"
+                              aria-label="Marque du produit"
+                            />
+                            <input
+                              type="text"
+                              value={getQuoteItemBarcode(item)}
+                              onChange={(e) => updateItemDisplayField(item.id, 'quoteBarcode', e.target.value)}
+                              className="w-full px-2 py-1 text-sm border border-input rounded bg-secondary text-foreground focus:ring-2 focus:ring-ring"
+                              placeholder="Code"
+                              aria-label="Code du produit"
+                            />
                           </div>
                         </div>
                       </td>

@@ -3,6 +3,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Quote } from '../types';
 import { CompanySettings, QuoteStyle } from './companySettings';
+import { getQuoteItemBarcode, getQuoteItemBrand, getQuoteItemName } from './quoteItemDisplay';
 
 function hexToRgb(hex: string): [number, number, number] {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
@@ -364,9 +365,9 @@ export class PdfExportService {
       const discountedPriceHT = unitPriceHT * (1 - discount / 100);
       const totalHTItem = discountedPriceHT * item.quantity;
       const row = [
-        item.product.brand || '',
-        item.product.barcode || '',
-        item.product.name,
+        getQuoteItemBrand(item) || '',
+        getQuoteItemBarcode(item) || '',
+        getQuoteItemName(item),
         String(item.quantity),
         this.formatCurrency(unitPriceHT),
       ];

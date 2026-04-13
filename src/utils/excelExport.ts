@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { Quote, QuoteItem, QuoteTemplate } from '../types';
 import * as ExcelJS from 'exceljs';
+import { getQuoteItemBarcode, getQuoteItemBrand, getQuoteItemName } from './quoteItemDisplay';
 
 export class ExcelExportService {
   // Generate quote number in format QT-YYYYMMDD-XXXX
@@ -293,9 +294,9 @@ export class ExcelExportService {
     // Populate items starting from row 8 (after header row 7)
     items.forEach((item, index) => {
       const rowIndex = 8 + index;
-      worksheet.getCell(`A${rowIndex}`).value = item.product.brand; // Brand
-      worksheet.getCell(`B${rowIndex}`).value = item.product.barcode; // BARCODE
-      worksheet.getCell(`C${rowIndex}`).value = item.product.name; // TITLE
+      worksheet.getCell(`A${rowIndex}`).value = getQuoteItemBrand(item); // Brand
+      worksheet.getCell(`B${rowIndex}`).value = getQuoteItemBarcode(item); // BARCODE
+      worksheet.getCell(`C${rowIndex}`).value = getQuoteItemName(item); // TITLE
       worksheet.getCell(`D${rowIndex}`).value = item.quantity; // QTE
       const unitPriceHT = item.unitPrice / 1.20;
       const discount = item.discount ?? 0;
@@ -339,9 +340,9 @@ export class ExcelExportService {
     // Add data
     items.forEach(item => {
       worksheet.addRow({
-        brand: item.product.brand,
-        barcode: item.product.barcode,
-        name: item.product.name,
+        brand: getQuoteItemBrand(item),
+        barcode: getQuoteItemBarcode(item),
+        name: getQuoteItemName(item),
         quantity: item.quantity,
         unitPrice: item.unitPrice,
         subtotal: item.subtotal
@@ -375,7 +376,7 @@ export class ExcelExportService {
   static generateCopyText(items: QuoteItem[]): string {
     const header = 'Marque\tCode-barres\tNom du produit\tQuantité\tPrix unitaire\tSous-total';
     const rows = items.map(item => 
-      `${item.product.brand}\t${item.product.barcode}\t${item.product.name}\t${item.quantity}\t${item.unitPrice.toFixed(2)}\t${item.subtotal.toFixed(2)}`
+      `${getQuoteItemBrand(item)}\t${getQuoteItemBarcode(item)}\t${getQuoteItemName(item)}\t${item.quantity}\t${item.unitPrice.toFixed(2)}\t${item.subtotal.toFixed(2)}`
     );
     
     return [header, ...rows].join('\n');
