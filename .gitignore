@@ -12,6 +12,19 @@ dist
 dist-ssr
 *.local
 
+# Environment
+.env.local
+.env.production
+
+# Server build output
+server-dist/
+
+# Uploaded files (keep directory structure via .gitkeep)
+uploads/logos/*
+uploads/sheets/*
+!uploads/logos/.gitkeep
+!uploads/sheets/.gitkeep
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

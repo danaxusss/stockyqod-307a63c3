@@ -41,7 +41,7 @@ import { useQuoteCart } from '../hooks/useQuoteCart';
 import { searchProductsLocally } from '../hooks/useSearchState';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../hooks/useAuth';
-import { supabase } from '@/integrations/supabase/client';
+import { sheetsApi } from '@/lib/apiClient';
 import { useProductOverrides } from '../hooks/useProductOverrides';
 import { buildWhatsAppShareUrl, openPreparingWhatsAppWindow, redirectPreparingWindowToWhatsApp, openWhatsAppShare } from '../utils/whatsappShare';
 
@@ -194,12 +194,8 @@ export function QuoteCartPage() {
       const barcodes = items.map(i => i.product.barcode).filter(Boolean);
       if (barcodes.length === 0) { setLinkedSheetIds([]); setAttachTechSheets(false); return; }
       try {
-        const { data } = await supabase
-          .from('technical_sheet_products')
-          .select('sheet_id')
-          .in('product_barcode', barcodes);
-        const uniqueIds = [...new Set((data || []).map(r => r.sheet_id))];
-        setLinkedSheetIds(uniqueIds);
+        const { sheet_ids } = await sheetsApi.getByProducts(barcodes);
+        setLinkedSheetIds(sheet_ids);
         setAttachTechSheets(uniqueIds.length > 0);
       } catch { setLinkedSheetIds([]); }
     };
@@ -307,15 +303,8 @@ export function QuoteCartPage() {
       if (searchResults.length === 0) { setSearchSheetCounts({}); return; }
       const barcodes = searchResults.map(p => p.barcode);
       try {
-        const { data } = await supabase
-          .from('technical_sheet_products')
-          .select('product_barcode')
-          .in('product_barcode', barcodes);
-        const counts: Record<string, number> = {};
-        (data || []).forEach((row: any) => {
-          counts[row.product_barcode] = (counts[row.product_barcode] || 0) + 1;
-        });
-        setSearchSheetCounts(counts);
+        const { product_sheet_counts } = await sheetsApi.getByProducts(barcodes);
+        setSearchSheetCounts(product_sheet_counts);
       } catch { setSearchSheetCounts({}); }
     };
     loadSearchSheetCounts();
@@ -715,7 +704,7 @@ export function QuoteCartPage() {
       if (attachTechSheets && linkedSheetIds.length > 0) {
         const token = crypto.randomUUID();
         const expiresAt = techSheetsExpiry === 'never' ? null : new Date(Date.now() + parseInt(techSheetsExpiry) * 86400000).toISOString();
-        await supabase.from('sheet_share_links').insert({
+        await sheetsApi.createShareLink({
           token,
           sheet_ids: linkedSheetIds,
           title: `Devis ${quoteNumber}`,

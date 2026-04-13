@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Package, Search, Edit, Check, X, Loader, SortAsc, SortDesc, ChevronLeft, ChevronRight, Filter, Paperclip, ShoppingCart } from 'lucide-react';
 import { Product } from '../types';
 import { useAppContext } from '../context/AppContext';
-import { supabase } from '../integrations/supabase/client';
+import { sheetsApi, productsApi } from '@/lib/apiClient';
 import { useToast } from '../context/ToastContext';
 import { useQuoteCart } from '../hooks/useQuoteCart';
 import { useAuth } from '../hooks/useAuth';
@@ -38,14 +38,8 @@ export default function ProductsPage() {
   useEffect(() => {
     const fetchSheetCounts = async () => {
       try {
-        const { data } = await supabase.from('technical_sheet_products').select('product_barcode');
-        if (data) {
-          const counts: Record<string, number> = {};
-          data.forEach((row: any) => {
-            counts[row.product_barcode] = (counts[row.product_barcode] || 0) + 1;
-          });
-          setSheetCounts(counts);
-        }
+        const { counts } = await sheetsApi.getSheetCounts();
+        setSheetCounts(counts);
       } catch { /* ignore */ }
     };
     fetchSheetCounts();
@@ -98,14 +92,13 @@ export default function ProductsPage() {
   const saveEdit = async (barcode: string) => {
     setIsSaving(true);
     try {
-      const { error } = await supabase.from('products').update({
+      await productsApi.update(barcode, {
         name: editForm.name,
         price: editForm.price,
         buyprice: editForm.buyprice,
         reseller_price: editForm.reseller_price,
         provider: editForm.provider,
-      }).eq('barcode', barcode);
-      if (error) throw error;
+      });
       showToast({ type: 'success', message: 'Produit mis à jour' });
       setEditingBarcode(null);
       window.location.reload();

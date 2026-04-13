@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { overridesApi } from '@/lib/apiClient';
 
 type OverrideType = 'brand' | 'provider';
 
@@ -17,9 +17,7 @@ export function useProductOverrides() {
   useEffect(() => {
     const load = async () => {
       try {
-        const { data } = await supabase
-          .from('product_name_overrides')
-          .select('type, original_name, custom_name');
+        const { overrides: data } = await overridesApi.getAll();
         setOverrides((data as Override[]) || []);
       } catch {
         setOverrides([]);

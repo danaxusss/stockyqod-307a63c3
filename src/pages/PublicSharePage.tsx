@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { FileText, Download, Eye, Calendar, AlertCircle, Loader, X } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { sheetsApi } from '@/lib/apiClient';
 import { TechnicalSheet, SheetShareLink } from '../types';
 
 export function PublicSharePage() {
@@ -16,35 +16,19 @@ export function PublicSharePage() {
     const load = async () => {
       if (!token) { setError('Lien invalide'); setLoading(false); return; }
       try {
-        const { data: linkData, error: linkError } = await supabase
-          .from('sheet_share_links')
-          .select('*')
-          .eq('token', token)
-          .single();
-
-        if (linkError || !linkData) { setError('Lien de partage introuvable'); setLoading(false); return; }
-
-        const link = linkData as unknown as SheetShareLink;
-
-        if (link.expires_at && new Date(link.expires_at) < new Date()) {
+        const { link, sheets: sheetsData } = await sheetsApi.getShareByToken(token);
+        setShareLink(link as unknown as SheetShareLink);
+        setSheets((sheetsData || []) as unknown as TechnicalSheet[]);
+      } catch (err: any) {
+        const msg = err?.message || '';
+        if (msg.includes('410') || msg.toLowerCase().includes('expired')) {
           setError('Ce lien de partage a expiré');
-          setLoading(false);
-          return;
+        } else if (msg.includes('404') || msg.toLowerCase().includes('not found')) {
+          setError('Lien de partage introuvable');
+        } else {
+          console.error('Error loading share:', err);
+          setError('Erreur lors du chargement');
         }
-
-        setShareLink(link);
-        await supabase.from('sheet_share_links').update({ view_count: (link.view_count || 0) + 1 }).eq('id', link.id);
-
-        if (link.sheet_ids.length > 0) {
-          const { data: sheetsData } = await supabase
-            .from('technical_sheets')
-            .select('*')
-            .in('id', link.sheet_ids);
-          setSheets((sheetsData || []) as unknown as TechnicalSheet[]);
-        }
-      } catch (err) {
-        console.error('Error loading share:', err);
-        setError('Erreur lors du chargement');
       } finally {
         setLoading(false);
       }
@@ -59,7 +43,7 @@ export function PublicSharePage() {
   };
 
   const handleDownload = async (sheet: TechnicalSheet) => {
-    await supabase.from('technical_sheets').update({ download_count: (sheet.download_count || 0) + 1 }).eq('id', sheet.id);
+    sheetsApi.incrementDownload(sheet.id).catch(() => {});
     try {
       const response = await fetch(sheet.file_url);
       const blob = await response.blob();

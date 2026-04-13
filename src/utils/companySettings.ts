@@ -1,4 +1,4 @@
-import { supabase } from '@/integrations/supabase/client';
+import { settingsApi } from '@/lib/apiClient';
 
 export interface QuoteVisibleFields {
   showLogo: boolean;
@@ -39,47 +39,23 @@ export interface ShareTemplates {
 }
 
 export const DEFAULT_SHARE_TEMPLATES: ShareTemplates = {
-  whatsapp: `Bonjour {client},
-
-Voici le récapitulatif de votre devis {entreprise}.
-
-📋 Devis N° : {numero}
-💰 Montant HT : {montant_ht} Dh
-💰 Montant TTC : {montant_ttc} Dh
-📦 Articles : {nb_articles}
-
-N'hésitez pas à nous contacter pour plus d'informations.
-
-Cordialement,
-{entreprise}
-📞 {telephone}
-✉️ {email}`,
+  whatsapp: `Bonjour {client},\n\nVoici le récapitulatif de votre devis {entreprise}.\n\n📋 Devis N° : {numero}\n💰 Montant HT : {montant_ht} Dh\n💰 Montant TTC : {montant_ttc} Dh\n📦 Articles : {nb_articles}\n\nN'hésitez pas à nous contacter pour plus d'informations.\n\nCordialement,\n{entreprise}\n📞 {telephone}\n✉️ {email}`,
   email_subject: `Devis {entreprise} - {numero}`,
-  email_body: `Bonjour {client},
+  email_body: `Bonjour {client},\n\nVeuillez trouver ci-dessous le récapitulatif de votre devis {entreprise}.`,
+};
 
-Veuillez trouver ci-dessous le récapitulatif de votre devis {entreprise}.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-  DEVIS N° {numero}
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  Montant HT :    {montant_ht} Dh
-  TVA ({tva}%) :     {montant_tva} Dh
-  ────────────────────────
-  TOTAL TTC :     {montant_ttc} Dh
-
-  Articles :      {nb_articles}
-  Date :          {date}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-N'hésitez pas à nous contacter si vous avez des questions.
-
-Cordialement,
-{entreprise}
-Tél : {telephone}
-Email : {email}
-{adresse}`,
+const DEFAULT_VISIBLE_FIELDS: QuoteVisibleFields = {
+  showLogo: true,
+  showCompanyAddress: true,
+  showCompanyPhone: true,
+  showCompanyEmail: true,
+  showCompanyWebsite: false,
+  showCompanyICE: true,
+  showClientICE: true,
+  showTVA: true,
+  showNotes: true,
+  showPaymentTerms: true,
+  showValidityDate: true,
 };
 
 export interface CompanySettings {
@@ -108,109 +84,52 @@ export interface CompanySettings {
   updated_at: string;
 }
 
-const DEFAULT_VISIBLE_FIELDS: QuoteVisibleFields = {
-  showLogo: true,
-  showCompanyAddress: true,
-  showCompanyPhone: true,
-  showCompanyEmail: true,
-  showCompanyWebsite: false,
-  showCompanyICE: true,
-  showClientICE: true,
-  showTVA: true,
-  showNotes: true,
-  showPaymentTerms: true,
-  showValidityDate: true,
-};
+function mapSettings(data: Record<string, unknown>): CompanySettings {
+  const rawStyle = (data.quote_style as Record<string, unknown>) ?? {};
+  const { share_templates: rawShareTemplates, ...styleOnly } = rawStyle as any;
+  return {
+    ...data,
+    logo_size: (data.logo_size as CompanySettings['logo_size']) ?? 'medium',
+    rc: (data.rc as string) ?? '',
+    if_number: (data.if_number as string) ?? '',
+    cnss: (data.cnss as string) ?? '',
+    patente: (data.patente as string) ?? '',
+    phone2: (data.phone2 as string) ?? '',
+    phone_dir: (data.phone_dir as string) ?? '',
+    phone_gsm: (data.phone_gsm as string) ?? '',
+    quote_visible_fields: { ...DEFAULT_VISIBLE_FIELDS, ...((data.quote_visible_fields as Record<string, boolean>) ?? {}) },
+    quote_style: { ...DEFAULT_QUOTE_STYLE, ...styleOnly },
+    share_templates: { ...DEFAULT_SHARE_TEMPLATES, ...(rawShareTemplates ?? {}) },
+    tva_rate: Number(data.tva_rate ?? 20),
+  } as CompanySettings;
+}
 
 export class CompanySettingsService {
   static async getSettings(): Promise<CompanySettings | null> {
-    const { data, error } = await supabase
-      .from('company_settings')
-      .select('*')
-      .limit(1)
-      .single();
-
-    if (error || !data) return null;
-
-    const rawStyle = data.quote_style as Record<string, unknown> || {};
-    const { share_templates: rawShareTemplates, ...styleOnly } = rawStyle as any;
-
-    return {
-      ...data,
-      logo_size: (data as any).logo_size || 'medium',
-      rc: (data as any).rc || '',
-      if_number: (data as any).if_number || '',
-      cnss: (data as any).cnss || '',
-      patente: (data as any).patente || '',
-      phone2: (data as any).phone2 || '',
-      phone_dir: (data as any).phone_dir || '',
-      phone_gsm: (data as any).phone_gsm || '',
-      quote_visible_fields: {
-        ...DEFAULT_VISIBLE_FIELDS,
-        ...(data.quote_visible_fields as Record<string, boolean>),
-      },
-      quote_style: {
-        ...DEFAULT_QUOTE_STYLE,
-        ...styleOnly,
-      },
-      share_templates: {
-        ...DEFAULT_SHARE_TEMPLATES,
-        ...(rawShareTemplates || {}),
-      },
-    } as CompanySettings;
+    try {
+      const { settings } = await settingsApi.get();
+      if (!settings) return null;
+      return mapSettings(settings as Record<string, unknown>);
+    } catch {
+      return null;
+    }
   }
 
   static async updateSettings(settings: Partial<CompanySettings>): Promise<void> {
-    const current = await this.getSettings();
-    if (!current) throw new Error('No settings found');
-
-    const updateData: Record<string, unknown> = {
-      ...settings,
-      updated_at: new Date().toISOString(),
-    };
-    if (settings.quote_visible_fields) {
-      updateData.quote_visible_fields = settings.quote_visible_fields as unknown as Record<string, boolean>;
-    }
+    const payload: Record<string, unknown> = { ...settings };
+    // Merge quote_style and share_templates into the quote_style JSON column
     if (settings.quote_style || settings.share_templates) {
-      const mergedStyle: Record<string, unknown> = {
-        ...(settings.quote_style || {}),
-        share_templates: settings.share_templates || undefined,
-      };
-      updateData.quote_style = mergedStyle;
-      delete updateData.share_templates;
+      payload.quote_style = { ...(settings.quote_style ?? {}), share_templates: settings.share_templates };
+      delete payload.share_templates;
     }
-
-    const { error } = await supabase
-      .from('company_settings')
-      .update(updateData as any)
-      .eq('id', current.id);
-
-    if (error) throw error;
+    await settingsApi.update(payload);
   }
 
   static async uploadLogo(file: File): Promise<string> {
-    const ext = file.name.split('.').pop();
-    const path = `logo.${ext}`;
-
-    await supabase.storage.from('company-assets').remove([path]);
-
-    const { error } = await supabase.storage
-      .from('company-assets')
-      .upload(path, file, { upsert: true });
-
-    if (error) throw error;
-
-    const { data } = supabase.storage
-      .from('company-assets')
-      .getPublicUrl(path);
-
-    // Add cache-busting timestamp to prevent browser from serving stale cached logo
-    return `${data.publicUrl}?t=${Date.now()}`;
+    return settingsApi.uploadLogo(file);
   }
 
   static async deleteLogo(): Promise<void> {
-    await supabase.storage
-      .from('company-assets')
-      .remove(['logo.png', 'logo.jpg', 'logo.jpeg', 'logo.webp', 'logo.svg']);
+    await settingsApi.update({ logo_url: null });
   }
 }
