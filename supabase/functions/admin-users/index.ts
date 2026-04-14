@@ -1,6 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
-import * as bcrypt from "https://deno.land/x/bcrypt@v0.4.1/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -41,13 +40,9 @@ async function verifyPin(pin: string, stored: string): Promise<boolean> {
     const derivedHex = [...new Uint8Array(derived)].map(b => b.toString(16).padStart(2, "0")).join("");
     return derivedHex === hashHex;
   }
-  if (stored.startsWith("$2")) {
-    try {
-      return await bcrypt.compare(pin, stored);
-    } catch {
-      return false;
-    }
-  }
+  // bcrypt hashes ($2...) — verify-pin auto-migrates these to PBKDF2 on login,
+  // so this path should not occur after first login. Treat as plain text fallback.
+  if (stored.startsWith("$2")) return false;
   return stored === pin;
 }
 
@@ -67,20 +62,23 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Validate inputs
     if (!action || typeof action !== "string") {
       return jsonResponse({ error: "action is required" }, 400);
     }
 
-    // check_username is read-only — only require that admin_username maps to a superadmin
+    // check_username is a read-only lookup — no PIN required, just verify admin_username is superadmin
     if (action === "check_username") {
       const { username, exclude_id } = payload;
       if (!username) return jsonResponse({ error: "username required" }, 400);
+      // Optional auth: if admin_username provided, verify they are superadmin
       if (admin_username) {
-        const { data: adminCheck } = await supabase
-          .from("app_users").select("is_superadmin").eq("username", admin_username).maybeSingle();
-        if (!adminCheck?.is_superadmin) {
-          return jsonResponse({ error: "Unauthorized: superadmin access required" }, 403);
+        const { data: adminCheck, error: adminCheckErr } = await supabase
+          .from("app_users")
+          .select("is_superadmin")
+          .eq("username", admin_username)
+          .maybeSingle();
+        if (adminCheckErr || !adminCheck?.is_superadmin) {
+          return jsonResponse({ error: "Unauthorized" }, 403);
         }
       }
       let query = supabase.from("app_users").select("id").eq("username", username);
@@ -90,11 +88,12 @@ serve(async (req) => {
       return jsonResponse({ available: !data || data.length === 0 });
     }
 
+    // All mutating actions require admin_username + admin_pin
     if (!admin_username || !admin_pin) {
-      return jsonResponse({ error: "admin_username and admin_pin are required for authentication" }, 401);
+      return jsonResponse({ error: "admin_username and admin_pin are required" }, 401);
     }
 
-    // Verify admin credentials
+    // Verify superadmin credentials
     const { data: adminUser, error: adminErr } = await supabase
       .from("app_users")
       .select("*")
@@ -107,10 +106,10 @@ serve(async (req) => {
 
     const isValidPin = await verifyPin(admin_pin, adminUser.pin);
     if (!isValidPin) {
-      return jsonResponse({ error: "Unauthorized: invalid admin credentials" }, 403);
+      return jsonResponse({ error: "Unauthorized: invalid credentials" }, 403);
     }
 
-    // === CRUD operations ===
+    // === CRUD ===
 
     if (action === "create_user") {
       const { username, pin: newPin, is_admin, is_superadmin, company_id, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name } = payload;
@@ -193,7 +192,6 @@ serve(async (req) => {
     if (action === "delete_user") {
       const { user_id } = payload;
       if (!user_id) return jsonResponse({ error: "user_id required" }, 400);
-
       const { error } = await supabase.from("app_users").delete().eq("id", user_id);
       if (error) return jsonResponse({ error: error.message }, 500);
       return jsonResponse({ success: true });
