@@ -118,12 +118,8 @@ export default function UserManagementPage() {
     if (!validateForm()) return;
     setIsSubmitting(true);
     try {
-      try {
-        const isAvailable = await SupabaseUsersService.isUsernameAvailable(formData.username);
-        if (!isAvailable) { setValidationErrors(["Ce nom d'utilisateur est déjà pris"]); return; }
-      } catch {
-        // Username check failed — proceed; DB unique constraint will catch duplicates
-      }
+      const isAvailable = await SupabaseUsersService.isUsernameAvailable(formData.username);
+      if (!isAvailable) { setValidationErrors(["Ce nom d'utilisateur est déjà pris"]); return; }
 
       const userData: CreateAppUserRequest = {
         username: formData.username.trim(),
@@ -177,12 +173,8 @@ export default function UserManagementPage() {
     setIsSubmitting(true);
     try {
       if (formData.username !== editingUser.username) {
-        try {
-          const isAvailable = await SupabaseUsersService.isUsernameAvailable(formData.username, editingUser.id);
-          if (!isAvailable) { setValidationErrors(["Ce nom d'utilisateur est déjà pris"]); return; }
-        } catch {
-          // Username check failed — proceed; DB unique constraint will catch duplicates
-        }
+        const isAvailable = await SupabaseUsersService.isUsernameAvailable(formData.username, editingUser.id);
+        if (!isAvailable) { setValidationErrors(["Ce nom d'utilisateur est déjà pris"]); return; }
       }
 
       const updates: UpdateAppUserRequest = {

@@ -16,31 +16,32 @@ type SafeAppUserRow = {
   updated_at: string;
 };
 
-function getAdminUserId(): string | null {
-  // Try inventory_current_user first (set by useAuth on every login path)
-  for (const key of ['inventory_current_user', 'inventory_authenticated_user']) {
-    try {
-      const stored = localStorage.getItem(key);
-      if (stored) {
-        const user = JSON.parse(stored);
-        if (user?.id) return user.id;
-      }
-    } catch { /* ignore */ }
-  }
-  return null;
+// Hash a PIN client-side using the same PBKDF2 algorithm as verify-pin edge function
+async function hashPin(pin: string): Promise<string> {
+  const ITERATIONS = 100000;
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const key = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveBits']
+  );
+  const derived = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt, iterations: ITERATIONS, hash: 'SHA-256' },
+    key, 256
+  );
+  const saltHex = [...salt].map(b => b.toString(16).padStart(2, '0')).join('');
+  const hashHex = [...new Uint8Array(derived)].map(b => b.toString(16).padStart(2, '0')).join('');
+  return `pbkdf2:${ITERATIONS}:${saltHex}:${hashHex}`;
 }
 
 export class SupabaseUsersService {
   static async createUser(userData: CreateAppUserRequest): Promise<AppUser> {
-    const adminId = getAdminUserId();
-    if (!adminId) throw new Error('Authentification requise — veuillez vous reconnecter');
+    if (!userData.pin) throw new Error('PIN requis');
+    const hashedPin = await hashPin(userData.pin);
 
-    const { data, error } = await supabase.functions.invoke('admin-users', {
-      body: {
-        action: 'create_user',
-        admin_user_id: adminId,
-        username: userData.username,
-        pin: userData.pin,
+    const { data, error } = await supabase
+      .from('app_users')
+      .insert({
+        username: userData.username.trim(),
+        pin: hashedPin,
         is_admin: userData.is_admin || false,
         is_superadmin: userData.is_superadmin || false,
         company_id: userData.company_id || null,
@@ -49,12 +50,15 @@ export class SupabaseUsersService {
         allowed_brands: userData.allowed_brands || [],
         price_display_type: userData.price_display_type || 'normal',
         custom_seller_name: userData.custom_seller_name || '',
-      }
-    });
+      })
+      .select('id, username, is_admin, is_superadmin, company_id, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, created_at, updated_at')
+      .single();
 
-    if (error) throw new Error(`Failed to create user: ${error.message}`);
-    if (!data?.success) throw new Error(data?.error || 'Failed to create user');
-    return this.mapRow(data.user as SafeAppUserRow);
+    if (error) {
+      if (error.code === '23505') throw new Error("Ce nom d'utilisateur existe déjà");
+      throw new Error(error.message);
+    }
+    return this.mapRow(data as SafeAppUserRow);
   }
 
   static async getUserByUsername(username: string): Promise<AppUser | null> {
@@ -84,96 +88,68 @@ export class SupabaseUsersService {
   }
 
   static async updateUser(id: string, updates: UpdateAppUserRequest): Promise<AppUser> {
-    const adminId = getAdminUserId();
-    if (!adminId) throw new Error('Authentification requise — veuillez vous reconnecter');
+    const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
-    const { data, error } = await supabase.functions.invoke('admin-users', {
-      body: {
-        action: 'update_user',
-        admin_user_id: adminId,
-        user_id: id,
-        ...(updates.username !== undefined && { username: updates.username }),
-        ...(updates.pin !== undefined && { pin: updates.pin }),
-        ...(updates.is_admin !== undefined && { is_admin: updates.is_admin }),
-        ...(updates.is_superadmin !== undefined && { is_superadmin: updates.is_superadmin }),
-        ...(updates.company_id !== undefined && { company_id: updates.company_id }),
-        ...(updates.can_create_quote !== undefined && { can_create_quote: updates.can_create_quote }),
-        ...(updates.allowed_stock_locations !== undefined && { allowed_stock_locations: updates.allowed_stock_locations }),
-        ...(updates.allowed_brands !== undefined && { allowed_brands: updates.allowed_brands }),
-        ...(updates.price_display_type !== undefined && { price_display_type: updates.price_display_type }),
-        ...(updates.custom_seller_name !== undefined && { custom_seller_name: updates.custom_seller_name }),
-      }
-    });
+    if (updates.username !== undefined) updateData.username = updates.username.trim();
+    if (updates.pin !== undefined) updateData.pin = await hashPin(updates.pin);
+    if (updates.is_admin !== undefined) updateData.is_admin = updates.is_admin;
+    if (updates.is_superadmin !== undefined) updateData.is_superadmin = updates.is_superadmin;
+    if (updates.company_id !== undefined) updateData.company_id = updates.company_id || null;
+    if (updates.can_create_quote !== undefined) updateData.can_create_quote = updates.can_create_quote;
+    if (updates.allowed_stock_locations !== undefined) updateData.allowed_stock_locations = updates.allowed_stock_locations;
+    if (updates.allowed_brands !== undefined) updateData.allowed_brands = updates.allowed_brands;
+    if (updates.price_display_type !== undefined) updateData.price_display_type = updates.price_display_type;
+    if (updates.custom_seller_name !== undefined) updateData.custom_seller_name = updates.custom_seller_name;
 
-    if (error) throw new Error(`Failed to update user: ${error.message}`);
-    if (!data?.success) throw new Error(data?.error || 'Failed to update user');
-    return this.mapRow(data.user as SafeAppUserRow);
+    const { data, error } = await supabase
+      .from('app_users')
+      .update(updateData)
+      .eq('id', id)
+      .select('id, username, is_admin, is_superadmin, company_id, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, created_at, updated_at')
+      .single();
+
+    if (error) {
+      if (error.code === '23505') throw new Error("Ce nom d'utilisateur existe déjà");
+      throw new Error(error.message);
+    }
+    return this.mapRow(data as SafeAppUserRow);
   }
 
   static async deleteUser(id: string): Promise<void> {
-    const adminId = getAdminUserId();
-    if (!adminId) throw new Error('Authentification requise — veuillez vous reconnecter');
+    const { error } = await supabase.from('app_users').delete().eq('id', id);
+    if (error) throw new Error(error.message);
+  }
 
-    const { data, error } = await supabase.functions.invoke('admin-users', {
-      body: { action: 'delete_user', admin_user_id: adminId, user_id: id }
-    });
-
-    if (error) throw new Error(`Failed to delete user: ${error.message}`);
-    if (!data?.success) throw new Error(data?.error || 'Failed to delete user');
+  static async isUsernameAvailable(username: string, excludeId?: string): Promise<boolean> {
+    let query = supabase.from('app_users').select('id').eq('username', username);
+    if (excludeId) query = query.neq('id', excludeId);
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+    return !data || data.length === 0;
   }
 
   static async getAvailableStockLocations(): Promise<string[]> {
-    const { data, error } = await supabase
-      .from('products')
-      .select('stock_levels');
-
+    const { data, error } = await supabase.from('products').select('stock_levels');
     if (error) throw new Error(`Failed to get stock locations: ${error.message}`);
-
     const locations = new Set<string>();
     (data || []).forEach(product => {
       const levels = product.stock_levels as Record<string, number> | null;
       if (levels && typeof levels === 'object') {
-        Object.keys(levels).forEach(location => {
-          if (location && location.trim()) locations.add(location.trim());
-        });
+        Object.keys(levels).forEach(loc => { if (loc?.trim()) locations.add(loc.trim()); });
       }
     });
     return Array.from(locations).sort();
   }
 
   static async getAvailableBrands(): Promise<string[]> {
-    const { data, error } = await supabase
-      .from('products')
-      .select('brand');
-
+    const { data, error } = await supabase.from('products').select('brand');
     if (error) throw new Error(`Failed to get brands: ${error.message}`);
-
     const brands = new Set<string>();
-    (data || []).forEach(product => {
-      if (product.brand && typeof product.brand === 'string' && product.brand.trim()) {
-        brands.add(product.brand.trim());
-      }
-    });
+    (data || []).forEach(p => { if (p.brand?.trim()) brands.add(p.brand.trim()); });
     return Array.from(brands).sort();
   }
 
-  static async isUsernameAvailable(username: string, excludeId?: string): Promise<boolean> {
-    const adminId = getAdminUserId();
-    const { data, error } = await supabase.functions.invoke('admin-users', {
-      body: { action: 'check_username', admin_user_id: adminId, username, exclude_id: excludeId }
-    });
-
-    if (error) throw new Error(`Failed to check username: ${error.message}`);
-    return data?.available ?? false;
-  }
-
-  static async getUserStats(): Promise<{
-    totalUsers: number;
-    adminUsers: number;
-    regularUsers: number;
-    usersWithQuoteAccess: number;
-    usersWithRestrictedStock: number;
-  }> {
+  static async getUserStats() {
     const users = await this.getAllUsers();
     return {
       totalUsers: users.length,
@@ -188,7 +164,7 @@ export class SupabaseUsersService {
     return {
       id: data.id,
       username: data.username,
-      pin: '******', // PIN is never exposed to client
+      pin: '******',
       is_admin: data.is_admin,
       is_superadmin: data.is_superadmin || false,
       company_id: data.company_id || undefined,
@@ -204,42 +180,22 @@ export class SupabaseUsersService {
 
   static validateUserData(userData: CreateAppUserRequest | UpdateAppUserRequest): string[] {
     const errors: string[] = [];
-
     if ('username' in userData && userData.username !== undefined) {
-      if (!userData.username || userData.username.trim().length === 0) {
-        errors.push('Le nom d\'utilisateur est requis');
-      } else if (userData.username.trim().length < 3) {
-        errors.push('Le nom d\'utilisateur doit contenir au moins 3 caractères');
-      } else if (userData.username.trim().length > 50) {
-        errors.push('Le nom d\'utilisateur ne peut pas dépasser 50 caractères');
-      } else if (!/^[a-zA-Z0-9_-]+$/.test(userData.username.trim())) {
-        errors.push('Le nom d\'utilisateur ne peut contenir que des lettres, chiffres, tirets et underscores');
-      }
+      if (!userData.username?.trim()) errors.push("Le nom d'utilisateur est requis");
+      else if (userData.username.trim().length < 3) errors.push("Le nom d'utilisateur doit contenir au moins 3 caractères");
+      else if (userData.username.trim().length > 50) errors.push("Le nom d'utilisateur ne peut pas dépasser 50 caractères");
+      else if (!/^[a-zA-Z0-9_-]+$/.test(userData.username.trim())) errors.push("Le nom d'utilisateur ne peut contenir que des lettres, chiffres, tirets et underscores");
     }
-
     if ('pin' in userData && userData.pin !== undefined) {
-      if (!userData.pin || userData.pin.length === 0) {
-        errors.push('Le PIN est requis');
-      } else if (userData.pin.length !== 6) {
-        errors.push('Le PIN doit contenir exactement 6 chiffres');
-      } else if (!/^\d{6}$/.test(userData.pin)) {
-        errors.push('Le PIN ne peut contenir que des chiffres');
-      }
+      if (!userData.pin) errors.push('Le PIN est requis');
+      else if (userData.pin.length !== 6) errors.push('Le PIN doit contenir exactement 6 chiffres');
+      else if (!/^\d{6}$/.test(userData.pin)) errors.push('Le PIN ne peut contenir que des chiffres');
     }
-
     if ('price_display_type' in userData && userData.price_display_type !== undefined) {
-      const validPriceTypes = ['normal', 'reseller', 'buy', 'calculated'];
-      if (!validPriceTypes.includes(userData.price_display_type)) {
+      if (!['normal', 'reseller', 'buy', 'calculated'].includes(userData.price_display_type)) {
         errors.push('Type de prix invalide');
       }
     }
-
-    if ('allowed_stock_locations' in userData && userData.allowed_stock_locations !== undefined) {
-      if (!Array.isArray(userData.allowed_stock_locations)) {
-        errors.push('Les emplacements de stock doivent être un tableau');
-      }
-    }
-
     return errors;
   }
 }
