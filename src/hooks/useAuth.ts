@@ -194,8 +194,9 @@ export function useAuth() {
 
       if (!error && data?.success) {
         const user = data.user as AppUser;
-        if (user.is_admin) {
+        if (user.is_admin || user.is_superadmin) {
           sessionStorage.setItem('inventory_admin_pin', pin);
+          localStorage.setItem('inventory_authenticated_user', JSON.stringify(user));
         }
         await loadUserData(user);
         authStateManager.notify();
@@ -237,6 +238,10 @@ export function useAuth() {
 
       if (!error && data?.success) {
         const user = data.user as AppUser;
+        if (user.is_admin || user.is_superadmin) {
+          sessionStorage.setItem('inventory_admin_pin', pin);
+          localStorage.setItem('inventory_authenticated_user', JSON.stringify(user));
+        }
         await loadUserData(user);
         authStateManager.notify();
         return true;
@@ -261,6 +266,7 @@ export function useAuth() {
     // Clear stored user data
     localStorage.removeItem('inventory_current_user');
     localStorage.removeItem('inventory_user_permissions');
+    localStorage.removeItem('inventory_authenticated_user');
     
     console.log('User logged out, role reset to sales');
     

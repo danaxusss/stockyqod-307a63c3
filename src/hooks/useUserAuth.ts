@@ -123,7 +123,7 @@ export function useUserAuth() {
       localStorage.setItem(AUTH_TIME_KEY, Date.now().toString());
       localStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
       // Store PIN in sessionStorage for admin operations (cleared on tab close)
-      if (user.is_admin) {
+      if (user.is_admin || user.is_superadmin) {
         sessionStorage.setItem('inventory_admin_pin', pin);
       }
       setIsAuthenticated(true);
@@ -147,7 +147,7 @@ export function useUserAuth() {
       localStorage.setItem(AUTH_STORAGE_KEY, 'true');
       localStorage.setItem(AUTH_TIME_KEY, Date.now().toString());
       localStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
-      if (user.is_admin) {
+      if (user.is_admin || user.is_superadmin) {
         sessionStorage.setItem('inventory_admin_pin', pin);
       }
       setIsAuthenticated(true);
