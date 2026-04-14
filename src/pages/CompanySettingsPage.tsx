@@ -736,6 +736,7 @@ const AI_MODELS = [
   { value: 'qwen/qwen3-235b-a22b:free',                     label: '★ Qwen3 235B (gratuit)' },
   { value: 'nvidia/llama-3.1-nemotron-70b-instruct:free',   label: '★ NVIDIA Nemotron 70B (gratuit)' },
   { value: 'microsoft/phi-4:free',                          label: '★ Microsoft Phi-4 (gratuit)' },
+  { value: 'nvidia/nemotron-3-super-120b-a12b:free',        label: '★ NVIDIA Nemotron Super 120B (gratuit)' },
   // ── Payants ───────────────────────────────────────────────
   { value: 'google/gemini-2.5-flash-preview',               label: 'Gemini 2.5 Flash Preview' },
   { value: 'google/gemini-flash-1.5',                       label: 'Gemini 1.5 Flash' },
