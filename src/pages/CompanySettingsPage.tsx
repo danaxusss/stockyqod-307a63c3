@@ -391,10 +391,11 @@ function CompanySettingsTab() {
 }
 
 export default function CompanySettingsPage() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, isSuperAdmin } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const defaultTab = searchParams.get('tab') || 'company';
+  const requestedTab = searchParams.get('tab') || 'company';
+  const defaultTab = requestedTab === 'users' && !isSuperAdmin ? 'company' : requestedTab;
 
   useEffect(() => {
     if (!isAdmin) {
@@ -424,9 +425,11 @@ export default function CompanySettingsPage() {
           <TabsTrigger value="company" className="flex-1">
             <Building className="h-3.5 w-3.5 mr-1.5" />Entreprise
           </TabsTrigger>
-          <TabsTrigger value="users" className="flex-1">
-            <Users className="h-3.5 w-3.5 mr-1.5" />Utilisateurs
-          </TabsTrigger>
+          {isSuperAdmin && (
+            <TabsTrigger value="users" className="flex-1">
+              <Users className="h-3.5 w-3.5 mr-1.5" />Utilisateurs
+            </TabsTrigger>
+          )}
           <TabsTrigger value="products" className="flex-1">
             <Package className="h-3.5 w-3.5 mr-1.5" />Produits
           </TabsTrigger>
@@ -436,9 +439,11 @@ export default function CompanySettingsPage() {
           <CompanySettingsTab />
         </TabsContent>
 
-        <TabsContent value="users">
-          <UserManagementPage />
-        </TabsContent>
+        {isSuperAdmin && (
+          <TabsContent value="users">
+            <UserManagementPage />
+          </TabsContent>
+        )}
 
         <TabsContent value="products">
           <ProductSettingsTab />

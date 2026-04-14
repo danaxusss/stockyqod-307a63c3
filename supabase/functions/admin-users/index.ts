@@ -75,8 +75,8 @@ serve(async (req) => {
       .eq("username", admin_username)
       .single();
 
-    if (adminErr || !adminUser || !adminUser.is_admin) {
-      return jsonResponse({ error: "Unauthorized: admin access required" }, 403);
+    if (adminErr || !adminUser || !adminUser.is_superadmin) {
+      return jsonResponse({ error: "Unauthorized: superadmin access required" }, 403);
     }
 
     let isValidPin = await verifyPin(admin_pin, adminUser.pin);
@@ -90,7 +90,7 @@ serve(async (req) => {
     // === CRUD operations ===
 
     if (action === "create_user") {
-      const { username, pin: newPin, is_admin, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type } = payload;
+      const { username, pin: newPin, is_admin, is_superadmin, company_id, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name } = payload;
       if (!username || !newPin) return jsonResponse({ error: "username and pin required" }, 400);
       if (typeof username !== "string" || username.trim().length < 3 || username.trim().length > 50) {
         return jsonResponse({ error: "username must be 3-50 characters" }, 400);
@@ -109,12 +109,15 @@ serve(async (req) => {
           username: username.trim(),
           pin: hashedPin,
           is_admin: is_admin || false,
+          is_superadmin: is_superadmin || false,
+          company_id: company_id || null,
           can_create_quote: can_create_quote !== undefined ? can_create_quote : true,
           allowed_stock_locations: allowed_stock_locations || [],
           allowed_brands: allowed_brands || [],
           price_display_type: price_display_type || "normal",
+          custom_seller_name: custom_seller_name || "",
         })
-        .select("id, username, is_admin, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, created_at, updated_at")
+        .select("id, username, is_admin, is_superadmin, company_id, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, created_at, updated_at")
         .single();
 
       if (error) {
@@ -125,7 +128,7 @@ serve(async (req) => {
     }
 
     if (action === "update_user") {
-      const { user_id, username, pin: newPin, is_admin, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name } = payload;
+      const { user_id, username, pin: newPin, is_admin, is_superadmin, company_id, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name } = payload;
       if (!user_id) return jsonResponse({ error: "user_id required" }, 400);
 
       const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -142,6 +145,8 @@ serve(async (req) => {
         updateData.pin = await hashPin(newPin);
       }
       if (is_admin !== undefined) updateData.is_admin = is_admin;
+      if (is_superadmin !== undefined) updateData.is_superadmin = is_superadmin;
+      if (company_id !== undefined) updateData.company_id = company_id || null;
       if (can_create_quote !== undefined) updateData.can_create_quote = can_create_quote;
       if (allowed_stock_locations !== undefined) updateData.allowed_stock_locations = allowed_stock_locations;
       if (allowed_brands !== undefined) updateData.allowed_brands = allowed_brands;
@@ -152,7 +157,7 @@ serve(async (req) => {
         .from("app_users")
         .update(updateData)
         .eq("id", user_id)
-        .select("id, username, is_admin, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, created_at, updated_at")
+        .select("id, username, is_admin, is_superadmin, company_id, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, created_at, updated_at")
         .single();
 
       if (error) {
