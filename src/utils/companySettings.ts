@@ -102,6 +102,9 @@ export interface CompanySettings {
   stamp_url: string | null;
   stamp_size: 'small' | 'medium' | 'large';
   use_stamp: boolean;
+  ai_enabled: boolean;
+  ai_model: string;
+  ai_system_prompt: string;
   quote_visible_fields: QuoteVisibleFields;
   quote_style: QuoteStyle;
   share_templates: ShareTemplates;
@@ -201,6 +204,9 @@ export class CompanySettingsService {
       stamp_url: data.stamp_url || null,
       stamp_size: (data.stamp_size as 'small' | 'medium' | 'large') || 'medium',
       use_stamp: data.use_stamp ?? false,
+      ai_enabled: data.ai_enabled ?? true,
+      ai_model: data.ai_model || 'google/gemini-2.0-flash-exp:free',
+      ai_system_prompt: data.ai_system_prompt || '',
       tva_rate: data.tva_rate ?? 20,
       quote_validity_days: data.quote_validity_days ?? 30,
       payment_terms: data.payment_terms || '',
@@ -240,6 +246,9 @@ export class CompanySettingsService {
       stamp_url: settings.stamp_url,
       stamp_size: settings.stamp_size,
       use_stamp: settings.use_stamp,
+      ai_enabled: settings.ai_enabled,
+      ai_model: settings.ai_model,
+      ai_system_prompt: settings.ai_system_prompt,
       tva_rate: settings.tva_rate,
       quote_validity_days: settings.quote_validity_days,
       payment_terms: settings.payment_terms,

@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
-import { Settings, Upload, Trash2, Save, Loader, Image, Building, Phone, Mail, Globe, Hash, FileText, Eye, Palette, Users, Package, Edit3, Check, X, MessageCircle, Send, Stamp } from 'lucide-react';
+import { Settings, Upload, Trash2, Save, Loader, Image, Building, Phone, Mail, Globe, Hash, FileText, Eye, Palette, Users, Package, Edit3, Check, X, MessageCircle, Send, Stamp, Bot, Zap, ToggleLeft, ToggleRight } from 'lucide-react';
 import { CompanySettingsService, CompanySettings, QuoteVisibleFields, QuoteStyle, DEFAULT_SHARE_TEMPLATES } from '../utils/companySettings';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../context/ToastContext';
@@ -506,6 +506,9 @@ export default function CompanySettingsPage() {
           <TabsTrigger value="products" className="flex-1">
             <Package className="h-3.5 w-3.5 mr-1.5" />Produits
           </TabsTrigger>
+          <TabsTrigger value="ai" className="flex-1">
+            <Bot className="h-3.5 w-3.5 mr-1.5" />IA
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="company">
@@ -518,6 +521,10 @@ export default function CompanySettingsPage() {
 
         <TabsContent value="products">
           <ProductSettingsTab />
+        </TabsContent>
+
+        <TabsContent value="ai">
+          <AISettingsTab />
         </TabsContent>
       </Tabs>
     </div>
@@ -713,6 +720,163 @@ function ProductSettingsTab() {
           <p className="text-xs text-muted-foreground">{overrides.length} nom(s) personnalisé(s)</p>
         </div>
       )}
+    </div>
+  );
+}
+
+const AI_MODELS = [
+  { value: 'google/gemini-2.0-flash-exp:free', label: 'Gemini 2.0 Flash (gratuit)' },
+  { value: 'google/gemini-flash-1.5', label: 'Gemini 1.5 Flash' },
+  { value: 'google/gemini-pro-1.5', label: 'Gemini 1.5 Pro' },
+  { value: 'anthropic/claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
+  { value: 'anthropic/claude-sonnet-4-5', label: 'Claude Sonnet 4.5' },
+  { value: 'meta-llama/llama-3.1-8b-instruct:free', label: 'Llama 3.1 8B (gratuit)' },
+  { value: 'openai/gpt-4o-mini', label: 'GPT-4o Mini' },
+  { value: 'openai/gpt-4o', label: 'GPT-4o' },
+  { value: '__custom__', label: 'Modèle personnalisé…' },
+];
+
+function AISettingsTab() {
+  const { showToast } = useToast();
+  const { companyId } = useAuth();
+  const [settings, setSettings] = useState<import('../utils/companySettings').CompanySettings | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [customModel, setCustomModel] = useState('');
+
+  useEffect(() => {
+    loadSettings();
+  }, [companyId]);
+
+  const loadSettings = async () => {
+    setIsLoading(true);
+    try {
+      const data = await CompanySettingsService.getSettings(companyId ?? undefined);
+      setSettings(data);
+      if (data?.ai_model && !AI_MODELS.find(m => m.value === data.ai_model)) {
+        setCustomModel(data.ai_model);
+      }
+    } catch {
+      showToast({ type: 'error', message: 'Erreur lors du chargement' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!settings || !companyId) return;
+    setIsSaving(true);
+    try {
+      const modelToSave = settings.ai_model === '__custom__' ? customModel.trim() : settings.ai_model;
+      await CompanySettingsService.updateCompanySettings(companyId, {
+        ai_enabled: settings.ai_enabled,
+        ai_model: modelToSave || 'google/gemini-2.0-flash-exp:free',
+        ai_system_prompt: settings.ai_system_prompt,
+      });
+      showToast({ type: 'success', message: 'Paramètres IA sauvegardés' });
+    } catch {
+      showToast({ type: 'error', message: 'Erreur lors de la sauvegarde' });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (isLoading) return (
+    <div className="flex items-center justify-center py-12">
+      <Loader className="h-6 w-6 animate-spin text-primary" />
+    </div>
+  );
+
+  if (!settings) return (
+    <div className="text-center text-muted-foreground py-8 text-sm">Impossible de charger les paramètres IA.</div>
+  );
+
+  const selectedModel = AI_MODELS.find(m => m.value === settings.ai_model) ? settings.ai_model : '__custom__';
+  const inputClass = "w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground focus:ring-2 focus:ring-ring";
+
+  return (
+    <div className="space-y-4">
+      {/* Enable / disable */}
+      <div className="glass rounded-xl shadow-lg p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-foreground flex items-center space-x-1.5">
+              <Bot className="h-4 w-4" /><span>Assistant IA</span>
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Active ou désactive le widget chat pour les utilisateurs</p>
+          </div>
+          <button
+            onClick={() => setSettings({ ...settings, ai_enabled: !settings.ai_enabled })}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${settings.ai_enabled ? 'bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25' : 'bg-secondary text-muted-foreground hover:bg-accent'}`}
+          >
+            {settings.ai_enabled ? <ToggleRight className="h-4 w-4" /> : <ToggleLeft className="h-4 w-4" />}
+            {settings.ai_enabled ? 'Activé' : 'Désactivé'}
+          </button>
+        </div>
+      </div>
+
+      {/* Model selector */}
+      <div className="glass rounded-xl shadow-lg p-4 space-y-3">
+        <h2 className="text-sm font-semibold text-foreground flex items-center space-x-1.5">
+          <Zap className="h-4 w-4" /><span>Modèle IA (via OpenRouter)</span>
+        </h2>
+        <div>
+          <label className="block text-xs font-medium text-foreground mb-1">Modèle</label>
+          <select
+            value={selectedModel}
+            onChange={e => setSettings({ ...settings, ai_model: e.target.value })}
+            className={inputClass}
+          >
+            {AI_MODELS.map(m => (
+              <option key={m.value} value={m.value}>{m.label}</option>
+            ))}
+          </select>
+        </div>
+        {(settings.ai_model === '__custom__' || selectedModel === '__custom__') && (
+          <div>
+            <label className="block text-xs font-medium text-foreground mb-1">ID du modèle personnalisé</label>
+            <input
+              type="text"
+              value={customModel}
+              onChange={e => setCustomModel(e.target.value)}
+              placeholder="ex: mistralai/mistral-7b-instruct"
+              className={inputClass}
+            />
+            <p className="text-[11px] text-muted-foreground mt-1">Voir les modèles disponibles sur openrouter.ai/models</p>
+          </div>
+        )}
+      </div>
+
+      {/* System prompt */}
+      <div className="glass rounded-xl shadow-lg p-4 space-y-3">
+        <h2 className="text-sm font-semibold text-foreground flex items-center space-x-1.5">
+          <FileText className="h-4 w-4" /><span>Instructions supplémentaires (prompt système)</span>
+        </h2>
+        <p className="text-xs text-muted-foreground">
+          Ces instructions s'ajoutent au comportement par défaut de l'assistant. Utilisez-les pour personnaliser le ton,
+          ajouter des règles métier, ou préciser des produits prioritaires.
+          L'assistant reste limité au catalogue de la base de données — il ne cherche jamais sur Internet.
+        </p>
+        <textarea
+          value={settings.ai_system_prompt || ''}
+          onChange={e => setSettings({ ...settings, ai_system_prompt: e.target.value })}
+          placeholder={`Ex:\n- Toujours proposer la garantie étendue sur les appareils électroménagers\n- Prioriser les produits de la marque SAMSUNG\n- Ne pas mentionner les prix revendeurs aux clients particuliers`}
+          className={inputClass + ' font-mono resize-y'}
+          rows={10}
+        />
+        <p className="text-[11px] text-muted-foreground">
+          Variables disponibles dans les réponses : aucune variable spéciale requise. L'IA a accès aux noms, prix, stocks et barcodes du catalogue.
+        </p>
+      </div>
+
+      {/* Save */}
+      <div className="flex justify-end pb-2">
+        <button onClick={handleSave} disabled={isSaving}
+          className="flex items-center space-x-2 px-5 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-lg text-sm transition-colors">
+          {isSaving ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+          <span>Sauvegarder</span>
+        </button>
+      </div>
     </div>
   );
 }
