@@ -457,3 +457,17 @@ GRANT EXECUTE ON FUNCTION public.get_app_user_by_username_safe(text) TO anon, au
 -- Add clients DELETE policy (needed for client deletion to work)
 DROP POLICY IF EXISTS "Allow delete clients" ON public.clients;
 CREATE POLICY "Allow delete clients" ON public.clients FOR DELETE USING (true);
+
+-- ── companies: stamp + AI columns ────────────────────────────
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS stamp_url text;
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS stamp_size text NOT NULL DEFAULT 'medium';
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS use_stamp boolean NOT NULL DEFAULT false;
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS ai_enabled boolean NOT NULL DEFAULT true;
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS ai_model text NOT NULL DEFAULT 'deepseek/deepseek-chat-v3-0324:free';
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS ai_system_prompt text NOT NULL DEFAULT '';
+
+-- ── quotes: created_by ────────────────────────────────────────
+ALTER TABLE public.quotes ADD COLUMN IF NOT EXISTS created_by text;
+
+-- ── Clear stale shared logo URLs (each company must re-upload) ─
+UPDATE public.companies SET logo_url = NULL WHERE logo_url IS NOT NULL AND logo_url NOT LIKE '%/companies/%';

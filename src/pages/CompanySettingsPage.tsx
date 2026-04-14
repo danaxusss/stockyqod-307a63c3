@@ -725,15 +725,25 @@ function ProductSettingsTab() {
 }
 
 const AI_MODELS = [
-  { value: 'google/gemini-2.0-flash-exp:free', label: 'Gemini 2.0 Flash (gratuit)' },
-  { value: 'google/gemini-flash-1.5', label: 'Gemini 1.5 Flash' },
-  { value: 'google/gemini-pro-1.5', label: 'Gemini 1.5 Pro' },
-  { value: 'anthropic/claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
-  { value: 'anthropic/claude-sonnet-4-5', label: 'Claude Sonnet 4.5' },
-  { value: 'meta-llama/llama-3.1-8b-instruct:free', label: 'Llama 3.1 8B (gratuit)' },
-  { value: 'openai/gpt-4o-mini', label: 'GPT-4o Mini' },
-  { value: 'openai/gpt-4o', label: 'GPT-4o' },
-  { value: '__custom__', label: 'Modèle personnalisé…' },
+  // ── Gratuits (stables sur OpenRouter) ─────────────────────
+  { value: 'deepseek/deepseek-chat-v3-0324:free',           label: '★ DeepSeek V3 (gratuit) — recommandé' },
+  { value: 'deepseek/deepseek-r1:free',                     label: '★ DeepSeek R1 raisonnement (gratuit)' },
+  { value: 'meta-llama/llama-3.3-70b-instruct:free',        label: '★ Llama 3.3 70B (gratuit)' },
+  { value: 'meta-llama/llama-4-scout:free',                 label: '★ Llama 4 Scout (gratuit)' },
+  { value: 'mistralai/mistral-small-3.1-24b-instruct:free', label: '★ Mistral Small 3.1 24B (gratuit)' },
+  { value: 'qwen/qwen3-8b:free',                            label: '★ Qwen3 8B (gratuit)' },
+  { value: 'qwen/qwen3-30b-a3b:free',                       label: '★ Qwen3 30B (gratuit)' },
+  { value: 'qwen/qwen3-235b-a22b:free',                     label: '★ Qwen3 235B (gratuit)' },
+  { value: 'nvidia/llama-3.1-nemotron-70b-instruct:free',   label: '★ NVIDIA Nemotron 70B (gratuit)' },
+  { value: 'microsoft/phi-4:free',                          label: '★ Microsoft Phi-4 (gratuit)' },
+  // ── Payants ───────────────────────────────────────────────
+  { value: 'google/gemini-2.5-flash-preview',               label: 'Gemini 2.5 Flash Preview' },
+  { value: 'google/gemini-flash-1.5',                       label: 'Gemini 1.5 Flash' },
+  { value: 'anthropic/claude-haiku-4-5-20251001',           label: 'Claude Haiku 4.5' },
+  { value: 'anthropic/claude-sonnet-4-5',                   label: 'Claude Sonnet 4.5' },
+  { value: 'openai/gpt-4o-mini',                            label: 'GPT-4o Mini' },
+  { value: 'openai/gpt-4o',                                 label: 'GPT-4o' },
+  { value: '__custom__',                                     label: 'Modèle personnalisé…' },
 ];
 
 function AISettingsTab() {

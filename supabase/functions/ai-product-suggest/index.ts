@@ -33,7 +33,7 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Load company AI settings if company_id provided
-    let aiModel = Deno.env.get("AI_MODEL") || "google/gemini-2.0-flash-exp:free";
+    let aiModel = Deno.env.get("AI_MODEL") || "deepseek/deepseek-chat-v3-0324:free";
     let customSystemPrompt = "";
     let aiEnabled = true;
 
@@ -209,7 +209,15 @@ ${customSystemPrompt ? `\n━━━ INSTRUCTIONS SPÉCIALES DU SUPERADMIN ━━
       }
       const t = await response.text();
       console.error("OpenRouter error:", response.status, t);
-      return new Response(JSON.stringify({ error: "Erreur du service IA" }), {
+      let detail = "";
+      try {
+        const parsed = JSON.parse(t);
+        detail = parsed?.error?.message || parsed?.message || "";
+      } catch { /* ignore */ }
+      const msg = detail
+        ? `Erreur IA (${response.status}): ${detail}`
+        : `Erreur IA (${response.status}) — vérifiez le modèle sélectionné dans les paramètres.`;
+      return new Response(JSON.stringify({ error: msg }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

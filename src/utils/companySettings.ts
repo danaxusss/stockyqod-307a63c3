@@ -205,7 +205,7 @@ export class CompanySettingsService {
       stamp_size: (data.stamp_size as 'small' | 'medium' | 'large') || 'medium',
       use_stamp: data.use_stamp ?? false,
       ai_enabled: data.ai_enabled ?? true,
-      ai_model: data.ai_model || 'google/gemini-2.0-flash-exp:free',
+      ai_model: data.ai_model || 'deepseek/deepseek-chat-v3-0324:free',
       ai_system_prompt: data.ai_system_prompt || '',
       tva_rate: data.tva_rate ?? 20,
       quote_validity_days: data.quote_validity_days ?? 30,
