@@ -1,7 +1,9 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
-import { Settings, Upload, Trash2, Save, Loader, Image, Building, Phone, Mail, Globe, Hash, FileText, Eye, Palette, Users, Package, Edit3, Check, X, Plus, MessageCircle, Send } from 'lucide-react';
+import { Settings, Upload, Trash2, Save, Loader, Image, Building, Building2, Phone, Mail, Globe, Hash, FileText, Eye, Palette, Users, Package, Edit3, Check, X, Plus, MessageCircle, Send, Search } from 'lucide-react';
 import { CompanySettingsService, CompanySettings, QuoteVisibleFields, QuoteStyle, DEFAULT_SHARE_TEMPLATES } from '../utils/companySettings';
+import { SupabaseCompaniesService } from '../utils/supabaseCompanies';
+import { Company } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../context/ToastContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -390,6 +392,181 @@ function CompanySettingsTab() {
   );
 }
 
+type CompanyFormData = {
+  name: string; address: string; phone: string; phone2: string;
+  email: string; website: string; ice: string; rc: string;
+  if_number: string; payment_terms: string;
+};
+
+const emptyCompanyForm: CompanyFormData = {
+  name: '', address: '', phone: '', phone2: '', email: '',
+  website: '', ice: '', rc: '', if_number: '', payment_terms: ''
+};
+
+function CompaniesTab() {
+  const { showToast } = useToast();
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showModal, setShowModal] = useState(false);
+  const [editingCompany, setEditingCompany] = useState<Company | null>(null);
+  const [formData, setFormData] = useState<CompanyFormData>(emptyCompanyForm);
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => { loadCompanies(); }, []);
+
+  const loadCompanies = async () => {
+    setIsLoading(true);
+    try {
+      setCompanies(await SupabaseCompaniesService.getAllCompanies());
+    } catch {
+      showToast({ type: 'error', message: 'Erreur lors du chargement des sociétés' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const filtered = searchQuery.trim()
+    ? companies.filter(c => c.name.toLowerCase().includes(searchQuery.toLowerCase()) || c.email?.toLowerCase().includes(searchQuery.toLowerCase()) || c.phone?.includes(searchQuery))
+    : companies;
+
+  const openCreate = () => { setEditingCompany(null); setFormData(emptyCompanyForm); setShowModal(true); };
+  const openEdit = (c: Company) => {
+    setEditingCompany(c);
+    setFormData({ name: c.name, address: c.address, phone: c.phone, phone2: c.phone2, email: c.email, website: c.website, ice: c.ice, rc: c.rc, if_number: c.if_number, payment_terms: c.payment_terms });
+    setShowModal(true);
+  };
+
+  const handleSave = async () => {
+    if (!formData.name.trim()) { showToast({ type: 'error', message: 'Le nom est requis' }); return; }
+    setIsSaving(true);
+    try {
+      if (editingCompany) {
+        await SupabaseCompaniesService.updateCompany(editingCompany.id, formData as any);
+        showToast({ type: 'success', message: 'Société mise à jour' });
+      } else {
+        await SupabaseCompaniesService.createCompany(formData as any);
+        showToast({ type: 'success', message: 'Société créée' });
+      }
+      setShowModal(false);
+      await loadCompanies();
+    } catch (err: any) {
+      showToast({ type: 'error', message: err?.message || 'Erreur lors de la sauvegarde' });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDelete = async (c: Company) => {
+    if (!window.confirm(`Supprimer la société "${c.name}" ?`)) return;
+    try {
+      await SupabaseCompaniesService.deleteCompany(c.id);
+      showToast({ type: 'success', message: 'Société supprimée' });
+      await loadCompanies();
+    } catch (err: any) {
+      showToast({ type: 'error', message: err?.message || 'Erreur lors de la suppression' });
+    }
+  };
+
+  const fields: { key: keyof CompanyFormData; label: string; placeholder: string }[] = [
+    { key: 'name', label: 'Nom *', placeholder: 'Nom de la société' },
+    { key: 'address', label: 'Adresse', placeholder: 'Adresse' },
+    { key: 'phone', label: 'Téléphone', placeholder: '05...' },
+    { key: 'phone2', label: 'Téléphone 2', placeholder: '06...' },
+    { key: 'email', label: 'Email', placeholder: 'email@example.com' },
+    { key: 'website', label: 'Site web', placeholder: 'https://...' },
+    { key: 'ice', label: 'ICE', placeholder: 'Numéro ICE' },
+    { key: 'rc', label: 'RC', placeholder: 'Registre du commerce' },
+    { key: 'if_number', label: 'IF', placeholder: 'Identifiant Fiscal' },
+    { key: 'payment_terms', label: 'Conditions de paiement', placeholder: '30 jours' },
+  ];
+
+  if (isLoading) return <div className="flex justify-center py-12"><Loader className="h-6 w-6 animate-spin text-primary" /></div>;
+
+  return (
+    <div className="glass rounded-xl shadow-lg overflow-hidden">
+      {/* Tab toolbar */}
+      <div className="flex items-center justify-between p-3 border-b border-border">
+        <div className="relative flex-1 max-w-xs">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+            className="w-full pl-8 pr-3 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground"
+            placeholder="Rechercher..." />
+        </div>
+        <button onClick={openCreate} className="flex items-center space-x-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm ml-3">
+          <Plus className="h-3.5 w-3.5" /><span>Nouvelle société</span>
+        </button>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="p-8 text-center">
+          <Building2 className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+          <p className="text-sm text-muted-foreground">{searchQuery ? 'Aucun résultat' : 'Aucune société — créez-en une'}</p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-secondary">
+              <tr>
+                {['Nom', 'Téléphone', 'Email', 'ICE', 'Actions'].map(h => (
+                  <th key={h} className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {filtered.map(c => (
+                <tr key={c.id} className="hover:bg-accent/50">
+                  <td className="px-3 py-2.5 text-xs font-medium text-foreground">{c.name}</td>
+                  <td className="px-3 py-2.5 text-xs text-foreground">{c.phone || '—'}</td>
+                  <td className="px-3 py-2.5 text-xs text-foreground">{c.email || '—'}</td>
+                  <td className="px-3 py-2.5 text-xs text-foreground">{c.ice || '—'}</td>
+                  <td className="px-3 py-2.5">
+                    <div className="flex items-center space-x-1">
+                      <button onClick={() => openEdit(c)} className="p-1 text-primary hover:bg-primary/10 rounded" title="Modifier"><Edit3 className="h-3.5 w-3.5" /></button>
+                      <button onClick={() => handleDelete(c)} className="p-1 text-destructive hover:bg-destructive/10 rounded" title="Supprimer"><Trash2 className="h-3.5 w-3.5" /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Modal */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="glass rounded-xl shadow-2xl w-full max-w-lg p-5 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-bold text-foreground">{editingCompany ? 'Modifier la société' : 'Nouvelle société'}</h2>
+              <button onClick={() => setShowModal(false)} className="p-1 hover:bg-accent rounded-lg"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {fields.map(({ key, label, placeholder }) => (
+                <div key={key} className={key === 'name' || key === 'address' ? 'sm:col-span-2' : ''}>
+                  <label className="block text-xs font-medium text-foreground mb-1">{label}</label>
+                  <input type="text" value={formData[key]}
+                    onChange={e => setFormData(prev => ({ ...prev, [key]: e.target.value }))}
+                    className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground"
+                    placeholder={placeholder} />
+                </div>
+              ))}
+            </div>
+            <div className="flex space-x-2">
+              <button onClick={() => setShowModal(false)} className="flex-1 px-3 py-1.5 text-sm border border-input rounded-lg hover:bg-accent text-foreground">Annuler</button>
+              <button onClick={handleSave} disabled={isSaving}
+                className="flex-1 flex items-center justify-center space-x-1.5 px-3 py-1.5 text-sm bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg disabled:opacity-50">
+                {isSaving ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                <span>{editingCompany ? 'Modifier' : 'Créer'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function CompanySettingsPage() {
   const { isSuperAdmin } = useAuth();
   const navigate = useNavigate();
@@ -424,6 +601,9 @@ export default function CompanySettingsPage() {
           <TabsTrigger value="company" className="flex-1">
             <Building className="h-3.5 w-3.5 mr-1.5" />Entreprise
           </TabsTrigger>
+          <TabsTrigger value="companies" className="flex-1">
+            <Building2 className="h-3.5 w-3.5 mr-1.5" />Sociétés
+          </TabsTrigger>
           <TabsTrigger value="users" className="flex-1">
             <Users className="h-3.5 w-3.5 mr-1.5" />Utilisateurs
           </TabsTrigger>
@@ -434,6 +614,10 @@ export default function CompanySettingsPage() {
 
         <TabsContent value="company">
           <CompanySettingsTab />
+        </TabsContent>
+
+        <TabsContent value="companies">
+          <CompaniesTab />
         </TabsContent>
 
         <TabsContent value="users">
