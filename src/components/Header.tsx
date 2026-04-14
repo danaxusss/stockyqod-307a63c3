@@ -127,7 +127,7 @@ export function Header() {
               <BookOpen className="h-3.5 w-3.5" />
             </Link>
 
-            {isAdmin && (
+            {isSuperAdmin && (
               <Link to="/admin/settings" className={navLinkClass('/admin/settings')} title="Paramètres">
                 <Settings className="h-3.5 w-3.5" />
               </Link>

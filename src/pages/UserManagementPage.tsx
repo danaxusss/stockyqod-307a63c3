@@ -80,10 +80,6 @@ export default function UserManagementPage() {
   const handleInputChange = (field: keyof UserFormData, value: any) => {
     setFormData(prev => {
       const next = { ...prev, [field]: value };
-      // When reseller price type selected, disable quote creation (resellers only browse)
-      if (field === 'price_display_type' && value === 'reseller') {
-        next.can_create_quote = false;
-      }
       // Superadmins are always admin
       if (field === 'is_superadmin' && value === true) {
         next.is_admin = true;
@@ -463,7 +459,7 @@ export default function UserManagementPage() {
                   )}
 
                   <label className="flex items-center space-x-3 cursor-pointer">
-                    <input type="checkbox" checked={formData.can_create_quote} disabled={formData.price_display_type === 'reseller'}
+                    <input type="checkbox" checked={formData.can_create_quote}
                       onChange={e => handleInputChange('can_create_quote', e.target.checked)} className="w-4 h-4 rounded accent-primary" />
                     <div>
                       <span className="text-sm font-medium text-foreground">Peut créer des devis</span>
@@ -496,13 +492,11 @@ export default function UserManagementPage() {
                 <select value={formData.price_display_type} onChange={e => handleInputChange('price_display_type', e.target.value)}
                   className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground">
                   <option value="normal">Prix Normal (vente)</option>
-                  <option value="reseller">Prix Revendeur — accès lecture seule produits</option>
+                  <option value="reseller">Prix Revendeur</option>
                   <option value="buy">Prix d'Achat</option>
                   <option value="calculated">Prix Calculé (avec marge)</option>
                 </select>
-                {formData.price_display_type === 'reseller' && (
-                  <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">Les revendeurs voient uniquement la liste des produits avec prix revendeur — sans accès aux devis ni au stock.</p>
-                )}
+                <p className="text-[10px] text-muted-foreground mt-1">Définit le calcul de prix affiché par défaut pour cet utilisateur.</p>
               </div>
 
               {/* Brand restrictions */}
