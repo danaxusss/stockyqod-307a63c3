@@ -192,8 +192,11 @@ export default function CompaniesPage() {
         stampUrl = await CompanySettingsService.uploadStamp(editStampFile, editingCompany.id);
         setEditStampFile(null);
       }
+      // Exclude ai_* fields — those are managed from the IA settings tab
+      // and the columns may not exist yet if the migration hasn't run
+      const { ai_enabled, ai_model, ai_system_prompt, ...safeSettings } = editSettings;
       await CompanySettingsService.updateCompanySettings(editingCompany.id, {
-        ...editSettings,
+        ...safeSettings,
         logo_url: logoUrl,
         stamp_url: stampUrl,
       });
