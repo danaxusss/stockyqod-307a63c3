@@ -86,6 +86,7 @@ export interface Quote {
   items: QuoteItem[];
   totalAmount: number;
   notes?: string;
+  createdBy?: string;
 }
 
 export interface QuoteTemplate {

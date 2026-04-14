@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Building2, Plus, Edit, Trash2, X, Check, Loader, Search,
   ChevronLeft, ChevronRight, Upload, Image, Save, ArrowLeft,
-  Phone, Mail, Globe, Hash, FileText, Eye, Palette, MessageCircle, Send
+  Phone, Mail, Globe, Hash, FileText, Eye, Palette, MessageCircle, Send, Stamp
 } from 'lucide-react';
 import { SupabaseCompaniesService } from '../utils/supabaseCompanies';
 import {
@@ -69,9 +69,12 @@ export default function CompaniesPage() {
   const [editSettings, setEditSettings] = useState<CompanySettings | null>(null);
   const [editLogoFile, setEditLogoFile] = useState<File | null>(null);
   const [editLogoPreview, setEditLogoPreview] = useState<string | null>(null);
+  const [editStampFile, setEditStampFile] = useState<File | null>(null);
+  const [editStampPreview, setEditStampPreview] = useState<string | null>(null);
   const [isEditLoading, setIsEditLoading] = useState(false);
   const [isEditSaving, setIsEditSaving] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
+  const stampInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (authReady && !isSuperAdmin) { navigate('/'); }
@@ -130,6 +133,8 @@ export default function CompaniesPage() {
     setEditingCompany(company);
     setEditLogoFile(null);
     setEditLogoPreview(null);
+    setEditStampFile(null);
+    setEditStampPreview(null);
     setIsEditLoading(true);
     try {
       const settings = await CompanySettingsService.getSettings(company.id);
@@ -157,17 +162,40 @@ export default function CompaniesPage() {
     if (logoInputRef.current) logoInputRef.current.value = '';
   };
 
+  const handleEditStampChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setEditStampFile(file);
+    const reader = new FileReader();
+    reader.onload = ev => setEditStampPreview(ev.target?.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const handleEditRemoveStamp = () => {
+    setEditStampFile(null);
+    setEditStampPreview(null);
+    if (editSettings) setEditSettings({ ...editSettings, stamp_url: null });
+    if (stampInputRef.current) stampInputRef.current.value = '';
+  };
+
   const handleEditSave = async () => {
     if (!editingCompany || !editSettings) return;
     setIsEditSaving(true);
     try {
       let logoUrl = editSettings.logo_url;
       if (editLogoFile) {
-        logoUrl = await CompanySettingsService.uploadLogo(editLogoFile);
+        logoUrl = await CompanySettingsService.uploadLogo(editLogoFile, editingCompany.id);
+        setEditLogoFile(null);
+      }
+      let stampUrl = editSettings.stamp_url;
+      if (editStampFile) {
+        stampUrl = await CompanySettingsService.uploadStamp(editStampFile, editingCompany.id);
+        setEditStampFile(null);
       }
       await CompanySettingsService.updateCompanySettings(editingCompany.id, {
         ...editSettings,
         logo_url: logoUrl,
+        stamp_url: stampUrl,
       });
       showToast({ type: 'success', message: 'Paramètres sauvegardés' });
       await loadCompanies();
@@ -270,6 +298,39 @@ export default function CompaniesPage() {
               <div>
                 <label className="block text-xs font-medium text-foreground mb-1">Taille du logo</label>
                 <select value={s.logo_size} onChange={e => setS({ logo_size: e.target.value as any })}
+                  className="px-2 py-1 text-sm border border-input rounded-lg bg-background text-foreground">
+                  <option value="small">Petit</option>
+                  <option value="medium">Moyen</option>
+                  <option value="large">Grand</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Stamp */}
+            <div className="glass rounded-xl shadow-lg p-4 space-y-3">
+              <h2 className="text-sm font-semibold text-foreground flex items-center space-x-2">
+                <Stamp className="h-4 w-4 text-primary" /><span>Tampon (PNG transparent)</span>
+              </h2>
+              <div className="flex items-start space-x-4">
+                <div className="flex-1">
+                  <input ref={stampInputRef} type="file" accept="image/png" className="hidden" onChange={handleEditStampChange} />
+                  <button onClick={() => stampInputRef.current?.click()}
+                    className="flex items-center space-x-2 px-3 py-1.5 text-sm border border-dashed border-input rounded-lg hover:bg-accent transition-colors">
+                    <Upload className="h-3.5 w-3.5" /><span>Choisir un tampon PNG</span>
+                  </button>
+                </div>
+                {(editStampPreview || s.stamp_url) && (
+                  <div className="flex items-center space-x-2">
+                    <img src={editStampPreview || s.stamp_url!} alt="Tampon" className="h-12 object-contain rounded border border-border bg-[url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAABmJLR0QA/wD/AP+gvaeTAAAADUlEQVQI12NgYGD4DwABBAEAdkIWlAAAAABJRU5ErkJggg==')] bg-repeat" />
+                    <button onClick={handleEditRemoveStamp} className="p-1 text-destructive hover:bg-destructive/10 rounded">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1">Taille du tampon</label>
+                <select value={s.stamp_size || 'medium'} onChange={e => setS({ stamp_size: e.target.value as any })}
                   className="px-2 py-1 text-sm border border-input rounded-lg bg-background text-foreground">
                   <option value="small">Petit</option>
                   <option value="medium">Moyen</option>
@@ -430,9 +491,9 @@ export default function CompaniesPage() {
                   <label className="block text-xs font-medium text-foreground mb-1 flex items-center space-x-1">
                     <MessageCircle className="h-3.5 w-3.5 text-green-500" /><span>WhatsApp</span>
                   </label>
-                  <textarea rows={4} value={s.share_templates?.whatsapp || ''}
+                  <textarea rows={10} value={s.share_templates?.whatsapp || ''}
                     onChange={e => setTemplates({ whatsapp: e.target.value })}
-                    className="w-full px-3 py-2 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring font-mono resize-none" />
+                    className="w-full px-3 py-2 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring font-mono resize-y" />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-foreground mb-1 flex items-center space-x-1">
@@ -446,9 +507,9 @@ export default function CompaniesPage() {
                   <label className="block text-xs font-medium text-foreground mb-1 flex items-center space-x-1">
                     <Send className="h-3.5 w-3.5 text-blue-500" /><span>Corps Email</span>
                   </label>
-                  <textarea rows={6} value={s.share_templates?.email_body || ''}
+                  <textarea rows={14} value={s.share_templates?.email_body || ''}
                     onChange={e => setTemplates({ email_body: e.target.value })}
-                    className="w-full px-3 py-2 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring font-mono resize-none" />
+                    className="w-full px-3 py-2 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring font-mono resize-y" />
                 </div>
               </div>
             </div>

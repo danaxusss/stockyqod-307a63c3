@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
-import { Settings, Upload, Trash2, Save, Loader, Image, Building, Phone, Mail, Globe, Hash, FileText, Eye, Palette, Users, Package, Edit3, Check, X, MessageCircle, Send } from 'lucide-react';
+import { Settings, Upload, Trash2, Save, Loader, Image, Building, Phone, Mail, Globe, Hash, FileText, Eye, Palette, Users, Package, Edit3, Check, X, MessageCircle, Send, Stamp } from 'lucide-react';
 import { CompanySettingsService, CompanySettings, QuoteVisibleFields, QuoteStyle, DEFAULT_SHARE_TEMPLATES } from '../utils/companySettings';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../context/ToastContext';
@@ -31,6 +31,8 @@ function CompanySettingsTab() {
   const [isSaving, setIsSaving] = useState(false);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [stampFile, setStampFile] = useState<File | null>(null);
+  const [stampPreview, setStampPreview] = useState<string | null>(null);
 
   useEffect(() => {
     loadSettings();
@@ -42,6 +44,7 @@ function CompanySettingsTab() {
       const data = await CompanySettingsService.getSettings(companyId ?? undefined);
       setSettings(data);
       if (data?.logo_url) setLogoPreview(data.logo_url);
+      if (data?.stamp_url) setStampPreview(data.stamp_url);
     } catch (error) {
       showToast({ type: 'error', message: 'Erreur lors du chargement des paramètres' });
     } finally {
@@ -58,8 +61,8 @@ function CompanySettingsTab() {
 
   const handleRemoveLogo = async () => {
     try {
-      await CompanySettingsService.deleteLogo();
       if (companyId) {
+        await CompanySettingsService.deleteLogo(companyId);
         await CompanySettingsService.updateCompanySettings(companyId, { logo_url: null });
       } else {
         await CompanySettingsService.updateSettings({ logo_url: null });
@@ -70,6 +73,28 @@ function CompanySettingsTab() {
       showToast({ type: 'success', message: 'Logo supprimé' });
     } catch {
       showToast({ type: 'error', message: 'Erreur lors de la suppression du logo' });
+    }
+  };
+
+  const handleStampChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setStampFile(file);
+    setStampPreview(URL.createObjectURL(file));
+  };
+
+  const handleRemoveStamp = async () => {
+    try {
+      if (companyId) {
+        await CompanySettingsService.deleteStamp(companyId);
+        await CompanySettingsService.updateCompanySettings(companyId, { stamp_url: null });
+      }
+      setStampFile(null);
+      setStampPreview(null);
+      setSettings(prev => prev ? { ...prev, stamp_url: null } : prev);
+      showToast({ type: 'success', message: 'Tampon supprimé' });
+    } catch {
+      showToast({ type: 'error', message: 'Erreur lors de la suppression du tampon' });
     }
   };
 
@@ -89,9 +114,15 @@ function CompanySettingsTab() {
     setIsSaving(true);
     try {
       let logoUrl = settings.logo_url;
-      if (logoFile) {
-        logoUrl = await CompanySettingsService.uploadLogo(logoFile);
+      if (logoFile && companyId) {
+        logoUrl = await CompanySettingsService.uploadLogo(logoFile, companyId);
         setLogoFile(null);
+      }
+
+      let stampUrl = settings.stamp_url;
+      if (stampFile && companyId) {
+        stampUrl = await CompanySettingsService.uploadStamp(stampFile, companyId);
+        setStampFile(null);
       }
 
       const payload = {
@@ -108,6 +139,9 @@ function CompanySettingsTab() {
         patente: settings.patente,
         logo_url: logoUrl,
         logo_size: settings.logo_size,
+        stamp_url: stampUrl,
+        stamp_size: settings.stamp_size,
+        use_stamp: settings.use_stamp,
         quote_visible_fields: settings.quote_visible_fields,
         quote_style: settings.quote_style,
         share_templates: settings.share_templates,
@@ -190,6 +224,46 @@ function CompanySettingsTab() {
                 <option value="medium">Moyen</option>
                 <option value="large">Grand</option>
               </select>
+            </div>
+          )}
+        </div>
+
+        {/* Stamp */}
+        <div className="mb-4">
+          <label className="block text-xs font-medium text-foreground mb-1 flex items-center space-x-1.5"><Stamp className="h-3.5 w-3.5" /><span>Tampon (PNG transparent)</span></label>
+          <div className="flex items-center space-x-4">
+            {stampPreview ? (
+              <div className="relative">
+                <img src={stampPreview} alt="Tampon" className="h-16 w-auto rounded-lg border border-border bg-[url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAABmJLR0QA/wD/AP+gvaeTAAAADUlEQVQI12NgYGD4DwABBAEAdkIWlAAAAABJRU5ErkJggg==')] bg-repeat" />
+                <button onClick={handleRemoveStamp} className="absolute -top-2 -right-2 p-1 bg-destructive text-destructive-foreground rounded-full">
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              </div>
+            ) : (
+              <div className="h-16 w-16 rounded-lg border-2 border-dashed border-border flex items-center justify-center">
+                <Stamp className="h-6 w-6 text-muted-foreground" />
+              </div>
+            )}
+            <label className="cursor-pointer flex items-center space-x-2 px-4 py-2 bg-secondary hover:bg-accent text-foreground rounded-lg transition-colors">
+              <Upload className="h-4 w-4" />
+              <span>Choisir un tampon</span>
+              <input type="file" accept="image/png" onChange={handleStampChange} className="hidden" />
+            </label>
+          </div>
+          {(stampPreview || settings.stamp_url) && (
+            <div className="mt-2 flex items-center gap-4">
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1">Taille tampon dans devis</label>
+                <select
+                  value={settings.stamp_size || 'medium'}
+                  onChange={e => setSettings({ ...settings, stamp_size: e.target.value as 'small' | 'medium' | 'large' })}
+                  className={inputClass + " max-w-xs"}
+                >
+                  <option value="small">Petit</option>
+                  <option value="medium">Moyen</option>
+                  <option value="large">Grand</option>
+                </select>
+              </div>
             </div>
           )}
         </div>

@@ -92,6 +92,7 @@ export function QuoteCartPage() {
 
   // Company settings for PDF export
   const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null);
+  const [useStamp, setUseStamp] = useState(false);
 
   // Product search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -191,7 +192,10 @@ export function QuoteCartPage() {
 
   // Load company settings for PDF export (per-user company if available)
   useEffect(() => {
-    CompanySettingsService.getSettings(companyId || undefined).then(setCompanySettings).catch(console.error);
+    CompanySettingsService.getSettings(companyId || undefined).then(s => {
+      setCompanySettings(s);
+      if (s?.use_stamp !== undefined) setUseStamp(s.use_stamp);
+    }).catch(console.error);
   }, [companyId]);
 
   // Check linked tech sheets when items change
@@ -717,7 +721,7 @@ export function QuoteCartPage() {
         techSheetsExpiryLabel = techSheetsExpiry === 'never' ? 'permanent' : `${techSheetsExpiry} jours`;
       }
 
-      await PdfExportService.exportQuoteToPdf(quoteData, freshSettings || companySettings, techSheetsUrl, techSheetsExpiryLabel);
+      await PdfExportService.exportQuoteToPdf(quoteData, freshSettings || companySettings, techSheetsUrl, techSheetsExpiryLabel, useStamp);
       showToast({
         type: 'success',
         title: 'Export réussi',
@@ -1392,6 +1396,21 @@ export function QuoteCartPage() {
         </div>
       )}
 
+      {/* Stamp Toggle */}
+      {companySettings?.stamp_url && (
+        <div className="glass rounded-xl shadow-lg p-3">
+          <label className="flex items-center space-x-2 text-sm text-foreground cursor-pointer">
+            <input
+              type="checkbox"
+              checked={useStamp}
+              onChange={(e) => setUseStamp(e.target.checked)}
+              className="rounded border-input"
+            />
+            <span>🔏 Apposer le tampon sur le devis</span>
+          </label>
+        </div>
+      )}
+
       {/* Action Buttons */}
       <div className="flex flex-col sm:flex-row gap-2">
         <button onClick={() => navigate('/quotes-history')}
@@ -1440,7 +1459,7 @@ export function QuoteCartPage() {
                 try {
                   const freshSettings = await CompanySettingsService.getSettings(companyId || undefined).catch(() => companySettings);
                   const quoteData: Quote = { id: quote?.id || `quote-${Date.now()}`, quoteNumber, commandNumber: commandNumber || undefined, createdAt: quote?.createdAt || new Date(), updatedAt: new Date(), status, customer, items, totalAmount, notes };
-                  await PdfExportService.exportQuoteToPdf(quoteData, freshSettings || companySettings);
+                  await PdfExportService.exportQuoteToPdf(quoteData, freshSettings || companySettings, undefined, undefined, useStamp);
                 } catch { /* PDF export failed, continue to share anyway */ }
                 setIsExporting(false);
 
@@ -1511,7 +1530,7 @@ export function QuoteCartPage() {
                 try {
                   const freshSettings = await CompanySettingsService.getSettings(companyId || undefined).catch(() => companySettings);
                   const quoteData: Quote = { id: quote?.id || `quote-${Date.now()}`, quoteNumber, commandNumber: commandNumber || undefined, createdAt: quote?.createdAt || new Date(), updatedAt: new Date(), status, customer, items, totalAmount, notes };
-                  await PdfExportService.exportQuoteToPdf(quoteData, freshSettings || companySettings);
+                  await PdfExportService.exportQuoteToPdf(quoteData, freshSettings || companySettings, undefined, undefined, useStamp);
                 } catch { /* continue */ }
                 setIsExporting(false);
 

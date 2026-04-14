@@ -17,7 +17,7 @@ type SortOrder = 'asc' | 'desc';
 
 export function QuotesHistoryPage() {
   const navigate = useNavigate();
-  const { isAdmin, currentUser, authenticatedUser } = useAuth();
+  const { isAdmin, isSuperAdmin, currentUser, authenticatedUser } = useAuth();
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [filteredQuotes, setFilteredQuotes] = useState<Quote[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -260,6 +260,7 @@ export function QuotesHistoryPage() {
                       </th>
                     ))}
                     {isAdmin && <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider"><div className="flex items-center space-x-1"><User className="h-3 w-3" /><span>Vendeur</span></div></th>}
+                    {isSuperAdmin && <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider"><div className="flex items-center space-x-1"><User className="h-3 w-3" /><span>Créé par</span></div></th>}
                     <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
@@ -276,6 +277,7 @@ export function QuotesHistoryPage() {
                         </span>
                       </td>
                       {isAdmin && <td className="px-3 py-2.5 text-xs text-foreground">{quote.customer.salesPerson}</td>}
+                      {isSuperAdmin && <td className="px-3 py-2.5"><span className="inline-flex px-1.5 py-0.5 text-[11px] font-medium rounded-full bg-primary/10 text-primary">{quote.createdBy || '—'}</span></td>}
                       <td className="px-3 py-2.5">
                         <div className="flex items-center space-x-1">
                           <button onClick={() => navigate(`/quote-cart/${quote.id}`)} className="p-1 text-primary hover:bg-primary/10 rounded transition-colors" title="Modifier"><Edit className="h-3.5 w-3.5" /></button>

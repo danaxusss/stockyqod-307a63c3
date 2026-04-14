@@ -62,7 +62,7 @@ export class PdfExportService {
     return `${intPart},${parts[1]}`;
   }
 
-  static async exportQuoteToPdf(quote: Quote, settings?: CompanySettings | null, techSheetsUrl?: string, techSheetsExpiryLabel?: string): Promise<void> {
+  static async exportQuoteToPdf(quote: Quote, settings?: CompanySettings | null, techSheetsUrl?: string, techSheetsExpiryLabel?: string, useStampOverride?: boolean): Promise<void> {
     const style: QuoteStyle = settings?.quote_style || {
       accentColor: '#3B82F6', fontFamily: 'helvetica', showBorders: true,
       borderRadius: 1, headerSize: 'large', totalsStyle: 'highlighted',
@@ -575,6 +575,38 @@ export class PdfExportService {
       }
       doc.text(subtitle, margin, y);
       y += 4;
+    }
+
+    // === STAMP ===
+    const shouldShowStamp = useStampOverride !== undefined ? useStampOverride : (settings?.use_stamp ?? false);
+    if (shouldShowStamp && settings?.stamp_url) {
+      const stampBase64 = await loadImageAsBase64(settings.stamp_url);
+      if (stampBase64) {
+        try {
+          const stampSizeConfig = {
+            small: { maxW: 25, maxH: 25 },
+            medium: { maxW: 35, maxH: 35 },
+            large: { maxW: 50, maxH: 50 },
+          };
+          const stampSize = settings.stamp_size || 'medium';
+          const { maxW: maxStampW, maxH: maxStampH } = stampSizeConfig[stampSize] || stampSizeConfig.medium;
+          const stampImg = new Image();
+          stampImg.src = stampBase64;
+          await new Promise<void>((resolve) => {
+            stampImg.onload = () => resolve();
+            stampImg.onerror = () => resolve();
+          });
+          let stampW = maxStampW;
+          let stampH = (stampImg.height / stampImg.width) * stampW;
+          if (stampH > maxStampH) {
+            stampH = maxStampH;
+            stampW = (stampImg.width / stampImg.height) * stampH;
+          }
+          const stampX = pageWidth - margin - stampW;
+          const stampY = pageHeight - footerTotalHeight - stampH - 4;
+          doc.addImage(stampBase64, 'PNG', stampX, stampY, stampW, stampH);
+        } catch { /* ignore stamp rendering errors */ }
+      }
     }
 
     // Fix page numbers

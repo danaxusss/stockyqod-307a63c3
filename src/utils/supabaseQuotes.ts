@@ -13,6 +13,7 @@ type QuoteRow = {
   items: unknown;
   total_amount: number;
   notes: string | null;
+  created_by: string | null;
 };
 
 type TemplateRow = {
@@ -39,13 +40,19 @@ function mapQuoteRow(row: QuoteRow): Quote {
       addedAt: new Date(item.addedAt)
     })),
     totalAmount: Number(row.total_amount),
-    notes: row.notes || undefined
+    notes: row.notes || undefined,
+    createdBy: row.created_by || undefined,
   };
 }
 
 export class SupabaseQuotesService {
   static async saveQuote(quote: Quote): Promise<void> {
     const { companyId } = getCompanyContext();
+    const storedUser = localStorage.getItem('inventory_current_user');
+    let createdBy: string | null = null;
+    if (storedUser) {
+      try { createdBy = JSON.parse(storedUser)?.username || null; } catch { /* ignore */ }
+    }
     const quoteData: Record<string, unknown> = {
       id: quote.id,
       quote_number: quote.quoteNumber,
@@ -56,7 +63,8 @@ export class SupabaseQuotesService {
       customer_info: quote.customer as unknown as import('@/integrations/supabase/types').Json,
       items: quote.items as unknown as import('@/integrations/supabase/types').Json,
       total_amount: quote.totalAmount,
-      notes: quote.notes || null
+      notes: quote.notes || null,
+      created_by: createdBy,
     };
     if (companyId) quoteData.company_id = companyId;
 

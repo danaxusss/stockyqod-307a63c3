@@ -67,7 +67,7 @@ const ActionCard = forwardRef<HTMLDivElement, ActionCardProps>(
 ActionCard.displayName = 'ActionCard';
 
 export function Home() {
-  const { isAdmin, canAccessStockLocation, authVersion, canCreateQuote } = useAuth();
+  const { isAdmin, isSuperAdmin, canAccessStockLocation, authVersion, canCreateQuote } = useAuth();
   const { state, syncData, syncInfo } = useAppContext();
   const { showToast } = useToast();
   const [isSyncing, setIsSyncing] = useState(false);
@@ -237,7 +237,7 @@ export function Home() {
       </div>
 
       {/* Admin Tools */}
-      {isAdmin && (
+      {isSuperAdmin && (
         <div className="mb-4">
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">Outils Admin</h2>
           <div className="grid grid-cols-4 gap-2">
@@ -251,7 +251,7 @@ export function Home() {
       )}
 
       {/* Debug / Danger Zone - Collapsible */}
-      {isAdmin && (
+      {isSuperAdmin && (
         <div className="mb-4">
           <button onClick={() => setShowTechnicalSection(!showTechnicalSection)}
             className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mb-2">

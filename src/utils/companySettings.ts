@@ -99,6 +99,9 @@ export interface CompanySettings {
   patente: string;
   logo_url: string | null;
   logo_size: 'small' | 'medium' | 'large';
+  stamp_url: string | null;
+  stamp_size: 'small' | 'medium' | 'large';
+  use_stamp: boolean;
   quote_visible_fields: QuoteVisibleFields;
   quote_style: QuoteStyle;
   share_templates: ShareTemplates;
@@ -195,6 +198,9 @@ export class CompanySettingsService {
       patente: data.patente || '',
       logo_url: data.logo_url || null,
       logo_size: (data.logo_size as 'small' | 'medium' | 'large') || 'medium',
+      stamp_url: data.stamp_url || null,
+      stamp_size: (data.stamp_size as 'small' | 'medium' | 'large') || 'medium',
+      use_stamp: data.use_stamp ?? false,
       tva_rate: data.tva_rate ?? 20,
       quote_validity_days: data.quote_validity_days ?? 30,
       payment_terms: data.payment_terms || '',
@@ -231,6 +237,9 @@ export class CompanySettingsService {
       patente: settings.patente,
       logo_url: settings.logo_url,
       logo_size: settings.logo_size,
+      stamp_url: settings.stamp_url,
+      stamp_size: settings.stamp_size,
+      use_stamp: settings.use_stamp,
       tva_rate: settings.tva_rate,
       quote_validity_days: settings.quote_validity_days,
       payment_terms: settings.payment_terms,
@@ -277,9 +286,9 @@ export class CompanySettingsService {
     if (error) throw error;
   }
 
-  static async uploadLogo(file: File): Promise<string> {
+  static async uploadLogo(file: File, companyId: string): Promise<string> {
     const ext = file.name.split('.').pop();
-    const path = `logo.${ext}`;
+    const path = `companies/${companyId}/logo.${ext}`;
 
     await supabase.storage.from('company-assets').remove([path]);
 
@@ -293,13 +302,37 @@ export class CompanySettingsService {
       .from('company-assets')
       .getPublicUrl(path);
 
-    // Add cache-busting timestamp to prevent browser from serving stale cached logo
     return `${data.publicUrl}?t=${Date.now()}`;
   }
 
-  static async deleteLogo(): Promise<void> {
-    await supabase.storage
+  static async deleteLogo(companyId: string): Promise<void> {
+    const exts = ['png', 'jpg', 'jpeg', 'webp', 'svg'];
+    const paths = exts.map(ext => `companies/${companyId}/logo.${ext}`);
+    await supabase.storage.from('company-assets').remove(paths);
+  }
+
+  static async uploadStamp(file: File, companyId: string): Promise<string> {
+    const ext = file.name.split('.').pop();
+    const path = `companies/${companyId}/stamp.${ext}`;
+
+    await supabase.storage.from('company-assets').remove([path]);
+
+    const { error } = await supabase.storage
       .from('company-assets')
-      .remove(['logo.png', 'logo.jpg', 'logo.jpeg', 'logo.webp', 'logo.svg']);
+      .upload(path, file, { upsert: true });
+
+    if (error) throw error;
+
+    const { data } = supabase.storage
+      .from('company-assets')
+      .getPublicUrl(path);
+
+    return `${data.publicUrl}?t=${Date.now()}`;
+  }
+
+  static async deleteStamp(companyId: string): Promise<void> {
+    const exts = ['png', 'jpg', 'jpeg', 'webp'];
+    const paths = exts.map(ext => `companies/${companyId}/stamp.${ext}`);
+    await supabase.storage.from('company-assets').remove(paths);
   }
 }
