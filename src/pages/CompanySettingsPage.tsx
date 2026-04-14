@@ -568,17 +568,18 @@ function CompaniesTab() {
 }
 
 export default function CompanySettingsPage() {
-  const { isSuperAdmin } = useAuth();
+  const { isSuperAdmin, authReady } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const defaultTab = searchParams.get('tab') || 'company';
 
   useEffect(() => {
-    if (!isSuperAdmin) {
+    if (authReady && !isSuperAdmin) {
       navigate('/');
     }
-  }, [isSuperAdmin, navigate]);
+  }, [authReady, isSuperAdmin, navigate]);
 
+  if (!authReady) return null;
   if (!isSuperAdmin) return null;
 
   return (

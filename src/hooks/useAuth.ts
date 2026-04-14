@@ -33,6 +33,7 @@ export function useAuth() {
   const [userPermissions, setUserPermissions] = useState<UserPermissions | null>(null);
   const [companyName, setCompanyName] = useState<string | null>(null);
   const [forceUpdate, setForceUpdate] = useState(0);
+  const [authReady, setAuthReady] = useState(false);
   const { authenticatedUser } = useUserAuth();
   const { logout: userLogout } = useUserAuth();
 
@@ -150,7 +151,7 @@ export function useAuth() {
   useEffect(() => {
     const storedUser = localStorage.getItem('inventory_current_user');
     const storedPermissions = localStorage.getItem('inventory_user_permissions');
-    
+
     if (storedUser && storedPermissions) {
       try {
         const user = JSON.parse(storedUser);
@@ -172,22 +173,16 @@ export function useAuth() {
         const newRole = (user.is_admin || restoredSuperAdmin) ? 'admin' : 'sales';
         setRole(newRole);
         StorageManager.setRole(newRole);
-
-        console.log('Loaded persisted user data:', {
-          username: user.username,
-          is_admin: user.is_admin,
-          role: newRole
-        });
       } catch (error) {
         console.error('Failed to parse stored user data:', error);
-        // Clear corrupted data
         localStorage.removeItem('inventory_current_user');
         localStorage.removeItem('inventory_user_permissions');
-        // Reset role to default
         setRole('sales');
         StorageManager.setRole('sales');
       }
     }
+    // Auth is now ready regardless — guards can now make decisions
+    setAuthReady(true);
   }, []);
 
   const login = useCallback(async (pin: string): Promise<boolean> => {
@@ -324,6 +319,7 @@ export function useAuth() {
     isSuperAdmin,
     companyId,
     companyName,
+    authReady,
     login,
     loginWithUsername,
     logout,
@@ -332,7 +328,6 @@ export function useAuth() {
     canAccessBrand,
     getPriceDisplayType,
     getDisplayPrice,
-    // Expose the force update counter for components that need to react to auth changes
     authVersion: forceUpdate
   };
 }

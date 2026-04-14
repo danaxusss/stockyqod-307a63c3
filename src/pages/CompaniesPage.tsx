@@ -28,7 +28,7 @@ const emptyForm: CompanyFormData = {
 };
 
 export default function CompaniesPage() {
-  const { isSuperAdmin } = useAuth();
+  const { isSuperAdmin, authReady } = useAuth();
   const { showToast } = useToast();
   const navigate = useNavigate();
 
@@ -43,8 +43,8 @@ export default function CompaniesPage() {
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    if (!isSuperAdmin) { navigate('/'); }
-  }, [isSuperAdmin, navigate]);
+    if (authReady && !isSuperAdmin) { navigate('/'); }
+  }, [authReady, isSuperAdmin, navigate]);
 
   const loadCompanies = useCallback(async () => {
     setIsLoading(true);

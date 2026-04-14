@@ -38,7 +38,7 @@ const initialFormData: UserFormData = {
 
 export default function UserManagementPage() {
   const { showToast } = useToast();
-  const { isSuperAdmin } = useAuth();
+  const { isSuperAdmin, authReady } = useAuth();
 
   const [users, setUsers] = useState<AppUser[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -245,6 +245,8 @@ export default function UserManagementPage() {
   });
 
   const getPriceTypeLabel = (type: string) => ({ normal: 'Prix Normal', reseller: 'Revendeur', buy: "Prix d'Achat", calculated: 'Calculé' }[type] || type);
+
+  if (!authReady) return null;
 
   if (!isSuperAdmin) {
     return (
