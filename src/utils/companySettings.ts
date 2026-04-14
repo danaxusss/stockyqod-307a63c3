@@ -123,7 +123,22 @@ const DEFAULT_VISIBLE_FIELDS: QuoteVisibleFields = {
 };
 
 export class CompanySettingsService {
-  static async getSettings(): Promise<CompanySettings | null> {
+  /**
+   * Load settings for a specific company (from `companies` table).
+   * Falls back to the global `company_settings` row if companyId is not provided.
+   */
+  static async getSettings(companyId?: string): Promise<CompanySettings | null> {
+    if (companyId) {
+      const { data, error } = await supabase
+        .from('companies')
+        .select('*')
+        .eq('id', companyId)
+        .maybeSingle();
+      if (!error && data) {
+        return this.mapCompanyRow(data as any);
+      }
+    }
+    // Fall back to legacy global company_settings
     const { data, error } = await supabase
       .from('company_settings')
       .select('*')
@@ -158,6 +173,80 @@ export class CompanySettingsService {
         ...(rawShareTemplates || {}),
       },
     } as CompanySettings;
+  }
+
+  private static mapCompanyRow(data: Record<string, any>): CompanySettings {
+    const rawStyle = (data.quote_style as Record<string, unknown>) || {};
+    const rawShareTemplates = (data.share_templates as Record<string, string>) || {};
+    return {
+      id: data.id,
+      company_name: data.name || '',
+      address: data.address || '',
+      phone: data.phone || '',
+      phone2: data.phone2 || '',
+      phone_dir: '',
+      phone_gsm: '',
+      email: data.email || '',
+      website: data.website || '',
+      ice: data.ice || '',
+      rc: data.rc || '',
+      if_number: data.if_number || '',
+      cnss: data.cnss || '',
+      patente: data.patente || '',
+      logo_url: data.logo_url || null,
+      logo_size: (data.logo_size as 'small' | 'medium' | 'large') || 'medium',
+      tva_rate: data.tva_rate ?? 20,
+      quote_validity_days: data.quote_validity_days ?? 30,
+      payment_terms: data.payment_terms || '',
+      updated_at: data.updated_at || '',
+      quote_visible_fields: {
+        ...DEFAULT_VISIBLE_FIELDS,
+        ...(data.quote_visible_fields as Record<string, boolean>),
+      },
+      quote_style: {
+        ...DEFAULT_QUOTE_STYLE,
+        ...rawStyle,
+        accentColor: data.accent_color || DEFAULT_QUOTE_STYLE.accentColor,
+        fontFamily: (data.font_family as any) || DEFAULT_QUOTE_STYLE.fontFamily,
+      },
+      share_templates: {
+        ...DEFAULT_SHARE_TEMPLATES,
+        ...rawShareTemplates,
+      },
+    } as CompanySettings;
+  }
+
+  static async updateCompanySettings(companyId: string, settings: Partial<CompanySettings>): Promise<void> {
+    const updateData: Record<string, unknown> = {
+      name: settings.company_name,
+      address: settings.address,
+      phone: settings.phone,
+      phone2: settings.phone2,
+      email: settings.email,
+      website: settings.website,
+      ice: settings.ice,
+      rc: settings.rc,
+      if_number: settings.if_number,
+      cnss: settings.cnss,
+      patente: settings.patente,
+      logo_url: settings.logo_url,
+      logo_size: settings.logo_size,
+      tva_rate: settings.tva_rate,
+      quote_validity_days: settings.quote_validity_days,
+      payment_terms: settings.payment_terms,
+      updated_at: new Date().toISOString(),
+    };
+    if (settings.quote_visible_fields) updateData.quote_visible_fields = settings.quote_visible_fields;
+    if (settings.quote_style) {
+      updateData.quote_style = settings.quote_style;
+      if (settings.quote_style.accentColor) updateData.accent_color = settings.quote_style.accentColor;
+      if (settings.quote_style.fontFamily) updateData.font_family = settings.quote_style.fontFamily;
+    }
+    if (settings.share_templates) updateData.share_templates = settings.share_templates;
+    // Remove undefined keys
+    Object.keys(updateData).forEach(k => updateData[k] === undefined && delete updateData[k]);
+    const { error } = await supabase.from('companies').update(updateData as any).eq('id', companyId);
+    if (error) throw error;
   }
 
   static async updateSettings(settings: Partial<CompanySettings>): Promise<void> {

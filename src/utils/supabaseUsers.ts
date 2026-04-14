@@ -5,6 +5,8 @@ type SafeAppUserRow = {
   id: string;
   username: string;
   is_admin: boolean;
+  is_superadmin: boolean;
+  company_id: string | null;
   can_create_quote: boolean;
   allowed_stock_locations: string[];
   allowed_brands: string[];
@@ -185,6 +187,8 @@ export class SupabaseUsersService {
       username: data.username,
       pin: '******', // PIN is never exposed to client
       is_admin: data.is_admin,
+      is_superadmin: data.is_superadmin || false,
+      company_id: data.company_id || undefined,
       can_create_quote: data.can_create_quote,
       allowed_stock_locations: data.allowed_stock_locations || [],
       allowed_brands: data.allowed_brands || [],

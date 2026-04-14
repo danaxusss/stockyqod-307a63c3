@@ -3,6 +3,8 @@ import { UserRole, AppUser, UserPermissions } from '../types';
 import { StorageManager } from '../utils/storage';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserAuth } from './useUserAuth';
+import { setCompanyContext } from '../utils/supabaseCompanyFilter';
+import { SupabaseCompaniesService } from '../utils/supabaseCompanies';
 
 // Create a custom event for auth state changes
 const AUTH_CHANGE_EVENT = 'auth-state-change';
@@ -29,6 +31,7 @@ export function useAuth() {
   const [role, setRole] = useState<UserRole>(() => StorageManager.getRole());
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
   const [userPermissions, setUserPermissions] = useState<UserPermissions | null>(null);
+  const [companyName, setCompanyName] = useState<string | null>(null);
   const [forceUpdate, setForceUpdate] = useState(0);
   const { authenticatedUser } = useUserAuth();
   const { logout: userLogout } = useUserAuth();
@@ -78,19 +81,34 @@ export function useAuth() {
   // Load user data and permissions
   const loadUserData = useCallback(async (user: AppUser) => {
     setCurrentUser(user);
-    
+
+    const isSuperAdmin = user.is_superadmin || false;
+    const companyId = user.company_id || null;
+
     const permissions: UserPermissions = {
       canCreateQuote: user.can_create_quote,
       allowedStockLocations: user.allowed_stock_locations,
       priceDisplayType: user.price_display_type,
       isAdmin: user.is_admin,
+      isSuperAdmin,
+      companyId,
       allowedBrands: user.allowed_brands || []
     };
-    
+
     setUserPermissions(permissions);
-    
+
+    // Update the global company filter singleton
+    setCompanyContext(companyId, isSuperAdmin);
+
+    // Load company name if user has a company
+    if (companyId) {
+      SupabaseCompaniesService.getCompanyById(companyId)
+        .then(company => setCompanyName(company?.name || null))
+        .catch(() => setCompanyName(null));
+    }
+
     // Update role for backward compatibility
-    const newRole = user.is_admin ? 'admin' : 'sales';
+    const newRole = (user.is_admin || isSuperAdmin) ? 'admin' : 'sales';
     console.log('loadUserData - Setting role based on user.is_admin:', {
       username: user.username,
       is_admin: user.is_admin,
@@ -139,12 +157,22 @@ export function useAuth() {
         const permissions = JSON.parse(storedPermissions);
         setCurrentUser(user);
         setUserPermissions(permissions);
-        
+
+        // Restore company context singleton from persisted data
+        const restoredCompanyId = user.company_id || null;
+        const restoredSuperAdmin = user.is_superadmin || false;
+        setCompanyContext(restoredCompanyId, restoredSuperAdmin);
+        if (restoredCompanyId) {
+          SupabaseCompaniesService.getCompanyById(restoredCompanyId)
+            .then(company => setCompanyName(company?.name || null))
+            .catch(() => {});
+        }
+
         // Ensure role state is correctly set based on loaded user's admin status
-        const newRole = user.is_admin ? 'admin' : 'sales';
+        const newRole = (user.is_admin || restoredSuperAdmin) ? 'admin' : 'sales';
         setRole(newRole);
         StorageManager.setRole(newRole);
-        
+
         console.log('Loaded persisted user data:', {
           username: user.username,
           is_admin: user.is_admin,
@@ -227,10 +255,12 @@ export function useAuth() {
 
   const logout = useCallback(() => {
     userLogout();
-    
+
     setRole('sales');
     setCurrentUser(null);
     setUserPermissions(null);
+    setCompanyName(null);
+    setCompanyContext(null, false);
     StorageManager.setRole('sales');
     
     // Clear stored user data
@@ -283,12 +313,17 @@ export function useAuth() {
   }, [getPriceDisplayType]);
 
   const isAdmin = role === 'admin';
+  const isSuperAdmin = userPermissions?.isSuperAdmin ?? false;
+  const companyId = userPermissions?.companyId ?? null;
 
   return {
     role,
     currentUser,
     userPermissions,
     isAdmin,
+    isSuperAdmin,
+    companyId,
+    companyName,
     login,
     loginWithUsername,
     logout,

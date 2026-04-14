@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Package, RefreshCw, LogOut, Shield, FileText, User, Wifi, WifiOff, Cloud, CloudOff, Settings, UserCheck, ShoppingBag, BookOpen } from 'lucide-react';
+import { Package, RefreshCw, LogOut, Shield, FileText, User, Wifi, WifiOff, Cloud, CloudOff, Settings, UserCheck, ShoppingBag, BookOpen, Building2 } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useUserAuth } from '../hooks/useUserAuth';
@@ -8,7 +8,7 @@ import { useToast } from '../context/ToastContext';
 
 export function Header() {
   const [isSyncing, setIsSyncing] = useState(false);
-  const { isAdmin, currentUser, canCreateQuote, logout: adminLogout } = useAuth();
+  const { isAdmin, isSuperAdmin, companyName, currentUser, canCreateQuote, logout: adminLogout } = useAuth();
   const { isAuthenticated: isUserAuthenticated, authenticatedUser, logout: userLogout } = useUserAuth();
   const { syncInfo, syncData, openLoginModal } = useAppContext();
   const { showToast } = useToast();
@@ -89,6 +89,13 @@ export function Header() {
             </div>
           </Link>
 
+          {/* Company Badge */}
+          {companyName && (
+            <span className="hidden sm:inline-flex items-center px-2 py-0.5 text-[10px] font-medium bg-primary/10 text-primary border border-primary/20 rounded-full max-w-[120px] truncate">
+              {isSuperAdmin ? '★ ' : ''}{companyName}
+            </span>
+          )}
+
           {/* Nav Actions */}
           <div className="flex items-center space-x-1.5">
             {syncInfo.isOnline && (
@@ -123,6 +130,12 @@ export function Header() {
             {isAdmin && (
               <Link to="/admin/settings" className={navLinkClass('/admin/settings')} title="Paramètres">
                 <Settings className="h-3.5 w-3.5" />
+              </Link>
+            )}
+
+            {isSuperAdmin && (
+              <Link to="/companies" className={navLinkClass('/companies')} title="Sociétés">
+                <Building2 className="h-3.5 w-3.5" />
               </Link>
             )}
 

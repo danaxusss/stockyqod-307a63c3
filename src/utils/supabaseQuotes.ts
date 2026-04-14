@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient';
 import { Quote, QuoteTemplate, CustomerInfo, QuoteItem } from '../types';
+import { getCompanyContext } from './supabaseCompanyFilter';
 
 type QuoteRow = {
   id: string;
@@ -44,7 +45,8 @@ function mapQuoteRow(row: QuoteRow): Quote {
 
 export class SupabaseQuotesService {
   static async saveQuote(quote: Quote): Promise<void> {
-    const quoteData = {
+    const { companyId } = getCompanyContext();
+    const quoteData: Record<string, unknown> = {
       id: quote.id,
       quote_number: quote.quoteNumber,
       command_number: quote.commandNumber || null,
@@ -56,6 +58,7 @@ export class SupabaseQuotesService {
       total_amount: quote.totalAmount,
       notes: quote.notes || null
     };
+    if (companyId) quoteData.company_id = companyId;
 
     const { error } = await (supabase
       .from('quotes') as any)
@@ -90,8 +93,10 @@ export class SupabaseQuotesService {
   }
 
   static async getAllQuotes(filterBySalesPerson?: string): Promise<Quote[]> {
+    const { companyId, isSuperAdmin } = getCompanyContext();
     let query = supabase.from('quotes').select('*');
 
+    if (!isSuperAdmin && companyId) query = query.eq('company_id', companyId);
     if (filterBySalesPerson) {
       query = query.eq('customer_info->>salesPerson', filterBySalesPerson);
     }
@@ -117,11 +122,13 @@ export class SupabaseQuotesService {
   }
 
   static async searchQuotes(query: string, filterBySalesPerson?: string): Promise<Quote[]> {
+    const { companyId, isSuperAdmin } = getCompanyContext();
     let supabaseQuery = supabase
       .from('quotes')
       .select('*')
       .or(`quote_number.ilike.%${query}%,customer_info->>fullName.ilike.%${query}%,customer_info->>phoneNumber.ilike.%${query}%`);
 
+    if (!isSuperAdmin && companyId) supabaseQuery = supabaseQuery.eq('company_id', companyId);
     if (filterBySalesPerson) {
       supabaseQuery = supabaseQuery.eq('customer_info->>salesPerson', filterBySalesPerson);
     }

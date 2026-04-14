@@ -62,7 +62,8 @@ export default function ProductsPage() {
         const brandNames = getAllNames('brand', p.brand || '').join(' ');
         const providerNames = getAllNames('provider', p.provider || '').join(' ');
         const searchable = `${p.name} ${brandNames} ${providerNames} ${p.barcode}`.toLowerCase();
-        return searchable.includes(q);
+        const tokens = q.split(/\s+/).filter(t => t.length > 0);
+        return tokens.every(token => searchable.includes(token));
       });
     }
     const normalizedBrandFilter = brandFilter.toLowerCase().trim();

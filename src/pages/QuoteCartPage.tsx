@@ -75,6 +75,11 @@ export function QuoteCartPage() {
   const [status, setStatus] = useState<'draft' | 'final'>('draft');
   const [notes, setNotes] = useState('');
   const [globalMargin, setGlobalMargin] = useState<number>(20);
+  const [globalDiscount, setGlobalDiscount] = useState<number>(0);
+
+  // Custom product inline form state
+  const [showCustomProductForm, setShowCustomProductForm] = useState(false);
+  const [customFormData, setCustomFormData] = useState({ barcode: '', name: '', brand: '', unitPrice: '' });
 
   // UI state
   const [currentPage, setCurrentPage] = useState(1);
@@ -101,7 +106,7 @@ export function QuoteCartPage() {
   const [availableUsers, setAvailableUsers] = useState<{ username: string; displayName: string }[]>([]);
   const [customSellerName, setCustomSellerName] = useState('');
   const [useCustomSeller, setUseCustomSeller] = useState(false);
-  const { currentUser, authenticatedUser, isAdmin, canAccessStockLocation, getDisplayPrice } = useAuth();
+  const { currentUser, authenticatedUser, isAdmin, companyId, canAccessStockLocation, getDisplayPrice } = useAuth();
 
   // Client autocomplete
   const [clientSuggestions, setClientSuggestions] = useState<Client[]>([]);
@@ -184,10 +189,10 @@ export function QuoteCartPage() {
     if (initialLoadDone) setIsDirty(true);
   }, [items, customer, notes, commandNumber, status, globalMargin]);
 
-  // Load company settings for PDF export
+  // Load company settings for PDF export (per-user company if available)
   useEffect(() => {
-    CompanySettingsService.getSettings().then(setCompanySettings).catch(console.error);
-  }, []);
+    CompanySettingsService.getSettings(companyId || undefined).then(setCompanySettings).catch(console.error);
+  }, [companyId]);
 
   // Check linked tech sheets when items change
   useEffect(() => {
@@ -347,104 +352,62 @@ export function QuoteCartPage() {
     });
   };
 
-  // Enhanced custom product function with barcode and brand
-  const addCustomProduct = () => {
-    try {
-      // Get barcode
-      const barcode = prompt('Code-barres du produit:');
-      if (!barcode || !barcode.trim()) {
-        showToast({
-          type: 'warning',
-          title: 'Champ requis',
-          message: 'Le code-barres est requis'
-        });
-        return;
-      }
+  // Open inline custom product form
+  const openCustomProductForm = () => {
+    setCustomFormData({ barcode: '', name: '', brand: '', unitPrice: '' });
+    setShowCustomProductForm(true);
+  };
 
-      // Get product name
-      const productName = prompt('Nom du produit:');
-      if (!productName || !productName.trim()) {
-        showToast({
-          type: 'warning',
-          title: 'Champ requis',
-          message: 'Le nom du produit est requis'
-        });
-        return;
-      }
-
-      // Get brand
-      const brand = prompt('Marque du produit:');
-      if (!brand || !brand.trim()) {
-        showToast({
-          type: 'warning',
-          title: 'Champ requis',
-          message: 'La marque est requise'
-        });
-        return;
-      }
-
-      // Get unit price
-      const unitPriceStr = prompt('Prix unitaire:');
-      const unitPrice = parseFloat(unitPriceStr || '0');
-      if (isNaN(unitPrice) || unitPrice <= 0) {
-        showToast({
-          type: 'error',
-          title: 'Prix invalide',
-          message: 'Le prix unitaire doit être un nombre positif'
-        });
-        return;
-      }
-
-      // Check if barcode already exists in current items
-      const existingItem = items.find(item => item.product.barcode === barcode.trim());
-      if (existingItem) {
-        showToast({
-          type: 'warning',
-          title: 'Produit existant',
-          message: 'Un produit avec ce code-barres existe déjà dans le devis'
-        });
-        return;
-      }
-
-      const customProduct: Product = {
-        barcode: barcode.trim(),
-        name: productName.trim(),
-        brand: brand.trim(),
-        techsheet: '',
-        price: unitPrice,
-        buyprice: unitPrice * 0.8, // Assume 20% margin
-        reseller_price: unitPrice * 0.9,
-        provider: 'Manuel',
-        stock_levels: {}
-      };
-
-      const newItem: QuoteItem = {
-        id: `custom-${Date.now()}`,
-        product: customProduct,
-        priceType: 'normal',
-        marginPercentage: globalMargin,
-        finalPrice: unitPrice,
-        addedAt: new Date(),
-        unitPrice: unitPrice,
-        quantity: 1,
-        subtotal: unitPrice
-      };
-
-      setItems(prev => [...prev, newItem]);
-      
-      showToast({
-        type: 'success',
-        title: 'Produit ajouté',
-        message: `${productName} (${brand}) ajouté au devis`
-      });
-    } catch (error) {
-      console.error('Error in addCustomProduct:', error);
-      showToast({
-        type: 'error',
-        title: 'Erreur inattendue',
-        message: `Une erreur s'est produite lors de l'ajout du produit: ${error instanceof Error ? error.message : 'Erreur inconnue'}`
-      });
+  // Submit the inline custom product form
+  const submitCustomProduct = () => {
+    const { barcode, name, brand, unitPrice: unitPriceStr } = customFormData;
+    if (!barcode.trim()) {
+      showToast({ type: 'warning', title: 'Champ requis', message: 'Le code-barres est requis' });
+      return;
     }
+    if (!name.trim()) {
+      showToast({ type: 'warning', title: 'Champ requis', message: 'Le nom du produit est requis' });
+      return;
+    }
+    if (!brand.trim()) {
+      showToast({ type: 'warning', title: 'Champ requis', message: 'La marque est requise' });
+      return;
+    }
+    const unitPrice = parseFloat(unitPriceStr);
+    if (isNaN(unitPrice) || unitPrice < 0) {
+      showToast({ type: 'error', title: 'Prix invalide', message: 'Le prix doit être un nombre positif ou zéro' });
+      return;
+    }
+    const existingItem = items.find(item => item.product.barcode === barcode.trim());
+    if (existingItem) {
+      showToast({ type: 'warning', title: 'Produit existant', message: 'Un produit avec ce code-barres existe déjà dans le devis' });
+      return;
+    }
+    const customProduct: Product = {
+      barcode: barcode.trim(),
+      name: name.trim(),
+      brand: brand.trim(),
+      techsheet: '',
+      price: unitPrice,
+      buyprice: unitPrice > 0 ? unitPrice * 0.8 : 0,
+      reseller_price: unitPrice > 0 ? unitPrice * 0.9 : 0,
+      provider: 'Manuel',
+      stock_levels: {}
+    };
+    const newItem: QuoteItem = {
+      id: `custom-${Date.now()}`,
+      product: customProduct,
+      priceType: 'normal',
+      marginPercentage: globalMargin,
+      finalPrice: unitPrice,
+      addedAt: new Date(),
+      unitPrice: unitPrice,
+      quantity: 1,
+      subtotal: unitPrice
+    };
+    setItems(prev => [...prev, newItem]);
+    setShowCustomProductForm(false);
+    showToast({ type: 'success', title: 'Produit ajouté', message: `${name.trim()} (${brand.trim()}) ajouté au devis` });
   };
 
   // Calculate totals
@@ -559,6 +522,21 @@ export function QuoteCartPage() {
           ...item,
           marginPercentage: newMargin,
           unitPrice: newUnitPrice,
+          subtotal: discountedPrice * item.quantity
+        };
+      })
+    );
+  };
+
+  // Apply global discount to all items
+  const applyGlobalDiscount = (newDiscount: number) => {
+    setGlobalDiscount(newDiscount);
+    setItems(prevItems =>
+      prevItems.map(item => {
+        const discountedPrice = item.unitPrice * (1 - newDiscount / 100);
+        return {
+          ...item,
+          discount: newDiscount,
           subtotal: discountedPrice * item.quantity
         };
       })
@@ -708,7 +686,7 @@ export function QuoteCartPage() {
 
     setIsExporting(true);
     try {
-      const freshSettings = await CompanySettingsService.getSettings().catch(() => companySettings);
+      const freshSettings = await CompanySettingsService.getSettings(companyId || undefined).catch(() => companySettings);
       const { totalAmount } = calculateTotals();
       const quoteData: Quote = {
         id: quote?.id || `quote-${Date.now()}`,
@@ -1007,7 +985,7 @@ export function QuoteCartPage() {
             <span>Ajouter des Produits</span>
           </h2>
           <button
-            onClick={addCustomProduct}
+            onClick={openCustomProductForm}
             className="flex items-center space-x-1 px-2.5 py-1.5 bg-green-600 hover:bg-green-700 text-primary-foreground rounded-lg transition-colors text-xs"
           >
             <Plus className="h-3.5 w-3.5" />
@@ -1100,6 +1078,18 @@ export function QuoteCartPage() {
                 >
                   {marginOptions.map((p) => (
                     <option key={p} value={p}>{p}%</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center space-x-1.5 px-2 py-1 bg-secondary rounded-lg border border-input">
+                <span className="text-xs text-muted-foreground whitespace-nowrap">Remise globale</span>
+                <select
+                  value={globalDiscount}
+                  onChange={(e) => applyGlobalDiscount(parseInt(e.target.value))}
+                  className="w-16 px-1 py-0.5 text-sm border border-input rounded bg-background text-blue-600 dark:text-blue-400 font-medium"
+                >
+                  {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50].map((d) => (
+                    <option key={d} value={d}>{d}%</option>
                   ))}
                 </select>
               </div>
@@ -1448,7 +1438,7 @@ export function QuoteCartPage() {
                 // Export PDF
                 setIsExporting(true);
                 try {
-                  const freshSettings = await CompanySettingsService.getSettings().catch(() => companySettings);
+                  const freshSettings = await CompanySettingsService.getSettings(companyId || undefined).catch(() => companySettings);
                   const quoteData: Quote = { id: quote?.id || `quote-${Date.now()}`, quoteNumber, commandNumber: commandNumber || undefined, createdAt: quote?.createdAt || new Date(), updatedAt: new Date(), status, customer, items, totalAmount, notes };
                   await PdfExportService.exportQuoteToPdf(quoteData, freshSettings || companySettings);
                 } catch { /* PDF export failed, continue to share anyway */ }
@@ -1519,7 +1509,7 @@ export function QuoteCartPage() {
                 // Export PDF first
                 setIsExporting(true);
                 try {
-                  const freshSettings = await CompanySettingsService.getSettings().catch(() => companySettings);
+                  const freshSettings = await CompanySettingsService.getSettings(companyId || undefined).catch(() => companySettings);
                   const quoteData: Quote = { id: quote?.id || `quote-${Date.now()}`, quoteNumber, commandNumber: commandNumber || undefined, createdAt: quote?.createdAt || new Date(), updatedAt: new Date(), status, customer, items, totalAmount, notes };
                   await PdfExportService.exportQuoteToPdf(quoteData, freshSettings || companySettings);
                 } catch { /* continue */ }
@@ -1568,6 +1558,84 @@ export function QuoteCartPage() {
             </button>
           </div>
           <p className="text-[10px] text-muted-foreground mt-1.5">📎 Le PDF sera téléchargé — joignez-le à votre message. Templates personnalisables dans Paramètres.</p>
+        </div>
+      )}
+
+      {/* Custom Product Inline Form Modal */}
+      {showCustomProductForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="glass rounded-xl shadow-2xl w-full max-w-md p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-bold text-foreground flex items-center space-x-2">
+                <Package className="h-4 w-4" />
+                <span>Produit Personnalisé</span>
+              </h2>
+              <button onClick={() => setShowCustomProductForm(false)} className="p-1 hover:bg-accent rounded-lg">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1">Code-barres *</label>
+                <input
+                  type="text"
+                  value={customFormData.barcode}
+                  onChange={e => setCustomFormData(prev => ({ ...prev, barcode: e.target.value }))}
+                  className="w-full px-3 py-1.5 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-background text-foreground"
+                  placeholder="Ex: CUSTOM-001"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1">Nom du produit *</label>
+                <input
+                  type="text"
+                  value={customFormData.name}
+                  onChange={e => setCustomFormData(prev => ({ ...prev, name: e.target.value }))}
+                  className="w-full px-3 py-1.5 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-background text-foreground"
+                  placeholder="Nom du produit"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1">Marque *</label>
+                <input
+                  type="text"
+                  value={customFormData.brand}
+                  onChange={e => setCustomFormData(prev => ({ ...prev, brand: e.target.value }))}
+                  className="w-full px-3 py-1.5 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-background text-foreground"
+                  placeholder="Marque"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1">Prix unitaire (0 pour cadeau)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={customFormData.unitPrice}
+                  onChange={e => setCustomFormData(prev => ({ ...prev, unitPrice: e.target.value }))}
+                  className="w-full px-3 py-1.5 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-background text-foreground"
+                  placeholder="0.00"
+                  onKeyDown={e => e.key === 'Enter' && submitCustomProduct()}
+                />
+              </div>
+            </div>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => setShowCustomProductForm(false)}
+                className="flex-1 px-3 py-1.5 text-sm border border-input rounded-lg hover:bg-accent text-foreground"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={submitCustomProduct}
+                className="flex-1 flex items-center justify-center space-x-1.5 px-3 py-1.5 text-sm bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span>Ajouter</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

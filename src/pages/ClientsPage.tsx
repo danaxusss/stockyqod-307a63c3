@@ -118,8 +118,9 @@ export default function ClientsPage() {
       await SupabaseClientsService.deleteClient(client.id);
       showToast({ type: 'success', message: 'Client supprimé' });
       await loadClients();
-    } catch {
-      showToast({ type: 'error', message: 'Erreur lors de la suppression' });
+    } catch (err: any) {
+      console.error('Delete client error:', err);
+      showToast({ type: 'error', message: err?.message || 'Erreur lors de la suppression' });
     }
   };
 

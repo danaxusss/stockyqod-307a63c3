@@ -97,11 +97,40 @@ export interface QuoteTemplate {
   isActive: boolean;
 }
 
+export interface Company {
+  id: string;
+  name: string;
+  address: string;
+  phone: string;
+  phone2: string;
+  email: string;
+  website: string;
+  ice: string;
+  rc: string;
+  if_number: string;
+  cnss: string;
+  patente: string;
+  logo_url: string | null;
+  logo_size: 'small' | 'medium' | 'large';
+  accent_color: string;
+  font_family: string;
+  tva_rate: number;
+  quote_validity_days: number;
+  payment_terms: string;
+  share_templates: Record<string, string>;
+  quote_visible_fields: Record<string, boolean>;
+  quote_style: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface AppUser {
   id: string;
   username: string;
   pin: string;
   is_admin: boolean;
+  is_superadmin?: boolean;
+  company_id?: string;
   can_create_quote: boolean;
   allowed_stock_locations: string[];
   allowed_brands: string[];
@@ -115,6 +144,8 @@ export interface CreateAppUserRequest {
   username: string;
   pin: string;
   is_admin?: boolean;
+  is_superadmin?: boolean;
+  company_id?: string;
   can_create_quote?: boolean;
   allowed_stock_locations?: string[];
   allowed_brands?: string[];
@@ -126,6 +157,8 @@ export interface UpdateAppUserRequest {
   username?: string;
   pin?: string;
   is_admin?: boolean;
+  is_superadmin?: boolean;
+  company_id?: string;
   can_create_quote?: boolean;
   allowed_stock_locations?: string[];
   allowed_brands?: string[];
@@ -139,6 +172,8 @@ export interface UserPermissions {
   allowedBrands: string[];
   priceDisplayType: 'normal' | 'reseller' | 'buy' | 'calculated';
   isAdmin: boolean;
+  isSuperAdmin: boolean;
+  companyId: string | null;
 }
 
 export interface TechnicalSheet {

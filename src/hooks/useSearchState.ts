@@ -95,7 +95,7 @@ export function searchProductsLocally(
       // Exact barcode match — fast path
       if (String(product.barcode).toLowerCase() === queryLower) return true;
 
-      const searchableText = `${product.name} ${brandNames.join(' ')} ${providerNames.join(' ')}`.toLowerCase();
+      const searchableText = `${product.name} ${brandNames.join(' ')} ${providerNames.join(' ')} ${product.barcode || ''}`.toLowerCase();
       if (!queryTokens.every(token => searchableText.includes(token))) return false;
     }
 

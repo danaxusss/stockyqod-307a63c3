@@ -22,6 +22,7 @@ const ClientsPage = React.lazy(() => import('./pages/ClientsPage'));
 const ProductsPage = React.lazy(() => import('./pages/ProductsPage'));
 const TechnicalSheetsPage = React.lazy(() => import('./pages/TechnicalSheetsPage'));
 const PublicSharePage = React.lazy(() => import('./pages/PublicSharePage'));
+const CompaniesPage = React.lazy(() => import('./pages/CompaniesPage'));
 
 function PageLoader() {
   return (
@@ -33,7 +34,7 @@ function PageLoader() {
 
 function AppContent() {
   const { activeLoginModalRole, openLoginModal } = useAppContext();
-  const { canCreateQuote } = useAuth();
+  const { canCreateQuote, isSuperAdmin } = useAuth();
   const { isAuthenticated: isUserAuthenticated } = useUserAuth();
 
   const handleUserLoginSuccess = () => {};
@@ -88,6 +89,9 @@ function AppContent() {
             <Route path="/share/:token" element={<PublicSharePage />} />
             <Route path="/admin/statistics" element={<StatisticsPage />} />
             <Route path="/admin/settings" element={<CompanySettingsPage />} />
+            {isSuperAdmin && (
+              <Route path="/companies" element={<CompaniesPage />} />
+            )}
           </Routes>
         </Suspense>
       </Layout>

@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+import { getCompanyContext } from './supabaseCompanyFilter';
 
 export interface Client {
   id: string;
@@ -32,10 +33,10 @@ export interface UpdateClientRequest {
 
 export class SupabaseClientsService {
   static async getAllClients(): Promise<Client[]> {
-    const { data, error } = await supabase
-      .from('clients')
-      .select('*')
-      .order('created_at', { ascending: false });
+    const { companyId, isSuperAdmin } = getCompanyContext();
+    let query = supabase.from('clients').select('*').order('created_at', { ascending: false });
+    if (!isSuperAdmin && companyId) query = query.eq('company_id', companyId);
+    const { data, error } = await query;
     if (error) throw error;
     return data || [];
   }
@@ -43,12 +44,15 @@ export class SupabaseClientsService {
   static async searchClients(query: string): Promise<Client[]> {
     const q = query.trim();
     if (!q) return [];
-    const { data, error } = await supabase
+    const { companyId, isSuperAdmin } = getCompanyContext();
+    let dbQuery = supabase
       .from('clients')
       .select('*')
       .or(`full_name.ilike.%${q}%,phone_number.ilike.%${q}%`)
       .order('full_name')
       .limit(10);
+    if (!isSuperAdmin && companyId) dbQuery = dbQuery.eq('company_id', companyId);
+    const { data, error } = await dbQuery;
     if (error) throw error;
     return data || [];
   }
@@ -64,6 +68,7 @@ export class SupabaseClientsService {
   }
 
   static async upsertClient(client: CreateClientRequest): Promise<Client> {
+    const { companyId } = getCompanyContext();
     const { data, error } = await supabase
       .from('clients')
       .upsert(
@@ -74,6 +79,7 @@ export class SupabaseClientsService {
           city: client.city || '',
           ice: client.ice || '',
           email: client.email || '',
+          ...(companyId ? { company_id: companyId } : {}),
         },
         { onConflict: 'phone_number' }
       )
@@ -84,6 +90,7 @@ export class SupabaseClientsService {
   }
 
   static async createClient(client: CreateClientRequest): Promise<Client> {
+    const { companyId } = getCompanyContext();
     const { data, error } = await supabase
       .from('clients')
       .insert({
@@ -93,6 +100,7 @@ export class SupabaseClientsService {
         city: client.city || '',
         ice: client.ice || '',
         email: client.email || '',
+        ...(companyId ? { company_id: companyId } : {}),
       })
       .select()
       .single();
