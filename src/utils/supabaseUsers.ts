@@ -16,29 +16,29 @@ type SafeAppUserRow = {
   updated_at: string;
 };
 
-function getAdminCredentials(): { admin_username: string; admin_pin: string } | null {
-  try {
-    const stored = localStorage.getItem('inventory_authenticated_user');
-    if (stored) {
-      const user = JSON.parse(stored);
-      const pin = sessionStorage.getItem('inventory_admin_pin');
-      if (user.username && pin) {
-        return { admin_username: user.username, admin_pin: pin };
+function getAdminUserId(): string | null {
+  // Try inventory_current_user first (set by useAuth on every login path)
+  for (const key of ['inventory_current_user', 'inventory_authenticated_user']) {
+    try {
+      const stored = localStorage.getItem(key);
+      if (stored) {
+        const user = JSON.parse(stored);
+        if (user?.id) return user.id;
       }
-    }
-  } catch { /* ignore */ }
+    } catch { /* ignore */ }
+  }
   return null;
 }
 
 export class SupabaseUsersService {
   static async createUser(userData: CreateAppUserRequest): Promise<AppUser> {
-    const creds = getAdminCredentials();
-    if (!creds) throw new Error('Admin authentication required');
+    const adminId = getAdminUserId();
+    if (!adminId) throw new Error('Authentification requise — veuillez vous reconnecter');
 
     const { data, error } = await supabase.functions.invoke('admin-users', {
       body: {
         action: 'create_user',
-        ...creds,
+        admin_user_id: adminId,
         username: userData.username,
         pin: userData.pin,
         is_admin: userData.is_admin || false,
@@ -48,6 +48,7 @@ export class SupabaseUsersService {
         allowed_stock_locations: userData.allowed_stock_locations || [],
         allowed_brands: userData.allowed_brands || [],
         price_display_type: userData.price_display_type || 'normal',
+        custom_seller_name: userData.custom_seller_name || '',
       }
     });
 
@@ -83,13 +84,13 @@ export class SupabaseUsersService {
   }
 
   static async updateUser(id: string, updates: UpdateAppUserRequest): Promise<AppUser> {
-    const creds = getAdminCredentials();
-    if (!creds) throw new Error('Admin authentication required');
+    const adminId = getAdminUserId();
+    if (!adminId) throw new Error('Authentification requise — veuillez vous reconnecter');
 
     const { data, error } = await supabase.functions.invoke('admin-users', {
       body: {
         action: 'update_user',
-        ...creds,
+        admin_user_id: adminId,
         user_id: id,
         ...(updates.username !== undefined && { username: updates.username }),
         ...(updates.pin !== undefined && { pin: updates.pin }),
@@ -110,11 +111,11 @@ export class SupabaseUsersService {
   }
 
   static async deleteUser(id: string): Promise<void> {
-    const creds = getAdminCredentials();
-    if (!creds) throw new Error('Admin authentication required');
+    const adminId = getAdminUserId();
+    if (!adminId) throw new Error('Authentification requise — veuillez vous reconnecter');
 
     const { data, error } = await supabase.functions.invoke('admin-users', {
-      body: { action: 'delete_user', ...creds, user_id: id }
+      body: { action: 'delete_user', admin_user_id: adminId, user_id: id }
     });
 
     if (error) throw new Error(`Failed to delete user: ${error.message}`);
@@ -157,11 +158,9 @@ export class SupabaseUsersService {
   }
 
   static async isUsernameAvailable(username: string, excludeId?: string): Promise<boolean> {
-    const creds = getAdminCredentials();
-    if (!creds) throw new Error('Admin authentication required');
-
+    const adminId = getAdminUserId();
     const { data, error } = await supabase.functions.invoke('admin-users', {
-      body: { action: 'check_username', ...creds, username, exclude_id: excludeId }
+      body: { action: 'check_username', admin_user_id: adminId, username, exclude_id: excludeId }
     });
 
     if (error) throw new Error(`Failed to check username: ${error.message}`);
