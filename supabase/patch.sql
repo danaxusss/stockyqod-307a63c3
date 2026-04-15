@@ -469,5 +469,16 @@ ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS ai_system_prompt text NOT 
 -- ── quotes: created_by ────────────────────────────────────────
 ALTER TABLE public.quotes ADD COLUMN IF NOT EXISTS created_by text;
 
+-- ── quotes: RLS policies (allow anon CRUD — app uses PIN auth not Supabase auth) ──
+ALTER TABLE public.quotes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow read quotes" ON public.quotes;
+DROP POLICY IF EXISTS "Allow insert quotes" ON public.quotes;
+DROP POLICY IF EXISTS "Allow update quotes" ON public.quotes;
+DROP POLICY IF EXISTS "Allow delete quotes" ON public.quotes;
+CREATE POLICY "Allow read quotes"   ON public.quotes FOR SELECT USING (true);
+CREATE POLICY "Allow insert quotes" ON public.quotes FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow update quotes" ON public.quotes FOR UPDATE USING (true);
+CREATE POLICY "Allow delete quotes" ON public.quotes FOR DELETE USING (true);
+
 -- ── Clear stale shared logo URLs (each company must re-upload) ─
 UPDATE public.companies SET logo_url = NULL WHERE logo_url IS NOT NULL AND logo_url NOT LIKE '%/companies/%';

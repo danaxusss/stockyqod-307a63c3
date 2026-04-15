@@ -3,7 +3,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Building2, Plus, Edit, Trash2, X, Check, Loader, Search,
   ChevronLeft, ChevronRight, Upload, Image, Save, ArrowLeft,
-  Phone, Mail, Globe, Hash, FileText, Eye, Palette, MessageCircle, Send, Stamp
+  Phone, Mail, Globe, Hash, FileText, Eye, Palette, MessageCircle, Send, Stamp,
+  Bot, Zap, ToggleLeft, ToggleRight
 } from 'lucide-react';
 import { SupabaseCompaniesService } from '../utils/supabaseCompanies';
 import {
@@ -15,6 +16,19 @@ import { useNavigate } from 'react-router-dom';
 import { Company } from '../types';
 
 const COMPANIES_PER_PAGE = 15;
+
+const AI_MODEL_PRESETS = [
+  { value: 'deepseek/deepseek-chat-v3-0324:free',           label: '★ DeepSeek V3 (gratuit) — recommandé' },
+  { value: 'deepseek/deepseek-r1:free',                     label: '★ DeepSeek R1 (gratuit)' },
+  { value: 'nvidia/nemotron-3-super-120b-a12b:free',        label: '★ NVIDIA Nemotron 120B (gratuit)' },
+  { value: 'meta-llama/llama-3.3-70b-instruct:free',        label: '★ Llama 3.3 70B (gratuit)' },
+  { value: 'mistralai/mistral-small-3.1-24b-instruct:free', label: '★ Mistral Small 24B (gratuit)' },
+  { value: 'qwen/qwen3-8b:free',                            label: '★ Qwen3 8B (gratuit)' },
+  { value: 'google/gemini-2.5-flash-preview',               label: 'Gemini 2.5 Flash' },
+  { value: 'anthropic/claude-haiku-4-5-20251001',           label: 'Claude Haiku 4.5' },
+  { value: 'openai/gpt-4o-mini',                            label: 'GPT-4o Mini' },
+  { value: '__custom__',                                     label: 'Modèle personnalisé…' },
+];
 
 type CompanyFormData = {
   name: string;
@@ -192,11 +206,8 @@ export default function CompaniesPage() {
         stampUrl = await CompanySettingsService.uploadStamp(editStampFile, editingCompany.id);
         setEditStampFile(null);
       }
-      // Exclude ai_* fields — those are managed from the IA settings tab
-      // and the columns may not exist yet if the migration hasn't run
-      const { ai_enabled, ai_model, ai_system_prompt, ...safeSettings } = editSettings;
       await CompanySettingsService.updateCompanySettings(editingCompany.id, {
-        ...safeSettings,
+        ...editSettings,
         logo_url: logoUrl,
         stamp_url: stampUrl,
       });
@@ -514,6 +525,50 @@ export default function CompaniesPage() {
                     onChange={e => setTemplates({ email_body: e.target.value })}
                     className="w-full px-3 py-2 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring font-mono resize-y" />
                 </div>
+              </div>
+            </div>
+
+            {/* IA Settings */}
+            <div className="glass rounded-xl shadow-lg p-4 space-y-3">
+              <h2 className="text-sm font-semibold text-foreground flex items-center space-x-2">
+                <Bot className="h-4 w-4 text-primary" /><span>Assistant IA</span>
+              </h2>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Activer le chat IA pour cette société</span>
+                <button
+                  onClick={() => setEditSettings({ ...editSettings, ai_enabled: !editSettings.ai_enabled })}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${editSettings.ai_enabled ? 'bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25' : 'bg-secondary text-muted-foreground hover:bg-accent'}`}
+                >
+                  {editSettings.ai_enabled ? <ToggleRight className="h-4 w-4" /> : <ToggleLeft className="h-4 w-4" />}
+                  {editSettings.ai_enabled ? 'Activé' : 'Désactivé'}
+                </button>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1 flex items-center space-x-1">
+                  <Zap className="h-3.5 w-3.5" /><span>Modèle IA</span>
+                </label>
+                <select
+                  value={AI_MODEL_PRESETS.find(m => m.value === editSettings.ai_model) ? editSettings.ai_model : '__custom__'}
+                  onChange={e => setEditSettings({ ...editSettings, ai_model: e.target.value })}
+                  className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground focus:ring-2 focus:ring-ring"
+                >
+                  {AI_MODEL_PRESETS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                </select>
+                {(!AI_MODEL_PRESETS.find(m => m.value === editSettings.ai_model) || editSettings.ai_model === '__custom__') && (
+                  <input type="text"
+                    value={editSettings.ai_model === '__custom__' ? '' : editSettings.ai_model}
+                    onChange={e => setEditSettings({ ...editSettings, ai_model: e.target.value })}
+                    placeholder="ex: deepseek/deepseek-chat-v3-0324:free"
+                    className="mt-1.5 w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground focus:ring-2 focus:ring-ring"
+                  />
+                )}
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1">Instructions personnalisées (optionnel)</label>
+                <textarea rows={4} value={editSettings.ai_system_prompt || ''}
+                  onChange={e => setEditSettings({ ...editSettings, ai_system_prompt: e.target.value })}
+                  placeholder="Instructions supplémentaires pour l'IA de cette société..."
+                  className="w-full px-3 py-2 text-sm border border-input rounded-lg bg-secondary text-foreground focus:ring-2 focus:ring-ring font-mono resize-y" />
               </div>
             </div>
 

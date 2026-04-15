@@ -669,7 +669,7 @@ export function QuoteCartPage() {
         showToast({
           type: 'error',
           title: 'Erreur de sauvegarde',
-          message: 'Erreur lors de la sauvegarde'
+          message: error instanceof Error ? error.message : 'Erreur lors de la sauvegarde'
         });
       }
     } finally {

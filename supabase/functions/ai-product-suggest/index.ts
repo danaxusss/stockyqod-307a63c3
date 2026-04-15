@@ -7,8 +7,39 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+// Fallback chain — tried in order if the primary model returns 404
+const FALLBACK_MODELS = [
+  "deepseek/deepseek-chat-v3-0324:free",
+  "nvidia/nemotron-3-super-120b-a12b:free",
+  "meta-llama/llama-3.3-70b-instruct:free",
+  "qwen/qwen3-8b:free",
+  "mistralai/mistral-small-3.1-24b-instruct:free",
+];
+
 function removeAccents(str: string): string {
   return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+async function callOpenRouter(
+  model: string,
+  messages: any[],
+  systemPrompt: string,
+  apiKey: string
+): Promise<Response> {
+  return fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": "https://stockyqod.app",
+      "X-Title": "Stocky QOD",
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: "system", content: systemPrompt }, ...messages],
+      stream: true,
+    }),
+  });
 }
 
 serve(async (req) => {
@@ -35,7 +66,6 @@ serve(async (req) => {
     // Load company AI settings if company_id provided
     let aiModel = Deno.env.get("AI_MODEL") || "deepseek/deepseek-chat-v3-0324:free";
     let customSystemPrompt = "";
-    let aiEnabled = true;
 
     if (company_id) {
       const { data: company } = await supabase
@@ -85,13 +115,13 @@ serve(async (req) => {
     if (keywords.length > 0) {
       let query = supabase
         .from("products")
-        .select("barcode, name, brand, price, reseller_price, buyprice, provider, stock_levels");
+        .select("barcode, name, brand, price, reseller_price, stock_levels");
 
       for (const kw of keywords) {
         query = query.ilike("name", `%${kw}%`);
       }
 
-      const { data, error } = await query.limit(50);
+      const { data, error } = await query.limit(15);
       if (!error && data) products = data;
 
       // Fallback: longest keyword alone
@@ -99,9 +129,9 @@ serve(async (req) => {
         const mainKw = [...keywords].sort((a, b) => b.length - a.length)[0];
         const { data: fallbackData } = await supabase
           .from("products")
-          .select("barcode, name, brand, price, reseller_price, buyprice, provider, stock_levels")
+          .select("barcode, name, brand, price, reseller_price, stock_levels")
           .ilike("name", `%${mainKw}%`)
-          .limit(50);
+          .limit(15);
         if (fallbackData) products = fallbackData;
       }
     }
@@ -113,10 +143,7 @@ serve(async (req) => {
           const totalStock = Object.values(p.stock_levels || {}).reduce(
             (sum: number, v: any) => sum + (Number(v) || 0), 0
           );
-          const stockDetail = Object.entries(p.stock_levels || {})
-            .map(([loc, qty]) => `${loc}: ${qty}`)
-            .join(", ");
-          return `${i + 1}. [BARCODE:${p.barcode}] ${p.name} | Marque: ${p.brand || "N/A"} | Prix public: ${p.price} DH | Prix revendeur: ${p.reseller_price} DH | Stock: ${totalStock} (${stockDetail})`;
+          return `${i + 1}. [BARCODE:${p.barcode}] ${p.name} | ${p.brand || "N/A"} | ${p.price} DH (rev: ${p.reseller_price} DH) | Stock: ${totalStock}`;
         }).join("\n")
       : "Aucun produit trouvé pour cette recherche.";
 
@@ -178,51 +205,56 @@ Règles STRICTES pour le QUOTE_DRAFT :
 - "salesPerson" : toujours "IA"
 ${customSystemPrompt ? `\n━━━ INSTRUCTIONS SPÉCIALES DU SUPERADMIN ━━━\n${customSystemPrompt}` : ""}`;
 
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://stockyqod.app",
-        "X-Title": "Stocky QOD",
-      },
-      body: JSON.stringify({
-        model: aiModel,
-        messages: [
-          { role: "system", content: systemPrompt },
-          ...messages,
-        ],
-        stream: true,
-      }),
-    });
+    // Try the configured model first, then fall through the fallback list on 404
+    const modelsToTry = [aiModel, ...FALLBACK_MODELS.filter(m => m !== aiModel)];
+    let finalResponse: Response | null = null;
+    let lastErrorText = "";
 
-    if (!response.ok) {
-      if (response.status === 429) {
+    for (const model of modelsToTry) {
+      const r = await callOpenRouter(model, messages, systemPrompt, OPENROUTER_API_KEY);
+
+      if (r.ok) {
+        console.log(`Using model: ${model}`);
+        finalResponse = r;
+        break;
+      }
+
+      if (r.status === 429) {
         return new Response(JSON.stringify({ error: "Trop de requêtes, réessayez dans quelques instants." }), {
           status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      if (response.status === 402) {
+      if (r.status === 402) {
         return new Response(JSON.stringify({ error: "Crédits IA épuisés." }), {
           status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      const t = await response.text();
-      console.error("OpenRouter error:", response.status, t);
+      if (r.status === 404) {
+        console.log(`Model ${model} returned 404, trying next...`);
+        continue;
+      }
+
+      // Other error — capture and stop retrying
+      lastErrorText = await r.text();
+      console.error(`OpenRouter error (${model}):`, r.status, lastErrorText);
+      break;
+    }
+
+    if (!finalResponse) {
       let detail = "";
       try {
-        const parsed = JSON.parse(t);
+        const parsed = JSON.parse(lastErrorText);
         detail = parsed?.error?.message || parsed?.message || "";
       } catch { /* ignore */ }
       const msg = detail
-        ? `Erreur IA (${response.status}): ${detail}`
-        : `Erreur IA (${response.status}) — vérifiez le modèle sélectionné dans les paramètres.`;
+        ? `Erreur IA: ${detail}`
+        : "Aucun modèle IA disponible. Vérifiez les paramètres IA.";
       return new Response(JSON.stringify({ error: msg }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    return new Response(response.body, {
+    return new Response(finalResponse.body, {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
   } catch (e) {
