@@ -597,7 +597,7 @@ export function QuoteCartPage() {
       const now = new Date();
 
       const quoteData: Quote = {
-        id: quote?.id || `quote-${Date.now()}`,
+        id: quote?.id || crypto.randomUUID(),
         quoteNumber,
         commandNumber: commandNumber || undefined,
         createdAt: quote?.createdAt || now,
@@ -693,7 +693,7 @@ export function QuoteCartPage() {
       const freshSettings = await CompanySettingsService.getSettings(companyId || undefined).catch(() => companySettings);
       const { totalAmount } = calculateTotals();
       const quoteData: Quote = {
-        id: quote?.id || `quote-${Date.now()}`,
+        id: quote?.id || crypto.randomUUID(),
         quoteNumber,
         commandNumber: commandNumber || undefined,
         createdAt: quote?.createdAt || new Date(),
@@ -1458,7 +1458,7 @@ export function QuoteCartPage() {
                 setIsExporting(true);
                 try {
                   const freshSettings = await CompanySettingsService.getSettings(companyId || undefined).catch(() => companySettings);
-                  const quoteData: Quote = { id: quote?.id || `quote-${Date.now()}`, quoteNumber, commandNumber: commandNumber || undefined, createdAt: quote?.createdAt || new Date(), updatedAt: new Date(), status, customer, items, totalAmount, notes };
+                  const quoteData: Quote = { id: quote?.id || crypto.randomUUID(), quoteNumber, commandNumber: commandNumber || undefined, createdAt: quote?.createdAt || new Date(), updatedAt: new Date(), status, customer, items, totalAmount, notes };
                   await PdfExportService.exportQuoteToPdf(quoteData, freshSettings || companySettings, undefined, undefined, useStamp);
                 } catch { /* PDF export failed, continue to share anyway */ }
                 setIsExporting(false);
@@ -1529,7 +1529,7 @@ export function QuoteCartPage() {
                 setIsExporting(true);
                 try {
                   const freshSettings = await CompanySettingsService.getSettings(companyId || undefined).catch(() => companySettings);
-                  const quoteData: Quote = { id: quote?.id || `quote-${Date.now()}`, quoteNumber, commandNumber: commandNumber || undefined, createdAt: quote?.createdAt || new Date(), updatedAt: new Date(), status, customer, items, totalAmount, notes };
+                  const quoteData: Quote = { id: quote?.id || crypto.randomUUID(), quoteNumber, commandNumber: commandNumber || undefined, createdAt: quote?.createdAt || new Date(), updatedAt: new Date(), status, customer, items, totalAmount, notes };
                   await PdfExportService.exportQuoteToPdf(quoteData, freshSettings || companySettings, undefined, undefined, useStamp);
                 } catch { /* continue */ }
                 setIsExporting(false);
