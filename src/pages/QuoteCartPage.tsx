@@ -828,7 +828,7 @@ export function QuoteCartPage() {
         </div>
 
         {/* Quote Details */}
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <div className="flex items-center space-x-2 p-2 bg-secondary rounded-lg">
             <Hash className="h-4 w-4 text-primary" />
             <div>
@@ -1169,7 +1169,7 @@ export function QuoteCartPage() {
                         {startIndex + index + 1}
                       </td>
                       <td className="px-4 py-4">
-                        <div className="min-w-[18rem] space-y-2">
+                        <div className="min-w-[10rem] sm:min-w-[18rem] space-y-2">
                           <input
                             type="text"
                             value={getQuoteItemName(item)}

@@ -255,13 +255,13 @@ export function QuotesHistoryPage() {
                 <thead className="bg-secondary">
                   <tr>
                     {([['quoteNumber', Hash, 'N°'], ['customerName', User, 'Client'], ['createdAt', Calendar, 'Date'], ['totalAmount', DollarSign, 'Montant'], ['status', Filter, 'Statut']] as const).map(([field, Icon, label]) => (
-                      <th key={field} className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider cursor-pointer hover:bg-accent" onClick={() => handleSort(field)}>
+                      <th key={field} className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer hover:bg-accent" onClick={() => handleSort(field)}>
                         <div className="flex items-center space-x-1"><Icon className="h-3 w-3" /><span>{label}</span>{getSortIcon(field)}</div>
                       </th>
                     ))}
-                    {isAdmin && <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider"><div className="flex items-center space-x-1"><User className="h-3 w-3" /><span>Vendeur</span></div></th>}
-                    {isSuperAdmin && <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider"><div className="flex items-center space-x-1"><User className="h-3 w-3" /><span>Créé par</span></div></th>}
-                    <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Actions</th>
+                    {isAdmin && <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider"><div className="flex items-center space-x-1"><User className="h-3 w-3" /><span>Vendeur</span></div></th>}
+                    {isSuperAdmin && <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider"><div className="flex items-center space-x-1"><User className="h-3 w-3" /><span>Créé par</span></div></th>}
+                    <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">

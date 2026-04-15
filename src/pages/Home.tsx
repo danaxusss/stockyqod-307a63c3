@@ -240,7 +240,7 @@ export function Home() {
       {isSuperAdmin && (
         <div className="mb-4">
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">Outils Admin</h2>
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <ActionCard onClick={handleSync} disabled={isSyncing || !state.isOnline} icon={RefreshCw} iconGradient="bg-orange-600"
               title="Synchroniser" desc={isSyncing ? 'Sync...' : 'Serveur'} size="small" />
             <ActionCard onClick={() => setShowUploadModal(true)} icon={Upload} iconGradient="bg-violet-600" title="Upload Excel" desc="Importer" size="small" />

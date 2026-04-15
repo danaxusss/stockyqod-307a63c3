@@ -8,6 +8,7 @@ import { FloatingQuoteCart } from './components/FloatingQuoteCart';
 import { AIChatWidget } from './components/AIChatWidget';
 import { useAuth } from './hooks/useAuth';
 import { useUserAuth } from './hooks/useUserAuth';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 // Lazy-loaded pages
 const Home = React.lazy(() => import('./pages/Home').then(m => ({ default: m.Home })));
@@ -71,6 +72,7 @@ function AppContent() {
   return (
     <>
       <Layout>
+        <ErrorBoundary>
         <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="/" element={<Home />} />
@@ -94,6 +96,7 @@ function AppContent() {
             )}
           </Routes>
         </Suspense>
+        </ErrorBoundary>
       </Layout>
 
       {canCreateQuote() && <FloatingQuoteCart />}
@@ -113,13 +116,17 @@ function AppContent() {
 
 function App() {
   return (
-    <AppProvider>
-      <ToastProvider>
-        <Router>
-          <AppContent />
-        </Router>
-      </ToastProvider>
-    </AppProvider>
+    <ErrorBoundary>
+      <AppProvider>
+        <ToastProvider>
+          <Router>
+            <ErrorBoundary>
+              <AppContent />
+            </ErrorBoundary>
+          </Router>
+        </ToastProvider>
+      </AppProvider>
+    </ErrorBoundary>
   );
 }
 
