@@ -102,16 +102,16 @@ export function Layout({ children }: LayoutProps) {
         <div className="container mx-auto px-3">
           <div className="text-center">
             <p className="text-xs text-muted-foreground font-medium">
-              Stocky V1.0 - Cuisimat Gr - By{' '}
-              <a 
-                href="https://www.qodweb.com" 
-                target="_blank" 
+              Stocky V2.0 - Cuisimat Gr - By{' '}
+              <a
+                href="https://www.qodweb.com"
+                target="_blank"
                 rel="noopener noreferrer"
                 className="text-primary hover:text-primary/80 hover:underline transition-colors font-semibold"
               >
                 QodWeb
               </a>
-              {' '}2025
+              {' '}2026
             </p>
           </div>
         </div>
