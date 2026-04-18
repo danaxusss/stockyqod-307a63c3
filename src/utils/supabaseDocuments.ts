@@ -371,7 +371,7 @@ export class SupabaseDocumentsService {
     return Array.from(clientMap.values()).sort((a, b) => b.remaining - a.remaining);
   }
 
-  // Fetch all BL documents for BL-selection modals (compta global view)
+  // Fetch all BL documents (compta global view) — optionally filter by client name
   static async getBLsForClient(clientName: string): Promise<Quote[]> {
     const { data, error } = await (supabase.from('quotes') as any)
       .select('*')
@@ -383,5 +383,15 @@ export class SupabaseDocumentsService {
     return clientName
       ? docs.filter(d => d.customer?.fullName === clientName)
       : docs;
+  }
+
+  // All BLs regardless of status (for BL directory)
+  static async getAllBLs(): Promise<Quote[]> {
+    return this.getAllByType('bl');
+  }
+
+  // Create a Proforma from a single BL (convenience wrapper)
+  static async createProformaFromBL(blId: string, targetCompanyId: string): Promise<Quote> {
+    return this.createProformaFromBLs([blId], targetCompanyId);
   }
 }

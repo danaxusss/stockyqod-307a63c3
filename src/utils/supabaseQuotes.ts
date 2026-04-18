@@ -102,7 +102,9 @@ export class SupabaseQuotesService {
 
   static async getAllQuotes(filterBySalesPerson?: string): Promise<Quote[]> {
     const { companyId, bypassFilter } = getCompanyContext();
-    let query = supabase.from('quotes').select('*');
+    // Only return actual quotes — BLs/proformas/invoices have their own service
+    let query = (supabase.from('quotes') as any).select('*')
+      .or('document_type.eq.quote,document_type.is.null');
 
     if (!bypassFilter && companyId) query = query.eq('company_id', companyId);
     if (filterBySalesPerson) {
@@ -131,10 +133,10 @@ export class SupabaseQuotesService {
 
   static async searchQuotes(query: string, filterBySalesPerson?: string): Promise<Quote[]> {
     const { companyId, bypassFilter } = getCompanyContext();
-    let supabaseQuery = supabase
-      .from('quotes')
+    let supabaseQuery = (supabase.from('quotes') as any)
       .select('*')
-      .or(`quote_number.ilike.%${query}%,customer_info->>fullName.ilike.%${query}%,customer_info->>phoneNumber.ilike.%${query}%`);
+      .or(`quote_number.ilike.%${query}%,customer_info->>fullName.ilike.%${query}%,customer_info->>phoneNumber.ilike.%${query}%`)
+      .or('document_type.eq.quote,document_type.is.null');
 
     if (!bypassFilter && companyId) supabaseQuery = supabaseQuery.eq('company_id', companyId);
     if (filterBySalesPerson) {

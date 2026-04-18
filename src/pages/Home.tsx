@@ -1,5 +1,5 @@
 import React, { useState, useEffect, forwardRef } from 'react';
-import { Search, RefreshCw, Package, Upload, Bug, Trash2, BarChart3, FileText, ShoppingCart, LucideIcon, Users, Settings, FolderOpen, ChevronDown, ChevronUp, Receipt, Calculator } from 'lucide-react';
+import { Search, RefreshCw, Package, Upload, Bug, Trash2, BarChart3, FileText, ShoppingCart, LucideIcon, Users, Settings, FolderOpen, ChevronDown, ChevronUp, Receipt, Calculator, Truck } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useAppContext } from '../context/AppContext';
@@ -240,7 +240,8 @@ export function Home() {
       {(isCompta || isSuperAdmin) && (
         <div className="mb-4">
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">Comptabilité</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <ActionCard to="/compta/bls" icon={Truck} iconGradient="bg-teal-600" title="BL" desc="Bons de livraison" size="normal" />
             <ActionCard to="/compta/proformas" icon={FileText} iconGradient="bg-emerald-600" title="Proformas" desc="Liste et gestion" size="normal" />
             <ActionCard to="/compta/invoices" icon={Receipt} iconGradient="bg-blue-600" title="Factures" desc="Liste et gestion" size="normal" />
             <ActionCard to="/compta/clients" icon={Calculator} iconGradient="bg-violet-600" title="Clients (financier)" desc="Suivi par client" size="normal" />

@@ -29,6 +29,8 @@ const ProformaDirectoryPage = React.lazy(() => import('./pages/compta/ProformaDi
 const ProformaDetailPage = React.lazy(() => import('./pages/compta/ProformaDetailPage'));
 const InvoiceDirectoryPage = React.lazy(() => import('./pages/compta/InvoiceDirectoryPage'));
 const ClientFinancialPage = React.lazy(() => import('./pages/compta/ClientFinancialPage'));
+const BLDirectoryPage = React.lazy(() => import('./pages/compta/BLDirectoryPage'));
+const BLDetailPage = React.lazy(() => import('./pages/compta/BLDetailPage'));
 
 function PageLoader() {
   return (
@@ -104,6 +106,8 @@ function AppContent() {
             )}
             {(isCompta || isSuperAdmin) && (
               <>
+                <Route path="/compta/bls" element={<BLDirectoryPage />} />
+                <Route path="/compta/bls/:id" element={<BLDetailPage />} />
                 <Route path="/compta/proformas" element={<ProformaDirectoryPage />} />
                 <Route path="/compta/proformas/:id" element={<ProformaDetailPage />} />
                 <Route path="/compta/invoices" element={<InvoiceDirectoryPage />} />
