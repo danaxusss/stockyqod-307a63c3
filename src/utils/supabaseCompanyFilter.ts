@@ -5,12 +5,19 @@
 
 let _currentCompanyId: string | null = null;
 let _isSuperAdmin = false;
+let _isCompta = false;
 
-export function setCompanyContext(companyId: string | null, isSuperAdmin: boolean): void {
+export function setCompanyContext(companyId: string | null, isSuperAdmin: boolean, isCompta = false): void {
   _currentCompanyId = companyId;
   _isSuperAdmin = isSuperAdmin;
+  _isCompta = isCompta;
 }
 
-export function getCompanyContext(): { companyId: string | null; isSuperAdmin: boolean } {
-  return { companyId: _currentCompanyId, isSuperAdmin: _isSuperAdmin };
+export function getCompanyContext(): { companyId: string | null; isSuperAdmin: boolean; isCompta: boolean; bypassFilter: boolean } {
+  return {
+    companyId: _currentCompanyId,
+    isSuperAdmin: _isSuperAdmin,
+    isCompta: _isCompta,
+    bypassFilter: _isSuperAdmin || _isCompta,
+  };
 }

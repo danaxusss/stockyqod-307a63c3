@@ -101,10 +101,10 @@ export class SupabaseQuotesService {
   }
 
   static async getAllQuotes(filterBySalesPerson?: string): Promise<Quote[]> {
-    const { companyId, isSuperAdmin } = getCompanyContext();
+    const { companyId, bypassFilter } = getCompanyContext();
     let query = supabase.from('quotes').select('*');
 
-    if (!isSuperAdmin && companyId) query = query.eq('company_id', companyId);
+    if (!bypassFilter && companyId) query = query.eq('company_id', companyId);
     if (filterBySalesPerson) {
       query = query.eq('customer_info->>salesPerson', filterBySalesPerson);
     }
@@ -130,13 +130,13 @@ export class SupabaseQuotesService {
   }
 
   static async searchQuotes(query: string, filterBySalesPerson?: string): Promise<Quote[]> {
-    const { companyId, isSuperAdmin } = getCompanyContext();
+    const { companyId, bypassFilter } = getCompanyContext();
     let supabaseQuery = supabase
       .from('quotes')
       .select('*')
       .or(`quote_number.ilike.%${query}%,customer_info->>fullName.ilike.%${query}%,customer_info->>phoneNumber.ilike.%${query}%`);
 
-    if (!isSuperAdmin && companyId) supabaseQuery = supabaseQuery.eq('company_id', companyId);
+    if (!bypassFilter && companyId) supabaseQuery = supabaseQuery.eq('company_id', companyId);
     if (filterBySalesPerson) {
       supabaseQuery = supabaseQuery.eq('customer_info->>salesPerson', filterBySalesPerson);
     }

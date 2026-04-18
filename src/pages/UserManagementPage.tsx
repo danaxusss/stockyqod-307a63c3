@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Users, Plus, Edit, Trash2, Shield, User, Eye, EyeOff,
-  Save, X, AlertCircle, Search, UserCheck, UserX, MapPin, DollarSign, Building2, Star
+  Save, X, AlertCircle, Search, UserCheck, UserX, MapPin, DollarSign, Building2, Star, Calculator
 } from 'lucide-react';
 import { AppUser, CreateAppUserRequest, UpdateAppUserRequest, Company } from '../types';
 import { SupabaseUsersService } from '../utils/supabaseUsers';
@@ -15,6 +15,7 @@ interface UserFormData {
   pin: string;
   is_admin: boolean;
   is_superadmin: boolean;
+  is_compta: boolean;
   company_id: string;
   can_create_quote: boolean;
   allowed_stock_locations: string[];
@@ -28,6 +29,7 @@ const initialFormData: UserFormData = {
   pin: '',
   is_admin: false,
   is_superadmin: false,
+  is_compta: false,
   company_id: '',
   can_create_quote: true,
   allowed_stock_locations: [],
@@ -52,7 +54,7 @@ export default function UserManagementPage() {
   const [showPin, setShowPin] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterRole, setFilterRole] = useState<'all' | 'superadmin' | 'admin' | 'user' | 'reseller'>('all');
+  const [filterRole, setFilterRole] = useState<'all' | 'superadmin' | 'admin' | 'compta' | 'user' | 'reseller'>('all');
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
   const loadData = useCallback(async () => {
@@ -83,6 +85,15 @@ export default function UserManagementPage() {
       // Superadmins are always admin
       if (field === 'is_superadmin' && value === true) {
         next.is_admin = true;
+        next.is_compta = false;
+      }
+      // Compta role is mutually exclusive with admin/superadmin
+      if (field === 'is_compta' && value === true) {
+        next.is_admin = false;
+        next.is_superadmin = false;
+      }
+      if ((field === 'is_admin' || field === 'is_superadmin') && value === true) {
+        next.is_compta = false;
       }
       return next;
     });
@@ -126,6 +137,7 @@ export default function UserManagementPage() {
         pin: formData.pin,
         is_admin: formData.is_superadmin ? true : formData.is_admin,
         is_superadmin: formData.is_superadmin,
+        is_compta: formData.is_compta,
         company_id: formData.company_id || undefined,
         can_create_quote: formData.can_create_quote,
         allowed_stock_locations: formData.allowed_stock_locations,
@@ -153,6 +165,7 @@ export default function UserManagementPage() {
       pin: '',
       is_admin: user.is_admin,
       is_superadmin: user.is_superadmin || false,
+      is_compta: user.is_compta || false,
       company_id: user.company_id || '',
       can_create_quote: user.can_create_quote,
       allowed_stock_locations: user.allowed_stock_locations,
@@ -181,6 +194,7 @@ export default function UserManagementPage() {
         username: formData.username.trim(),
         is_admin: formData.is_superadmin ? true : formData.is_admin,
         is_superadmin: formData.is_superadmin,
+        is_compta: formData.is_compta,
         company_id: formData.company_id || undefined,
         can_create_quote: formData.can_create_quote,
         allowed_stock_locations: formData.allowed_stock_locations,
@@ -229,6 +243,7 @@ export default function UserManagementPage() {
   const getRoleBadge = (user: AppUser) => {
     if (user.is_superadmin) return { label: 'Superadmin', icon: Star, cls: 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300' };
     if (user.is_admin) return { label: 'Admin', icon: Shield, cls: 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300' };
+    if (user.is_compta) return { label: 'Compta', icon: Calculator, cls: 'bg-teal-100 dark:bg-teal-900/30 text-teal-800 dark:text-teal-300' };
     if (user.price_display_type === 'reseller') return { label: 'Revendeur', icon: DollarSign, cls: 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' };
     return { label: 'Commercial', icon: User, cls: 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300' };
   };
@@ -239,8 +254,9 @@ export default function UserManagementPage() {
       filterRole === 'all' ||
       (filterRole === 'superadmin' && user.is_superadmin) ||
       (filterRole === 'admin' && user.is_admin && !user.is_superadmin) ||
+      (filterRole === 'compta' && user.is_compta) ||
       (filterRole === 'reseller' && user.price_display_type === 'reseller') ||
-      (filterRole === 'user' && !user.is_admin && user.price_display_type !== 'reseller');
+      (filterRole === 'user' && !user.is_admin && !user.is_compta && user.price_display_type !== 'reseller');
     return matchesSearch && matchesRole;
   });
 
@@ -292,7 +308,8 @@ export default function UserManagementPage() {
             { label: 'Total', value: users.length, cls: 'bg-secondary' },
             { label: 'Superadmins', value: users.filter(u => u.is_superadmin).length, cls: 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300' },
             { label: 'Admins', value: users.filter(u => u.is_admin && !u.is_superadmin).length, cls: 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300' },
-            { label: 'Commerciaux', value: users.filter(u => !u.is_admin && u.price_display_type !== 'reseller').length, cls: 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300' },
+            { label: 'Compta', value: users.filter(u => u.is_compta).length, cls: 'bg-teal-100 dark:bg-teal-900/30 text-teal-800 dark:text-teal-300' },
+            { label: 'Commerciaux', value: users.filter(u => !u.is_admin && !u.is_compta && u.price_display_type !== 'reseller').length, cls: 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300' },
             { label: 'Revendeurs', value: users.filter(u => u.price_display_type === 'reseller').length, cls: 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' },
           ].map(({ label, value, cls }) => (
             <span key={label} className={`px-2 py-1 rounded-lg text-xs font-medium ${cls}`}>{value} {label}</span>
@@ -311,6 +328,7 @@ export default function UserManagementPage() {
             <option value="all">Tous</option>
             <option value="superadmin">Superadmins</option>
             <option value="admin">Admins</option>
+            <option value="compta">Compta</option>
             <option value="user">Commerciaux</option>
             <option value="reseller">Revendeurs</option>
           </select>
@@ -447,7 +465,7 @@ export default function UserManagementPage() {
                     </div>
                   </label>
 
-                  {!formData.is_superadmin && (
+                  {!formData.is_superadmin && !formData.is_compta && (
                     <label className="flex items-center space-x-3 cursor-pointer">
                       <input type="checkbox" checked={formData.is_admin} onChange={e => handleInputChange('is_admin', e.target.checked)}
                         className="w-4 h-4 rounded accent-primary" />
@@ -456,6 +474,19 @@ export default function UserManagementPage() {
                           <Shield className="h-3.5 w-3.5 text-purple-500" /><span>Admin société</span>
                         </span>
                         <p className="text-[10px] text-muted-foreground">Gère les paramètres de sa société, ses clients et devis — ne peut pas créer d'utilisateurs</p>
+                      </div>
+                    </label>
+                  )}
+
+                  {!formData.is_superadmin && !formData.is_admin && (
+                    <label className="flex items-center space-x-3 cursor-pointer">
+                      <input type="checkbox" checked={formData.is_compta} onChange={e => handleInputChange('is_compta', e.target.checked)}
+                        className="w-4 h-4 rounded accent-primary" />
+                      <div>
+                        <span className="text-sm font-medium text-foreground flex items-center space-x-1">
+                          <Calculator className="h-3.5 w-3.5 text-teal-500" /><span>Comptabilité</span>
+                        </span>
+                        <p className="text-[10px] text-muted-foreground">Accès global multi-sociétés — gestion BL, Proformas et Factures</p>
                       </div>
                     </label>
                   )}

@@ -1,9 +1,10 @@
 // @ts-nocheck
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, Search, Filter, Eye, Edit, Trash2, FileDown, Plus, Calendar, User, DollarSign, Hash, SortAsc, SortDesc, AlertCircle, Check, Loader, X, MessageCircle, Mail } from 'lucide-react';
+import { FileText, Search, Filter, Eye, Edit, Trash2, FileDown, Plus, Calendar, User, DollarSign, Hash, SortAsc, SortDesc, AlertCircle, Check, Loader, X, MessageCircle, Mail, Truck } from 'lucide-react';
 import { Quote } from '../types';
 import { SupabaseQuotesService } from '../utils/supabaseQuotes';
+import { SupabaseDocumentsService } from '../utils/supabaseDocuments';
 import { ActivityLogger } from '../utils/activityLogger';
 import { PdfExportService } from '../utils/pdfExport';
 import { CompanySettingsService, CompanySettings, DEFAULT_SHARE_TEMPLATES } from '../utils/companySettings';
@@ -17,7 +18,7 @@ type SortOrder = 'asc' | 'desc';
 
 export function QuotesHistoryPage() {
   const navigate = useNavigate();
-  const { isAdmin, isSuperAdmin, currentUser, authenticatedUser } = useAuth();
+  const { isAdmin, isSuperAdmin, isCompta, currentUser, authenticatedUser } = useAuth();
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [filteredQuotes, setFilteredQuotes] = useState<Quote[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -29,6 +30,7 @@ export function QuotesHistoryPage() {
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   const [isExporting, setIsExporting] = useState<string | null>(null);
+  const [isCreatingBL, setIsCreatingBL] = useState<string | null>(null);
   const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null);
 
   const loadQuotes = useCallback(async () => {
@@ -99,6 +101,20 @@ export function QuotesHistoryPage() {
     }
     finally {
       setIsExporting(null);
+    }
+  };
+
+  const handleCreateBL = async (quote: Quote) => {
+    if (!window.confirm(`Créer un BL depuis le devis ${quote.quoteNumber} ? Le devis sera marqué "Final".`)) return;
+    setIsCreatingBL(quote.id);
+    try {
+      const bl = await SupabaseDocumentsService.createBLFromQuote(quote.id);
+      setMessage({ type: 'success', text: `BL ${bl.quoteNumber} créé avec succès` });
+      await loadQuotes();
+    } catch (e) {
+      setMessage({ type: 'error', text: e instanceof Error ? e.message : 'Erreur création BL' });
+    } finally {
+      setIsCreatingBL(null);
     }
   };
 
@@ -296,6 +312,16 @@ export function QuotesHistoryPage() {
                           >
                             <Mail className="h-3.5 w-3.5" />
                           </button>
+                          {(isCompta || isSuperAdmin) && (
+                            <button
+                              onClick={() => handleCreateBL(quote)}
+                              disabled={isCreatingBL === quote.id || quote.status === 'final' || (quote.document_type && quote.document_type !== 'quote')}
+                              className="p-1 text-teal-500 hover:bg-teal-500/10 rounded transition-colors disabled:opacity-40"
+                              title="Créer un BL"
+                            >
+                              {isCreatingBL === quote.id ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Truck className="h-3.5 w-3.5" />}
+                            </button>
+                          )}
                           <button onClick={() => handleDelete(quote)} className="p-1 text-destructive hover:bg-destructive/10 rounded transition-colors" title="Supprimer"><Trash2 className="h-3.5 w-3.5" /></button>
                         </div>
                       </td>

@@ -62,7 +62,7 @@ export class PdfExportService {
     return `${intPart},${parts[1]}`;
   }
 
-  static async exportQuoteToPdf(quote: Quote, settings?: CompanySettings | null, techSheetsUrl?: string, techSheetsExpiryLabel?: string, useStampOverride?: boolean): Promise<void> {
+  static async exportQuoteToPdf(quote: Quote, settings?: CompanySettings | null, techSheetsUrl?: string, techSheetsExpiryLabel?: string, useStampOverride?: boolean, documentType: 'quote' | 'bl' | 'proforma' | 'invoice' = 'quote'): Promise<void> {
     const style: QuoteStyle = settings?.quote_style || {
       accentColor: '#3B82F6', fontFamily: 'helvetica', showBorders: true,
       borderRadius: 1, headerSize: 'large', totalsStyle: 'highlighted',
@@ -206,18 +206,22 @@ export class PdfExportService {
       }
     }
 
-    // DEVIS title (right side)
-    const devisBoxW = 45;
+    // Document type title (right side)
+    const docTypeLabel = documentType === 'bl' ? 'BON DE LIVRAISON'
+      : documentType === 'proforma' ? 'PROFORMA'
+      : documentType === 'invoice' ? 'FACTURE'
+      : 'DEVIS';
+    const devisBoxW = documentType === 'bl' ? 58 : 45;
     const devisBoxH = 11;
     const devisBoxX = pageWidth - margin - devisBoxW;
     const devisBoxY = y;
 
     doc.setFillColor(...ACCENT);
     doc.roundedRect(devisBoxX, devisBoxY, devisBoxW, devisBoxH, 2, 2, 'F');
-    doc.setFontSize(22);
+    doc.setFontSize(documentType === 'bl' ? 14 : 22);
     doc.setFont(font, 'bold');
     doc.setTextColor(...WHITE);
-    doc.text('DEVIS', devisBoxX + devisBoxW / 2, devisBoxY + devisBoxH / 2 + 3, { align: 'center' });
+    doc.text(docTypeLabel, devisBoxX + devisBoxW / 2, devisBoxY + devisBoxH / 2 + (documentType === 'bl' ? 2 : 3), { align: 'center' });
 
     // If logo is loaded, skip company name & tagline. Otherwise show them.
     if (!logoLoaded) {
@@ -353,49 +357,69 @@ export class PdfExportService {
     y = Math.max(leftFinalY, rightFinalY) + 5;
 
     // === ITEMS TABLE ===
-    const tableHeaders = hasDiscount
-      ? [['Marque', 'REF', 'DESCRIPTION', 'QTE', 'PU HT', 'Remise', 'TOTAL HT']]
-      : [['Marque', 'REF', 'DESCRIPTION', 'QTE', 'PU HT', 'TOTAL HT']];
-
+    const isBL = documentType === 'bl';
     const tvaDivisor = 1 + tvaRate / 100;
 
-    const tableBody = quote.items.map(item => {
-      const discount = item.discount ?? 0;
-      const unitPriceHT = item.unitPrice / tvaDivisor;
-      const discountedPriceHT = unitPriceHT * (1 - discount / 100);
-      const totalHTItem = discountedPriceHT * item.quantity;
-      const row = [
+    let tableHeaders: string[][];
+    let tableBody: string[][];
+    let itemColumnStyles: Record<number, any>;
+
+    if (isBL) {
+      // BL: no price columns
+      tableHeaders = [['Marque', 'REF', 'DESCRIPTION', 'QUANTITÉ']];
+      tableBody = quote.items.map(item => [
         getQuoteItemBrand(item) || '',
         getQuoteItemBarcode(item) || '',
         getQuoteItemName(item),
         String(item.quantity),
-        this.formatCurrency(unitPriceHT),
-      ];
-      if (hasDiscount) {
-        row.push(discount > 0 ? `${discount}%` : '-');
-      }
-      row.push(this.formatCurrency(totalHTItem));
-      return row;
-    });
+      ]);
+      itemColumnStyles = {
+        0: { cellWidth: 22, halign: 'center' },
+        1: { cellWidth: 28, halign: 'center' },
+        2: { cellWidth: 'auto' },
+        3: { cellWidth: 18, halign: 'center', fontStyle: 'bold' },
+      };
+    } else {
+      tableHeaders = hasDiscount
+        ? [['Marque', 'REF', 'DESCRIPTION', 'QTE', 'PU HT', 'Remise', 'TOTAL HT']]
+        : [['Marque', 'REF', 'DESCRIPTION', 'QTE', 'PU HT', 'TOTAL HT']];
 
-    const itemColumnStyles: Record<number, any> = hasDiscount
-      ? {
-          0: { cellWidth: 18, halign: 'center' },
-          1: { cellWidth: 24, halign: 'center' },
-          2: { cellWidth: 'auto' },
-          3: { cellWidth: 12, halign: 'center' },
-          4: { cellWidth: 24, halign: 'right' },
-          5: { cellWidth: 16, halign: 'center' },
-          6: { cellWidth: 26, halign: 'right', fontStyle: 'bold' },
-        }
-      : {
-          0: { cellWidth: 18, halign: 'center' },
-          1: { cellWidth: 24, halign: 'center' },
-          2: { cellWidth: 'auto' },
-          3: { cellWidth: 12, halign: 'center' },
-          4: { cellWidth: 24, halign: 'right' },
-          5: { cellWidth: 26, halign: 'right', fontStyle: 'bold' },
-        };
+      tableBody = quote.items.map(item => {
+        const discount = item.discount ?? 0;
+        const unitPriceHT = item.unitPrice / tvaDivisor;
+        const discountedPriceHT = unitPriceHT * (1 - discount / 100);
+        const totalHTItem = discountedPriceHT * item.quantity;
+        const row = [
+          getQuoteItemBrand(item) || '',
+          getQuoteItemBarcode(item) || '',
+          getQuoteItemName(item),
+          String(item.quantity),
+          this.formatCurrency(unitPriceHT),
+        ];
+        if (hasDiscount) row.push(discount > 0 ? `${discount}%` : '-');
+        row.push(this.formatCurrency(totalHTItem));
+        return row;
+      });
+
+      itemColumnStyles = hasDiscount
+        ? {
+            0: { cellWidth: 18, halign: 'center' },
+            1: { cellWidth: 24, halign: 'center' },
+            2: { cellWidth: 'auto' },
+            3: { cellWidth: 12, halign: 'center' },
+            4: { cellWidth: 24, halign: 'right' },
+            5: { cellWidth: 16, halign: 'center' },
+            6: { cellWidth: 26, halign: 'right', fontStyle: 'bold' },
+          }
+        : {
+            0: { cellWidth: 18, halign: 'center' },
+            1: { cellWidth: 24, halign: 'center' },
+            2: { cellWidth: 'auto' },
+            3: { cellWidth: 12, halign: 'center' },
+            4: { cellWidth: 24, halign: 'right' },
+            5: { cellWidth: 26, halign: 'right', fontStyle: 'bold' },
+          };
+    }
 
     // Calculate footer height to set bottom margin for items table
     const footerLineHeight = 3;
@@ -437,6 +461,9 @@ export class PdfExportService {
     });
 
     y = (doc as any).lastAutoTable.finalY + 4;
+
+    // BL: skip totals section entirely
+    if (!isBL) {
 
     // Check if totals fit on current page
     const totalsHeight = (fields.showTVA ? 20 : 8) + 16;
@@ -502,8 +529,10 @@ export class PdfExportService {
     doc.text(this.formatCurrency(totalTTC) + ' Dh', totalsX + totalsWidth - 3, y + 5.5, { align: 'right' });
     y += 10;
 
+    } // end !isBL
+
     // === PAYMENT TERMS ===
-    if (fields.showPaymentTerms) {
+    if (!isBL && fields.showPaymentTerms) {
       doc.setFontSize(7);
       doc.setFont(font, 'italic');
       doc.setTextColor(...GRAY);
@@ -622,7 +651,11 @@ export class PdfExportService {
     }
 
     // === SAVE ===
-    const filename = `Devis_${quote.quoteNumber}_${this.formatDate(quote.createdAt).replace(/\//g, '-')}.pdf`;
+    const docPrefix = documentType === 'bl' ? 'BL'
+      : documentType === 'proforma' ? 'Proforma'
+      : documentType === 'invoice' ? 'Facture'
+      : 'Devis';
+    const filename = `${docPrefix}_${quote.quoteNumber}_${this.formatDate(quote.createdAt).replace(/\//g, '-')}.pdf`;
     doc.save(filename);
   }
 }

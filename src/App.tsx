@@ -24,6 +24,11 @@ const ProductsPage = React.lazy(() => import('./pages/ProductsPage'));
 const TechnicalSheetsPage = React.lazy(() => import('./pages/TechnicalSheetsPage'));
 const PublicSharePage = React.lazy(() => import('./pages/PublicSharePage'));
 const CompaniesPage = React.lazy(() => import('./pages/CompaniesPage'));
+const UserManagementPage = React.lazy(() => import('./pages/UserManagementPage'));
+const ProformaDirectoryPage = React.lazy(() => import('./pages/compta/ProformaDirectoryPage'));
+const ProformaDetailPage = React.lazy(() => import('./pages/compta/ProformaDetailPage'));
+const InvoiceDirectoryPage = React.lazy(() => import('./pages/compta/InvoiceDirectoryPage'));
+const ClientFinancialPage = React.lazy(() => import('./pages/compta/ClientFinancialPage'));
 
 function PageLoader() {
   return (
@@ -35,7 +40,7 @@ function PageLoader() {
 
 function AppContent() {
   const { activeLoginModalRole, openLoginModal } = useAppContext();
-  const { canCreateQuote, isSuperAdmin } = useAuth();
+  const { canCreateQuote, isSuperAdmin, isCompta } = useAuth();
   const { isAuthenticated: isUserAuthenticated } = useUserAuth();
 
   const handleUserLoginSuccess = () => {};
@@ -92,7 +97,18 @@ function AppContent() {
             <Route path="/admin/statistics" element={<StatisticsPage />} />
             <Route path="/admin/settings" element={<CompanySettingsPage />} />
             {isSuperAdmin && (
-              <Route path="/companies" element={<CompaniesPage />} />
+              <>
+                <Route path="/companies" element={<CompaniesPage />} />
+                <Route path="/admin/users" element={<UserManagementPage />} />
+              </>
+            )}
+            {(isCompta || isSuperAdmin) && (
+              <>
+                <Route path="/compta/proformas" element={<ProformaDirectoryPage />} />
+                <Route path="/compta/proformas/:id" element={<ProformaDetailPage />} />
+                <Route path="/compta/invoices" element={<InvoiceDirectoryPage />} />
+                <Route path="/compta/clients" element={<ClientFinancialPage />} />
+              </>
             )}
           </Routes>
         </Suspense>

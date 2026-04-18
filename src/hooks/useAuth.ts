@@ -84,6 +84,7 @@ export function useAuth() {
     setCurrentUser(user);
 
     const isSuperAdmin = user.is_superadmin || false;
+    const isCompta = user.is_compta || false;
     const companyId = user.company_id || null;
 
     const permissions: UserPermissions = {
@@ -92,6 +93,7 @@ export function useAuth() {
       priceDisplayType: user.price_display_type,
       isAdmin: user.is_admin,
       isSuperAdmin,
+      isCompta,
       companyId,
       allowedBrands: user.allowed_brands || []
     };
@@ -99,7 +101,7 @@ export function useAuth() {
     setUserPermissions(permissions);
 
     // Update the global company filter singleton
-    setCompanyContext(companyId, isSuperAdmin);
+    setCompanyContext(companyId, isSuperAdmin, isCompta);
 
     // Load company name if user has a company
     if (companyId) {
@@ -162,7 +164,8 @@ export function useAuth() {
         // Restore company context singleton from persisted data
         const restoredCompanyId = user.company_id || null;
         const restoredSuperAdmin = user.is_superadmin || false;
-        setCompanyContext(restoredCompanyId, restoredSuperAdmin);
+        const restoredIsCompta = user.is_compta || false;
+        setCompanyContext(restoredCompanyId, restoredSuperAdmin, restoredIsCompta);
         if (restoredCompanyId) {
           SupabaseCompaniesService.getCompanyById(restoredCompanyId)
             .then(company => setCompanyName(company?.name || null))
@@ -260,7 +263,7 @@ export function useAuth() {
     setCurrentUser(null);
     setUserPermissions(null);
     setCompanyName(null);
-    setCompanyContext(null, false);
+    setCompanyContext(null, false, false);
     StorageManager.setRole('sales');
     
     // Clear stored user data
@@ -315,6 +318,7 @@ export function useAuth() {
 
   const isAdmin = role === 'admin';
   const isSuperAdmin = userPermissions?.isSuperAdmin ?? false;
+  const isCompta = userPermissions?.isCompta ?? false;
   const companyId = userPermissions?.companyId ?? null;
 
   return {
@@ -323,6 +327,7 @@ export function useAuth() {
     userPermissions,
     isAdmin,
     isSuperAdmin,
+    isCompta,
     companyId,
     companyName,
     authReady,

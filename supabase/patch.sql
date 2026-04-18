@@ -482,3 +482,97 @@ CREATE POLICY "Allow delete quotes" ON public.quotes FOR DELETE USING (true);
 
 -- ── Clear stale shared logo URLs (each company must re-upload) ─
 UPDATE public.companies SET logo_url = NULL WHERE logo_url IS NOT NULL AND logo_url NOT LIKE '%/companies/%';
+
+-- ══════════════════════════════════════════════════════════════
+-- FINANCIAL DOCUMENT PIPELINE — compta role
+-- ══════════════════════════════════════════════════════════════
+
+-- ── app_users: compta role flag ───────────────────────────────
+ALTER TABLE public.app_users ADD COLUMN IF NOT EXISTS is_compta boolean NOT NULL DEFAULT false;
+
+-- Update RPCs to include is_compta
+DROP FUNCTION IF EXISTS public.get_app_users_safe();
+CREATE FUNCTION public.get_app_users_safe()
+RETURNS TABLE(id uuid, username text, is_admin boolean, is_superadmin boolean, is_compta boolean,
+  company_id uuid, can_create_quote boolean, allowed_stock_locations text[], allowed_brands text[],
+  price_display_type text, custom_seller_name text, created_at timestamptz, updated_at timestamptz)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public'
+AS $$
+  SELECT id, username, is_admin, is_superadmin, is_compta, company_id, can_create_quote,
+    allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name,
+    created_at, updated_at
+  FROM public.app_users ORDER BY created_at DESC;
+$$;
+
+DROP FUNCTION IF EXISTS public.get_app_user_by_id_safe(uuid);
+CREATE FUNCTION public.get_app_user_by_id_safe(p_id uuid)
+RETURNS TABLE(id uuid, username text, is_admin boolean, is_superadmin boolean, is_compta boolean,
+  company_id uuid, can_create_quote boolean, allowed_stock_locations text[], allowed_brands text[],
+  price_display_type text, custom_seller_name text, created_at timestamptz, updated_at timestamptz)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public'
+AS $$
+  SELECT id, username, is_admin, is_superadmin, is_compta, company_id, can_create_quote,
+    allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name,
+    created_at, updated_at
+  FROM public.app_users WHERE app_users.id = p_id;
+$$;
+
+DROP FUNCTION IF EXISTS public.get_app_user_by_username_safe(text);
+CREATE FUNCTION public.get_app_user_by_username_safe(p_username text)
+RETURNS TABLE(id uuid, username text, is_admin boolean, is_superadmin boolean, is_compta boolean,
+  company_id uuid, can_create_quote boolean, allowed_stock_locations text[], allowed_brands text[],
+  price_display_type text, custom_seller_name text, created_at timestamptz, updated_at timestamptz)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public'
+AS $$
+  SELECT id, username, is_admin, is_superadmin, is_compta, company_id, can_create_quote,
+    allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name,
+    created_at, updated_at
+  FROM public.app_users WHERE app_users.username = p_username;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.get_app_users_safe() TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.get_app_user_by_id_safe(uuid) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.get_app_user_by_username_safe(text) TO anon, authenticated;
+
+-- ── quotes: document pipeline columns ────────────────────────
+ALTER TABLE public.quotes ADD COLUMN IF NOT EXISTS document_type text NOT NULL DEFAULT 'quote';
+ALTER TABLE public.quotes ADD COLUMN IF NOT EXISTS parent_document_id uuid REFERENCES public.quotes(id) ON DELETE SET NULL;
+ALTER TABLE public.quotes ADD COLUMN IF NOT EXISTS source_bl_ids uuid[] NOT NULL DEFAULT '{}';
+ALTER TABLE public.quotes ADD COLUMN IF NOT EXISTS paid_amount numeric NOT NULL DEFAULT 0;
+ALTER TABLE public.quotes ADD COLUMN IF NOT EXISTS issuing_company_id uuid REFERENCES public.companies(id) ON DELETE SET NULL;
+
+-- Extend status constraint to include 'solde'
+ALTER TABLE public.quotes DROP CONSTRAINT IF EXISTS quotes_status_check;
+ALTER TABLE public.quotes ADD CONSTRAINT quotes_status_check
+  CHECK (status = ANY (ARRAY['draft'::text, 'pending'::text, 'final'::text, 'solde'::text]));
+
+-- Add document_type constraint
+ALTER TABLE public.quotes DROP CONSTRAINT IF EXISTS quotes_document_type_check;
+ALTER TABLE public.quotes ADD CONSTRAINT quotes_document_type_check
+  CHECK (document_type = ANY (ARRAY['quote'::text, 'bl'::text, 'proforma'::text, 'invoice'::text]));
+
+-- ── document_counters: atomic sequential numbering per company ─
+CREATE TABLE IF NOT EXISTS public.document_counters (
+  company_id uuid NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  document_type text NOT NULL,
+  last_number integer NOT NULL DEFAULT 0,
+  PRIMARY KEY (company_id, document_type)
+);
+ALTER TABLE public.document_counters ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all document_counters" ON public.document_counters;
+CREATE POLICY "Allow all document_counters" ON public.document_counters
+  FOR ALL USING (true) WITH CHECK (true);
+
+CREATE OR REPLACE FUNCTION public.next_document_number(p_company_id uuid, p_doc_type text)
+RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_next integer;
+BEGIN
+  INSERT INTO public.document_counters (company_id, document_type, last_number)
+    VALUES (p_company_id, p_doc_type, 1)
+  ON CONFLICT (company_id, document_type)
+    DO UPDATE SET last_number = document_counters.last_number + 1
+  RETURNING last_number INTO v_next;
+  RETURN v_next;
+END;
+$$;
+GRANT EXECUTE ON FUNCTION public.next_document_number(uuid, text) TO anon, authenticated;

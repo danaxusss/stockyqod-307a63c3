@@ -59,6 +59,7 @@ export interface QuoteItem {
   quoteName?: string;
   quoteBrand?: string;
   quoteBarcode?: string;
+  is_billed?: boolean; // used in proforma items for invoice tracking
 }
 
 export interface QuoteCart {
@@ -81,12 +82,19 @@ export interface Quote {
   commandNumber?: string;
   createdAt: Date;
   updatedAt: Date;
-  status: 'draft' | 'final';
+  status: 'draft' | 'final' | 'pending' | 'solde';
   customer: CustomerInfo;
   items: QuoteItem[];
   totalAmount: number;
   notes?: string;
   createdBy?: string;
+  // Financial document pipeline fields
+  document_type?: 'quote' | 'bl' | 'proforma' | 'invoice';
+  parent_document_id?: string;
+  source_bl_ids?: string[];
+  paid_amount?: number;
+  issuing_company_id?: string;
+  company_id?: string;
 }
 
 export interface QuoteTemplate {
@@ -131,6 +139,7 @@ export interface AppUser {
   pin: string;
   is_admin: boolean;
   is_superadmin?: boolean;
+  is_compta?: boolean;
   company_id?: string;
   can_create_quote: boolean;
   allowed_stock_locations: string[];
@@ -146,6 +155,7 @@ export interface CreateAppUserRequest {
   pin: string;
   is_admin?: boolean;
   is_superadmin?: boolean;
+  is_compta?: boolean;
   company_id?: string;
   can_create_quote?: boolean;
   allowed_stock_locations?: string[];
@@ -159,6 +169,7 @@ export interface UpdateAppUserRequest {
   pin?: string;
   is_admin?: boolean;
   is_superadmin?: boolean;
+  is_compta?: boolean;
   company_id?: string;
   can_create_quote?: boolean;
   allowed_stock_locations?: string[];
@@ -174,6 +185,7 @@ export interface UserPermissions {
   priceDisplayType: 'normal' | 'reseller' | 'buy' | 'calculated';
   isAdmin: boolean;
   isSuperAdmin: boolean;
+  isCompta: boolean;
   companyId: string | null;
 }
 
