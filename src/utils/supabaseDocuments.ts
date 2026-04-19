@@ -20,6 +20,8 @@ type DocRow = {
   paid_amount: number | null;
   issuing_company_id: string | null;
   company_id: string | null;
+  payment_date: string | null;
+  payment_method: string | null;
 };
 
 function mapDocRow(row: DocRow): Quote {
@@ -45,6 +47,8 @@ function mapDocRow(row: DocRow): Quote {
     paid_amount: Number(row.paid_amount || 0),
     issuing_company_id: row.issuing_company_id || undefined,
     company_id: row.company_id || undefined,
+    payment_date: row.payment_date || undefined,
+    payment_method: row.payment_method || undefined,
   };
 }
 
@@ -233,8 +237,8 @@ export class SupabaseDocumentsService {
     const invoiceNumber = await this.nextNumber(issuingCompanyId, 'invoice');
     const now = new Date().toISOString();
 
-    // Build invoice items (mark as billed)
-    const invoiceItems = selectedItems.map(i => ({ ...i, is_billed: true }));
+    // Build invoice items (mark as billed + record issuing company)
+    const invoiceItems = selectedItems.map(i => ({ ...i, is_billed: true, billed_by_company_id: issuingCompanyId }));
 
     const invoiceId = crypto.randomUUID();
     const invoiceData: Record<string, unknown> = {
@@ -262,9 +266,11 @@ export class SupabaseDocumentsService {
       .single();
     if (invErr) throw new Error(`Erreur création Facture: ${invErr.message}`);
 
-    // Mark selected items as is_billed=true on proforma
+    // Mark selected items as is_billed=true + record issuing company on proforma items
     const updatedItems = proforma.items.map(item =>
-      selectedItemIds.includes(item.id) ? { ...item, is_billed: true } : item
+      selectedItemIds.includes(item.id)
+        ? { ...item, is_billed: true, billed_by_company_id: issuingCompanyId }
+        : item
     );
 
     // Recalculate paid_amount = sum of all invoices' total_amount for this proforma
@@ -404,6 +410,8 @@ export class SupabaseDocumentsService {
       items?: QuoteItem[];
       notes?: string | null;
       status?: string;
+      payment_date?: string | null;
+      payment_method?: string | null;
     }
   ): Promise<Quote> {
     const updateData: Record<string, unknown> = {
@@ -417,6 +425,8 @@ export class SupabaseDocumentsService {
     }
     if (updates.notes !== undefined) updateData.notes = updates.notes;
     if (updates.status !== undefined) updateData.status = updates.status;
+    if (updates.payment_date !== undefined) updateData.payment_date = updates.payment_date || null;
+    if (updates.payment_method !== undefined) updateData.payment_method = updates.payment_method || null;
 
     const { data, error } = await (supabase.from('quotes') as any)
       .update(updateData)

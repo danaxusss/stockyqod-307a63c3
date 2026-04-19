@@ -60,6 +60,7 @@ export interface QuoteItem {
   quoteBrand?: string;
   quoteBarcode?: string;
   is_billed?: boolean; // used in proforma items for invoice tracking
+  billed_by_company_id?: string; // issuing company that generated the invoice for this item
 }
 
 export interface QuoteCart {
@@ -95,6 +96,8 @@ export interface Quote {
   paid_amount?: number;
   issuing_company_id?: string;
   company_id?: string;
+  payment_date?: string;   // ISO date string (YYYY-MM-DD)
+  payment_method?: string; // e.g. "Virement", "Chèque", "Espèces"
 }
 
 export interface QuoteTemplate {

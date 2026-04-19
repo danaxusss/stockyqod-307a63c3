@@ -28,6 +28,7 @@ export default function ProformaDetailPage() {
 
   const [proforma, setProforma] = useState<Quote | null>(null);
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [companyMap, setCompanyMap] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
@@ -55,6 +56,9 @@ export default function ProformaDetailPage() {
       ]);
       setProforma(doc);
       setCompanies(allCompanies);
+      const map: Record<string, string> = {};
+      allCompanies.forEach(c => { map[c.id] = c.name; });
+      setCompanyMap(map);
     } catch (e) {
       showToast({ type: 'error', title: 'Erreur', message: String(e) });
     } finally {
@@ -294,6 +298,7 @@ export default function ProformaDetailPage() {
                 <th className="px-3 py-2 text-right text-[11px] font-medium text-muted-foreground uppercase">PU HT</th>
                 <th className="px-3 py-2 text-right text-[11px] font-medium text-muted-foreground uppercase">Total HT</th>
                 {!isEditing && <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Statut</th>}
+                {!isEditing && <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Facturé par</th>}
                 {isEditing && <th className="px-3 py-2 w-8" />}
               </tr>
             </thead>
@@ -340,6 +345,9 @@ export default function ProformaDetailPage() {
                           {billed
                             ? <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300">Facturé</span>
                             : <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">Non facturé</span>}
+                        </td>
+                        <td className="px-3 py-2.5 text-[10px] text-muted-foreground">
+                          {item.billed_by_company_id ? (companyMap[item.billed_by_company_id] || '—') : '—'}
                         </td>
                       </>
                     )}

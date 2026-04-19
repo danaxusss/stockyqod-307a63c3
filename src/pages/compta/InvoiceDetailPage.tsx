@@ -33,6 +33,8 @@ export default function InvoiceDetailPage() {
   const [draftNotes, setDraftNotes] = useState('');
   const [draftStatus, setDraftStatus] = useState('');
   const [draftItems, setDraftItems] = useState<QuoteItem[]>([]);
+  const [draftPaymentDate, setDraftPaymentDate] = useState('');
+  const [draftPaymentMethod, setDraftPaymentMethod] = useState('');
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -58,6 +60,8 @@ export default function InvoiceDetailPage() {
     setDraftNotes(invoice.notes || '');
     setDraftStatus(invoice.status);
     setDraftItems(invoice.items.map(i => ({ ...i })));
+    setDraftPaymentDate(invoice.payment_date || '');
+    setDraftPaymentMethod(invoice.payment_method || '');
     setIsEditing(true);
   };
 
@@ -71,6 +75,8 @@ export default function InvoiceDetailPage() {
         items: draftItems,
         notes: draftNotes.trim() || null,
         status: draftStatus,
+        payment_date: draftPaymentDate || null,
+        payment_method: draftPaymentMethod || null,
       });
       showToast({ type: 'success', title: 'Facture mise à jour', message: 'Modifications sauvegardées' });
       setIsEditing(false);
@@ -222,6 +228,31 @@ export default function InvoiceDetailPage() {
           {isEditing
             ? <input value={draftCustomerCity} onChange={e => setDraftCustomerCity(e.target.value)} className={inputCls} placeholder="Ville" />
             : <p className="text-foreground">{invoice.customer?.city || '—'}</p>}
+        </div>
+      </div>
+
+      {/* Payment info */}
+      <div className="glass rounded-lg p-4 grid grid-cols-2 gap-3 text-sm">
+        <div>
+          <p className="text-[11px] text-muted-foreground mb-0.5">Date de paiement</p>
+          {isEditing
+            ? <input type="date" value={draftPaymentDate} onChange={e => setDraftPaymentDate(e.target.value)} className={inputCls} />
+            : <p className="text-foreground">{invoice.payment_date ? new Date(invoice.payment_date).toLocaleDateString('fr-FR') : '—'}</p>}
+        </div>
+        <div>
+          <p className="text-[11px] text-muted-foreground mb-0.5">Mode de paiement</p>
+          {isEditing ? (
+            <select value={draftPaymentMethod} onChange={e => setDraftPaymentMethod(e.target.value)} className={inputCls}>
+              <option value="">— Sélectionner —</option>
+              <option value="Virement bancaire">Virement bancaire</option>
+              <option value="Chèque">Chèque</option>
+              <option value="Espèces">Espèces</option>
+              <option value="Carte bancaire">Carte bancaire</option>
+              <option value="Effet de commerce">Effet de commerce</option>
+            </select>
+          ) : (
+            <p className="text-foreground">{invoice.payment_method || '—'}</p>
+          )}
         </div>
       </div>
 

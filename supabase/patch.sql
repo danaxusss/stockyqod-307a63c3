@@ -534,6 +534,10 @@ GRANT EXECUTE ON FUNCTION public.get_app_users_safe() TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.get_app_user_by_id_safe(uuid) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.get_app_user_by_username_safe(text) TO anon, authenticated;
 
+-- ── quotes: payment fields for invoices ─────────────────────
+ALTER TABLE public.quotes ADD COLUMN IF NOT EXISTS payment_date date;
+ALTER TABLE public.quotes ADD COLUMN IF NOT EXISTS payment_method text;
+
 -- ── quotes: drop global unique constraint on quote_number ────
 -- Numbers are sequential per-company; global uniqueness breaks multi-company setups.
 -- Documents are identified by UUID id, not by quote_number.

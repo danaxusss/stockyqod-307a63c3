@@ -48,6 +48,66 @@ const DARK: [number, number, number] = [30, 30, 30];
 const GRAY: [number, number, number] = [100, 100, 100];
 const WHITE: [number, number, number] = [255, 255, 255];
 
+function numberToWordsFr(amount: number): string {
+  const UNITS = ['', 'UN', 'DEUX', 'TROIS', 'QUATRE', 'CINQ', 'SIX', 'SEPT', 'HUIT', 'NEUF',
+    'DIX', 'ONZE', 'DOUZE', 'TREIZE', 'QUATORZE', 'QUINZE', 'SEIZE', 'DIX-SEPT', 'DIX-HUIT', 'DIX-NEUF'];
+  const TENS = ['', 'DIX', 'VINGT', 'TRENTE', 'QUARANTE', 'CINQUANTE', 'SOIXANTE'];
+
+  function below100(n: number): string {
+    if (n === 0) return '';
+    if (n < 20) return UNITS[n];
+    const t = Math.floor(n / 10);
+    const u = n % 10;
+    if (t <= 6) {
+      if (u === 0) return TENS[t];
+      if (u === 1) return `${TENS[t]} ET UN`;
+      return `${TENS[t]}-${UNITS[u]}`;
+    }
+    if (t === 7) {
+      if (u === 0) return 'SOIXANTE-DIX';
+      if (u === 1) return 'SOIXANTE ET ONZE';
+      return `SOIXANTE-${UNITS[10 + u]}`;
+    }
+    if (t === 8) {
+      if (u === 0) return 'QUATRE-VINGTS';
+      return `QUATRE-VINGT-${UNITS[u]}`;
+    }
+    if (u === 0) return 'QUATRE-VINGT-DIX';
+    return `QUATRE-VINGT-${UNITS[10 + u]}`;
+  }
+
+  function below1000(n: number): string {
+    if (n === 0) return '';
+    if (n < 100) return below100(n);
+    const h = Math.floor(n / 100);
+    const rest = n % 100;
+    const restStr = below100(rest);
+    if (h === 1) return rest === 0 ? 'CENT' : `CENT ${restStr}`;
+    const hWord = UNITS[h];
+    if (rest === 0) return `${hWord} CENTS`;
+    return `${hWord} CENT ${restStr}`;
+  }
+
+  function convert(n: number): string {
+    if (n === 0) return 'ZÉRO';
+    const parts: string[] = [];
+    const millions = Math.floor(n / 1_000_000);
+    const thousands = Math.floor((n % 1_000_000) / 1000);
+    const below = n % 1000;
+    if (millions > 0) parts.push(millions === 1 ? 'UN MILLION' : `${below1000(millions)} MILLIONS`);
+    if (thousands > 0) parts.push(thousands === 1 ? 'MILLE' : `${below1000(thousands)} MILLE`);
+    if (below > 0) parts.push(below1000(below));
+    return parts.join(' ');
+  }
+
+  const totalCents = Math.round(amount * 100);
+  const dh = Math.floor(totalCents / 100);
+  const ct = totalCents % 100;
+  let result = `${convert(dh)} DIRHAM${dh > 1 ? 'S' : ''}`;
+  if (ct > 0) result += ` ET ${convert(ct)} CENTIME${ct > 1 ? 'S' : ''}`;
+  return result;
+}
+
 export class PdfExportService {
   static formatDate(date: Date): string {
     const d = String(date.getDate()).padStart(2, '0');
@@ -326,11 +386,19 @@ export class PdfExportService {
     if (quote.commandNumber) {
       quoteInfoRows.push(['N° de cmd', quote.commandNumber]);
     }
-    if (fields.showValidityDate) {
+    if (fields.showValidityDate && documentType === 'quote') {
       const validityDays = settings?.quote_validity_days ?? 30;
       const validityDate = new Date(quote.createdAt);
       validityDate.setDate(validityDate.getDate() + validityDays);
       quoteInfoRows.push(['Validite', `${validityDays} jours (${this.formatDate(validityDate)})`]);
+    }
+    if (documentType === 'invoice') {
+      if (quote.payment_date) {
+        quoteInfoRows.push(['Date paiement', this.formatDate(new Date(quote.payment_date))]);
+      }
+      if (quote.payment_method) {
+        quoteInfoRows.push(['Mode paiement', quote.payment_method]);
+      }
     }
 
     autoTable(doc, {
@@ -530,6 +598,45 @@ export class PdfExportService {
     y += 10;
 
     } // end !isBL
+
+    // === INVOICE: "Arrêté" block with amount in letters ===
+    if (documentType === 'invoice') {
+      const amountInLetters = numberToWordsFr(quote.totalAmount);
+      const blockPadX = 4;
+      const blockPadY = 3.5;
+      const labelText = 'Arrêté la présente facture à la somme de :';
+
+      // Measure required height
+      doc.setFontSize(7);
+      const lettersLines = doc.splitTextToSize(amountInLetters, contentWidth - blockPadX * 2 - 2);
+      const blockH = blockPadY * 2 + 5 + lettersLines.length * 4.5;
+
+      if (y + blockH > pageHeight - footerTotalHeight - 8) {
+        doc.addPage();
+        drawPageDecorations();
+        y = 12;
+      }
+
+      // Background box
+      doc.setFillColor(...ACCENT_LIGHT);
+      doc.setDrawColor(...ACCENT);
+      doc.setLineWidth(0.4);
+      doc.roundedRect(margin, y, contentWidth, blockH, 1.5, 1.5, 'FD');
+
+      // Label line
+      doc.setFont(font, 'italic');
+      doc.setFontSize(7);
+      doc.setTextColor(...GRAY);
+      doc.text(labelText, margin + blockPadX, y + blockPadY + 3.5);
+
+      // Amount in letters
+      doc.setFont(font, 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(...DARK);
+      doc.text(lettersLines, margin + blockPadX, y + blockPadY + 3.5 + 5, { maxWidth: contentWidth - blockPadX * 2 - 2 });
+
+      y += blockH + 4;
+    }
 
     // === PAYMENT TERMS ===
     if (!isBL && fields.showPaymentTerms) {
