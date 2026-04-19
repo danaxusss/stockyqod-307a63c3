@@ -5,6 +5,7 @@ import { Quote, QuoteItem, Company } from '../../types';
 import { SupabaseDocumentsService } from '../../utils/supabaseDocuments';
 import { SupabaseCompaniesService } from '../../utils/supabaseCompanies';
 import { PdfExportService } from '../../utils/pdfExport';
+import { CompanySettingsService, CompanySettings } from '../../utils/companySettings';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -18,6 +19,8 @@ export default function BLDetailPage() {
 
   const [bl, setBl] = useState<Quote | null>(null);
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null);
+  const [useStamp, setUseStamp] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [targetCompanyId, setTargetCompanyId] = useState('');
@@ -44,7 +47,12 @@ export default function BLDetailPage() {
       ]);
       setBl(doc);
       setCompanies(allCompanies);
-      if (doc?.company_id) setTargetCompanyId(doc.company_id);
+      if (doc?.company_id) {
+        setTargetCompanyId(doc.company_id);
+        const settings = await CompanySettingsService.getSettings(doc.company_id).catch(() => null);
+        setCompanySettings(settings);
+        if (settings?.use_stamp) setUseStamp(true);
+      }
     } catch (e) {
       showToast({ type: 'error', title: 'Erreur', message: String(e) });
     } finally {
@@ -129,17 +137,10 @@ export default function BLDetailPage() {
   const handleExportPdf = async () => {
     if (!bl) return;
     try {
-      const company = bl.company_id ? await SupabaseCompaniesService.getCompanyById(bl.company_id) : null;
-      const settings = company ? {
-        company_name: company.name, address: company.address, phone: company.phone,
-        phone2: company.phone2, email: company.email, ice: company.ice, rc: company.rc,
-        if_number: company.if_number, cnss: company.cnss, patente: company.patente,
-        logo_url: company.logo_url, logo_size: company.logo_size,
-        tva_rate: company.tva_rate, quote_validity_days: company.quote_validity_days,
-        payment_terms: company.payment_terms, quote_visible_fields: company.quote_visible_fields,
-        quote_style: { accentColor: company.accent_color, fontFamily: company.font_family, showBorders: true, borderRadius: 1, headerSize: 'large', totalsStyle: 'highlighted' },
-      } as any : null;
-      await PdfExportService.exportQuoteToPdf(bl, settings, undefined, undefined, undefined, 'bl');
+      const freshSettings = bl.company_id
+        ? await CompanySettingsService.getSettings(bl.company_id).catch(() => companySettings)
+        : companySettings;
+      await PdfExportService.exportQuoteToPdf(bl, freshSettings, undefined, undefined, useStamp, 'bl');
     } catch (e) {
       showToast({ type: 'error', title: 'Erreur PDF', message: String(e) });
     }
@@ -196,6 +197,15 @@ export default function BLDetailPage() {
             <button onClick={startEdit} className="p-1.5 hover:bg-accent rounded-lg text-muted-foreground" title="Modifier">
               <Pencil className="h-4 w-4" />
             </button>
+            {companySettings?.stamp_url && (
+              <button
+                onClick={() => setUseStamp(v => !v)}
+                title={useStamp ? 'Retirer le tampon' : 'Apposer le tampon'}
+                className={`p-1.5 rounded-lg transition-colors text-base leading-none ${useStamp ? 'bg-amber-500/20 text-amber-400 ring-1 ring-amber-500/40' : 'hover:bg-accent text-muted-foreground'}`}
+              >
+                🔏
+              </button>
+            )}
             <button onClick={handleExportPdf} className="flex items-center space-x-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
               <Download className="h-3.5 w-3.5" /><span>PDF</span>
             </button>

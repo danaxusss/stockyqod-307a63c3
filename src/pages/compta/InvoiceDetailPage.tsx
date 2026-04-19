@@ -3,8 +3,8 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Receipt, Download, ArrowLeft, Loader, Pencil, Check, X, Plus, Calendar } from 'lucide-react';
 import { Quote, QuoteItem } from '../../types';
 import { SupabaseDocumentsService } from '../../utils/supabaseDocuments';
-import { SupabaseCompaniesService } from '../../utils/supabaseCompanies';
 import { PdfExportService } from '../../utils/pdfExport';
+import { CompanySettingsService, CompanySettings } from '../../utils/companySettings';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -21,6 +21,8 @@ export default function InvoiceDetailPage() {
   const { showToast } = useToast();
 
   const [invoice, setInvoice] = useState<Quote | null>(null);
+  const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null);
+  const [useStamp, setUseStamp] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   // Edit state
@@ -44,6 +46,12 @@ export default function InvoiceDetailPage() {
     try {
       const doc = await SupabaseDocumentsService.getById(id);
       setInvoice(doc);
+      const compId = doc?.issuing_company_id || doc?.company_id;
+      if (compId) {
+        const settings = await CompanySettingsService.getSettings(compId).catch(() => null);
+        setCompanySettings(settings);
+        if (settings?.use_stamp) setUseStamp(true);
+      }
     } catch (e) {
       showToast({ type: 'error', title: 'Erreur', message: String(e) });
     } finally {
@@ -124,17 +132,10 @@ export default function InvoiceDetailPage() {
     if (!invoice) return;
     try {
       const compId = invoice.issuing_company_id || invoice.company_id;
-      const company = compId ? await SupabaseCompaniesService.getCompanyById(compId) : null;
-      const settings = company ? {
-        company_name: company.name, address: company.address, phone: company.phone,
-        phone2: company.phone2, email: company.email, ice: company.ice, rc: company.rc,
-        if_number: company.if_number, cnss: company.cnss, patente: company.patente,
-        logo_url: company.logo_url, logo_size: company.logo_size,
-        tva_rate: company.tva_rate, quote_validity_days: company.quote_validity_days,
-        payment_terms: company.payment_terms, quote_visible_fields: company.quote_visible_fields,
-        quote_style: { accentColor: company.accent_color, fontFamily: company.font_family, showBorders: true, borderRadius: 1, headerSize: 'large', totalsStyle: 'highlighted' },
-      } as any : null;
-      await PdfExportService.exportQuoteToPdf(invoice, settings, undefined, undefined, undefined, 'invoice');
+      const freshSettings = compId
+        ? await CompanySettingsService.getSettings(compId).catch(() => companySettings)
+        : companySettings;
+      await PdfExportService.exportQuoteToPdf(invoice, freshSettings, undefined, undefined, useStamp, 'invoice');
     } catch (e) {
       showToast({ type: 'error', title: 'Erreur PDF', message: String(e) });
     }
@@ -192,6 +193,15 @@ export default function InvoiceDetailPage() {
             <button onClick={startEdit} className="p-1.5 hover:bg-accent rounded-lg text-muted-foreground" title="Modifier">
               <Pencil className="h-4 w-4" />
             </button>
+            {companySettings?.stamp_url && (
+              <button
+                onClick={() => setUseStamp(v => !v)}
+                title={useStamp ? 'Retirer le tampon' : 'Apposer le tampon'}
+                className={`p-1.5 rounded-lg transition-colors text-base leading-none ${useStamp ? 'bg-amber-500/20 text-amber-400 ring-1 ring-amber-500/40' : 'hover:bg-accent text-muted-foreground'}`}
+              >
+                🔏
+              </button>
+            )}
             <button onClick={handleExportPdf} className="flex items-center space-x-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
               <Download className="h-3.5 w-3.5" /><span>PDF</span>
             </button>
