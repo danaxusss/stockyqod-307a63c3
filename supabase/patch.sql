@@ -534,6 +534,11 @@ GRANT EXECUTE ON FUNCTION public.get_app_users_safe() TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.get_app_user_by_id_safe(uuid) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.get_app_user_by_username_safe(text) TO anon, authenticated;
 
+-- ── quotes: drop global unique constraint on quote_number ────
+-- Numbers are sequential per-company; global uniqueness breaks multi-company setups.
+-- Documents are identified by UUID id, not by quote_number.
+ALTER TABLE public.quotes DROP CONSTRAINT IF EXISTS quotes_quote_number_key;
+
 -- ── quotes: document pipeline columns ────────────────────────
 ALTER TABLE public.quotes ADD COLUMN IF NOT EXISTS document_type text NOT NULL DEFAULT 'quote';
 ALTER TABLE public.quotes ADD COLUMN IF NOT EXISTS parent_document_id uuid REFERENCES public.quotes(id) ON DELETE SET NULL;
