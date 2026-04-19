@@ -62,7 +62,12 @@ export default function BLDetailPage() {
     setDraftCustomerCity(bl.customer?.city || '');
     setDraftNotes(bl.notes || '');
     setDraftStatus(bl.status);
-    setDraftItems(bl.items.map(i => ({ ...i })));
+    setDraftItems(bl.items.map(i => ({
+      ...i,
+      quoteName: i.quoteName || i.product?.name || '',
+      quoteBrand: i.quoteBrand || i.product?.brand || '',
+      quoteBarcode: i.quoteBarcode || i.product?.barcode || '',
+    })));
     setIsEditing(true);
   };
 

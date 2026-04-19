@@ -76,7 +76,12 @@ export default function ProformaDetailPage() {
     setDraftCustomerCity(proforma.customer?.city || '');
     setDraftNotes(proforma.notes || '');
     setDraftStatus(proforma.status);
-    setDraftItems(proforma.items.map(i => ({ ...i })));
+    setDraftItems(proforma.items.map(i => ({
+      ...i,
+      quoteName: i.quoteName || i.product?.name || '',
+      quoteBrand: i.quoteBrand || i.product?.brand || '',
+      quoteBarcode: i.quoteBarcode || i.product?.barcode || '',
+    })));
     setSelectedIds([]);
     setIsEditing(true);
   };

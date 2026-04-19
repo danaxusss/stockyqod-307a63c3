@@ -61,7 +61,12 @@ export default function InvoiceDetailPage() {
     setDraftCustomerCity(invoice.customer?.city || '');
     setDraftNotes(invoice.notes || '');
     setDraftStatus(invoice.status);
-    setDraftItems(invoice.items.map(i => ({ ...i })));
+    setDraftItems(invoice.items.map(i => ({
+      ...i,
+      quoteName: i.quoteName || i.product?.name || '',
+      quoteBrand: i.quoteBrand || i.product?.brand || '',
+      quoteBarcode: i.quoteBarcode || i.product?.barcode || '',
+    })));
     setDraftPaymentDate(invoice.payment_date || '');
     setDraftPaymentMethod(invoice.payment_method || '');
     setDraftPaymentReference(invoice.payment_reference || '');
