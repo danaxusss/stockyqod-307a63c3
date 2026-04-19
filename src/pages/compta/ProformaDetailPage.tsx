@@ -174,7 +174,7 @@ export default function ProformaDetailPage() {
   const draftTotal = draftItems.reduce((s, i) => s + i.subtotal, 0);
 
   return (
-    <div className="space-y-4 max-w-4xl mx-auto">
+    <div className="space-y-4 max-w-7xl mx-auto">
       {/* Header */}
       <div className="flex items-center gap-2 flex-wrap">
         <button onClick={() => navigate('/compta/proformas')} className="p-1.5 hover:bg-accent rounded-lg">
