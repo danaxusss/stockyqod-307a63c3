@@ -394,4 +394,36 @@ export class SupabaseDocumentsService {
   static async createProformaFromBL(blId: string, targetCompanyId: string): Promise<Quote> {
     return this.createProformaFromBLs([blId], targetCompanyId);
   }
+
+  // Update any document fields (quote number, customer, items, notes, status)
+  static async updateDocument(
+    id: string,
+    updates: {
+      quoteNumber?: string;
+      customer?: CustomerInfo;
+      items?: QuoteItem[];
+      notes?: string | null;
+      status?: string;
+    }
+  ): Promise<Quote> {
+    const updateData: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
+    if (updates.quoteNumber !== undefined) updateData.quote_number = updates.quoteNumber;
+    if (updates.customer !== undefined) updateData.customer_info = updates.customer;
+    if (updates.items !== undefined) {
+      updateData.items = updates.items;
+      updateData.total_amount = updates.items.reduce((s, i) => s + i.subtotal, 0);
+    }
+    if (updates.notes !== undefined) updateData.notes = updates.notes;
+    if (updates.status !== undefined) updateData.status = updates.status;
+
+    const { data, error } = await (supabase.from('quotes') as any)
+      .update(updateData)
+      .eq('id', id)
+      .select('*')
+      .single();
+    if (error) throw new Error(`Erreur mise à jour: ${error.message}`);
+    return mapDocRow(data as DocRow);
+  }
 }

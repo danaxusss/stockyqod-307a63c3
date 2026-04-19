@@ -28,6 +28,7 @@ const UserManagementPage = React.lazy(() => import('./pages/UserManagementPage')
 const ProformaDirectoryPage = React.lazy(() => import('./pages/compta/ProformaDirectoryPage'));
 const ProformaDetailPage = React.lazy(() => import('./pages/compta/ProformaDetailPage'));
 const InvoiceDirectoryPage = React.lazy(() => import('./pages/compta/InvoiceDirectoryPage'));
+const InvoiceDetailPage = React.lazy(() => import('./pages/compta/InvoiceDetailPage'));
 const ClientFinancialPage = React.lazy(() => import('./pages/compta/ClientFinancialPage'));
 const BLDirectoryPage = React.lazy(() => import('./pages/compta/BLDirectoryPage'));
 const BLDetailPage = React.lazy(() => import('./pages/compta/BLDetailPage'));
@@ -111,6 +112,7 @@ function AppContent() {
                 <Route path="/compta/proformas" element={<ProformaDirectoryPage />} />
                 <Route path="/compta/proformas/:id" element={<ProformaDetailPage />} />
                 <Route path="/compta/invoices" element={<InvoiceDirectoryPage />} />
+                <Route path="/compta/invoices/:id" element={<InvoiceDetailPage />} />
                 <Route path="/compta/clients" element={<ClientFinancialPage />} />
               </>
             )}

@@ -127,7 +127,7 @@ export default function InvoiceDirectoryPage() {
                 {filtered.map(inv => (
                   <tr key={inv.id} className="hover:bg-accent/50">
                     <td className="px-3 py-2.5">
-                      <span className="text-xs font-mono font-semibold text-foreground">{inv.quoteNumber}</span>
+                      <Link to={`/compta/invoices/${inv.id}`} className="text-xs font-mono font-semibold text-primary hover:underline">{inv.quoteNumber}</Link>
                     </td>
                     <td className="px-3 py-2.5">
                       <div className="text-xs font-medium text-foreground">{inv.customer?.fullName || '—'}</div>
