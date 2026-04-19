@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+import { getCompanyContext } from './supabaseCompanyFilter';
 import { Quote, QuoteItem, CustomerInfo } from '../types';
 
 // Extended row type with financial pipeline columns
@@ -90,7 +91,7 @@ export class SupabaseDocumentsService {
     if (srcErr || !srcData) throw new Error('Devis introuvable');
 
     const src = mapDocRow(srcData as DocRow);
-    const companyId = (srcData as DocRow).company_id || null;
+    const companyId = (srcData as DocRow).company_id || getCompanyContext().companyId;
     if (!companyId) throw new Error('Le devis ne possède pas de société associée');
 
     // Get next BL number

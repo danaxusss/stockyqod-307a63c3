@@ -26,7 +26,8 @@ import {
   Paperclip,
   Send,
   MessageCircle,
-  Mail
+  Mail,
+  Truck
 } from 'lucide-react';
 import { Quote, QuoteItem, CustomerInfo, Product } from '../types';
 import { ExcelExportService } from '../utils/excelExport';
@@ -45,6 +46,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useProductOverrides } from '../hooks/useProductOverrides';
 import { applyQuoteItemDisplayOverride, getQuoteItemBarcode, getQuoteItemBrand, getQuoteItemName } from '../utils/quoteItemDisplay';
 import { buildWhatsAppShareUrl, openPreparingWhatsAppWindow, redirectPreparingWindowToWhatsApp, openWhatsAppShare } from '../utils/whatsappShare';
+import { SupabaseDocumentsService } from '../utils/supabaseDocuments';
 
 const ITEMS_PER_PAGE = 40;
 
@@ -107,7 +109,7 @@ export function QuoteCartPage() {
   const [availableUsers, setAvailableUsers] = useState<{ username: string; displayName: string }[]>([]);
   const [customSellerName, setCustomSellerName] = useState('');
   const [useCustomSeller, setUseCustomSeller] = useState(false);
-  const { currentUser, authenticatedUser, isAdmin, companyId, canAccessStockLocation, getDisplayPrice } = useAuth();
+  const { currentUser, authenticatedUser, isAdmin, companyId, canAccessStockLocation, getDisplayPrice, isCompta, isSuperAdmin } = useAuth();
 
   // Client autocomplete
   const [clientSuggestions, setClientSuggestions] = useState<Client[]>([]);
@@ -118,6 +120,10 @@ export function QuoteCartPage() {
   const [attachTechSheets, setAttachTechSheets] = useState(false);
   const [techSheetsExpiry, setTechSheetsExpiry] = useState<string>('30');
   const [linkedSheetIds, setLinkedSheetIds] = useState<string[]>([]);
+
+  // BL creation state
+  const [isCreatingBL, setIsCreatingBL] = useState(false);
+  const [blCreated, setBlCreated] = useState<{ id: string; number: string } | null>(null);
 
   // Load quote data if editing
   useEffect(() => {
@@ -674,6 +680,43 @@ export function QuoteCartPage() {
       }
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  // Convert quote to BL: save quote then create BL from it
+  const handleCreateBL = async () => {
+    if (!validateForm()) {
+      showToast({ type: 'error', title: 'Erreurs de validation', message: 'Veuillez corriger les erreurs avant de continuer' });
+      return;
+    }
+    setIsCreatingBL(true);
+    try {
+      const { totalAmount } = calculateTotals();
+      const now = new Date();
+      // Determine a stable ID so we can pass it to createBLFromQuote right after saving
+      const savedId = quote?.id || crypto.randomUUID();
+      const quoteData: Quote = {
+        id: savedId,
+        quoteNumber,
+        commandNumber: commandNumber || undefined,
+        createdAt: quote?.createdAt || now,
+        updatedAt: now,
+        status,
+        customer,
+        items,
+        totalAmount,
+        notes,
+      };
+      await SupabaseQuotesService.saveQuote(quoteData);
+      setQuote(quoteData);
+      setIsDirty(false);
+
+      const bl = await SupabaseDocumentsService.createBLFromQuote(savedId);
+      setBlCreated({ id: bl.id, number: bl.quoteNumber });
+    } catch (error) {
+      showToast({ type: 'error', title: 'Erreur création BL', message: error instanceof Error ? error.message : 'Erreur inconnue' });
+    } finally {
+      setIsCreatingBL(false);
     }
   };
 
@@ -1427,6 +1470,13 @@ export function QuoteCartPage() {
           {isSaving ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
           <span>Sauvegarder</span>
         </button>
+        {(isCompta || isSuperAdmin) && (
+          <button onClick={handleCreateBL} disabled={isCreatingBL || isSaving || items.length === 0}
+            className="flex-1 flex items-center justify-center space-x-1.5 px-4 py-2 text-sm bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg transition-colors">
+            {isCreatingBL ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Truck className="h-3.5 w-3.5" />}
+            <span>→ BL</span>
+          </button>
+        )}
       </div>
 
       {/* Sharing Options - always visible */}
@@ -1652,6 +1702,39 @@ export function QuoteCartPage() {
               >
                 <Plus className="h-3.5 w-3.5" />
                 <span>Ajouter</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* BL Created Success Modal */}
+      {blCreated && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="glass rounded-xl shadow-2xl w-full max-w-sm p-6 space-y-4 text-center">
+            <div className="flex items-center justify-center w-12 h-12 mx-auto rounded-full bg-emerald-500/10">
+              <Truck className="h-6 w-6 text-emerald-500" />
+            </div>
+            <div>
+              <p className="text-base font-bold text-foreground">BL créé avec succès</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                Le bon de livraison <span className="font-semibold text-foreground">{blCreated.number}</span> a été créé.
+                Le devis est maintenant confirmé.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => navigate(`/compta/bls/${blCreated.id}`)}
+                className="w-full flex items-center justify-center space-x-2 px-4 py-2.5 text-sm bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors font-medium"
+              >
+                <Truck className="h-4 w-4" />
+                <span>Ouvrir le BL {blCreated.number}</span>
+              </button>
+              <button
+                onClick={() => setBlCreated(null)}
+                className="w-full px-4 py-2 text-sm border border-input text-foreground hover:bg-accent rounded-lg transition-colors"
+              >
+                Rester sur le devis
               </button>
             </div>
           </div>
