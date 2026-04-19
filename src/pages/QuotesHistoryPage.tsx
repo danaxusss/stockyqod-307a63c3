@@ -90,7 +90,7 @@ export function QuotesHistoryPage() {
     try {
       const [freshQuote, freshSettings] = await Promise.all([
         SupabaseQuotesService.getQuote(quote.id),
-        CompanySettingsService.getSettings(),
+        CompanySettingsService.getSettings(quote.company_id),
       ]);
 
       await PdfExportService.exportQuoteToPdf(freshQuote || quote, freshSettings || companySettings);
