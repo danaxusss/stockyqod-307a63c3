@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Truck, Search, Download, Trash2, CheckSquare, Square, FileText, Building2, Loader } from 'lucide-react';
+import { Truck, Search, Download, Trash2, CheckSquare, Square, FileText, Building2 } from 'lucide-react';
 import { Quote, Company } from '../../types';
 import { SupabaseDocumentsService } from '../../utils/supabaseDocuments';
 import { SupabaseCompaniesService } from '../../utils/supabaseCompanies';
@@ -24,9 +24,9 @@ export default function BLDirectoryPage() {
   const [search, setSearch] = useState('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [showProformaModal, setShowProformaModal] = useState(false);
+  const [singleProformaBL, setSingleProformaBL] = useState<Quote | null>(null);
   const [targetCompanyId, setTargetCompanyId] = useState('');
   const [isCreating, setIsCreating] = useState(false);
-  const [creatingRowId, setCreatingRowId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -85,30 +85,19 @@ export default function BLDirectoryPage() {
     }
   };
 
-  // Single-row shortcut: create proforma from one BL (pick company then confirm)
-  const handleSingleProforma = async (bl: Quote) => {
+  // Create proforma — handles both single-row and multi-select
+  const handleConfirmProforma = async () => {
     if (!targetCompanyId) return;
-    setCreatingRowId(bl.id);
-    try {
-      const proforma = await SupabaseDocumentsService.createProformaFromBL(bl.id, targetCompanyId);
-      showToast({ type: 'success', title: 'Proforma créé', message: `${proforma.quoteNumber} créé avec succès` });
-      navigate(`/compta/proformas/${proforma.id}`);
-    } catch (e) {
-      showToast({ type: 'error', title: 'Erreur', message: String(e) });
-    } finally {
-      setCreatingRowId(null);
-    }
-  };
-
-  // Multi-select: create proforma from selected BLs
-  const handleMultiProforma = async () => {
-    if (!targetCompanyId || selectedIds.length === 0) return;
+    const ids = singleProformaBL ? [singleProformaBL.id] : selectedIds;
+    if (ids.length === 0) return;
     setIsCreating(true);
     try {
-      const proforma = await SupabaseDocumentsService.createProformaFromBLs(selectedIds, targetCompanyId);
-      showToast({ type: 'success', title: 'Proforma créé', message: `${proforma.quoteNumber} — ${selectedIds.length} BL(s) fusionnés` });
+      const proforma = await SupabaseDocumentsService.createProformaFromBLs(ids, targetCompanyId);
+      showToast({ type: 'success', title: 'Proforma créé', message: proforma.quoteNumber });
       setShowProformaModal(false);
+      setSingleProformaBL(null);
       setSelectedIds([]);
+      setTargetCompanyId('');
       navigate(`/compta/proformas/${proforma.id}`);
     } catch (e) {
       showToast({ type: 'error', title: 'Erreur', message: String(e) });
@@ -232,23 +221,13 @@ export default function BLDirectoryPage() {
                             <Download className="h-3.5 w-3.5" />
                           </button>
                           {!isFinal && (
-                            <SingleProformaButton
-                              bl={bl}
-                              companies={companies}
-                              isCreating={creatingRowId === bl.id}
-                              onConfirm={async (companyId) => {
-                                setCreatingRowId(bl.id);
-                                try {
-                                  const p = await SupabaseDocumentsService.createProformaFromBL(bl.id, companyId);
-                                  showToast({ type: 'success', title: 'Proforma créé', message: p.quoteNumber });
-                                  navigate(`/compta/proformas/${p.id}`);
-                                } catch (e) {
-                                  showToast({ type: 'error', title: 'Erreur', message: String(e) });
-                                } finally {
-                                  setCreatingRowId(null);
-                                }
-                              }}
-                            />
+                            <button
+                              onClick={() => { setSingleProformaBL(bl); setTargetCompanyId(''); }}
+                              className="p-1 text-emerald-600 hover:bg-emerald-600/10 rounded"
+                              title="Créer Proforma"
+                            >
+                              <FileText className="h-3.5 w-3.5" />
+                            </button>
                           )}
                           {isSuperAdmin && (
                             <button onClick={() => handleDelete(bl.id, bl.quoteNumber)} className="p-1 text-destructive hover:bg-destructive/10 rounded" title="Supprimer">
@@ -266,13 +245,16 @@ export default function BLDirectoryPage() {
         )}
       </div>
 
-      {/* Multi-select Proforma modal */}
-      {showProformaModal && (
+      {/* Proforma modal — single BL or multi-select */}
+      {(showProformaModal || singleProformaBL) && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-card rounded-xl shadow-2xl max-w-md w-full p-5">
             <h2 className="text-base font-semibold text-foreground mb-1">Créer un Proforma</h2>
             <p className="text-xs text-muted-foreground mb-4">
-              {selectedEligible.length} BL{selectedEligible.length > 1 ? 's' : ''} sélectionné{selectedEligible.length > 1 ? 's' : ''} — les articles seront fusionnés.
+              {singleProformaBL
+                ? <>Depuis le BL <span className="font-mono font-semibold">{singleProformaBL.quoteNumber}</span></>
+                : <>{selectedEligible.length} BL{selectedEligible.length > 1 ? 's' : ''} sélectionné{selectedEligible.length > 1 ? 's' : ''} — les articles seront fusionnés.</>
+              }
             </p>
 
             <div className="mb-4">
@@ -291,11 +273,14 @@ export default function BLDirectoryPage() {
             </div>
 
             <div className="flex space-x-2">
-              <button onClick={() => setShowProformaModal(false)} className="flex-1 px-3 py-1.5 text-sm border border-input rounded-lg hover:bg-accent">
+              <button
+                onClick={() => { setShowProformaModal(false); setSingleProformaBL(null); setTargetCompanyId(''); }}
+                className="flex-1 px-3 py-1.5 text-sm border border-input rounded-lg hover:bg-accent"
+              >
                 Annuler
               </button>
               <button
-                onClick={handleMultiProforma}
+                onClick={handleConfirmProforma}
                 disabled={!targetCompanyId || isCreating}
                 className="flex-1 flex items-center justify-center space-x-1.5 px-3 py-1.5 text-sm bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg"
               >
@@ -312,52 +297,3 @@ export default function BLDirectoryPage() {
   );
 }
 
-// Inline per-row "→ Proforma" button with company picker popover
-function SingleProformaButton({ bl, companies, isCreating, onConfirm }: {
-  bl: Quote;
-  companies: Company[];
-  isCreating: boolean;
-  onConfirm: (companyId: string) => Promise<void>;
-}) {
-  const [open, setOpen] = useState(false);
-  const [companyId, setCompanyId] = useState('');
-
-  return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen(v => !v)}
-        disabled={isCreating}
-        className="p-1 text-emerald-600 hover:bg-emerald-600/10 rounded disabled:opacity-40"
-        title="Créer Proforma"
-      >
-        {isCreating ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
-      </button>
-
-      {open && (
-        <div className="absolute right-0 top-7 z-20 bg-card border border-border rounded-lg shadow-xl p-3 w-52">
-          <p className="text-[10px] text-muted-foreground mb-2">Société cible pour {bl.quoteNumber}</p>
-          <select
-            value={companyId}
-            onChange={e => setCompanyId(e.target.value)}
-            className="w-full px-2 py-1 text-xs border border-input rounded bg-secondary text-foreground mb-2"
-          >
-            <option value="">— Société —</option>
-            {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-          <div className="flex gap-1.5">
-            <button onClick={() => setOpen(false)} className="flex-1 px-2 py-1 text-xs border border-input rounded hover:bg-accent">
-              ✕
-            </button>
-            <button
-              disabled={!companyId}
-              onClick={async () => { setOpen(false); await onConfirm(companyId); }}
-              className="flex-1 px-2 py-1 text-xs bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white rounded"
-            >
-              Créer
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
