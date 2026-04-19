@@ -320,11 +320,6 @@ CREATE POLICY "Allow insert product_name_overrides" ON public.product_name_overr
 CREATE POLICY "Allow update product_name_overrides" ON public.product_name_overrides FOR UPDATE USING (true);
 CREATE POLICY "Allow delete product_name_overrides" ON public.product_name_overrides FOR DELETE USING (true);
 
--- ── quotes status constraint (add 'pending') ──────────────────
-ALTER TABLE public.quotes DROP CONSTRAINT IF EXISTS quotes_status_check;
-ALTER TABLE public.quotes ADD CONSTRAINT quotes_status_check
-  CHECK (status = ANY (ARRAY['draft'::text, 'pending'::text, 'final'::text]));
-
 -- ── companies (sub-company support) ──────────────────────────
 CREATE TABLE IF NOT EXISTS public.companies (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -585,3 +580,35 @@ BEGIN
 END;
 $$;
 GRANT EXECUTE ON FUNCTION public.next_document_number(uuid, text) TO anon, authenticated;
+
+-- ── quotes: invoice payment detail columns ────────────────────
+ALTER TABLE public.quotes ADD COLUMN IF NOT EXISTS payment_reference text;
+ALTER TABLE public.quotes ADD COLUMN IF NOT EXISTS payment_bank text;
+
+-- ── quote_templates ───────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.quote_templates (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text NOT NULL DEFAULT '',
+  file_data text NOT NULL DEFAULT '',
+  file_type text NOT NULL DEFAULT 'application/pdf',
+  is_active boolean NOT NULL DEFAULT false,
+  uploaded_at timestamp with time zone NOT NULL DEFAULT now(),
+  created_at timestamp with time zone NOT NULL DEFAULT now()
+);
+ALTER TABLE public.quote_templates ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow read quote_templates" ON public.quote_templates;
+DROP POLICY IF EXISTS "Allow insert quote_templates" ON public.quote_templates;
+DROP POLICY IF EXISTS "Allow update quote_templates" ON public.quote_templates;
+DROP POLICY IF EXISTS "Allow delete quote_templates" ON public.quote_templates;
+CREATE POLICY "Allow read quote_templates" ON public.quote_templates FOR SELECT USING (true);
+CREATE POLICY "Allow insert quote_templates" ON public.quote_templates FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow update quote_templates" ON public.quote_templates FOR UPDATE USING (true);
+CREATE POLICY "Allow delete quote_templates" ON public.quote_templates FOR DELETE USING (true);
+
+-- ── Performance indexes ───────────────────────────────────────
+CREATE INDEX IF NOT EXISTS idx_quotes_document_type ON public.quotes(document_type);
+CREATE INDEX IF NOT EXISTS idx_quotes_company_id    ON public.quotes(company_id);
+CREATE INDEX IF NOT EXISTS idx_quotes_created_at    ON public.quotes(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_quotes_dtype_company ON public.quotes(document_type, company_id);
+CREATE INDEX IF NOT EXISTS idx_quotes_dtype_status  ON public.quotes(document_type, status);
+CREATE INDEX IF NOT EXISTS idx_clients_company_id   ON public.clients(company_id);

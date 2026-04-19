@@ -1,6 +1,6 @@
 import React from 'react';
 import { Wifi, WifiOff, RefreshCw, CheckCircle, AlertCircle, Clock } from 'lucide-react';
-import { SyncInfo, SyncState } from '../utils/syncEngine';
+import { SyncInfo, SyncState } from '../hooks/useApp';
 
 interface SyncStatusIndicatorProps {
   syncInfo: SyncInfo;

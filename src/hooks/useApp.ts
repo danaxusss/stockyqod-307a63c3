@@ -1,8 +1,19 @@
 import { useState, useEffect, useCallback } from 'react';
 import { AppState, Product } from '../types';
 import { StorageManager } from '../utils/storage';
-import { SyncEngine, SyncInfo } from '../utils/syncEngine';
-import { OfflineStorage } from '../utils/offlineStorage';
+import { getProducts, saveProducts } from '../utils/database';
+import { ProductUploadService } from '../utils/productUploadService';
+
+export type SyncState = 'idle' | 'syncing' | 'offline' | 'error';
+
+export interface SyncInfo {
+  state: SyncState;
+  lastSync: Date | null;
+  pendingChanges: number;
+  isOnline: boolean;
+}
+
+let periodicSyncTimer: ReturnType<typeof setInterval> | null = null;
 
 export function useApp() {
   const [state, setState] = useState<AppState>({
@@ -15,14 +26,24 @@ export function useApp() {
 
   const [isLoading, setIsLoading] = useState(true);
   const [activeLoginModalRole, setActiveLoginModalRole] = useState<'user' | 'admin' | null>(null);
-  const [syncInfo, setSyncInfo] = useState<SyncInfo>(SyncEngine.getInfo());
+  const [syncInfo, setSyncInfo] = useState<SyncInfo>({
+    state: 'idle',
+    lastSync: null,
+    pendingChanges: 0,
+    isOnline: navigator.onLine,
+  });
 
-  // Subscribe to sync engine state
-  useEffect(() => {
-    return SyncEngine.subscribe((info) => {
-      setSyncInfo(info);
-      setState(prev => ({ ...prev, isOnline: info.isOnline }));
-    });
+  const pullProducts = useCallback(async (): Promise<Product[]> => {
+    setSyncInfo(prev => ({ ...prev, state: 'syncing' }));
+    try {
+      const products = await ProductUploadService.getAllProducts();
+      await saveProducts(products);
+      setSyncInfo(prev => ({ ...prev, state: 'idle', lastSync: new Date() }));
+      return products;
+    } catch (error) {
+      setSyncInfo(prev => ({ ...prev, state: navigator.onLine ? 'error' : 'offline' }));
+      throw error;
+    }
   }, []);
 
   // Load products: local cache first, then cloud
@@ -30,31 +51,23 @@ export function useApp() {
     const loadProducts = async () => {
       try {
         setIsLoading(true);
-        
-        // 1. Try local cache first (instant)
-        const cached = await OfflineStorage.getCachedProducts();
+
+        const cached = await getProducts();
         if (cached.length > 0) {
           setState(prev => ({ ...prev, products: cached }));
-          console.log(`Loaded ${cached.length} products from local cache`);
           setIsLoading(false);
-          
-          // 2. Background sync from cloud
+
           if (navigator.onLine) {
-            SyncEngine.pullProducts()
-              .then(fresh => {
-                setState(prev => ({ ...prev, products: fresh }));
-                console.log(`Background sync: ${fresh.length} products from cloud`);
-              })
+            pullProducts()
+              .then(fresh => setState(prev => ({ ...prev, products: fresh })))
               .catch(err => console.warn('Background sync failed:', err));
           }
         } else {
-          // No cache — must fetch from cloud
           if (navigator.onLine) {
-            const products = await SyncEngine.pullProducts();
+            const products = await pullProducts();
             setState(prev => ({ ...prev, products }));
-            console.log(`Loaded ${products.length} products from cloud (first sync)`);
           } else {
-            console.warn('Offline with no cached data');
+            setSyncInfo(prev => ({ ...prev, state: 'offline' }));
           }
           setIsLoading(false);
         }
@@ -65,70 +78,69 @@ export function useApp() {
     };
 
     loadProducts();
-    
-    // Start periodic background sync (every 5 min)
-    SyncEngine.startPeriodicSync();
-    return () => SyncEngine.stopPeriodicSync();
-  }, []);
 
-  // Listen for online/offline + re-sync when coming back online
+    periodicSyncTimer = setInterval(() => {
+      if (navigator.onLine) {
+        pullProducts()
+          .then(fresh => setState(prev => ({ ...prev, products: fresh })))
+          .catch(err => console.warn('Periodic sync failed:', err));
+      }
+    }, 5 * 60 * 1000);
+
+    return () => {
+      if (periodicSyncTimer) {
+        clearInterval(periodicSyncTimer);
+        periodicSyncTimer = null;
+      }
+    };
+  }, [pullProducts]);
+
+  // Online/offline events
   useEffect(() => {
     const handleOnline = () => {
+      setSyncInfo(prev => ({ ...prev, isOnline: true }));
       setState(prev => ({ ...prev, isOnline: true }));
-      // Re-fetch products when coming back online
-      SyncEngine.pullProducts()
-        .then(fresh => {
-          setState(prev => ({ ...prev, products: fresh }));
-          console.log('Reconnected: synced products from cloud');
-        })
+      pullProducts()
+        .then(fresh => setState(prev => ({ ...prev, products: fresh })))
         .catch(err => console.warn('Reconnect sync failed:', err));
     };
-    const handleOffline = () => setState(prev => ({ ...prev, isOnline: false }));
+    const handleOffline = () => {
+      setSyncInfo(prev => ({ ...prev, isOnline: false, state: 'offline' }));
+      setState(prev => ({ ...prev, isOnline: false }));
+    };
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
-
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, []);
+  }, [pullProducts]);
 
-  // Listen for role changes from other tabs
+  // Role changes from other tabs
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'inventory_role') {
         setState(prev => ({ ...prev, role: (e.newValue as AppState['role']) || 'sales' }));
       }
     };
-
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
   const syncData = useCallback(async (_forceSync = false): Promise<boolean> => {
-    if (!state.isOnline) {
-      throw new Error('Sync requires internet connection');
-    }
+    if (!state.isOnline) throw new Error('Sync requires internet connection');
+    const products = await pullProducts();
+    setState(prev => ({ ...prev, products, hasNewData: false }));
+    return products.length > 0;
+  }, [state.isOnline, pullProducts]);
 
-    try {
-      const { products } = await SyncEngine.pullAll();
-      setState(prev => ({ ...prev, products, hasNewData: false }));
-      return products.length > 0;
-    } catch (error) {
-      console.error('Sync failed:', error);
-      throw error;
-    }
-  }, [state.isOnline]);
+  const checkForUpdates = async (): Promise<boolean> => false;
 
-  const checkForUpdates = async (): Promise<boolean> => {
-    return false;
-  };
-
-  const getSyncStats = async () => {
-    const stats = await OfflineStorage.getSyncStats();
-    return stats;
-  };
+  const getSyncStats = async () => ({
+    productCount: state.products.length,
+    pendingCount: 0,
+  });
 
   const updateRole = (role: AppState['role']) => {
     setState(prev => ({ ...prev, role }));

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, forwardRef } from 'react';
-import { Search, RefreshCw, Package, Upload, Bug, Trash2, BarChart3, FileText, ShoppingCart, LucideIcon, Users, Settings, FolderOpen, ChevronDown, ChevronUp, Receipt, Calculator, Truck, Database } from 'lucide-react';
+import { Search, RefreshCw, Package, Upload, Bug, Trash2, BarChart3, FileText, ShoppingCart, LucideIcon, Users, Settings, FolderOpen, ChevronDown, ChevronUp, Receipt, Calculator, Truck, Database, Activity } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useAppContext } from '../context/AppContext';
@@ -7,6 +7,17 @@ import { useToast } from '../context/ToastContext';
 import { ExcelUploadModal } from '../components/ExcelUploadModal';
 import { ProductUploadService } from '../utils/productUploadService';
 import { StorageManager } from '../utils/storage';
+import { supabase } from '../utils/supabaseClient';
+
+interface ActivityLog {
+  id: string;
+  username: string;
+  action: string;
+  details: string | null;
+  entity_type: string | null;
+  entity_id: string | null;
+  created_at: string;
+}
 
 interface ActionCardProps {
   to?: string;
@@ -76,6 +87,9 @@ export function Home() {
   const [showDebugInfo, setShowDebugInfo] = useState(false);
   const [debugInfo, setDebugInfo] = useState<any>(null);
   const [showTechnicalSection, setShowTechnicalSection] = useState(false);
+  const [showActivitySection, setShowActivitySection] = useState(false);
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
+  const [activityLoading, setActivityLoading] = useState(false);
 
   useEffect(() => {
     console.log('Home page - Auth version changed:', authVersion, 'isAdmin:', isAdmin);
@@ -132,6 +146,21 @@ export function Home() {
     } catch (error) {
       showToast({ type: 'error', title: 'Erreur', message: 'Analyse échouée' });
     }
+  };
+
+  const handleToggleActivity = async () => {
+    if (!showActivitySection) {
+      setActivityLoading(true);
+      try {
+        const { data, error } = await (supabase.rpc as any)('get_recent_activity_logs', { p_limit: 30 });
+        if (!error) setActivityLogs(data || []);
+      } catch {
+        // silently ignore — non-critical
+      } finally {
+        setActivityLoading(false);
+      }
+    }
+    setShowActivitySection(prev => !prev);
   };
 
   const formatNumber = (num: number): string => new Intl.NumberFormat('fr-FR').format(num);
@@ -261,6 +290,52 @@ export function Home() {
             <ActionCard to="/admin/settings" icon={Settings} iconGradient="bg-gray-600" title="Paramètres" desc="Configuration" size="small" />
             <ActionCard to="/admin/backup" icon={Database} iconGradient="bg-rose-700" title="Sauvegarde" desc="Backup & Restore" size="small" />
           </div>
+        </div>
+      )}
+
+      {/* Activity Log - Collapsible */}
+      {isSuperAdmin && (
+        <div className="mb-4">
+          <button onClick={handleToggleActivity}
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mb-2">
+            <Activity className="h-3 w-3" />
+            <span className="uppercase tracking-wider font-semibold">Activité Récente</span>
+            {showActivitySection ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+          </button>
+          {showActivitySection && (
+            <div className="glass rounded-xl p-3 shadow">
+              {activityLoading ? (
+                <div className="text-xs text-muted-foreground text-center py-4">Chargement...</div>
+              ) : activityLogs.length === 0 ? (
+                <div className="text-xs text-muted-foreground text-center py-4">Aucune activité enregistrée.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-muted-foreground border-b border-border/40">
+                        <th className="text-left pb-1.5 pr-3 font-semibold">Utilisateur</th>
+                        <th className="text-left pb-1.5 pr-3 font-semibold">Action</th>
+                        <th className="text-left pb-1.5 pr-3 font-semibold hidden sm:table-cell">Détails</th>
+                        <th className="text-left pb-1.5 font-semibold">Date</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {activityLogs.map(log => (
+                        <tr key={log.id} className="border-b border-border/20 last:border-0">
+                          <td className="py-1.5 pr-3 font-medium text-foreground">{log.username}</td>
+                          <td className="py-1.5 pr-3 text-foreground">{log.action}</td>
+                          <td className="py-1.5 pr-3 text-muted-foreground hidden sm:table-cell max-w-[200px] truncate">{log.details || '—'}</td>
+                          <td className="py-1.5 text-muted-foreground whitespace-nowrap">
+                            {new Date(log.created_at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

@@ -1,7 +1,7 @@
 import React, { createContext, useContext, ReactNode } from 'react';
 import { AppState } from '../types';
 import { useApp } from '../hooks/useApp';
-import { SyncInfo } from '../utils/syncEngine';
+import { SyncInfo } from '../hooks/useApp';
 
 interface AppContextType {
   state: AppState;
