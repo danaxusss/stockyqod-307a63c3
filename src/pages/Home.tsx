@@ -1,5 +1,5 @@
 import React, { useState, useEffect, forwardRef } from 'react';
-import { Search, RefreshCw, Package, Upload, Bug, Trash2, BarChart3, FileText, ShoppingCart, LucideIcon, Users, Settings, FolderOpen, ChevronDown, ChevronUp, Receipt, Calculator, Truck } from 'lucide-react';
+import { Search, RefreshCw, Package, Upload, Bug, Trash2, BarChart3, FileText, ShoppingCart, LucideIcon, Users, Settings, FolderOpen, ChevronDown, ChevronUp, Receipt, Calculator, Truck, Database } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useAppContext } from '../context/AppContext';
@@ -259,6 +259,7 @@ export function Home() {
             <ActionCard onClick={() => setShowUploadModal(true)} icon={Upload} iconGradient="bg-violet-600" title="Upload Excel" desc="Importer" size="small" />
             <ActionCard to="/admin/statistics" icon={BarChart3} iconGradient="bg-primary" title="Statistiques" desc="Données" size="small" />
             <ActionCard to="/admin/settings" icon={Settings} iconGradient="bg-gray-600" title="Paramètres" desc="Configuration" size="small" />
+            <ActionCard to="/admin/backup" icon={Database} iconGradient="bg-rose-700" title="Sauvegarde" desc="Backup & Restore" size="small" />
           </div>
         </div>
       )}

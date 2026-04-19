@@ -32,6 +32,7 @@ const InvoiceDetailPage = React.lazy(() => import('./pages/compta/InvoiceDetailP
 const ClientFinancialPage = React.lazy(() => import('./pages/compta/ClientFinancialPage'));
 const BLDirectoryPage = React.lazy(() => import('./pages/compta/BLDirectoryPage'));
 const BLDetailPage = React.lazy(() => import('./pages/compta/BLDetailPage'));
+const BackupPage = React.lazy(() => import('./pages/BackupPage'));
 
 function PageLoader() {
   return (
@@ -103,6 +104,7 @@ function AppContent() {
               <>
                 <Route path="/companies" element={<CompaniesPage />} />
                 <Route path="/admin/users" element={<UserManagementPage />} />
+                <Route path="/admin/backup" element={<BackupPage />} />
               </>
             )}
             {(isCompta || isSuperAdmin) && (
