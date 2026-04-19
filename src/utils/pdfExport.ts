@@ -399,6 +399,12 @@ export class PdfExportService {
       if (quote.payment_method) {
         quoteInfoRows.push(['Mode paiement', quote.payment_method]);
       }
+      if (quote.payment_reference) {
+        quoteInfoRows.push(['N° référence', quote.payment_reference]);
+      }
+      if (quote.payment_bank) {
+        quoteInfoRows.push(['Banque', quote.payment_bank]);
+      }
     }
 
     autoTable(doc, {

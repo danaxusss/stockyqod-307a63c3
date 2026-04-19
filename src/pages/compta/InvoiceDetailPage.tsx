@@ -35,6 +35,8 @@ export default function InvoiceDetailPage() {
   const [draftItems, setDraftItems] = useState<QuoteItem[]>([]);
   const [draftPaymentDate, setDraftPaymentDate] = useState('');
   const [draftPaymentMethod, setDraftPaymentMethod] = useState('');
+  const [draftPaymentReference, setDraftPaymentReference] = useState('');
+  const [draftPaymentBank, setDraftPaymentBank] = useState('');
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -62,6 +64,8 @@ export default function InvoiceDetailPage() {
     setDraftItems(invoice.items.map(i => ({ ...i })));
     setDraftPaymentDate(invoice.payment_date || '');
     setDraftPaymentMethod(invoice.payment_method || '');
+    setDraftPaymentReference(invoice.payment_reference || '');
+    setDraftPaymentBank(invoice.payment_bank || '');
     setIsEditing(true);
   };
 
@@ -77,6 +81,8 @@ export default function InvoiceDetailPage() {
         status: draftStatus,
         payment_date: draftPaymentDate || null,
         payment_method: draftPaymentMethod || null,
+        payment_reference: draftPaymentReference || null,
+        payment_bank: draftPaymentBank || null,
       });
       showToast({ type: 'success', title: 'Facture mise à jour', message: 'Modifications sauvegardées' });
       setIsEditing(false);
@@ -232,27 +238,42 @@ export default function InvoiceDetailPage() {
       </div>
 
       {/* Payment info */}
-      <div className="glass rounded-lg p-4 grid grid-cols-2 gap-3 text-sm">
-        <div>
-          <p className="text-[11px] text-muted-foreground mb-0.5">Date de paiement</p>
-          {isEditing
-            ? <input type="date" value={draftPaymentDate} onChange={e => setDraftPaymentDate(e.target.value)} className={inputCls} />
-            : <p className="text-foreground">{invoice.payment_date ? new Date(invoice.payment_date).toLocaleDateString('fr-FR') : '—'}</p>}
-        </div>
-        <div>
-          <p className="text-[11px] text-muted-foreground mb-0.5">Mode de paiement</p>
-          {isEditing ? (
-            <select value={draftPaymentMethod} onChange={e => setDraftPaymentMethod(e.target.value)} className={inputCls}>
-              <option value="">— Sélectionner —</option>
-              <option value="Virement bancaire">Virement bancaire</option>
-              <option value="Chèque">Chèque</option>
-              <option value="Espèces">Espèces</option>
-              <option value="Carte bancaire">Carte bancaire</option>
-              <option value="Effet de commerce">Effet de commerce</option>
-            </select>
-          ) : (
-            <p className="text-foreground">{invoice.payment_method || '—'}</p>
-          )}
+      <div className="glass rounded-lg p-4 space-y-3 text-sm">
+        <p className="text-xs font-semibold text-foreground">Paiement</p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div>
+            <p className="text-[11px] text-muted-foreground mb-0.5">Date</p>
+            {isEditing
+              ? <input type="date" value={draftPaymentDate} onChange={e => setDraftPaymentDate(e.target.value)} className={inputCls} />
+              : <p className="text-foreground">{invoice.payment_date ? new Date(invoice.payment_date).toLocaleDateString('fr-FR') : '—'}</p>}
+          </div>
+          <div>
+            <p className="text-[11px] text-muted-foreground mb-0.5">Mode</p>
+            {isEditing ? (
+              <select value={draftPaymentMethod} onChange={e => setDraftPaymentMethod(e.target.value)} className={inputCls}>
+                <option value="">— Sélectionner —</option>
+                <option value="Virement bancaire">Virement bancaire</option>
+                <option value="Chèque">Chèque</option>
+                <option value="Espèces">Espèces</option>
+                <option value="Carte bancaire">Carte bancaire</option>
+                <option value="Effet de commerce">Effet de commerce</option>
+              </select>
+            ) : (
+              <p className="text-foreground">{invoice.payment_method || '—'}</p>
+            )}
+          </div>
+          <div>
+            <p className="text-[11px] text-muted-foreground mb-0.5">N° référence</p>
+            {isEditing
+              ? <input value={draftPaymentReference} onChange={e => setDraftPaymentReference(e.target.value)} className={inputCls} placeholder="N° chèque / virement / effet…" />
+              : <p className="font-mono text-foreground">{invoice.payment_reference || '—'}</p>}
+          </div>
+          <div>
+            <p className="text-[11px] text-muted-foreground mb-0.5">Banque</p>
+            {isEditing
+              ? <input value={draftPaymentBank} onChange={e => setDraftPaymentBank(e.target.value)} className={inputCls} placeholder="Nom de la banque…" />
+              : <p className="text-foreground">{invoice.payment_bank || '—'}</p>}
+          </div>
         </div>
       </div>
 

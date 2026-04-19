@@ -23,6 +23,8 @@ type DocRow = {
   company_id: string | null;
   payment_date: string | null;
   payment_method: string | null;
+  payment_reference: string | null;
+  payment_bank: string | null;
 };
 
 function mapDocRow(row: DocRow): Quote {
@@ -50,6 +52,8 @@ function mapDocRow(row: DocRow): Quote {
     company_id: row.company_id || undefined,
     payment_date: row.payment_date || undefined,
     payment_method: row.payment_method || undefined,
+    payment_reference: row.payment_reference || undefined,
+    payment_bank: row.payment_bank || undefined,
   };
 }
 
@@ -413,6 +417,8 @@ export class SupabaseDocumentsService {
       status?: string;
       payment_date?: string | null;
       payment_method?: string | null;
+      payment_reference?: string | null;
+      payment_bank?: string | null;
     }
   ): Promise<Quote> {
     const updateData: Record<string, unknown> = {
@@ -428,6 +434,8 @@ export class SupabaseDocumentsService {
     if (updates.status !== undefined) updateData.status = updates.status;
     if (updates.payment_date !== undefined) updateData.payment_date = updates.payment_date || null;
     if (updates.payment_method !== undefined) updateData.payment_method = updates.payment_method || null;
+    if (updates.payment_reference !== undefined) updateData.payment_reference = updates.payment_reference || null;
+    if (updates.payment_bank !== undefined) updateData.payment_bank = updates.payment_bank || null;
 
     const { data, error } = await (supabase.from('quotes') as any)
       .update(updateData)

@@ -96,8 +96,10 @@ export interface Quote {
   paid_amount?: number;
   issuing_company_id?: string;
   company_id?: string;
-  payment_date?: string;   // ISO date string (YYYY-MM-DD)
-  payment_method?: string; // e.g. "Virement", "Chèque", "Espèces"
+  payment_date?: string;
+  payment_method?: string;
+  payment_reference?: string; // cheque no., transfer ref, effect no., etc.
+  payment_bank?: string;      // bank / financial institution name
 }
 
 export interface QuoteTemplate {
