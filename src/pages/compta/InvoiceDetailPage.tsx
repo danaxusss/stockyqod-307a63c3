@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { Receipt, Download, ArrowLeft, Loader, Pencil, Check, X, Plus } from 'lucide-react';
+import { Receipt, Download, ArrowLeft, Loader, Pencil, Check, X, Plus, Calendar } from 'lucide-react';
 import { Quote, QuoteItem } from '../../types';
 import { SupabaseDocumentsService } from '../../utils/supabaseDocuments';
 import { SupabaseCompaniesService } from '../../utils/supabaseCompanies';
@@ -243,9 +243,13 @@ export default function InvoiceDetailPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div>
             <p className="text-[11px] text-muted-foreground mb-0.5">Date</p>
-            {isEditing
-              ? <input type="date" value={draftPaymentDate} onChange={e => setDraftPaymentDate(e.target.value)} className={inputCls} />
-              : <p className="text-foreground">{invoice.payment_date ? new Date(invoice.payment_date).toLocaleDateString('fr-FR') : '—'}</p>}
+            {isEditing ? (
+              <div className="relative">
+                <Calendar className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
+                <input type="date" value={draftPaymentDate} onChange={e => setDraftPaymentDate(e.target.value)}
+                  className={`${inputCls} pl-6`} />
+              </div>
+            ) : <p className="text-foreground">{invoice.payment_date ? new Date(invoice.payment_date).toLocaleDateString('fr-FR') : '—'}</p>}
           </div>
           <div>
             <p className="text-[11px] text-muted-foreground mb-0.5">Mode</p>
