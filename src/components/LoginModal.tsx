@@ -32,7 +32,11 @@ export function LoginModal({ roleType, isInitialGate = false, onClose, onLoginSu
         setIsLoadingUsers(true);
         try {
           const users = await SupabaseUsersService.getAllUsers();
-          setAvailableUsers(users.sort((a, b) => a.username.localeCompare(b.username)));
+          setAvailableUsers(users.sort((a, b) => {
+            const nameA = a.custom_seller_name || a.username;
+            const nameB = b.custom_seller_name || b.username;
+            return nameA.localeCompare(nameB);
+          }));
         } catch (error) {
           console.error('Failed to fetch users:', error);
           showToast({
@@ -179,9 +183,11 @@ export function LoginModal({ roleType, isInitialGate = false, onClose, onLoginSu
                   disabled={isLoading}
                   className="w-full px-4 py-3 border border-border rounded-xl focus:ring-2 focus:ring-ring focus:border-transparent bg-background text-foreground disabled:opacity-50 transition-all"
                 >
-                  <option value="">Sélectionner votre nom</option>
+                  <option value="">Sélectionner votre profil</option>
                   {availableUsers.map((user) => (
-                    <option key={user.id} value={user.username}>{user.username}</option>
+                    <option key={user.id} value={user.username}>
+                      {user.custom_seller_name ? `${user.custom_seller_name} (${user.username})` : user.username}
+                    </option>
                   ))}
                 </select>
               )}

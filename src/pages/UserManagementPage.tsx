@@ -432,9 +432,9 @@ export default function UserManagementPage() {
               {/* Username + PIN */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">Nom d'utilisateur *</label>
+                  <label className="block text-xs font-medium text-foreground mb-1">Identifiant de connexion *</label>
                   <input type="text" value={formData.username} onChange={e => handleInputChange('username', e.target.value)}
-                    className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground" placeholder="ex: john_store" />
+                    className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground" placeholder="ex: ahmed_vente" />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-foreground mb-1">
@@ -513,9 +513,9 @@ export default function UserManagementPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">Nom commercial</label>
+                  <label className="block text-xs font-medium text-foreground mb-1">Nom affiché (login + devis)</label>
                   <input type="text" value={formData.custom_seller_name} onChange={e => handleInputChange('custom_seller_name', e.target.value)}
-                    className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground" placeholder="Affiché sur les devis" />
+                    className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground" placeholder="ex: Ahmed — Commercial Casablanca" />
                 </div>
               </div>
 
