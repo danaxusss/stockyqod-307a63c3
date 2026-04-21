@@ -34,6 +34,7 @@ const BLDirectoryPage = React.lazy(() => import('./pages/compta/BLDirectoryPage'
 const BLDetailPage = React.lazy(() => import('./pages/compta/BLDetailPage'));
 const ReturnsPage = React.lazy(() => import('./pages/compta/ReturnsPage'));
 const BackupPage = React.lazy(() => import('./pages/BackupPage'));
+const ImportPage = React.lazy(() => import('./pages/ImportPage'));
 
 function PageLoader() {
   return (
@@ -106,6 +107,7 @@ function AppContent() {
                 <Route path="/companies" element={<CompaniesPage />} />
                 <Route path="/admin/users" element={<UserManagementPage />} />
                 <Route path="/admin/backup" element={<BackupPage />} />
+                <Route path="/admin/import" element={<ImportPage />} />
               </>
             )}
             {(isCompta || isSuperAdmin) && (

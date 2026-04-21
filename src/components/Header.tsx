@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   Package, RefreshCw, LogOut, Shield, FileText, User, Cloud, CloudOff,
   Settings, UserCheck, ShoppingBag, BookOpen, Building2, ChevronDown,
-  Truck, Receipt, Calculator, BarChart3, Users, ShoppingCart, LucideIcon, RotateCcw, Sun, Moon,
+  Truck, Receipt, Calculator, BarChart3, Users, ShoppingCart, LucideIcon, RotateCcw, Sun, Moon, Upload,
 } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { Link, useLocation } from 'react-router-dom';
@@ -230,6 +230,7 @@ export function Header() {
                   { to: '/admin/statistics', icon: BarChart3, label: 'Statistiques' },
                   { to: '/companies', icon: Building2, label: 'Sociétés' },
                   { to: '/admin/users', icon: Users, label: 'Utilisateurs' },
+                  { to: '/admin/import', icon: Upload, label: 'Import CSV' },
                 ]}
               />
             )}
