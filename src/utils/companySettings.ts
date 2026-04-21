@@ -9,6 +9,7 @@ export interface QuoteVisibleFields {
   showCompanyICE: boolean;
   showClientICE: boolean;
   showTVA: boolean;
+  showTVABreakdown: boolean;
   showNotes: boolean;
   showPaymentTerms: boolean;
   showValidityDate: boolean;
@@ -105,6 +106,10 @@ export interface CompanySettings {
   ai_enabled: boolean;
   ai_model: string;
   ai_system_prompt: string;
+  doc_prefix: string;
+  qr_code_url: string;
+  bl_show_prices: boolean;
+  special_pin: string;
   quote_visible_fields: QuoteVisibleFields;
   quote_style: QuoteStyle;
   share_templates: ShareTemplates;
@@ -123,6 +128,7 @@ const DEFAULT_VISIBLE_FIELDS: QuoteVisibleFields = {
   showCompanyICE: true,
   showClientICE: true,
   showTVA: true,
+  showTVABreakdown: true,
   showNotes: true,
   showPaymentTerms: true,
   showValidityDate: true,
@@ -207,6 +213,10 @@ export class CompanySettingsService {
       ai_enabled: data.ai_enabled ?? true,
       ai_model: data.ai_model || 'deepseek/deepseek-chat-v3-0324:free',
       ai_system_prompt: data.ai_system_prompt || '',
+      doc_prefix: data.doc_prefix || '',
+      qr_code_url: data.qr_code_url || '',
+      bl_show_prices: data.bl_show_prices ?? true,
+      special_pin: data.special_pin || '',
       tva_rate: data.tva_rate ?? 20,
       quote_validity_days: data.quote_validity_days ?? 30,
       payment_terms: data.payment_terms || '',
@@ -249,6 +259,10 @@ export class CompanySettingsService {
       ai_enabled: settings.ai_enabled,
       ai_model: settings.ai_model,
       ai_system_prompt: settings.ai_system_prompt,
+      doc_prefix: settings.doc_prefix,
+      qr_code_url: settings.qr_code_url,
+      bl_show_prices: settings.bl_show_prices,
+      special_pin: settings.special_pin,
       tva_rate: settings.tva_rate,
       quote_validity_days: settings.quote_validity_days,
       payment_terms: settings.payment_terms,

@@ -2,8 +2,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   Package, RefreshCw, LogOut, Shield, FileText, User, Cloud, CloudOff,
   Settings, UserCheck, ShoppingBag, BookOpen, Building2, ChevronDown,
-  Truck, Receipt, Calculator, BarChart3, Users, ShoppingCart, LucideIcon,
+  Truck, Receipt, Calculator, BarChart3, Users, ShoppingCart, LucideIcon, RotateCcw, Sun, Moon,
 } from 'lucide-react';
+import { useTheme } from '../hooks/useTheme';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useUserAuth } from '../hooks/useUserAuth';
@@ -74,6 +75,7 @@ export function Header() {
   const [openDropdown, setOpenDropdown] = useState<DropdownId | null>(null);
   const navRef = useRef<HTMLDivElement>(null);
 
+  const { theme, toggle: toggleTheme } = useTheme();
   const { isAdmin, isSuperAdmin, isCompta, companyName, currentUser, canCreateQuote, logout: adminLogout } = useAuth();
   const { isAuthenticated: isUserAuthenticated, authenticatedUser, logout: userLogout } = useUserAuth();
   const { syncInfo, syncData, openLoginModal } = useAppContext();
@@ -210,6 +212,7 @@ export function Header() {
                   { to: '/compta/proformas', icon: FileText, label: 'Proformas' },
                   { to: '/compta/invoices', icon: Receipt, label: 'Factures' },
                   { to: '/compta/clients', icon: Calculator, label: 'Clients (financier)' },
+                  { to: '/compta/returns', icon: RotateCcw, label: 'Retours' },
                 ]}
               />
             )}
@@ -253,6 +256,13 @@ export function Header() {
                 <LogOut className="h-3.5 w-3.5" />
               </button>
             )}
+            <button
+              onClick={toggleTheme}
+              className="p-1.5 hover:bg-accent rounded-lg text-muted-foreground transition-colors"
+              title={theme === 'dark' ? 'Mode clair' : 'Mode sombre'}
+            >
+              {theme === 'dark' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+            </button>
           </div>
         </div>
       </div>

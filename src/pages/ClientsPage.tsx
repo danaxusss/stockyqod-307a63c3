@@ -1,15 +1,39 @@
 // @ts-nocheck
 import React, { useState, useEffect, useCallback } from 'react';
-import { Users, Search, Plus, Edit, Trash2, X, Check, Loader, Phone, Mail, MapPin, Building, SortAsc, SortDesc, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Users, Search, Plus, Edit, Trash2, X, Check, Loader, Phone, Mail, MapPin, Building, SortAsc, SortDesc, ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import { SupabaseClientsService, Client, CreateClientRequest } from '../utils/supabaseClients';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../hooks/useAuth';
 
 const CLIENTS_PER_PAGE = 15;
 type SortField = 'full_name' | 'phone_number' | 'city' | 'created_at';
 type SortOrder = 'asc' | 'desc';
 
+function exportClientsCSV(clients: Client[]) {
+  const headers = ['Code', 'Nom', 'Téléphone', 'Email', 'Adresse', 'Ville', 'ICE', 'Date'];
+  const rows = clients.map(c => [
+    c.client_code || '',
+    c.full_name,
+    c.phone_number,
+    c.email || '',
+    c.address || '',
+    c.city || '',
+    c.ice || '',
+    new Date(c.created_at).toLocaleDateString('fr-FR'),
+  ]);
+  const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `clients_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function ClientsPage() {
   const { showToast } = useToast();
+  const { isAdmin } = useAuth();
   const [clients, setClients] = useState<Client[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -48,7 +72,8 @@ export default function ClientsPage() {
         c.full_name.toLowerCase().includes(q) ||
         c.phone_number.includes(q) ||
         c.city.toLowerCase().includes(q) ||
-        c.email.toLowerCase().includes(q)
+        c.email.toLowerCase().includes(q) ||
+        (c.client_code || '').toLowerCase().includes(q)
       );
     }
     list.sort((a, b) => {
@@ -143,9 +168,16 @@ export default function ClientsPage() {
               <p className="text-xs text-muted-foreground">{clients.length} client{clients.length !== 1 ? 's' : ''}</p>
             </div>
           </div>
-          <button onClick={openCreateModal} className="flex items-center space-x-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors text-sm">
-            <Plus className="h-3.5 w-3.5" /><span>Nouveau</span>
-          </button>
+          <div className="flex items-center space-x-2">
+            {isAdmin && (
+              <button onClick={() => exportClientsCSV(filtered)} className="flex items-center space-x-1.5 px-3 py-1.5 bg-secondary hover:bg-accent text-foreground rounded-lg transition-colors text-sm border border-border">
+                <Download className="h-3.5 w-3.5" /><span>CSV</span>
+              </button>
+            )}
+            <button onClick={openCreateModal} className="flex items-center space-x-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors text-sm">
+              <Plus className="h-3.5 w-3.5" /><span>Nouveau</span>
+            </button>
+          </div>
         </div>
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -181,6 +213,7 @@ export default function ClientsPage() {
               <table className="w-full">
                 <thead className="bg-secondary">
                   <tr>
+                    <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Code</th>
                     {([
                       ['full_name', 'Nom'],
                       ['phone_number', 'Téléphone'],
@@ -200,6 +233,11 @@ export default function ClientsPage() {
                 <tbody className="divide-y divide-border">
                   {currentClients.map(client => (
                     <tr key={client.id} className="hover:bg-accent/50">
+                      <td className="px-3 py-2.5 text-xs">
+                        {client.client_code ? (
+                          <span className="px-1.5 py-0.5 bg-primary/10 text-primary rounded text-[10px] font-mono">{client.client_code}</span>
+                        ) : <span className="text-muted-foreground">—</span>}
+                      </td>
                       <td className="px-3 py-2.5 text-xs font-medium text-foreground">{client.full_name}</td>
                       <td className="px-3 py-2.5 text-xs text-foreground">{client.phone_number}</td>
                       <td className="px-3 py-2.5 text-xs text-foreground">{client.city || '-'}</td>

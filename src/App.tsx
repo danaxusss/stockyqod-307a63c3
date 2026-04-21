@@ -32,6 +32,7 @@ const InvoiceDetailPage = React.lazy(() => import('./pages/compta/InvoiceDetailP
 const ClientFinancialPage = React.lazy(() => import('./pages/compta/ClientFinancialPage'));
 const BLDirectoryPage = React.lazy(() => import('./pages/compta/BLDirectoryPage'));
 const BLDetailPage = React.lazy(() => import('./pages/compta/BLDetailPage'));
+const ReturnsPage = React.lazy(() => import('./pages/compta/ReturnsPage'));
 const BackupPage = React.lazy(() => import('./pages/BackupPage'));
 
 function PageLoader() {
@@ -116,6 +117,7 @@ function AppContent() {
                 <Route path="/compta/invoices" element={<InvoiceDirectoryPage />} />
                 <Route path="/compta/invoices/:id" element={<InvoiceDetailPage />} />
                 <Route path="/compta/clients" element={<ClientFinancialPage />} />
+                <Route path="/compta/returns" element={<ReturnsPage />} />
               </>
             )}
           </Routes>

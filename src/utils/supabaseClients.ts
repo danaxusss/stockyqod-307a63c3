@@ -9,6 +9,8 @@ export interface Client {
   city: string;
   ice: string;
   email: string;
+  client_code?: string;
+  company_id?: string;
   created_at: string;
   updated_at: string;
 }
@@ -48,7 +50,7 @@ export class SupabaseClientsService {
     let dbQuery = supabase
       .from('clients')
       .select('*')
-      .or(`full_name.ilike.%${q}%,phone_number.ilike.%${q}%`)
+      .or(`full_name.ilike.%${q}%,phone_number.ilike.%${q}%,client_code.ilike.%${q}%`)
       .order('full_name')
       .limit(10);
     if (!isSuperAdmin && companyId) dbQuery = dbQuery.eq('company_id', companyId);
@@ -91,6 +93,15 @@ export class SupabaseClientsService {
 
   static async createClient(client: CreateClientRequest): Promise<Client> {
     const { companyId } = getCompanyContext();
+
+    // Generate client_code atomically via RPC
+    const firstLetter = (client.full_name?.trim()?.[0] || 'X').toUpperCase();
+    let clientCode: string | undefined;
+    try {
+      const { data: codeData } = await (supabase.rpc as any)('next_client_code', { p_first_letter: firstLetter });
+      if (codeData) clientCode = codeData as string;
+    } catch { /* non-fatal — proceed without code */ }
+
     const { data, error } = await supabase
       .from('clients')
       .insert({
@@ -100,6 +111,7 @@ export class SupabaseClientsService {
         city: client.city || '',
         ice: client.ice || '',
         email: client.email || '',
+        ...(clientCode ? { client_code: clientCode } : {}),
         ...(companyId ? { company_id: companyId } : {}),
       })
       .select()

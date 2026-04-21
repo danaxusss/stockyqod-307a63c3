@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { Receipt, Download, ArrowLeft, Loader, Pencil, Check, X, Plus, Calendar } from 'lucide-react';
-import { Quote, QuoteItem } from '../../types';
+import { Receipt, Download, ArrowLeft, Loader, Pencil, Check, X, Plus, Calendar, Lock, Unlock, ChevronDown, ChevronUp } from 'lucide-react';
+import { Quote, QuoteItem, PaymentEntry } from '../../types';
 import { SupabaseDocumentsService } from '../../utils/supabaseDocuments';
 import { PdfExportService } from '../../utils/pdfExport';
 import { CompanySettingsService, CompanySettings } from '../../utils/companySettings';
@@ -39,6 +39,14 @@ export default function InvoiceDetailPage() {
   const [draftPaymentMethod, setDraftPaymentMethod] = useState('');
   const [draftPaymentReference, setDraftPaymentReference] = useState('');
   const [draftPaymentBank, setDraftPaymentBank] = useState('');
+  const [draftNotes2, setDraftNotes2] = useState('');
+  const [draftAvance, setDraftAvance] = useState(0);
+  const [showAvance, setShowAvance] = useState(false);
+  const [draftPaymentMethods, setDraftPaymentMethods] = useState<PaymentEntry[]>([]);
+  const [showExtraPayments, setShowExtraPayments] = useState(false);
+  // Lock / PIN
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [pinInput, setPinInput] = useState('');
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -79,6 +87,11 @@ export default function InvoiceDetailPage() {
     setDraftPaymentMethod(invoice.payment_method || '');
     setDraftPaymentReference(invoice.payment_reference || '');
     setDraftPaymentBank(invoice.payment_bank || '');
+    setDraftNotes2(invoice.notes2 || '');
+    setDraftAvance(invoice.avance_amount || 0);
+    setShowAvance((invoice.avance_amount || 0) > 0);
+    setDraftPaymentMethods((invoice.payment_methods_json as PaymentEntry[]) || []);
+    setShowExtraPayments(((invoice.payment_methods_json as PaymentEntry[]) || []).length > 0);
     setIsEditing(true);
   };
 
@@ -91,11 +104,14 @@ export default function InvoiceDetailPage() {
         customer: { ...invoice.customer, fullName: draftCustomerName, phoneNumber: draftCustomerPhone, city: draftCustomerCity },
         items: draftItems,
         notes: draftNotes.trim() || null,
+        notes2: draftNotes2.trim() || null,
         status: draftStatus,
         payment_date: draftPaymentDate || null,
         payment_method: draftPaymentMethod || null,
         payment_reference: draftPaymentReference || null,
         payment_bank: draftPaymentBank || null,
+        avance_amount: showAvance ? draftAvance : 0,
+        payment_methods_json: draftPaymentMethods.length > 0 ? draftPaymentMethods : [],
       });
       showToast({ type: 'success', title: 'Facture mise à jour', message: 'Modifications sauvegardées' });
       setIsEditing(false);
@@ -127,6 +143,38 @@ export default function InvoiceDetailPage() {
     priceType: 'normal' as const, marginPercentage: 0, finalPrice: 0,
     product: null as any,
   }]);
+
+  const handleLock = async () => {
+    if (!invoice) return;
+    try {
+      await SupabaseDocumentsService.updateDocument(invoice.id, { is_locked: true });
+      showToast({ type: 'success', message: 'Facture verrouillée' });
+      await load();
+    } catch (e) {
+      showToast({ type: 'error', message: String(e) });
+    }
+  };
+
+  const handleUnlock = () => {
+    setPinInput('');
+    setShowPinModal(true);
+  };
+
+  const confirmUnlock = async () => {
+    const expectedPin = companySettings?.special_pin;
+    if (!expectedPin || pinInput !== expectedPin) {
+      showToast({ type: 'error', message: 'PIN incorrect' });
+      return;
+    }
+    try {
+      await SupabaseDocumentsService.updateDocument(invoice!.id, { is_locked: false });
+      showToast({ type: 'success', message: 'Facture déverrouillée' });
+      setShowPinModal(false);
+      await load();
+    } catch (e) {
+      showToast({ type: 'error', message: String(e) });
+    }
+  };
 
   const handleExportPdf = async () => {
     if (!invoice) return;
@@ -190,9 +238,20 @@ export default function InvoiceDetailPage() {
           </>
         ) : (
           <>
-            <button onClick={startEdit} className="p-1.5 hover:bg-accent rounded-lg text-muted-foreground" title="Modifier">
-              <Pencil className="h-4 w-4" />
-            </button>
+            {invoice.is_locked ? (
+              <button onClick={handleUnlock} className="p-1.5 hover:bg-amber-500/10 rounded-lg text-amber-400" title="Déverrouiller">
+                <Lock className="h-4 w-4" />
+              </button>
+            ) : (
+              <>
+                <button onClick={startEdit} className="p-1.5 hover:bg-accent rounded-lg text-muted-foreground" title="Modifier">
+                  <Pencil className="h-4 w-4" />
+                </button>
+                <button onClick={handleLock} className="p-1.5 hover:bg-accent rounded-lg text-muted-foreground" title="Verrouiller">
+                  <Unlock className="h-4 w-4" />
+                </button>
+              </>
+            )}
             {companySettings?.stamp_url && (
               <button
                 onClick={() => setUseStamp(v => !v)}
@@ -276,6 +335,7 @@ export default function InvoiceDetailPage() {
                 <option value="Espèces">Espèces</option>
                 <option value="Carte bancaire">Carte bancaire</option>
                 <option value="Effet de commerce">Effet de commerce</option>
+                <option value="Versement">Versement</option>
               </select>
             ) : (
               <p className="text-foreground">{invoice.payment_method || '—'}</p>
@@ -293,6 +353,68 @@ export default function InvoiceDetailPage() {
               ? <input value={draftPaymentBank} onChange={e => setDraftPaymentBank(e.target.value)} className={inputCls} placeholder="Nom de la banque…" />
               : <p className="text-foreground">{invoice.payment_bank || '—'}</p>}
           </div>
+
+          {/* Additional payment methods */}
+          {isEditing && (
+            <div className="mt-3">
+              <button
+                type="button"
+                onClick={() => setShowExtraPayments(v => !v)}
+                className="flex items-center space-x-1.5 text-xs text-primary hover:underline"
+              >
+                {showExtraPayments ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                <span>Règlements supplémentaires</span>
+              </button>
+              {showExtraPayments && (
+                <div className="mt-2 space-y-2">
+                  {draftPaymentMethods.map((pm, idx) => (
+                    <div key={idx} className="grid grid-cols-4 gap-2 items-center">
+                      <select value={pm.method} onChange={e => setDraftPaymentMethods(prev => prev.map((p, i) => i === idx ? { ...p, method: e.target.value } : p))} className={inputCls}>
+                        <option value="">Mode</option>
+                        <option value="Virement bancaire">Virement</option>
+                        <option value="Chèque">Chèque</option>
+                        <option value="Espèces">Espèces</option>
+                        <option value="Versement">Versement</option>
+                        <option value="Effet de commerce">Effet</option>
+                      </select>
+                      <input value={pm.reference || ''} onChange={e => setDraftPaymentMethods(prev => prev.map((p, i) => i === idx ? { ...p, reference: e.target.value } : p))} className={inputCls} placeholder="Référence" />
+                      <input value={pm.bank || ''} onChange={e => setDraftPaymentMethods(prev => prev.map((p, i) => i === idx ? { ...p, bank: e.target.value } : p))} className={inputCls} placeholder="Banque" />
+                      <div className="flex items-center gap-1">
+                        <input type="number" value={pm.amount || ''} onChange={e => setDraftPaymentMethods(prev => prev.map((p, i) => i === idx ? { ...p, amount: Number(e.target.value) } : p))} className={`${inputCls} flex-1`} placeholder="Montant" />
+                        <button onClick={() => setDraftPaymentMethods(prev => prev.filter((_, i) => i !== idx))} className="p-1 text-destructive hover:bg-destructive/10 rounded"><X className="h-3 w-3" /></button>
+                      </div>
+                    </div>
+                  ))}
+                  <button onClick={() => setDraftPaymentMethods(prev => [...prev, { method: '', reference: '', bank: '', amount: 0 }])} className="flex items-center space-x-1.5 text-xs text-primary hover:underline">
+                    <Plus className="h-3 w-3" /><span>Ajouter un règlement</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Avance */}
+          {isEditing && (
+            <div className="mt-3 flex items-center gap-3">
+              <label className="flex items-center gap-2 text-xs text-foreground cursor-pointer">
+                <input type="checkbox" checked={showAvance} onChange={e => setShowAvance(e.target.checked)} className="h-3.5 w-3.5 rounded" />
+                Avance
+              </label>
+              {showAvance && (
+                <input type="number" min="0" step="0.01" value={draftAvance}
+                  onChange={e => setDraftAvance(Number(e.target.value))}
+                  className={`${inputCls} w-32`} placeholder="Montant avance" />
+              )}
+            </div>
+          )}
+          {!isEditing && (invoice.avance_amount ?? 0) > 0 && (
+            <div className="mt-2 flex items-center gap-2 text-xs text-foreground">
+              <span className="text-muted-foreground">Avance :</span>
+              <span className="font-mono font-bold">{fmt(invoice.avance_amount!)} Dh</span>
+              <span className="text-muted-foreground">Reste :</span>
+              <span className="font-mono font-bold text-amber-400">{fmt(Math.max(0, invoice.totalAmount - invoice.avance_amount!))} Dh</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -381,15 +503,59 @@ export default function InvoiceDetailPage() {
 
       {/* Notes */}
       {isEditing ? (
-        <div className="glass rounded-lg p-3">
-          <p className="text-[11px] text-muted-foreground mb-1">Notes</p>
+        <div className="glass rounded-lg p-3 space-y-2">
+          <p className="text-[11px] text-muted-foreground">Notes</p>
           <textarea value={draftNotes} onChange={e => setDraftNotes(e.target.value)}
-            rows={3} placeholder="Notes..."
+            rows={2} placeholder="Notes..."
+            className="w-full px-2 py-1.5 text-sm border border-input rounded bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-none" />
+          <textarea value={draftNotes2} onChange={e => setDraftNotes2(e.target.value)}
+            rows={2} placeholder="Note interne 2 (optionnel)..."
             className="w-full px-2 py-1.5 text-sm border border-input rounded bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-none" />
         </div>
-      ) : invoice.notes ? (
-        <div className="glass rounded-lg p-3 text-sm text-muted-foreground italic">{invoice.notes}</div>
+      ) : (invoice.notes || invoice.notes2) ? (
+        <div className="glass rounded-lg p-3 space-y-1">
+          {invoice.notes && <p className="text-sm text-muted-foreground italic">{invoice.notes}</p>}
+          {invoice.notes2 && <p className="text-sm text-muted-foreground italic">{invoice.notes2}</p>}
+        </div>
       ) : null}
+
+      {/* Lock overlay */}
+      {invoice.is_locked && (
+        <div className="glass rounded-lg p-3 flex items-center gap-2 bg-amber-500/10 border border-amber-500/30">
+          <Lock className="h-4 w-4 text-amber-400" />
+          <span className="text-sm text-amber-300">Facture verrouillée — cliquez sur le cadenas pour déverrouiller</span>
+        </div>
+      )}
+
+      {/* PIN Modal */}
+      {showPinModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="glass rounded-xl shadow-2xl w-full max-w-sm p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-bold text-foreground flex items-center gap-2">
+                <Lock className="h-4 w-4" />Déverrouiller la facture
+              </h2>
+              <button onClick={() => setShowPinModal(false)} className="p-1 hover:bg-accent rounded-lg"><X className="h-4 w-4" /></button>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-foreground mb-1">PIN spécial</label>
+              <input
+                type="password"
+                value={pinInput}
+                onChange={e => setPinInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && confirmUnlock()}
+                className="w-full px-3 py-2 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring"
+                placeholder="Entrez le PIN"
+                autoFocus
+              />
+            </div>
+            <div className="flex space-x-2">
+              <button onClick={() => setShowPinModal(false)} className="flex-1 px-3 py-1.5 text-sm border border-input rounded-lg hover:bg-accent text-foreground">Annuler</button>
+              <button onClick={confirmUnlock} className="flex-1 px-3 py-1.5 text-sm bg-amber-500 hover:bg-amber-600 text-white rounded-lg">Déverrouiller</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

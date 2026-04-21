@@ -33,6 +33,7 @@ import { Quote, QuoteItem, CustomerInfo, Product } from '../types';
 import { ExcelExportService } from '../utils/excelExport';
 import { PdfExportService } from '../utils/pdfExport';
 import { CompanySettingsService, CompanySettings, DEFAULT_SHARE_TEMPLATES } from '../utils/companySettings';
+import { DatePicker } from '../components/DatePicker';
 import { SupabaseQuotesService } from '../utils/supabaseQuotes';
 import { ActivityLogger } from '../utils/activityLogger';
 import { useAppContext } from '../context/AppContext';
@@ -76,6 +77,8 @@ export function QuoteCartPage() {
   const [commandNumber, setCommandNumber] = useState('');
   const [status, setStatus] = useState<'draft' | 'final'>('draft');
   const [notes, setNotes] = useState('');
+  const [notes2, setNotes2] = useState('');
+  const [quoteDate, setQuoteDate] = useState('');
   const [globalMargin, setGlobalMargin] = useState<number>(20);
   const [globalDiscount, setGlobalDiscount] = useState<number>(0);
 
@@ -159,6 +162,8 @@ export function QuoteCartPage() {
           setCommandNumber(loadedQuote.commandNumber || '');
           setStatus(loadedQuote.status);
           setNotes(loadedQuote.notes || '');
+          setNotes2(loadedQuote.notes2 || '');
+          setQuoteDate(loadedQuote.quote_date || '');
         } else {
           showToast({
             type: 'error',
@@ -567,10 +572,7 @@ export function QuoteCartPage() {
       errors.fullName = 'Le nom complet est requis';
     }
 
-    if (!customer.phoneNumber.trim()) {
-      errors.phoneNumber = 'Le numéro de téléphone est requis';
-    }
-
+    // address, city and phone are optional
     // address and city are optional now
 
     if (!customer.salesPerson.trim()) {
@@ -612,7 +614,9 @@ export function QuoteCartPage() {
         customer,
         items,
         totalAmount,
-        notes
+        notes,
+        notes2: notes2 || undefined,
+        quote_date: quoteDate || undefined,
       };
 
       await SupabaseQuotesService.saveQuote(quoteData);
@@ -810,6 +814,8 @@ export function QuoteCartPage() {
       setCustomer({ fullName: '', phoneNumber: '', address: '', city: '', salesPerson: '' });
       setCommandNumber('');
       setNotes('');
+      setNotes2('');
+      setQuoteDate('');
       setValidationErrors({});
     }
   };
@@ -955,15 +961,14 @@ export function QuoteCartPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-foreground mb-1">Téléphone *</label>
+            <label className="block text-xs font-medium text-foreground mb-1">Téléphone (optionnel)</label>
             <div className="relative">
               <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <input type="text" value={customer.phoneNumber}
                 onChange={(e) => setCustomer(prev => ({ ...prev, phoneNumber: e.target.value }))}
-                className={`w-full pl-9 pr-3 py-1.5 text-sm border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${validationErrors.phoneNumber ? 'border-destructive' : 'border-input'}`}
-                placeholder="Numéro de téléphone" />
+                className="w-full pl-9 pr-3 py-1.5 text-sm border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground border-input"
+                placeholder="Téléphone (optionnel)" />
             </div>
-            {validationErrors.phoneNumber && <p className="mt-0.5 text-xs text-destructive">{validationErrors.phoneNumber}</p>}
           </div>
 
           <div>
@@ -1398,12 +1403,25 @@ export function QuoteCartPage() {
           <Edit3 className="h-4 w-4" />
           <span>Notes</span>
         </h2>
+        <DatePicker
+          label="Date du devis"
+          value={quoteDate}
+          onChange={setQuoteDate}
+          className="mb-2"
+        />
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          className="w-full px-3 py-1.5 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
+          className="w-full px-3 py-1.5 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground mb-2"
           rows={2}
           placeholder="Notes ou commentaires..."
+        />
+        <textarea
+          value={notes2}
+          onChange={(e) => setNotes2(e.target.value)}
+          className="w-full px-3 py-1.5 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
+          rows={2}
+          placeholder="Note interne 2 (optionnel)..."
         />
       </div>
 
@@ -1508,7 +1526,7 @@ export function QuoteCartPage() {
                 setIsExporting(true);
                 try {
                   const freshSettings = await CompanySettingsService.getSettings(companyId || undefined).catch(() => companySettings);
-                  const quoteData: Quote = { id: quote?.id || crypto.randomUUID(), quoteNumber, commandNumber: commandNumber || undefined, createdAt: quote?.createdAt || new Date(), updatedAt: new Date(), status, customer, items, totalAmount, notes };
+                  const quoteData: Quote = { id: quote?.id || crypto.randomUUID(), quoteNumber, commandNumber: commandNumber || undefined, createdAt: quote?.createdAt || new Date(), updatedAt: new Date(), status, customer, items, totalAmount, notes, notes2: notes2 || undefined, quote_date: quoteDate || undefined };
                   await PdfExportService.exportQuoteToPdf(quoteData, freshSettings || companySettings, undefined, undefined, useStamp);
                 } catch { /* PDF export failed, continue to share anyway */ }
                 setIsExporting(false);
@@ -1579,7 +1597,7 @@ export function QuoteCartPage() {
                 setIsExporting(true);
                 try {
                   const freshSettings = await CompanySettingsService.getSettings(companyId || undefined).catch(() => companySettings);
-                  const quoteData: Quote = { id: quote?.id || crypto.randomUUID(), quoteNumber, commandNumber: commandNumber || undefined, createdAt: quote?.createdAt || new Date(), updatedAt: new Date(), status, customer, items, totalAmount, notes };
+                  const quoteData: Quote = { id: quote?.id || crypto.randomUUID(), quoteNumber, commandNumber: commandNumber || undefined, createdAt: quote?.createdAt || new Date(), updatedAt: new Date(), status, customer, items, totalAmount, notes, notes2: notes2 || undefined, quote_date: quoteDate || undefined };
                   await PdfExportService.exportQuoteToPdf(quoteData, freshSettings || companySettings, undefined, undefined, useStamp);
                 } catch { /* continue */ }
                 setIsExporting(false);

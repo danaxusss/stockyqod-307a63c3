@@ -5,6 +5,15 @@ import { Quote } from '../types';
 import { CompanySettings, QuoteStyle } from './companySettings';
 import { getQuoteItemBarcode, getQuoteItemBrand, getQuoteItemName } from './quoteItemDisplay';
 
+async function generateQRDataUrl(text: string): Promise<string | null> {
+  try {
+    const qrcode = await import('qrcode');
+    return await qrcode.toDataURL(text, { width: 80, margin: 1 });
+  } catch {
+    return null;
+  }
+}
+
 function hexToRgb(hex: string): [number, number, number] {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   return result
@@ -105,7 +114,7 @@ function numberToWordsFr(amount: number): string {
   const ct = totalCents % 100;
   let result = `${convert(dh)} DIRHAM${dh > 1 ? 'S' : ''}`;
   if (ct > 0) result += ` ET ${convert(ct)} CENTIME${ct > 1 ? 'S' : ''}`;
-  return result;
+  return result + ' TTC';
 }
 
 export class PdfExportService {
@@ -122,7 +131,7 @@ export class PdfExportService {
     return `${intPart},${parts[1]}`;
   }
 
-  static async exportQuoteToPdf(quote: Quote, settings?: CompanySettings | null, techSheetsUrl?: string, techSheetsExpiryLabel?: string, useStampOverride?: boolean, documentType: 'quote' | 'bl' | 'proforma' | 'invoice' = 'quote'): Promise<void> {
+  static async exportQuoteToPdf(quote: Quote, settings?: CompanySettings | null, techSheetsUrl?: string, techSheetsExpiryLabel?: string, useStampOverride?: boolean, documentType: 'quote' | 'bl' | 'proforma' | 'invoice' = 'quote', blShowPrices?: boolean): Promise<void> {
     const style: QuoteStyle = settings?.quote_style || {
       accentColor: '#3B82F6', fontFamily: 'helvetica', showBorders: true,
       borderRadius: 1, headerSize: 'large', totalsStyle: 'highlighted',
@@ -142,7 +151,7 @@ export class PdfExportService {
     const fields = settings?.quote_visible_fields || {
       showLogo: true, showCompanyAddress: true, showCompanyPhone: true,
       showCompanyEmail: true, showCompanyWebsite: false, showCompanyICE: true,
-      showClientICE: true, showTVA: true, showNotes: true,
+      showClientICE: true, showTVA: true, showTVABreakdown: true, showNotes: true,
       showPaymentTerms: true, showValidityDate: true,
     };
 
@@ -379,8 +388,9 @@ export class PdfExportService {
     const leftFinalY = (doc as any).lastAutoTable?.finalY || sectionStartY + 30;
 
     // --- RIGHT: Quote details ---
+    const quoteDate = quote.quote_date ? new Date(quote.quote_date) : quote.createdAt;
     const quoteInfoRows: [string, string][] = [
-      ['Date', this.formatDate(quote.createdAt)],
+      ['Date', this.formatDate(quoteDate)],
       ['N° de piece', quote.quoteNumber],
     ];
     if (quote.commandNumber) {
@@ -438,7 +448,8 @@ export class PdfExportService {
     let tableBody: string[][];
     let itemColumnStyles: Record<number, any>;
 
-    if (isBL) {
+    const showBLPrices = blShowPrices ?? settings?.bl_show_prices ?? true;
+    if (isBL && !showBLPrices) {
       // BL: no price columns
       tableHeaders = [['Marque', 'REF', 'DESCRIPTION', 'QUANTITÉ']];
       tableBody = quote.items.map(item => [
@@ -452,6 +463,29 @@ export class PdfExportService {
         1: { cellWidth: 28, halign: 'center' },
         2: { cellWidth: 'auto' },
         3: { cellWidth: 18, halign: 'center', fontStyle: 'bold' },
+      };
+    } else if (isBL && showBLPrices) {
+      // BL with prices
+      tableHeaders = [['Marque', 'REF', 'DESCRIPTION', 'QTE', 'PU HT', 'TOTAL HT']];
+      tableBody = quote.items.map(item => {
+        const unitPriceHT = item.unitPrice / (1 + tvaRate / 100);
+        const totalHTItem = unitPriceHT * item.quantity;
+        return [
+          getQuoteItemBrand(item) || '',
+          getQuoteItemBarcode(item) || '',
+          getQuoteItemName(item),
+          String(item.quantity),
+          this.formatCurrency(unitPriceHT),
+          this.formatCurrency(totalHTItem),
+        ];
+      });
+      itemColumnStyles = {
+        0: { cellWidth: 18, halign: 'center' },
+        1: { cellWidth: 24, halign: 'center' },
+        2: { cellWidth: 'auto' },
+        3: { cellWidth: 12, halign: 'center' },
+        4: { cellWidth: 24, halign: 'right' },
+        5: { cellWidth: 26, halign: 'right', fontStyle: 'bold' },
       };
     } else {
       tableHeaders = hasDiscount
@@ -536,7 +570,22 @@ export class PdfExportService {
 
     y = (doc as any).lastAutoTable.finalY + 4;
 
-    // BL: skip totals section entirely
+    // BL with prices: show a simple HT total block
+    if (isBL && showBLPrices) {
+      const blTotalHT = quote.items.reduce((s, i) => s + (i.unitPrice / (1 + tvaRate / 100)) * i.quantity, 0);
+      const totalsWidth = 75;
+      const totalsX = pageWidth - margin - totalsWidth;
+      doc.setFillColor(...ACCENT);
+      doc.rect(totalsX, y, totalsWidth, 8, 'F');
+      doc.setFontSize(9);
+      doc.setFont(font, 'bold');
+      doc.setTextColor(...WHITE);
+      doc.text('TOTAL HT', totalsX + 3, y + 5.5);
+      doc.text(this.formatCurrency(blTotalHT) + ' Dh', totalsX + totalsWidth - 3, y + 5.5, { align: 'right' });
+      y += 10;
+    }
+
+    // Non-BL: full totals section
     if (!isBL) {
 
     // Check if totals fit on current page
@@ -552,56 +601,77 @@ export class PdfExportService {
     const totalHT = totalTTC / (1 + tvaRate / 100);
     const totalTVA = totalTTC - totalHT;
 
+    // Remise calculation
+    const totalHTBrut = quote.items.reduce((s, i) => {
+      const unitHT = i.unitPrice / (1 + tvaRate / 100);
+      return s + unitHT * i.quantity;
+    }, 0);
+    const totalRemise = totalHTBrut - totalHT;
+    const hasRemise = totalRemise > 0.005;
+
     const totalsWidth = 75;
     const totalsX = pageWidth - margin - totalsWidth;
 
+    const drawTotalsRow = (label: string, value: string, highlight = false) => {
+      if (highlight) {
+        if (style.totalsStyle === 'highlighted') {
+          doc.setFillColor(...ACCENT);
+          doc.rect(totalsX, y, totalsWidth, 8, 'F');
+          doc.setFontSize(9);
+          doc.setFont(font, 'bold');
+          doc.setTextColor(...WHITE);
+        } else if (style.totalsStyle === 'boxed') {
+          doc.setDrawColor(...ACCENT);
+          doc.setLineWidth(0.6);
+          doc.rect(totalsX, y, totalsWidth, 8, 'S');
+          doc.setFontSize(9);
+          doc.setFont(font, 'bold');
+          doc.setTextColor(...ACCENT);
+        } else {
+          doc.setFontSize(9);
+          doc.setFont(font, 'bold');
+          doc.setTextColor(...ACCENT);
+        }
+        doc.text(label, totalsX + 3, y + 5.5);
+        doc.text(value, totalsX + totalsWidth - 3, y + 5.5, { align: 'right' });
+        y += 10;
+      } else {
+        doc.setFillColor(248, 249, 252);
+        doc.rect(totalsX, y, totalsWidth, 6.5, 'F');
+        doc.setDrawColor(230, 230, 230);
+        doc.rect(totalsX, y, totalsWidth, 6.5, 'S');
+        doc.setFontSize(7.5);
+        doc.setFont(font, 'bold');
+        doc.setTextColor(...DARK);
+        doc.text(label, totalsX + 3, y + 4.5);
+        doc.text(value, totalsX + totalsWidth - 3, y + 4.5, { align: 'right' });
+        y += 6.5;
+      }
+    };
+
     if (fields.showTVA) {
-      doc.setFillColor(248, 249, 252);
-      doc.rect(totalsX, y, totalsWidth, 6.5, 'F');
-      doc.setDrawColor(230, 230, 230);
-      doc.rect(totalsX, y, totalsWidth, 6.5, 'S');
-      
-      doc.setFontSize(7.5);
-      doc.setFont(font, 'bold');
-      doc.setTextColor(...DARK);
-      doc.text('TOTAL HT', totalsX + 3, y + 4.5);
-      doc.text(this.formatCurrency(totalHT) + ' Dh', totalsX + totalsWidth - 3, y + 4.5, { align: 'right' });
-      y += 6.5;
-
-      doc.setFillColor(248, 249, 252);
-      doc.rect(totalsX, y, totalsWidth, 6.5, 'F');
-      doc.setDrawColor(230, 230, 230);
-      doc.rect(totalsX, y, totalsWidth, 6.5, 'S');
-      
-      doc.setFont(font, 'bold');
-      doc.setTextColor(...DARK);
-      doc.text(`TVA ${tvaRate}%`, totalsX + 3, y + 4.5);
-      doc.text(this.formatCurrency(totalTVA) + ' Dh', totalsX + totalsWidth - 3, y + 4.5, { align: 'right' });
-      y += 6.5;
+      const showBreakdown = fields.showTVABreakdown !== false;
+      if (showBreakdown) {
+        if (hasRemise) {
+          drawTotalsRow('TOTAL HT BRUT', this.formatCurrency(totalHTBrut) + ' Dh');
+          drawTotalsRow(`REMISE (-${((totalRemise / totalHTBrut) * 100).toFixed(1)}%)`, '-' + this.formatCurrency(totalRemise) + ' Dh');
+          drawTotalsRow('HT NET', this.formatCurrency(totalHT) + ' Dh');
+        } else {
+          drawTotalsRow('TOTAL HT', this.formatCurrency(totalHT) + ' Dh');
+        }
+        drawTotalsRow(`TVA ${tvaRate}%`, this.formatCurrency(totalTVA) + ' Dh');
+      }
     }
 
-    if (style.totalsStyle === 'highlighted') {
-      doc.setFillColor(...ACCENT);
-      doc.rect(totalsX, y, totalsWidth, 8, 'F');
-      doc.setFontSize(9);
-      doc.setFont(font, 'bold');
-      doc.setTextColor(...WHITE);
-    } else if (style.totalsStyle === 'boxed') {
-      doc.setDrawColor(...ACCENT);
-      doc.setLineWidth(0.6);
-      doc.rect(totalsX, y, totalsWidth, 8, 'S');
-      doc.setFontSize(9);
-      doc.setFont(font, 'bold');
-      doc.setTextColor(...ACCENT);
-    } else {
-      doc.setFontSize(9);
-      doc.setFont(font, 'bold');
-      doc.setTextColor(...ACCENT);
-    }
+    drawTotalsRow('TOTAL TTC', this.formatCurrency(totalTTC) + ' Dh', true);
 
-    doc.text('TOTAL TTC', totalsX + 3, y + 5.5);
-    doc.text(this.formatCurrency(totalTTC) + ' Dh', totalsX + totalsWidth - 3, y + 5.5, { align: 'right' });
-    y += 10;
+    // === AVANCE block (invoice) ===
+    if (documentType === 'invoice' && (quote.avance_amount ?? 0) > 0) {
+      const avance = quote.avance_amount!;
+      const reste = totalTTC - avance;
+      drawTotalsRow('AVANCE', '-' + this.formatCurrency(avance) + ' Dh');
+      drawTotalsRow('RESTE NET TTC', this.formatCurrency(Math.max(0, reste)) + ' Dh', true);
+    }
 
     } // end !isBL
 
@@ -717,6 +787,21 @@ export class PdfExportService {
       }
       doc.text(subtitle, margin, y);
       y += 4;
+    }
+
+    // === QR CODE in footer ===
+    if (settings?.qr_code_url) {
+      const qrDataUrl = await generateQRDataUrl(settings.qr_code_url);
+      if (qrDataUrl) {
+        const qrSize = 18;
+        const qrX = pageWidth - margin - qrSize;
+        const qrY = pageHeight - (footerLines.length * 3 + 4) - qrSize - 4;
+        const totalPages2 = doc.getNumberOfPages();
+        for (let pi = 1; pi <= totalPages2; pi++) {
+          doc.setPage(pi);
+          doc.addImage(qrDataUrl, 'PNG', qrX, qrY, qrSize, qrSize);
+        }
+      }
     }
 
     // === STAMP ===

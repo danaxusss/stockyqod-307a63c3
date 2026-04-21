@@ -77,6 +77,13 @@ export interface CustomerInfo {
   salesPerson: string;
 }
 
+export interface PaymentEntry {
+  method: string;
+  reference?: string;
+  bank?: string;
+  amount?: number;
+}
+
 export interface Quote {
   id: string;
   quoteNumber: string;
@@ -88,7 +95,12 @@ export interface Quote {
   items: QuoteItem[];
   totalAmount: number;
   notes?: string;
+  notes2?: string;
   createdBy?: string;
+  quote_date?: string;
+  is_locked?: boolean;
+  avance_amount?: number;
+  payment_methods_json?: PaymentEntry[];
   // Financial document pipeline fields
   document_type?: 'quote' | 'bl' | 'proforma' | 'invoice';
   parent_document_id?: string;
@@ -98,8 +110,8 @@ export interface Quote {
   company_id?: string;
   payment_date?: string;
   payment_method?: string;
-  payment_reference?: string; // cheque no., transfer ref, effect no., etc.
-  payment_bank?: string;      // bank / financial institution name
+  payment_reference?: string;
+  payment_bank?: string;
 }
 
 export interface QuoteTemplate {
@@ -134,8 +146,47 @@ export interface Company {
   share_templates: Record<string, string>;
   quote_visible_fields: Record<string, boolean>;
   quote_style: Record<string, unknown>;
+  doc_prefix: string;
+  qr_code_url: string;
+  bl_show_prices: boolean;
+  special_pin: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface Client {
+  id: string;
+  full_name: string;
+  phone_number: string;
+  address: string;
+  city: string;
+  ice: string;
+  email: string;
+  client_code?: string;
+  company_id?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Return {
+  id: string;
+  company_id?: string;
+  reference_document_id?: string;
+  reference_number: string;
+  client_name: string;
+  reason: string;
+  items: ReturnItem[];
+  status: 'open' | 'closed';
+  notes?: string;
+  created_by?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReturnItem {
+  barcode: string;
+  label: string;
+  quantity: number;
 }
 
 export interface AppUser {

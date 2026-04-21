@@ -612,3 +612,63 @@ CREATE INDEX IF NOT EXISTS idx_quotes_created_at    ON public.quotes(created_at 
 CREATE INDEX IF NOT EXISTS idx_quotes_dtype_company ON public.quotes(document_type, company_id);
 CREATE INDEX IF NOT EXISTS idx_quotes_dtype_status  ON public.quotes(document_type, status);
 CREATE INDEX IF NOT EXISTS idx_clients_company_id   ON public.clients(company_id);
+
+-- ══════════════════════════════════════════════════════════════
+-- V2.1 ADDITIONS
+-- ══════════════════════════════════════════════════════════════
+
+-- ── companies: V2.1 columns ──────────────────────────────────
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS doc_prefix text NOT NULL DEFAULT '';
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS qr_code_url text NOT NULL DEFAULT '';
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS bl_show_prices boolean NOT NULL DEFAULT true;
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS special_pin text NOT NULL DEFAULT '';
+
+-- ── quotes: V2.1 columns ─────────────────────────────────────
+ALTER TABLE public.quotes ADD COLUMN IF NOT EXISTS notes2 text;
+ALTER TABLE public.quotes ADD COLUMN IF NOT EXISTS is_locked boolean NOT NULL DEFAULT false;
+ALTER TABLE public.quotes ADD COLUMN IF NOT EXISTS avance_amount numeric NOT NULL DEFAULT 0;
+ALTER TABLE public.quotes ADD COLUMN IF NOT EXISTS payment_methods_json jsonb NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE public.quotes ADD COLUMN IF NOT EXISTS quote_date date;
+
+-- ── clients: human-readable code ─────────────────────────────
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS client_code text;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'clients_client_code_key') THEN
+    ALTER TABLE public.clients ADD CONSTRAINT clients_client_code_key UNIQUE (client_code);
+  END IF;
+END $$;
+CREATE SEQUENCE IF NOT EXISTS public.client_code_seq START 1;
+
+CREATE OR REPLACE FUNCTION public.next_client_code(p_first_letter text)
+RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_n integer;
+BEGIN
+  v_n := nextval('public.client_code_seq');
+  RETURN '3421' || upper(p_first_letter) || '-' || v_n;
+END;
+$$;
+GRANT EXECUTE ON FUNCTION public.next_client_code(text) TO anon, authenticated;
+
+-- ── returns table ─────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.returns (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id uuid REFERENCES public.companies(id) ON DELETE SET NULL,
+  reference_document_id uuid REFERENCES public.quotes(id) ON DELETE SET NULL,
+  reference_number text NOT NULL DEFAULT '',
+  client_name text NOT NULL DEFAULT '',
+  reason text NOT NULL DEFAULT '',
+  items jsonb NOT NULL DEFAULT '[]'::jsonb,
+  status text NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed')),
+  notes text,
+  created_by text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.returns ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all returns" ON public.returns;
+CREATE POLICY "Allow all returns" ON public.returns FOR ALL USING (true) WITH CHECK (true);
+DROP TRIGGER IF EXISTS update_returns_updated_at ON public.returns;
+CREATE TRIGGER update_returns_updated_at
+  BEFORE UPDATE ON public.returns FOR EACH ROW
+  EXECUTE FUNCTION public.update_updated_at_column();

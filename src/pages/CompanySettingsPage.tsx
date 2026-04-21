@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
-import { Settings, Upload, Trash2, Save, Loader, Image, Building, Phone, Mail, Globe, Hash, FileText, Eye, Palette, Users, Package, Edit3, Check, X, MessageCircle, Send, Stamp, Bot, Zap, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Settings, Upload, Trash2, Save, Loader, Image, Building, Phone, Mail, Globe, Hash, FileText, Eye, Palette, Users, Package, Edit3, Check, X, MessageCircle, Send, Stamp, Bot, Zap, ToggleLeft, ToggleRight, Lock, QrCode, Truck } from 'lucide-react';
 import { CompanySettingsService, CompanySettings, QuoteVisibleFields, QuoteStyle, DEFAULT_SHARE_TEMPLATES } from '../utils/companySettings';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../context/ToastContext';
@@ -18,6 +18,7 @@ const FIELD_LABELS: Record<keyof QuoteVisibleFields, string> = {
   showCompanyICE: 'ICE de l\'entreprise',
   showClientICE: 'ICE du client',
   showTVA: 'Afficher TVA (détail HT/TVA/TTC)',
+  showTVABreakdown: 'Détail HT + TVA (ou seulement TOTAL TTC)',
   showNotes: 'Notes sur le devis',
   showPaymentTerms: 'Modalités de paiement',
   showValidityDate: 'Date de validité',
@@ -148,6 +149,10 @@ function CompanySettingsTab() {
         payment_terms: settings.payment_terms,
         tva_rate: settings.tva_rate,
         quote_validity_days: settings.quote_validity_days,
+        doc_prefix: settings.doc_prefix,
+        qr_code_url: settings.qr_code_url,
+        bl_show_prices: settings.bl_show_prices,
+        special_pin: settings.special_pin,
       };
 
       if (companyId) {
@@ -333,6 +338,75 @@ function CompanySettingsTab() {
           <div>
             <label className="block text-xs font-medium text-foreground mb-1">Validité du devis (jours)</label>
             <input type="number" value={settings.quote_validity_days} onChange={e => setSettings({ ...settings, quote_validity_days: parseInt(e.target.value) || 30 })} className={inputClass} min="1" />
+          </div>
+        </div>
+      </div>
+
+      {/* Numérotation & Documents */}
+      <div className="glass rounded-xl shadow-lg p-4">
+        <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center space-x-2">
+          <Hash className="h-4 w-4" /><span>Numérotation &amp; Documents</span>
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-foreground mb-1">Préfixe facture (max 3 caractères)</label>
+            <input
+              type="text"
+              value={settings.doc_prefix || ''}
+              onChange={e => setSettings({ ...settings, doc_prefix: e.target.value.toUpperCase().slice(0, 3) })}
+              className={inputClass}
+              placeholder="CM"
+              maxLength={3}
+            />
+            <p className="text-[11px] text-muted-foreground mt-1">Exemple : CM2601-1 (CM + AAMM + numéro)</p>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-foreground mb-1 flex items-center space-x-1.5">
+              <QrCode className="h-3.5 w-3.5" /><span>URL QR Code (pied de page PDF)</span>
+            </label>
+            <input
+              type="text"
+              value={settings.qr_code_url || ''}
+              onChange={e => setSettings({ ...settings, qr_code_url: e.target.value })}
+              className={inputClass}
+              placeholder="https://www.example.ma"
+            />
+            <p className="text-[11px] text-muted-foreground mt-1">Laisser vide pour masquer le QR</p>
+          </div>
+        </div>
+      </div>
+
+      {/* BL & Sécurité */}
+      <div className="glass rounded-xl shadow-lg p-4">
+        <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center space-x-2">
+          <Truck className="h-4 w-4" /><span>BL &amp; Sécurité</span>
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <label className="flex items-center space-x-3 p-3 bg-secondary rounded-lg cursor-pointer hover:bg-accent transition-colors">
+            <input
+              type="checkbox"
+              checked={settings.bl_show_prices ?? true}
+              onChange={e => setSettings({ ...settings, bl_show_prices: e.target.checked })}
+              className="h-4 w-4 rounded border-primary text-primary focus:ring-ring"
+            />
+            <div>
+              <span className="text-sm text-foreground">Afficher les prix sur les BL</span>
+              <p className="text-[11px] text-muted-foreground">Colonnes PU HT et TOTAL HT visibles sur les bons de livraison</p>
+            </div>
+          </label>
+          <div>
+            <label className="block text-xs font-medium text-foreground mb-1 flex items-center space-x-1.5">
+              <Lock className="h-3.5 w-3.5" /><span>PIN spécial (verrouillage facture)</span>
+            </label>
+            <input
+              type="password"
+              value={settings.special_pin || ''}
+              onChange={e => setSettings({ ...settings, special_pin: e.target.value })}
+              className={inputClass}
+              placeholder="Code PIN"
+              autoComplete="new-password"
+            />
+            <p className="text-[11px] text-muted-foreground mt-1">Requis pour déverrouiller une facture</p>
           </div>
         </div>
       </div>

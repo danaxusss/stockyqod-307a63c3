@@ -14,6 +14,7 @@ type DocRow = {
   items: unknown;
   total_amount: number;
   notes: string | null;
+  notes2: string | null;
   created_by: string | null;
   document_type: string | null;
   parent_document_id: string | null;
@@ -25,6 +26,10 @@ type DocRow = {
   payment_method: string | null;
   payment_reference: string | null;
   payment_bank: string | null;
+  is_locked: boolean | null;
+  avance_amount: number | null;
+  payment_methods_json: unknown;
+  quote_date: string | null;
 };
 
 function mapDocRow(row: DocRow): Quote {
@@ -43,6 +48,7 @@ function mapDocRow(row: DocRow): Quote {
     })),
     totalAmount: Number(row.total_amount),
     notes: row.notes || undefined,
+    notes2: row.notes2 || undefined,
     createdBy: row.created_by || undefined,
     document_type: (row.document_type || 'quote') as Quote['document_type'],
     parent_document_id: row.parent_document_id || undefined,
@@ -54,6 +60,10 @@ function mapDocRow(row: DocRow): Quote {
     payment_method: row.payment_method || undefined,
     payment_reference: row.payment_reference || undefined,
     payment_bank: row.payment_bank || undefined,
+    is_locked: row.is_locked ?? false,
+    avance_amount: Number(row.avance_amount || 0),
+    payment_methods_json: (Array.isArray(row.payment_methods_json) ? row.payment_methods_json : []) as Quote['payment_methods_json'],
+    quote_date: row.quote_date || undefined,
   };
 }
 
@@ -68,14 +78,52 @@ export interface ClientFinancialRow {
 }
 
 export class SupabaseDocumentsService {
-  // Format a sequential counter as "BL-0001", "PRO-0042", "FAC-0007"
-  static formatDocNumber(type: 'bl' | 'proforma' | 'invoice', n: number): string {
-    const prefix = { bl: 'BL', proforma: 'PRO', invoice: 'FAC' }[type];
+  // Format a sequential counter.
+  // BL/Proforma: "BL-0001", "PRO-0042"
+  // Invoice: "{prefix}{YYMM}-{n}" e.g. "CM2601-7" (monthly reset, no zero-padding)
+  static formatDocNumber(
+    type: 'bl' | 'proforma' | 'invoice',
+    n: number,
+    companyPrefix?: string,
+    yearMonth?: string
+  ): string {
+    if (type === 'invoice') {
+      const pfx = companyPrefix || 'FAC';
+      const ym = yearMonth || this.currentYearMonth();
+      return `${pfx}${ym}-${n}`;
+    }
+    const prefix = { bl: 'BL', proforma: 'PRO' }[type];
     return `${prefix}-${String(n).padStart(4, '0')}`;
   }
 
-  // Atomically increment the per-company counter and return the formatted string
+  static currentYearMonth(): string {
+    const now = new Date();
+    const yy = String(now.getFullYear()).slice(2);
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    return `${yy}${mm}`;
+  }
+
+  // Atomically increment the per-company counter and return the formatted string.
+  // For invoices: uses monthly doc_type key (e.g. "invoice_2601") and fetches company doc_prefix.
   static async nextNumber(companyId: string, type: 'bl' | 'proforma' | 'invoice'): Promise<string> {
+    if (type === 'invoice') {
+      const ym = this.currentYearMonth();
+      const docTypeKey = `invoice_${ym}`;
+      const { data, error } = await (supabase.rpc as any)('next_document_number', {
+        p_company_id: companyId,
+        p_doc_type: docTypeKey,
+      });
+      if (error) throw new Error(`Erreur numérotation: ${error.message}`);
+
+      // Fetch company doc_prefix
+      const { data: company } = await (supabase.from('companies') as any)
+        .select('doc_prefix')
+        .eq('id', companyId)
+        .maybeSingle();
+      const prefix = (company?.doc_prefix as string) || 'FAC';
+      return this.formatDocNumber('invoice', data as number, prefix, ym);
+    }
+
     const { data, error } = await (supabase.rpc as any)('next_document_number', {
       p_company_id: companyId,
       p_doc_type: type,
@@ -414,11 +462,16 @@ export class SupabaseDocumentsService {
       customer?: CustomerInfo;
       items?: QuoteItem[];
       notes?: string | null;
+      notes2?: string | null;
       status?: string;
       payment_date?: string | null;
       payment_method?: string | null;
       payment_reference?: string | null;
       payment_bank?: string | null;
+      is_locked?: boolean;
+      avance_amount?: number | null;
+      payment_methods_json?: unknown;
+      quote_date?: string | null;
     }
   ): Promise<Quote> {
     const updateData: Record<string, unknown> = {
@@ -431,11 +484,16 @@ export class SupabaseDocumentsService {
       updateData.total_amount = updates.items.reduce((s, i) => s + i.subtotal, 0);
     }
     if (updates.notes !== undefined) updateData.notes = updates.notes;
+    if (updates.notes2 !== undefined) updateData.notes2 = updates.notes2;
     if (updates.status !== undefined) updateData.status = updates.status;
     if (updates.payment_date !== undefined) updateData.payment_date = updates.payment_date || null;
     if (updates.payment_method !== undefined) updateData.payment_method = updates.payment_method || null;
     if (updates.payment_reference !== undefined) updateData.payment_reference = updates.payment_reference || null;
     if (updates.payment_bank !== undefined) updateData.payment_bank = updates.payment_bank || null;
+    if (updates.is_locked !== undefined) updateData.is_locked = updates.is_locked;
+    if (updates.avance_amount !== undefined) updateData.avance_amount = updates.avance_amount ?? 0;
+    if (updates.payment_methods_json !== undefined) updateData.payment_methods_json = updates.payment_methods_json;
+    if (updates.quote_date !== undefined) updateData.quote_date = updates.quote_date || null;
 
     const { data, error } = await (supabase.from('quotes') as any)
       .update(updateData)
