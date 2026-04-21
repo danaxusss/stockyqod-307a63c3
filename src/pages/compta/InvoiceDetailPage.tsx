@@ -189,15 +189,26 @@ export default function InvoiceDetailPage() {
   };
 
   const confirmUnlock = async () => {
-    const expectedPin = companySettings?.special_pin;
-    if (!expectedPin || pinInput !== expectedPin) {
-      showToast({ type: 'error', message: 'PIN incorrect' });
-      return;
-    }
+    if (!invoice) return;
     try {
-      await SupabaseDocumentsService.updateDocument(invoice!.id, { is_locked: false });
+      // Always fetch fresh settings so a PIN set after page load is picked up
+      const compId = invoice.issuing_company_id || invoice.company_id;
+      const freshSettings = compId
+        ? await CompanySettingsService.getSettings(compId).catch(() => null)
+        : null;
+      const expectedPin = freshSettings?.special_pin || companySettings?.special_pin;
+      if (!expectedPin) {
+        showToast({ type: 'error', message: 'Aucun PIN configuré dans les paramètres société' });
+        return;
+      }
+      if (pinInput !== expectedPin) {
+        showToast({ type: 'error', message: 'PIN incorrect' });
+        return;
+      }
+      await SupabaseDocumentsService.updateDocument(invoice.id, { is_locked: false });
       showToast({ type: 'success', message: 'Facture déverrouillée' });
       setShowPinModal(false);
+      setPinInput('');
       await load();
     } catch (e) {
       showToast({ type: 'error', message: String(e) });
