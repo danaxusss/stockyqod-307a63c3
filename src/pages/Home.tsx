@@ -182,13 +182,6 @@ export function Home() {
   if (state.products.length === 0) {
     return (
       <div className="max-w-4xl mx-auto">
-        <div className="text-center mb-5">
-          <div className="inline-flex items-center justify-center w-12 h-12 bg-primary rounded-xl mb-3" style={{ boxShadow: 'var(--shadow-glow)' }}>
-            <Package className="h-6 w-6 text-primary-foreground" />
-          </div>
-          <h1 className="text-2xl font-bold text-foreground mb-1">Gestion d'Inventaire</h1>
-          <p className="text-muted-foreground text-sm">Recherchez et gérez votre inventaire facilement</p>
-        </div>
 
         <div className="glass rounded-xl shadow-lg p-6 text-center">
           <div className="flex justify-center mb-4">
@@ -228,13 +221,6 @@ export function Home() {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <div className="text-center mb-5">
-        <div className="inline-flex items-center justify-center w-12 h-12 bg-primary rounded-xl mb-3" style={{ boxShadow: 'var(--shadow-glow)' }}>
-          <Package className="h-6 w-6 text-primary-foreground" />
-        </div>
-        <h1 className="text-2xl font-bold text-foreground mb-1">Gestion d'Inventaire</h1>
-        <p className="text-muted-foreground text-sm">Recherchez et gérez votre inventaire facilement</p>
-      </div>
 
       {/* Main Navigation - Primary Actions */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">

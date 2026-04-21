@@ -326,68 +326,62 @@ export function QuotesHistoryPage() {
                       {isAdmin && <td className="px-3 py-2.5 text-xs text-foreground">{quote.customer.salesPerson}</td>}
                       {isSuperAdmin && <td className="px-3 py-2.5"><span className="inline-flex px-1.5 py-0.5 text-[11px] font-medium rounded-full bg-primary/10 text-primary">{quote.createdBy || '—'}</span></td>}
                       <td className="px-3 py-2.5">
-                        <div className="flex items-center space-x-1">
-                          <button onClick={() => navigate(`/quote-cart/${quote.id}`)} className="p-1 text-primary hover:bg-primary/10 rounded transition-colors" title="Modifier"><Edit className="h-3.5 w-3.5" /></button>
-                          <button onClick={() => handleExport(quote)} disabled={isExporting === quote.id} className="p-1 text-emerald-400 hover:bg-emerald-500/10 rounded transition-colors disabled:opacity-50" title="Exporter">
+                        <div className="flex items-center gap-0.5">
+                          {/* Always-visible: Edit + Download */}
+                          <button onClick={() => navigate(`/quote-cart/${quote.id}`)} className="p-1.5 text-primary hover:bg-primary/10 rounded transition-colors" title="Modifier"><Edit className="h-3.5 w-3.5" /></button>
+                          <button onClick={() => handleExport(quote)} disabled={isExporting === quote.id} className="p-1.5 text-emerald-400 hover:bg-emerald-500/10 rounded transition-colors disabled:opacity-50" title="Télécharger PDF">
                             {isExporting === quote.id ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <FileDown className="h-3.5 w-3.5" />}
                           </button>
-                          <button
-                            onClick={async () => {
-                              try {
-                                const [freshQuote, freshSettings] = await Promise.all([
-                                  SupabaseQuotesService.getQuote(quote.id),
-                                  CompanySettingsService.getSettings(quote.company_id),
-                                ]);
-                                const { blob, filename } = await PdfExportService.generatePdfBlob(freshQuote || quote, freshSettings || companySettings);
-                                setPreviewBlob(blob);
-                                setPreviewFilename(filename);
-                                setShowPrintPreview(true);
-                              } catch {
-                                setMessage({ type: 'error', text: 'Erreur aperçu PDF' });
-                              }
-                            }}
-                            className="p-1 text-muted-foreground hover:bg-accent rounded transition-colors" title="Aperçu impression"
-                          >
-                            <Printer className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleWhatsAppShare(quote)}
-                            className="p-1 text-emerald-500 hover:bg-emerald-500/10 rounded transition-colors" title="WhatsApp"
-                          >
-                            <MessageCircle className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleEmailShare(quote)}
-                            className="p-1 text-primary hover:bg-primary/10 rounded transition-colors" title="Email"
-                          >
-                            <Mail className="h-3.5 w-3.5" />
-                          </button>
-                          {(isCompta || isSuperAdmin) && (
-                            <button
-                              onClick={() => handleCreateBL(quote)}
-                              disabled={isCreatingBL === quote.id || quote.status === 'final' || (quote.document_type && quote.document_type !== 'quote')}
-                              className="p-1 text-teal-500 hover:bg-teal-500/10 rounded transition-colors disabled:opacity-40"
-                              title="Créer un BL"
-                            >
-                              {isCreatingBL === quote.id ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Truck className="h-3.5 w-3.5" />}
+                          {/* More actions dropdown */}
+                          <div className="relative group">
+                            <button className="p-1.5 text-muted-foreground hover:bg-accent rounded transition-colors" title="Plus d'actions">
+                              <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 16 16"><circle cx="4" cy="8" r="1.2"/><circle cx="8" cy="8" r="1.2"/><circle cx="12" cy="8" r="1.2"/></svg>
                             </button>
-                          )}
-                          <button
-                            onClick={async () => {
-                              if (!window.confirm('Dupliquer ce devis ?')) return;
-                              try {
-                                const dup = await SupabaseDocumentsService.duplicateDocument(quote.id);
-                                navigate(`/quote-cart/${dup.id}`);
-                              } catch (e: any) {
-                                setMessage({ type: 'error', text: e?.message || 'Erreur duplication' });
-                              }
-                            }}
-                            className="p-1 text-muted-foreground hover:bg-accent rounded transition-colors"
-                            title="Dupliquer"
-                          >
-                            <Copy className="h-3.5 w-3.5" />
-                          </button>
-                          <button onClick={() => handleDelete(quote)} className="p-1 text-destructive hover:bg-destructive/10 rounded transition-colors" title="Supprimer"><Trash2 className="h-3.5 w-3.5" /></button>
+                            <div className="absolute right-0 top-full mt-1 z-30 hidden group-hover:flex flex-col bg-card border border-border rounded-lg shadow-lg py-1 min-w-[160px]">
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    const [freshQuote, freshSettings] = await Promise.all([
+                                      SupabaseQuotesService.getQuote(quote.id),
+                                      CompanySettingsService.getSettings(quote.company_id),
+                                    ]);
+                                    const { blob, filename } = await PdfExportService.generatePdfBlob(freshQuote || quote, freshSettings || companySettings);
+                                    setPreviewBlob(blob); setPreviewFilename(filename); setShowPrintPreview(true);
+                                  } catch { setMessage({ type: 'error', text: 'Erreur aperçu PDF' }); }
+                                }}
+                                className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent text-foreground"
+                              ><Printer className="h-3.5 w-3.5 text-muted-foreground" />Aperçu impression</button>
+                              <button onClick={() => handleWhatsAppShare(quote)} className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent text-foreground">
+                                <MessageCircle className="h-3.5 w-3.5 text-emerald-500" />WhatsApp
+                              </button>
+                              <button onClick={() => handleEmailShare(quote)} className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent text-foreground">
+                                <Mail className="h-3.5 w-3.5 text-primary" />Email
+                              </button>
+                              {(isCompta || isSuperAdmin) && (
+                                <button
+                                  onClick={() => handleCreateBL(quote)}
+                                  disabled={isCreatingBL === quote.id || quote.status === 'final' || (quote.document_type && quote.document_type !== 'quote')}
+                                  className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent text-foreground disabled:opacity-40"
+                                >
+                                  {isCreatingBL === quote.id ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Truck className="h-3.5 w-3.5 text-teal-500" />}Créer un BL
+                                </button>
+                              )}
+                              <button
+                                onClick={async () => {
+                                  if (!window.confirm('Dupliquer ce devis ?')) return;
+                                  try {
+                                    const dup = await SupabaseDocumentsService.duplicateDocument(quote.id);
+                                    navigate(`/quote-cart/${dup.id}`);
+                                  } catch (e: any) { setMessage({ type: 'error', text: e?.message || 'Erreur duplication' }); }
+                                }}
+                                className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent text-foreground"
+                              ><Copy className="h-3.5 w-3.5 text-muted-foreground" />Dupliquer</button>
+                              <div className="border-t border-border my-0.5" />
+                              <button onClick={() => handleDelete(quote)} className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-destructive/10 text-destructive">
+                                <Trash2 className="h-3.5 w-3.5" />Supprimer
+                              </button>
+                            </div>
+                          </div>
                         </div>
                       </td>
                     </tr>
