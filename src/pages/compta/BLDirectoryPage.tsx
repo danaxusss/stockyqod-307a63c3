@@ -7,6 +7,7 @@ import { SupabaseCompaniesService } from '../../utils/supabaseCompanies';
 import { PdfExportService } from '../../utils/pdfExport';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../hooks/useAuth';
+import { exportToCSV } from '../../utils/csvExport';
 
 function statusBadge(status: string) {
   if (status === 'final') return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300">Finalisé</span>;
@@ -113,6 +114,22 @@ export default function BLDirectoryPage() {
       || b.customer?.phoneNumber?.toLowerCase().includes(q);
   });
 
+  const handleExportCSV = () => {
+    const companyMap: Record<string, string> = {};
+    companies.forEach(c => { companyMap[c.id] = c.name; });
+    const rows = filtered.map(b => ({
+      'N° BL': b.quoteNumber,
+      'Client': b.customer?.fullName || '',
+      'Téléphone': b.customer?.phoneNumber || '',
+      'Ville': b.customer?.city || '',
+      'Société': (b.company_id && companyMap[b.company_id]) || '',
+      'Total TTC': b.totalAmount,
+      'Statut': b.status,
+      'Date': new Date(b.createdAt).toLocaleDateString('fr-FR'),
+    }));
+    exportToCSV(rows, `bls-${new Date().toISOString().slice(0, 10)}`);
+  };
+
   const eligibleCount = filtered.filter(b => b.status !== 'final').length;
   const selectedEligible = selectedIds.filter(id => filtered.find(b => b.id === id && b.status !== 'final'));
 
@@ -134,15 +151,20 @@ export default function BLDirectoryPage() {
             </div>
           </div>
 
-          {selectedEligible.length > 0 && (
-            <button
-              onClick={() => setShowProformaModal(true)}
-              className="flex items-center space-x-1.5 px-3 py-1.5 text-sm bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg"
-            >
-              <FileText className="h-3.5 w-3.5" />
-              <span>Créer Proforma ({selectedEligible.length})</span>
+          <div className="flex items-center gap-2">
+            <button onClick={handleExportCSV} className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-border rounded-lg hover:bg-accent text-foreground">
+              <Download className="h-3.5 w-3.5" /><span>CSV</span>
             </button>
-          )}
+            {selectedEligible.length > 0 && (
+              <button
+                onClick={() => setShowProformaModal(true)}
+                className="flex items-center space-x-1.5 px-3 py-1.5 text-sm bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg"
+              >
+                <FileText className="h-3.5 w-3.5" />
+                <span>Créer Proforma ({selectedEligible.length})</span>
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="relative">

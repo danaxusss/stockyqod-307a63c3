@@ -1,13 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Truck, Download, ArrowLeft, FileText, Building2, Loader, Pencil, Check, X, Plus } from 'lucide-react';
-import { Quote, QuoteItem, Company } from '../../types';
+import { Truck, Download, ArrowLeft, FileText, Building2, Loader, Pencil, Check, X, Plus, CopyPlus, Search as SearchIcon, Printer } from 'lucide-react';
+import { Quote, QuoteItem, Company, Product } from '../../types';
 import { SupabaseDocumentsService } from '../../utils/supabaseDocuments';
 import { SupabaseCompaniesService } from '../../utils/supabaseCompanies';
 import { PdfExportService } from '../../utils/pdfExport';
 import { CompanySettingsService, CompanySettings } from '../../utils/companySettings';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../hooks/useAuth';
+import { ClientDropdown } from '../../components/ClientDropdown';
+import { ProductSearchModal } from '../../components/ProductSearchModal';
+import { PrintPreviewModal } from '../../components/PrintPreviewModal';
 
 const inputCls = 'w-full px-2 py-1 text-xs border border-input rounded bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary';
 
@@ -36,6 +39,10 @@ export default function BLDetailPage() {
   const [draftNotes, setDraftNotes] = useState('');
   const [draftStatus, setDraftStatus] = useState('');
   const [draftItems, setDraftItems] = useState<QuoteItem[]>([]);
+  const [showProductSearch, setShowProductSearch] = useState(false);
+  const [showPrintPreview, setShowPrintPreview] = useState(false);
+  const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
+  const [previewFilename, setPreviewFilename] = useState('');
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -119,6 +126,21 @@ export default function BLDetailPage() {
     product: null as any,
   }]);
 
+  const addFromProduct = (product: Product) => setDraftItems(prev => [...prev, {
+    id: crypto.randomUUID(),
+    quantity: 1,
+    unitPrice: product.price ?? 0,
+    subtotal: product.price ?? 0,
+    addedAt: new Date(),
+    quoteName: product.name,
+    quoteBrand: product.brand || '',
+    quoteBarcode: String(product.barcode || ''),
+    priceType: 'normal' as const,
+    marginPercentage: 0,
+    finalPrice: product.price ?? 0,
+    product: null as any,
+  }]);
+
   const handleCreateProforma = async () => {
     if (!bl || !targetCompanyId) return;
     setIsCreating(true);
@@ -140,7 +162,7 @@ export default function BLDetailPage() {
       const freshSettings = bl.company_id
         ? await CompanySettingsService.getSettings(bl.company_id).catch(() => companySettings)
         : companySettings;
-      await PdfExportService.exportQuoteToPdf(bl, freshSettings, undefined, undefined, useStamp, 'bl');
+      await PdfExportService.exportQuoteToPdf(bl, freshSettings, undefined, undefined, useStamp, 'bl', freshSettings?.bl_show_prices ?? true);
     } catch (e) {
       showToast({ type: 'error', title: 'Erreur PDF', message: String(e) });
     }
@@ -209,22 +231,61 @@ export default function BLDetailPage() {
             <button onClick={handleExportPdf} className="flex items-center space-x-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
               <Download className="h-3.5 w-3.5" /><span>PDF</span>
             </button>
+            <button
+              onClick={async () => {
+                if (!bl) return;
+                const freshSettings = await CompanySettingsService.getSettings(bl.company_id!);
+                const { blob, filename } = await PdfExportService.generatePdfBlob(bl, freshSettings, undefined, undefined, useStamp, 'bl', freshSettings?.bl_show_prices ?? true);
+                setPreviewBlob(blob);
+                setPreviewFilename(filename);
+                setShowPrintPreview(true);
+              }}
+              className="flex items-center space-x-1.5 px-3 py-1.5 text-sm bg-secondary hover:bg-accent border border-border text-foreground rounded-lg"
+              title="Aperçu avant impression"
+            >
+              <Printer className="h-3.5 w-3.5" /><span>Aperçu</span>
+            </button>
             {!isFinal && (
               <button onClick={() => setShowModal(true)}
                 className="flex items-center space-x-1.5 px-3 py-1.5 text-sm bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg">
                 <FileText className="h-3.5 w-3.5" /><span>→ Proforma</span>
               </button>
             )}
+            <button
+              onClick={async () => {
+                if (!bl || !window.confirm('Dupliquer ce BL ?')) return;
+                try {
+                  const dup = await SupabaseDocumentsService.duplicateDocument(bl.id);
+                  navigate(`/compta/bls/${dup.id}`);
+                } catch (e) {
+                  showToast({ type: 'error', message: String(e) });
+                }
+              }}
+              className="p-1.5 hover:bg-accent rounded-lg text-muted-foreground"
+              title="Dupliquer"
+            >
+              <CopyPlus className="h-4 w-4" />
+            </button>
           </>
         )}
       </div>
 
       {/* Client info */}
       <div className="glass rounded-lg p-4 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-        <div>
+        <div className="col-span-2 md:col-span-1">
           <p className="text-[11px] text-muted-foreground mb-0.5">Client</p>
           {isEditing
-            ? <input value={draftCustomerName} onChange={e => setDraftCustomerName(e.target.value)} className={inputCls} placeholder="Nom client" />
+            ? <ClientDropdown
+                value={draftCustomerName}
+                onChange={(client, val) => {
+                  setDraftCustomerName(client ? client.full_name : val);
+                  if (client) {
+                    setDraftCustomerPhone(client.phone_number || '');
+                    setDraftCustomerCity(client.city || '');
+                  }
+                }}
+                placeholder="Rechercher un client..."
+              />
             : <p className="font-medium text-foreground">{bl.customer?.fullName || '—'}</p>}
         </div>
         <div>
@@ -291,9 +352,14 @@ export default function BLDetailPage() {
               {isEditing && (
                 <tr>
                   <td colSpan={6} className="px-3 py-2">
-                    <button onClick={addBlankItem} className="flex items-center space-x-1.5 text-xs text-primary hover:underline">
-                      <Plus className="h-3.5 w-3.5" /><span>Ajouter un article</span>
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button onClick={addBlankItem} className="flex items-center space-x-1.5 text-xs text-primary hover:underline">
+                        <Plus className="h-3.5 w-3.5" /><span>Ligne vide</span>
+                      </button>
+                      <button onClick={() => setShowProductSearch(true)} className="flex items-center space-x-1.5 text-xs text-primary hover:underline">
+                        <SearchIcon className="h-3.5 w-3.5" /><span>Chercher produit</span>
+                      </button>
+                    </div>
                   </td>
                 </tr>
               )}
@@ -344,6 +410,17 @@ export default function BLDetailPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {showProductSearch && (
+        <ProductSearchModal
+          onSelect={addFromProduct}
+          onClose={() => setShowProductSearch(false)}
+        />
+      )}
+
+      {showPrintPreview && previewBlob && (
+        <PrintPreviewModal blob={previewBlob} filename={previewFilename} onClose={() => { setShowPrintPreview(false); setPreviewBlob(null); }} />
       )}
     </div>
   );

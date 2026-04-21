@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Calculator, Search } from 'lucide-react';
+import { Calculator, Search, Download } from 'lucide-react';
 import { SupabaseDocumentsService, ClientFinancialRow } from '../../utils/supabaseDocuments';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../hooks/useAuth';
+import { exportToCSV } from '../../utils/csvExport';
 
 function fmt(n: number) {
   return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(n);
@@ -56,6 +57,21 @@ export default function ClientFinancialPage() {
               <p className="text-xs text-muted-foreground">{filtered.length} client{filtered.length !== 1 ? 's' : ''}</p>
             </div>
           </div>
+          <button
+            onClick={() => {
+              const rows = filtered.map(r => ({
+                'Client': r.fullName,
+                'Total Facturé': r.totalAmount,
+                'Payé': r.paidAmount,
+                'Reste': r.remaining,
+                'N° Proformas': r.proformaCount,
+              }));
+              exportToCSV(rows, `clients-financier-${new Date().toISOString().slice(0, 10)}`);
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-border rounded-lg hover:bg-accent text-foreground"
+          >
+            <Download className="h-3.5 w-3.5" /><span>CSV</span>
+          </button>
         </div>
 
         <div className="relative mb-4">

@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, Search, Filter, Eye, Edit, Trash2, FileDown, Plus, Calendar, User, DollarSign, Hash, SortAsc, SortDesc, AlertCircle, Check, Loader, X, MessageCircle, Mail, Truck } from 'lucide-react';
+import { FileText, Search, Filter, Eye, Edit, Trash2, FileDown, Plus, Calendar, User, DollarSign, Hash, SortAsc, SortDesc, AlertCircle, Check, Loader, X, MessageCircle, Mail, Truck, Copy, Printer } from 'lucide-react';
 import { Quote } from '../types';
 import { SupabaseQuotesService } from '../utils/supabaseQuotes';
 import { SupabaseDocumentsService } from '../utils/supabaseDocuments';
@@ -11,6 +11,8 @@ import { CompanySettingsService, CompanySettings, DEFAULT_SHARE_TEMPLATES } from
 import { ExcelExportService } from '../utils/excelExport';
 import { useAuth } from '../hooks/useAuth';
 import { buildWhatsAppShareUrl, openWhatsAppShare } from '../utils/whatsappShare';
+import { exportToCSV } from '../utils/csvExport';
+import { PrintPreviewModal } from '../components/PrintPreviewModal';
 
 const QUOTES_PER_PAGE = 10;
 type SortField = 'quoteNumber' | 'customerName' | 'createdAt' | 'totalAmount' | 'status';
@@ -30,6 +32,9 @@ export function QuotesHistoryPage() {
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   const [isExporting, setIsExporting] = useState<string | null>(null);
+  const [showPrintPreview, setShowPrintPreview] = useState(false);
+  const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
+  const [previewFilename, setPreviewFilename] = useState('');
   const [isCreatingBL, setIsCreatingBL] = useState<string | null>(null);
   const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null);
 
@@ -213,9 +218,29 @@ export function QuotesHistoryPage() {
               <p className="text-xs text-muted-foreground">{isAdmin ? 'Tous les devis' : 'Vos devis'}</p>
             </div>
           </div>
-          <button onClick={() => navigate('/quote-cart')} className="flex items-center space-x-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors text-sm">
-            <Plus className="h-3.5 w-3.5" /><span>Nouveau</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                const rows = filteredQuotes.map(q => ({
+                  'N° Devis': q.quoteNumber,
+                  'Client': q.customer?.fullName || '',
+                  'Téléphone': q.customer?.phoneNumber || '',
+                  'Ville': q.customer?.city || '',
+                  'Vendeur': q.customer?.salesPerson || '',
+                  'Total TTC': q.totalAmount,
+                  'Statut': q.status,
+                  'Date': new Date(q.createdAt).toLocaleDateString('fr-FR'),
+                }));
+                exportToCSV(rows, `devis-${new Date().toISOString().slice(0, 10)}`);
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-border rounded-lg hover:bg-accent text-foreground"
+            >
+              <FileDown className="h-3.5 w-3.5" /><span>CSV</span>
+            </button>
+            <button onClick={() => navigate('/quote-cart')} className="flex items-center space-x-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors text-sm">
+              <Plus className="h-3.5 w-3.5" /><span>Nouveau</span>
+            </button>
+          </div>
         </div>
 
         {message && (
@@ -307,6 +332,25 @@ export function QuotesHistoryPage() {
                             {isExporting === quote.id ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <FileDown className="h-3.5 w-3.5" />}
                           </button>
                           <button
+                            onClick={async () => {
+                              try {
+                                const [freshQuote, freshSettings] = await Promise.all([
+                                  SupabaseQuotesService.getQuote(quote.id),
+                                  CompanySettingsService.getSettings(quote.company_id),
+                                ]);
+                                const { blob, filename } = await PdfExportService.generatePdfBlob(freshQuote || quote, freshSettings || companySettings);
+                                setPreviewBlob(blob);
+                                setPreviewFilename(filename);
+                                setShowPrintPreview(true);
+                              } catch {
+                                setMessage({ type: 'error', text: 'Erreur aperçu PDF' });
+                              }
+                            }}
+                            className="p-1 text-muted-foreground hover:bg-accent rounded transition-colors" title="Aperçu impression"
+                          >
+                            <Printer className="h-3.5 w-3.5" />
+                          </button>
+                          <button
                             onClick={() => handleWhatsAppShare(quote)}
                             className="p-1 text-emerald-500 hover:bg-emerald-500/10 rounded transition-colors" title="WhatsApp"
                           >
@@ -328,6 +372,21 @@ export function QuotesHistoryPage() {
                               {isCreatingBL === quote.id ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Truck className="h-3.5 w-3.5" />}
                             </button>
                           )}
+                          <button
+                            onClick={async () => {
+                              if (!window.confirm('Dupliquer ce devis ?')) return;
+                              try {
+                                const dup = await SupabaseDocumentsService.duplicateDocument(quote.id);
+                                navigate(`/quote-cart/${dup.id}`);
+                              } catch (e: any) {
+                                setMessage({ type: 'error', text: e?.message || 'Erreur duplication' });
+                              }
+                            }}
+                            className="p-1 text-muted-foreground hover:bg-accent rounded transition-colors"
+                            title="Dupliquer"
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                          </button>
                           <button onClick={() => handleDelete(quote)} className="p-1 text-destructive hover:bg-destructive/10 rounded transition-colors" title="Supprimer"><Trash2 className="h-3.5 w-3.5" /></button>
                         </div>
                       </td>
@@ -369,6 +428,10 @@ export function QuotesHistoryPage() {
             </div>
           ))}
         </div>
+      )}
+
+      {showPrintPreview && previewBlob && (
+        <PrintPreviewModal blob={previewBlob} filename={previewFilename} onClose={() => { setShowPrintPreview(false); setPreviewBlob(null); }} />
       )}
     </div>
   );

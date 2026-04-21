@@ -1,12 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { Receipt, Download, ArrowLeft, Loader, Pencil, Check, X, Plus, Calendar, Lock, Unlock, ChevronDown, ChevronUp } from 'lucide-react';
-import { Quote, QuoteItem, PaymentEntry } from '../../types';
+import { Receipt, Download, ArrowLeft, Loader, Pencil, Check, X, Plus, Calendar, Lock, Unlock, ChevronDown, ChevronUp, MessageCircle, Copy, CopyPlus, Search as SearchIcon, Mail, Printer } from 'lucide-react';
+import { Quote, QuoteItem, PaymentEntry, Product } from '../../types';
 import { SupabaseDocumentsService } from '../../utils/supabaseDocuments';
 import { PdfExportService } from '../../utils/pdfExport';
 import { CompanySettingsService, CompanySettings } from '../../utils/companySettings';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../hooks/useAuth';
+import { buildWhatsAppShareUrl, openPreparingWhatsAppWindow, redirectPreparingWindowToWhatsApp, openWhatsAppShare } from '../../utils/whatsappShare';
+import { ClientDropdown } from '../../components/ClientDropdown';
+import { ProductSearchModal } from '../../components/ProductSearchModal';
+import { PrintPreviewModal } from '../../components/PrintPreviewModal';
 
 function fmt(n: number) {
   return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(n);
@@ -47,6 +51,15 @@ export default function InvoiceDetailPage() {
   // Lock / PIN
   const [showPinModal, setShowPinModal] = useState(false);
   const [pinInput, setPinInput] = useState('');
+  // WhatsApp
+  const [showWaModal, setShowWaModal] = useState(false);
+  const [waPhone, setWaPhone] = useState('');
+  // Product search
+  const [showProductSearch, setShowProductSearch] = useState(false);
+  // Print preview
+  const [showPrintPreview, setShowPrintPreview] = useState(false);
+  const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
+  const [previewFilename, setPreviewFilename] = useState('');
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -144,6 +157,21 @@ export default function InvoiceDetailPage() {
     product: null as any,
   }]);
 
+  const addFromProduct = (product: Product) => setDraftItems(prev => [...prev, {
+    id: crypto.randomUUID(),
+    quantity: 1,
+    unitPrice: product.price ?? 0,
+    subtotal: product.price ?? 0,
+    addedAt: new Date(),
+    quoteName: product.name,
+    quoteBrand: product.brand || '',
+    quoteBarcode: String(product.barcode || ''),
+    priceType: 'normal' as const,
+    marginPercentage: 0,
+    finalPrice: product.price ?? 0,
+    product: null as any,
+  }]);
+
   const handleLock = async () => {
     if (!invoice) return;
     try {
@@ -186,6 +214,30 @@ export default function InvoiceDetailPage() {
       await PdfExportService.exportQuoteToPdf(invoice, freshSettings, undefined, undefined, useStamp, 'invoice');
     } catch (e) {
       showToast({ type: 'error', title: 'Erreur PDF', message: String(e) });
+    }
+  };
+
+  const handleWhatsAppShare = async (phone: string) => {
+    if (!invoice) return;
+    const waPopup = openPreparingWhatsAppWindow();
+    try {
+      const compId = invoice.issuing_company_id || invoice.company_id;
+      const freshSettings = compId
+        ? await CompanySettingsService.getSettings(compId).catch(() => companySettings)
+        : companySettings;
+      await PdfExportService.exportQuoteToPdf(invoice, freshSettings, undefined, undefined, useStamp, 'invoice');
+    } catch { /* continue even if PDF fails */ }
+
+    const company = companySettings?.company_name?.trim() || '';
+    const msg = `Bonjour ${invoice.customer?.fullName || ''},\nVeuillez trouver ci-joint votre facture ${invoice.quoteNumber} d'un montant de ${fmt(invoice.totalAmount)} Dh.${company ? `\n\nCordialement,\n${company}` : ''}`;
+    const waUrl = buildWhatsAppShareUrl(phone, msg);
+    const redirected = redirectPreparingWindowToWhatsApp(waUrl, waPopup);
+    if (!redirected) {
+      if (!openWhatsAppShare(waUrl)) {
+        navigator.clipboard.writeText(msg).then(() =>
+          showToast({ type: 'success', title: 'Copié', message: 'Message copié — ouvrez WhatsApp et collez-le.' })
+        );
+      }
     }
   };
 
@@ -264,6 +316,55 @@ export default function InvoiceDetailPage() {
             <button onClick={handleExportPdf} className="flex items-center space-x-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
               <Download className="h-3.5 w-3.5" /><span>PDF</span>
             </button>
+            <button
+              onClick={async () => {
+                if (!invoice) return;
+                const freshSettings = await CompanySettingsService.getSettings(invoice.company_id!);
+                const { blob, filename } = await PdfExportService.generatePdfBlob(invoice, freshSettings, undefined, undefined, useStamp, 'invoice');
+                setPreviewBlob(blob);
+                setPreviewFilename(filename);
+                setShowPrintPreview(true);
+              }}
+              className="flex items-center space-x-1.5 px-3 py-1.5 text-sm bg-secondary hover:bg-accent border border-border text-foreground rounded-lg"
+              title="Aperçu avant impression"
+            >
+              <Printer className="h-3.5 w-3.5" /><span>Aperçu</span>
+            </button>
+            <button
+              onClick={() => { setWaPhone(invoice.customer?.phoneNumber || ''); setShowWaModal(true); }}
+              className="flex items-center space-x-1.5 px-3 py-1.5 text-sm bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg"
+              title="Partager sur WhatsApp"
+            >
+              <MessageCircle className="h-3.5 w-3.5" /><span>WhatsApp</span>
+            </button>
+            <button
+              onClick={() => {
+                const subject = encodeURIComponent(`Facture ${invoice.quoteNumber}`);
+                const body = encodeURIComponent(
+                  `Bonjour ${invoice.customer?.fullName || ''},\n\nVeuillez trouver ci-joint votre facture ${invoice.quoteNumber} d'un montant de ${fmt(invoice.totalAmount)} Dh.\n\nCordialement,\n${companySettings?.company_name || ''}`
+                );
+                window.location.href = `mailto:?subject=${subject}&body=${body}`;
+              }}
+              className="flex items-center space-x-1.5 px-3 py-1.5 text-sm bg-secondary hover:bg-accent border border-border text-foreground rounded-lg"
+              title="Envoyer par email"
+            >
+              <Mail className="h-3.5 w-3.5" /><span>Email</span>
+            </button>
+            <button
+              onClick={async () => {
+                if (!window.confirm('Dupliquer cette facture ?')) return;
+                try {
+                  const dup = await SupabaseDocumentsService.duplicateDocument(invoice.id);
+                  navigate(`/compta/invoices/${dup.id}`);
+                } catch (e) {
+                  showToast({ type: 'error', message: String(e) });
+                }
+              }}
+              className="p-1.5 hover:bg-accent rounded-lg text-muted-foreground"
+              title="Dupliquer"
+            >
+              <CopyPlus className="h-4 w-4" />
+            </button>
           </>
         )}
       </div>
@@ -294,7 +395,17 @@ export default function InvoiceDetailPage() {
         <div>
           <p className="text-[11px] text-muted-foreground mb-0.5">Client</p>
           {isEditing
-            ? <input value={draftCustomerName} onChange={e => setDraftCustomerName(e.target.value)} className={inputCls} placeholder="Nom client" />
+            ? <ClientDropdown
+                value={draftCustomerName}
+                onChange={(client, val) => {
+                  setDraftCustomerName(client ? client.full_name : val);
+                  if (client) {
+                    setDraftCustomerPhone(client.phone_number || '');
+                    setDraftCustomerCity(client.city || '');
+                  }
+                }}
+                placeholder="Rechercher un client..."
+              />
             : <p className="font-medium text-foreground">{invoice.customer?.fullName || '—'}</p>}
         </div>
         <div>
@@ -474,9 +585,14 @@ export default function InvoiceDetailPage() {
               {isEditing && (
                 <tr>
                   <td colSpan={8} className="px-3 py-2">
-                    <button onClick={addBlankItem} className="flex items-center space-x-1.5 text-xs text-primary hover:underline">
-                      <Plus className="h-3.5 w-3.5" /><span>Ajouter un article</span>
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button onClick={addBlankItem} className="flex items-center space-x-1.5 text-xs text-primary hover:underline">
+                        <Plus className="h-3.5 w-3.5" /><span>Ligne vide</span>
+                      </button>
+                      <button onClick={() => setShowProductSearch(true)} className="flex items-center space-x-1.5 text-xs text-primary hover:underline">
+                        <SearchIcon className="h-3.5 w-3.5" /><span>Chercher produit</span>
+                      </button>
+                    </div>
                   </td>
                 </tr>
               )}
@@ -525,6 +641,57 @@ export default function InvoiceDetailPage() {
           <Lock className="h-4 w-4 text-amber-400" />
           <span className="text-sm text-amber-300">Facture verrouillée — cliquez sur le cadenas pour déverrouiller</span>
         </div>
+      )}
+
+      {/* WhatsApp Modal */}
+      {showWaModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="glass rounded-xl shadow-2xl w-full max-w-sm p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-bold text-foreground flex items-center gap-2">
+                <MessageCircle className="h-4 w-4 text-emerald-400" />Envoyer sur WhatsApp
+              </h2>
+              <button onClick={() => setShowWaModal(false)} className="p-1 hover:bg-accent rounded-lg"><X className="h-4 w-4" /></button>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-foreground mb-1">Numéro de téléphone</label>
+              <input
+                type="tel"
+                value={waPhone}
+                onChange={e => setWaPhone(e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring"
+                placeholder="Ex: 0661234567"
+                autoFocus
+              />
+              {invoice.customer?.phoneNumber && (
+                <button
+                  onClick={() => setWaPhone(invoice.customer!.phoneNumber)}
+                  className="mt-1 text-[11px] text-primary hover:underline"
+                >
+                  Utiliser le téléphone client ({invoice.customer.phoneNumber})
+                </button>
+              )}
+            </div>
+            <div className="flex space-x-2">
+              <button onClick={() => setShowWaModal(false)} className="flex-1 px-3 py-1.5 text-sm border border-input rounded-lg hover:bg-accent text-foreground">Annuler</button>
+              <button
+                onClick={() => { setShowWaModal(false); handleWhatsAppShare(waPhone); }}
+                disabled={!waPhone.trim()}
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-sm bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg"
+              >
+                <MessageCircle className="h-3.5 w-3.5" />Envoyer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showProductSearch && (
+        <ProductSearchModal onSelect={p => { addFromProduct(p); setShowProductSearch(false); }} onClose={() => setShowProductSearch(false)} />
+      )}
+
+      {showPrintPreview && previewBlob && (
+        <PrintPreviewModal blob={previewBlob} filename={previewFilename} onClose={() => { setShowPrintPreview(false); setPreviewBlob(null); }} />
       )}
 
       {/* PIN Modal */}

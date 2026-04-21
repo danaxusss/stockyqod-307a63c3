@@ -1,24 +1,41 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Receipt, Search, Download, Trash2 } from 'lucide-react';
+import { Receipt, Search, Download, Trash2, ChevronUp, ChevronDown, Filter, X } from 'lucide-react';
 import { Quote } from '../../types';
 import { SupabaseDocumentsService } from '../../utils/supabaseDocuments';
 import { SupabaseCompaniesService } from '../../utils/supabaseCompanies';
 import { PdfExportService } from '../../utils/pdfExport';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../hooks/useAuth';
+import { exportToCSV } from '../../utils/csvExport';
 
 function fmt(n: number) {
   return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(n);
 }
+
+type SortField = 'quoteNumber' | 'customer' | 'date' | 'total';
+type SortDir = 'asc' | 'desc';
+
+const PAYMENT_METHODS = ['Tous', 'Virement', 'Chèque', 'Espèces', 'Carte', 'Effet', 'Versement'];
 
 export default function InvoiceDirectoryPage() {
   const { isSuperAdmin, isCompta } = useAuth();
   const { showToast } = useToast();
   const [invoices, setInvoices] = useState<Quote[]>([]);
   const [companies, setCompanies] = useState<Record<string, string>>({});
+  const [companyList, setCompanyList] = useState<{ id: string; name: string }[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Filters
   const [search, setSearch] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [filterPayment, setFilterPayment] = useState('Tous');
+  const [filterCompany, setFilterCompany] = useState('');
+
+  // Sort
+  const [sortField, setSortField] = useState<SortField>('date');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -31,6 +48,7 @@ export default function InvoiceDirectoryPage() {
       const map: Record<string, string> = {};
       allCompanies.forEach(c => { map[c.id] = c.name; });
       setCompanies(map);
+      setCompanyList(allCompanies.map(c => ({ id: c.id, name: c.name })));
     } catch (e) {
       showToast({ type: 'error', title: 'Erreur', message: String(e) });
     } finally {
@@ -70,12 +88,65 @@ export default function InvoiceDirectoryPage() {
     }
   };
 
-  const filtered = invoices.filter(inv => {
-    const q = search.toLowerCase();
-    return !q || inv.quoteNumber.toLowerCase().includes(q)
-      || inv.customer?.fullName?.toLowerCase().includes(q)
-      || inv.customer?.phoneNumber?.toLowerCase().includes(q);
-  });
+  const toggleSort = (field: SortField) => {
+    if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortField(field); setSortDir('desc'); }
+  };
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) return <ChevronDown className="h-3 w-3 opacity-30 inline ml-0.5" />;
+    return sortDir === 'asc'
+      ? <ChevronUp className="h-3 w-3 inline ml-0.5 text-primary" />
+      : <ChevronDown className="h-3 w-3 inline ml-0.5 text-primary" />;
+  };
+
+  const filtered = useMemo(() => {
+    let list = invoices.filter(inv => {
+      const q = search.toLowerCase();
+      if (q && !inv.quoteNumber.toLowerCase().includes(q)
+        && !inv.customer?.fullName?.toLowerCase().includes(q)
+        && !(inv.customer as any)?.client_code?.toLowerCase().includes(q)
+        && !inv.customer?.phoneNumber?.toLowerCase().includes(q)) return false;
+
+      if (dateFrom && new Date(inv.createdAt) < new Date(dateFrom)) return false;
+      if (dateTo && new Date(inv.createdAt) > new Date(dateTo + 'T23:59:59')) return false;
+
+      if (filterPayment !== 'Tous' && inv.payment_method?.toLowerCase() !== filterPayment.toLowerCase()) return false;
+
+      if (filterCompany && inv.issuing_company_id !== filterCompany) return false;
+
+      return true;
+    });
+
+    list.sort((a, b) => {
+      let cmp = 0;
+      if (sortField === 'quoteNumber') cmp = a.quoteNumber.localeCompare(b.quoteNumber);
+      else if (sortField === 'customer') cmp = (a.customer?.fullName || '').localeCompare(b.customer?.fullName || '');
+      else if (sortField === 'date') cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      else if (sortField === 'total') cmp = a.totalAmount - b.totalAmount;
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+
+    return list;
+  }, [invoices, search, dateFrom, dateTo, filterPayment, filterCompany, sortField, sortDir]);
+
+  const handleExportCSV = () => {
+    const rows = filtered.map(inv => ({
+      'N° Facture': inv.quoteNumber,
+      'Client': inv.customer?.fullName || '',
+      'Téléphone': inv.customer?.phoneNumber || '',
+      'Ville': inv.customer?.city || '',
+      'Société Émettrice': (inv.issuing_company_id && companies[inv.issuing_company_id]) || '',
+      'Total TTC': inv.totalAmount,
+      'Mode Paiement': inv.payment_method || '',
+      'Référence Paiement': inv.payment_reference || '',
+      'Date': new Date(inv.createdAt).toLocaleDateString('fr-FR'),
+    }));
+    exportToCSV(rows, `factures-${new Date().toISOString().slice(0, 10)}`);
+  };
+
+  const hasFilters = search || dateFrom || dateTo || filterPayment !== 'Tous' || filterCompany;
+  const clearFilters = () => { setSearch(''); setDateFrom(''); setDateTo(''); setFilterPayment('Tous'); setFilterCompany(''); };
 
   if (!isSuperAdmin && !isCompta) {
     return <div className="text-center py-12 text-muted-foreground">Accès réservé au rôle Comptabilité.</div>;
@@ -91,18 +162,56 @@ export default function InvoiceDirectoryPage() {
             </div>
             <div>
               <h1 className="text-lg font-bold text-foreground">Factures</h1>
-              <p className="text-xs text-muted-foreground">{filtered.length} facture{filtered.length !== 1 ? 's' : ''}</p>
+              <p className="text-xs text-muted-foreground">{filtered.length} / {invoices.length} facture{invoices.length !== 1 ? 's' : ''}</p>
             </div>
           </div>
+          <button onClick={handleExportCSV} className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-border rounded-lg hover:bg-accent text-foreground">
+            <Download className="h-3.5 w-3.5" /><span>CSV</span>
+          </button>
         </div>
 
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <input
-            type="text" value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="N° facture, client..."
-            className="w-full pl-8 pr-3 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground"
-          />
+        {/* Filters */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <input
+                type="text" value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="N° facture, client, téléphone..."
+                className="w-full pl-8 pr-3 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground"
+              />
+            </div>
+            {hasFilters && (
+              <button onClick={clearFilters} className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg" title="Effacer les filtres">
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <input
+              type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+              className="px-2 py-1.5 text-xs border border-input rounded-lg bg-secondary text-foreground"
+              title="Date de début"
+            />
+            <input
+              type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+              className="px-2 py-1.5 text-xs border border-input rounded-lg bg-secondary text-foreground"
+              title="Date de fin"
+            />
+            <select
+              value={filterPayment} onChange={e => setFilterPayment(e.target.value)}
+              className="px-2 py-1.5 text-xs border border-input rounded-lg bg-secondary text-foreground"
+            >
+              {PAYMENT_METHODS.map(m => <option key={m}>{m}</option>)}
+            </select>
+            <select
+              value={filterCompany} onChange={e => setFilterCompany(e.target.value)}
+              className="px-2 py-1.5 text-xs border border-input rounded-lg bg-secondary text-foreground"
+            >
+              <option value="">Toutes les sociétés</option>
+              {companyList.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
         </div>
       </div>
 
@@ -118,9 +227,21 @@ export default function InvoiceDirectoryPage() {
             <table className="w-full">
               <thead className="bg-secondary">
                 <tr>
-                  {['N° Facture', 'Client', 'Proforma', 'Société émettrice', 'Total TTC', 'Date', 'Actions'].map(h => (
-                    <th key={h} className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">{h}</th>
-                  ))}
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase cursor-pointer hover:text-foreground" onClick={() => toggleSort('quoteNumber')}>
+                    N° Facture <SortIcon field="quoteNumber" />
+                  </th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase cursor-pointer hover:text-foreground" onClick={() => toggleSort('customer')}>
+                    Client <SortIcon field="customer" />
+                  </th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Proforma</th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Société</th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase cursor-pointer hover:text-foreground" onClick={() => toggleSort('total')}>
+                    Total TTC <SortIcon field="total" />
+                  </th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase cursor-pointer hover:text-foreground" onClick={() => toggleSort('date')}>
+                    Date <SortIcon field="date" />
+                  </th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -128,6 +249,7 @@ export default function InvoiceDirectoryPage() {
                   <tr key={inv.id} className="hover:bg-accent/50">
                     <td className="px-3 py-2.5">
                       <Link to={`/compta/invoices/${inv.id}`} className="text-xs font-mono font-semibold text-primary hover:underline">{inv.quoteNumber}</Link>
+                      {inv.is_locked && <span className="ml-1 text-[9px] text-amber-400">🔒</span>}
                     </td>
                     <td className="px-3 py-2.5">
                       <div className="text-xs font-medium text-foreground">{inv.customer?.fullName || '—'}</div>
@@ -147,6 +269,7 @@ export default function InvoiceDirectoryPage() {
                     </td>
                     <td className="px-3 py-2.5">
                       <span className="text-xs font-mono font-bold text-foreground">{fmt(inv.totalAmount)} Dh</span>
+                      {inv.payment_method && <div className="text-[9px] text-muted-foreground">{inv.payment_method}</div>}
                     </td>
                     <td className="px-3 py-2.5 text-[10px] text-muted-foreground">
                       {new Date(inv.createdAt).toLocaleDateString('fr-FR')}

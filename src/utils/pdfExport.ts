@@ -131,7 +131,7 @@ export class PdfExportService {
     return `${intPart},${parts[1]}`;
   }
 
-  static async exportQuoteToPdf(quote: Quote, settings?: CompanySettings | null, techSheetsUrl?: string, techSheetsExpiryLabel?: string, useStampOverride?: boolean, documentType: 'quote' | 'bl' | 'proforma' | 'invoice' = 'quote', blShowPrices?: boolean): Promise<void> {
+  static async exportQuoteToPdf(quote: Quote, settings?: CompanySettings | null, techSheetsUrl?: string, techSheetsExpiryLabel?: string, useStampOverride?: boolean, documentType: 'quote' | 'bl' | 'proforma' | 'invoice' = 'quote', blShowPrices?: boolean, returnBlob?: boolean): Promise<void | Blob> {
     const style: QuoteStyle = settings?.quote_style || {
       accentColor: '#3B82F6', fontFamily: 'helvetica', showBorders: true,
       borderRadius: 1, headerSize: 'large', totalsStyle: 'highlighted',
@@ -854,6 +854,25 @@ export class PdfExportService {
       : documentType === 'invoice' ? 'Facture'
       : 'Devis';
     const filename = `${docPrefix}_${quote.quoteNumber}_${this.formatDate(quote.createdAt).replace(/\//g, '-')}.pdf`;
+    if (returnBlob) return doc.output('blob') as unknown as Blob;
     doc.save(filename);
+  }
+
+  static async generatePdfBlob(
+    quote: Quote,
+    settings?: CompanySettings | null,
+    techSheetsUrl?: string,
+    techSheetsExpiryLabel?: string,
+    useStampOverride?: boolean,
+    documentType: 'quote' | 'bl' | 'proforma' | 'invoice' = 'quote',
+    blShowPrices?: boolean,
+  ): Promise<{ blob: Blob; filename: string }> {
+    const docPrefix = documentType === 'bl' ? 'BL'
+      : documentType === 'proforma' ? 'Proforma'
+      : documentType === 'invoice' ? 'Facture'
+      : 'Devis';
+    const filename = `${docPrefix}_${quote.quoteNumber}.pdf`;
+    const blob = await this.exportQuoteToPdf(quote, settings, techSheetsUrl, techSheetsExpiryLabel, useStampOverride, documentType, blShowPrices, true) as unknown as Blob;
+    return { blob, filename };
   }
 }

@@ -503,4 +503,61 @@ export class SupabaseDocumentsService {
     if (error) throw new Error(`Erreur mise à jour: ${error.message}`);
     return mapDocRow(data as DocRow);
   }
+
+  static async duplicateDocument(id: string): Promise<Quote> {
+    const { data: srcData, error: srcErr } = await (supabase.from('quotes') as any)
+      .select('*')
+      .eq('id', id)
+      .single();
+    if (srcErr || !srcData) throw new Error('Document introuvable');
+
+    const src = srcData as DocRow;
+    const docType = (src.document_type as string) || 'quote';
+    const companyId = src.company_id || src.issuing_company_id || getCompanyContext().companyId;
+
+    let newNumber: string;
+    if (docType === 'invoice') {
+      newNumber = companyId ? await this.nextNumber(companyId, 'invoice') : `FAC-COPIE-${Date.now()}`;
+    } else if (docType === 'bl') {
+      newNumber = companyId ? await this.nextNumber(companyId, 'bl') : `BL-COPIE-${Date.now()}`;
+    } else if (docType === 'proforma') {
+      newNumber = companyId ? await this.nextNumber(companyId, 'proforma') : `PRO-COPIE-${Date.now()}`;
+    } else {
+      const { ExcelExportService } = await import('./excelExport');
+      newNumber = ExcelExportService.generateQuoteNumber();
+    }
+
+    const now = new Date().toISOString();
+    const newId = crypto.randomUUID();
+    const insertData: Record<string, unknown> = {
+      id: newId,
+      quote_number: newNumber,
+      created_at: now,
+      updated_at: now,
+      status: 'draft',
+      is_locked: false,
+      customer_info: src.customer_info,
+      items: src.items,
+      total_amount: src.total_amount,
+      notes: src.notes || null,
+      notes2: src.notes2 || null,
+      document_type: docType,
+      company_id: src.company_id || null,
+      issuing_company_id: src.issuing_company_id || null,
+      paid_amount: 0,
+      payment_date: null,
+      payment_method: null,
+      payment_reference: null,
+      payment_bank: null,
+      avance_amount: 0,
+      payment_methods_json: [],
+    };
+
+    const { data: newDoc, error: insertErr } = await (supabase.from('quotes') as any)
+      .insert(insertData)
+      .select('*')
+      .single();
+    if (insertErr) throw new Error(`Erreur duplication: ${insertErr.message}`);
+    return mapDocRow(newDoc as DocRow);
+  }
 }

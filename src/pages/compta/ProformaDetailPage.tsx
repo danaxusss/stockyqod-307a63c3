@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { CheckSquare, Square, Download, FileText, ArrowLeft, Building2, Loader, Pencil, Check, X, Plus } from 'lucide-react';
-import { Quote, QuoteItem, Company } from '../../types';
+import { CheckSquare, Square, Download, FileText, ArrowLeft, Building2, Loader, Pencil, Check, X, Plus, CopyPlus, Search as SearchIcon, Printer } from 'lucide-react';
+import { Quote, QuoteItem, Company, Product } from '../../types';
 import { SupabaseDocumentsService } from '../../utils/supabaseDocuments';
 import { SupabaseCompaniesService } from '../../utils/supabaseCompanies';
 import { PdfExportService } from '../../utils/pdfExport';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../hooks/useAuth';
+import { ClientDropdown } from '../../components/ClientDropdown';
+import { ProductSearchModal } from '../../components/ProductSearchModal';
+import { PrintPreviewModal } from '../../components/PrintPreviewModal';
 
 function fmt(n: number) {
   return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(n);
@@ -45,6 +48,10 @@ export default function ProformaDetailPage() {
   const [draftNotes, setDraftNotes] = useState('');
   const [draftStatus, setDraftStatus] = useState('');
   const [draftItems, setDraftItems] = useState<QuoteItem[]>([]);
+  const [showProductSearch, setShowProductSearch] = useState(false);
+  const [showPrintPreview, setShowPrintPreview] = useState(false);
+  const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
+  const [previewFilename, setPreviewFilename] = useState('');
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -125,6 +132,21 @@ export default function ProformaDetailPage() {
     quantity: 1, unitPrice: 0, subtotal: 0,
     addedAt: new Date(), quoteName: '', quoteBrand: '', quoteBarcode: '',
     priceType: 'normal' as const, marginPercentage: 0, finalPrice: 0,
+    product: null as any,
+  }]);
+
+  const addFromProduct = (product: Product) => setDraftItems(prev => [...prev, {
+    id: crypto.randomUUID(),
+    quantity: 1,
+    unitPrice: product.price ?? 0,
+    subtotal: product.price ?? 0,
+    addedAt: new Date(),
+    quoteName: product.name,
+    quoteBrand: product.brand || '',
+    quoteBarcode: String(product.barcode || ''),
+    priceType: 'normal' as const,
+    marginPercentage: 0,
+    finalPrice: product.price ?? 0,
     product: null as any,
   }]);
 
@@ -224,6 +246,48 @@ export default function ProformaDetailPage() {
             <button onClick={handleExportPdf} className="flex items-center space-x-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
               <Download className="h-3.5 w-3.5" /><span>PDF</span>
             </button>
+            <button
+              onClick={async () => {
+                if (!proforma) return;
+                try {
+                  const company = proforma.company_id ? await SupabaseCompaniesService.getCompanyById(proforma.company_id) : null;
+                  const settings = company ? {
+                    company_name: company.name, address: company.address, phone: company.phone,
+                    phone2: company.phone2, email: company.email, ice: company.ice, rc: company.rc,
+                    if_number: company.if_number, cnss: company.cnss, patente: company.patente,
+                    logo_url: company.logo_url, logo_size: company.logo_size,
+                    tva_rate: company.tva_rate, quote_validity_days: company.quote_validity_days,
+                    payment_terms: company.payment_terms, quote_visible_fields: company.quote_visible_fields,
+                    quote_style: { accentColor: company.accent_color, fontFamily: company.font_family, showBorders: true, borderRadius: 1, headerSize: 'large', totalsStyle: 'highlighted' },
+                  } as any : null;
+                  const { blob, filename } = await PdfExportService.generatePdfBlob(proforma, settings, undefined, undefined, undefined, 'proforma');
+                  setPreviewBlob(blob);
+                  setPreviewFilename(filename);
+                  setShowPrintPreview(true);
+                } catch (e) {
+                  showToast({ type: 'error', title: 'Erreur', message: String(e) });
+                }
+              }}
+              className="flex items-center space-x-1.5 px-3 py-1.5 text-sm bg-secondary hover:bg-accent border border-border text-foreground rounded-lg"
+              title="Aperçu avant impression"
+            >
+              <Printer className="h-3.5 w-3.5" /><span>Aperçu</span>
+            </button>
+            <button
+              onClick={async () => {
+                if (!proforma || !window.confirm('Dupliquer ce proforma ?')) return;
+                try {
+                  const dup = await SupabaseDocumentsService.duplicateDocument(proforma.id);
+                  navigate(`/compta/proformas/${dup.id}`);
+                } catch (e) {
+                  showToast({ type: 'error', message: String(e) });
+                }
+              }}
+              className="p-1.5 hover:bg-accent rounded-lg text-muted-foreground"
+              title="Dupliquer"
+            >
+              <CopyPlus className="h-4 w-4" />
+            </button>
           </>
         )}
       </div>
@@ -246,10 +310,20 @@ export default function ProformaDetailPage() {
 
       {/* Client info */}
       <div className="glass rounded-lg p-4 grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-        <div>
+        <div className="col-span-2 md:col-span-1">
           <p className="text-[11px] text-muted-foreground mb-0.5">Client</p>
           {isEditing
-            ? <input value={draftCustomerName} onChange={e => setDraftCustomerName(e.target.value)} className={inputCls} placeholder="Nom client" />
+            ? <ClientDropdown
+                value={draftCustomerName}
+                onChange={(client, val) => {
+                  setDraftCustomerName(client ? client.full_name : val);
+                  if (client) {
+                    setDraftCustomerPhone(client.phone_number || '');
+                    setDraftCustomerCity(client.city || '');
+                  }
+                }}
+                placeholder="Rechercher un client..."
+              />
             : <p className="font-medium text-foreground">{proforma.customer?.fullName || '—'}</p>}
         </div>
         <div>
@@ -294,7 +368,24 @@ export default function ProformaDetailPage() {
           <table className="w-full">
             <thead className="bg-secondary">
               <tr>
-                {!isEditing && <th className="px-3 py-2 w-8" />}
+                {!isEditing && (
+                  <th className="px-3 py-2 w-8">
+                    {unbilledItems.length > 0 && (
+                      <button
+                        onClick={() => {
+                          const allSelected = unbilledItems.every(i => selectedIds.includes(i.id));
+                          setSelectedIds(allSelected ? [] : unbilledItems.map(i => i.id));
+                        }}
+                        className="text-primary"
+                        title={unbilledItems.every(i => selectedIds.includes(i.id)) ? 'Tout désélectionner' : 'Tout sélectionner'}
+                      >
+                        {unbilledItems.every(i => selectedIds.includes(i.id))
+                          ? <CheckSquare className="h-4 w-4" />
+                          : <Square className="h-4 w-4 text-muted-foreground" />}
+                      </button>
+                    )}
+                  </th>
+                )}
                 <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase w-6">#</th>
                 <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Produit</th>
                 <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Marque</th>
@@ -362,9 +453,14 @@ export default function ProformaDetailPage() {
               {isEditing && (
                 <tr>
                   <td colSpan={8} className="px-3 py-2">
-                    <button onClick={addBlankItem} className="flex items-center space-x-1.5 text-xs text-primary hover:underline">
-                      <Plus className="h-3.5 w-3.5" /><span>Ajouter un article</span>
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button onClick={addBlankItem} className="flex items-center space-x-1.5 text-xs text-primary hover:underline">
+                        <Plus className="h-3.5 w-3.5" /><span>Ligne vide</span>
+                      </button>
+                      <button onClick={() => setShowProductSearch(true)} className="flex items-center space-x-1.5 text-xs text-primary hover:underline">
+                        <SearchIcon className="h-3.5 w-3.5" /><span>Chercher produit</span>
+                      </button>
+                    </div>
                   </td>
                 </tr>
               )}
@@ -425,6 +521,17 @@ export default function ProformaDetailPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {showProductSearch && (
+        <ProductSearchModal
+          onSelect={addFromProduct}
+          onClose={() => setShowProductSearch(false)}
+        />
+      )}
+
+      {showPrintPreview && previewBlob && (
+        <PrintPreviewModal blob={previewBlob} filename={previewFilename} onClose={() => { setShowPrintPreview(false); setPreviewBlob(null); }} />
       )}
     </div>
   );

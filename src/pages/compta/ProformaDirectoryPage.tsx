@@ -7,6 +7,7 @@ import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../hooks/useAuth';
 import { PdfExportService } from '../../utils/pdfExport';
 import { SupabaseCompaniesService } from '../../utils/supabaseCompanies';
+import { exportToCSV } from '../../utils/csvExport';
 
 type SortKey = 'date' | 'total' | 'remaining';
 
@@ -126,6 +127,24 @@ export default function ProformaDirectoryPage() {
               <p className="text-xs text-muted-foreground">{filtered.length} document{filtered.length !== 1 ? 's' : ''}</p>
             </div>
           </div>
+          <button
+            onClick={() => {
+              const rows = filtered.map(p => ({
+                'N° Proforma': p.quoteNumber,
+                'Client': p.customer?.fullName || '',
+                'Téléphone': p.customer?.phoneNumber || '',
+                'Total TTC': p.totalAmount,
+                'Payé': p.paid_amount || 0,
+                'Reste': p.totalAmount - (p.paid_amount || 0),
+                'Statut': p.status,
+                'Date': new Date(p.createdAt).toLocaleDateString('fr-FR'),
+              }));
+              exportToCSV(rows, `proformas-${new Date().toISOString().slice(0, 10)}`);
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-border rounded-lg hover:bg-accent text-foreground"
+          >
+            <Download className="h-3.5 w-3.5" /><span>CSV</span>
+          </button>
         </div>
 
         <div className="flex gap-2 flex-wrap">
