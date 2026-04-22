@@ -305,8 +305,8 @@ export default function InvoiceDetailPage() {
         ) : (
           <>
             {invoice.is_locked ? (
-              <button onClick={handleUnlock} className="p-1.5 hover:bg-amber-500/10 rounded-lg text-amber-400" title="Déverrouiller">
-                <Lock className="h-4 w-4" />
+              <button onClick={handleUnlock} className="p-1.5 hover:bg-amber-500/10 rounded-lg text-base leading-none" title="Déverrouiller">
+                🔒
               </button>
             ) : (
               <>
@@ -324,7 +324,7 @@ export default function InvoiceDetailPage() {
                 title={useStamp ? 'Retirer le tampon' : 'Apposer le tampon'}
                 className={`p-1.5 rounded-lg transition-colors text-base leading-none ${useStamp ? 'bg-amber-500/20 text-amber-400 ring-1 ring-amber-500/40' : 'hover:bg-accent text-muted-foreground'}`}
               >
-                🔏
+                ✍🏻
               </button>
             )}
             <button onClick={handleExportPdf} className="flex items-center space-x-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
@@ -700,7 +700,7 @@ export default function InvoiceDetailPage() {
       {/* Lock overlay */}
       {invoice.is_locked && (
         <div className="glass rounded-lg p-3 flex items-center gap-2 bg-amber-500/10 border border-amber-500/30">
-          <Lock className="h-4 w-4 text-amber-400" />
+          <span className="text-base leading-none">🔒</span>
           <span className="text-sm text-amber-300">Facture verrouillée — cliquez sur le cadenas pour déverrouiller</span>
         </div>
       )}
