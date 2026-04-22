@@ -131,7 +131,7 @@ export class PdfExportService {
     return `${intPart},${parts[1]}`;
   }
 
-  static async exportQuoteToPdf(quote: Quote, settings?: CompanySettings | null, techSheetsUrl?: string, techSheetsExpiryLabel?: string, useStampOverride?: boolean, documentType: 'quote' | 'bl' | 'proforma' | 'invoice' = 'quote', blShowPrices?: boolean, returnBlob?: boolean): Promise<void | Blob> {
+  static async exportQuoteToPdf(quote: Quote, settings?: CompanySettings | null, techSheetsUrl?: string, techSheetsExpiryLabel?: string, useStampOverride?: boolean, documentType: 'quote' | 'bl' | 'proforma' | 'invoice' | 'avoir' = 'quote', blShowPrices?: boolean, returnBlob?: boolean): Promise<void | Blob> {
     const style: QuoteStyle = settings?.quote_style || {
       accentColor: '#3B82F6', fontFamily: 'helvetica', showBorders: true,
       borderRadius: 1, headerSize: 'large', totalsStyle: 'highlighted',
@@ -225,7 +225,8 @@ export class PdfExportService {
           doc.setTextColor(...GRAY);
           doc.setFontSize(5);
         }
-        doc.text(footerLines[i], pageWidth / 2, fy, { align: 'center', maxWidth: contentWidth });
+        const footerMaxWidth = settings?.qr_code_url ? contentWidth - 18 : contentWidth;
+        doc.text(footerLines[i], pageWidth / 2, fy, { align: 'center', maxWidth: footerMaxWidth });
         fy += footerLineHeight;
       }
     };
@@ -279,6 +280,7 @@ export class PdfExportService {
     const docTypeLabel = documentType === 'bl' ? 'BON DE LIVRAISON'
       : documentType === 'proforma' ? 'PROFORMA'
       : documentType === 'invoice' ? 'FACTURE'
+      : documentType === 'avoir' ? 'AVOIR'
       : 'DEVIS';
     const devisBoxW = documentType === 'bl' ? 58 : 45;
     const devisBoxH = 11;
@@ -793,9 +795,10 @@ export class PdfExportService {
     if (settings?.qr_code_url) {
       const qrDataUrl = await generateQRDataUrl(settings.qr_code_url);
       if (qrDataUrl) {
-        const qrSize = 18;
+        const qrSize = 14;
         const qrX = pageWidth - margin - qrSize;
-        const qrY = pageHeight - (footerLines.length * 3 + 4) - qrSize - 4;
+        // Place QR below the footer separator (footerBaseY = pageHeight - (footerLines.length * 3 + 4) - 2)
+        const qrY = pageHeight - (footerLines.length * 3 + 4);
         const totalPages2 = doc.getNumberOfPages();
         for (let pi = 1; pi <= totalPages2; pi++) {
           doc.setPage(pi);
@@ -864,12 +867,13 @@ export class PdfExportService {
     techSheetsUrl?: string,
     techSheetsExpiryLabel?: string,
     useStampOverride?: boolean,
-    documentType: 'quote' | 'bl' | 'proforma' | 'invoice' = 'quote',
+    documentType: 'quote' | 'bl' | 'proforma' | 'invoice' | 'avoir' = 'quote',
     blShowPrices?: boolean,
   ): Promise<{ blob: Blob; filename: string }> {
     const docPrefix = documentType === 'bl' ? 'BL'
       : documentType === 'proforma' ? 'Proforma'
       : documentType === 'invoice' ? 'Facture'
+      : documentType === 'avoir' ? 'Avoir'
       : 'Devis';
     const filename = `${docPrefix}_${quote.quoteNumber}.pdf`;
     const blob = await this.exportQuoteToPdf(quote, settings, techSheetsUrl, techSheetsExpiryLabel, useStampOverride, documentType, blShowPrices, true) as unknown as Blob;

@@ -645,7 +645,7 @@ RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE v_n integer;
 BEGIN
   v_n := nextval('public.client_code_seq');
-  RETURN '3421' || upper(p_first_letter) || '-' || v_n;
+  RETURN '3421' || upper(p_first_letter) || v_n;
 END;
 $$;
 GRANT EXECUTE ON FUNCTION public.next_client_code(text) TO anon, authenticated;
@@ -719,3 +719,13 @@ $$;
 GRANT EXECUTE ON FUNCTION public.get_app_users_safe() TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.get_app_user_by_id_safe(uuid) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.get_app_user_by_username_safe(text) TO anon, authenticated;
+
+-- ── V2.2 patch ────────────────────────────────────────────────
+
+-- returns: add is_locked column
+ALTER TABLE public.returns ADD COLUMN IF NOT EXISTS is_locked boolean NOT NULL DEFAULT false;
+
+-- quotes: allow 'avoir' document_type
+ALTER TABLE public.quotes DROP CONSTRAINT IF EXISTS quotes_document_type_check;
+ALTER TABLE public.quotes ADD CONSTRAINT quotes_document_type_check
+  CHECK (document_type = ANY (ARRAY['quote','bl','proforma','invoice','avoir']));

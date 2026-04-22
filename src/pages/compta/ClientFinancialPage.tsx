@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Calculator, Search, Download } from 'lucide-react';
+import { Calculator, Search, Download, Plus } from 'lucide-react';
 import { SupabaseDocumentsService, ClientFinancialRow } from '../../utils/supabaseDocuments';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../hooks/useAuth';
 import { exportToCSV } from '../../utils/csvExport';
+import { ClientFormModal } from '../../components/ClientFormModal';
 
 function fmt(n: number) {
   return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(n);
@@ -17,6 +18,7 @@ export default function ClientFinancialPage() {
   const [rows, setRows] = useState<ClientFinancialRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [showClientForm, setShowClientForm] = useState(false);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -57,14 +59,24 @@ export default function ClientFinancialPage() {
               <p className="text-xs text-muted-foreground">{filtered.length} client{filtered.length !== 1 ? 's' : ''}</p>
             </div>
           </div>
+          <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowClientForm(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
+          >
+            <Plus className="h-3.5 w-3.5" /><span>Nouveau client</span>
+          </button>
           <button
             onClick={() => {
               const rows = filtered.map(r => ({
-                'Client': r.fullName,
+                'Code Client': r.clientCode || '',
+                'Client': r.fullName || r.clientName,
+                'Téléphone': r.phoneNumber || '',
                 'Total Facturé': r.totalAmount,
                 'Payé': r.paidAmount,
                 'Reste': r.remaining,
                 'N° Proformas': r.proformaCount,
+                'N° Factures': r.invoiceCount,
               }));
               exportToCSV(rows, `clients-financier-${new Date().toISOString().slice(0, 10)}`);
             }}
@@ -72,6 +84,7 @@ export default function ClientFinancialPage() {
           >
             <Download className="h-3.5 w-3.5" /><span>CSV</span>
           </button>
+          </div>
         </div>
 
         <div className="relative mb-4">
@@ -154,6 +167,13 @@ export default function ClientFinancialPage() {
           </div>
         )}
       </div>
+
+      {showClientForm && (
+        <ClientFormModal
+          onSave={() => { setShowClientForm(false); load(); }}
+          onClose={() => setShowClientForm(false)}
+        />
+      )}
     </div>
   );
 }

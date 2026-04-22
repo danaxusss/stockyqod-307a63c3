@@ -644,7 +644,7 @@ export function QuoteCartPage() {
       // Upsert client record if phone number provided
       if (customer.phoneNumber.trim()) {
         try {
-          await SupabaseClientsService.upsertClient({
+          await SupabaseClientsService.smartUpsertClient({
             full_name: customer.fullName.trim(),
             phone_number: customer.phoneNumber.trim(),
             address: customer.address?.trim() || '',
@@ -930,21 +930,17 @@ export function QuoteCartPage() {
         </div>
 
         {/* Quote Details */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <div className="flex items-center space-x-2 p-2 bg-secondary rounded-lg">
-            <Hash className="h-4 w-4 text-primary" />
-            <div>
+            <Hash className="h-4 w-4 text-primary flex-shrink-0" />
+            <div className="flex-1 min-w-0">
               <p className="text-[10px] text-muted-foreground">N° Devis</p>
-              <p className="text-xs font-semibold text-foreground">{quoteNumber}</p>
-            </div>
-          </div>
-          <div className="flex items-center space-x-2 p-2 bg-secondary rounded-lg">
-            <Calendar className="h-4 w-4 text-primary" />
-            <div>
-              <p className="text-[10px] text-muted-foreground">Date</p>
-              <p className="text-xs font-semibold text-foreground">
-                {ExcelExportService.formatDate(quote?.createdAt || new Date())}
-              </p>
+              <input
+                type="text"
+                value={quoteNumber}
+                onChange={e => setQuoteNumber(e.target.value)}
+                className="text-xs font-semibold text-foreground bg-transparent border-none outline-none w-full"
+              />
             </div>
           </div>
           <div className="flex items-center space-x-2 p-2 bg-secondary rounded-lg">
@@ -1695,8 +1691,8 @@ export function QuoteCartPage() {
 
       {/* Custom Product Inline Form Modal */}
       {showCustomProductForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="glass rounded-xl shadow-2xl w-full max-w-md p-5 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 bg-black/50 backdrop-blur-sm p-4">
+          <div className="glass rounded-xl shadow-2xl w-full max-w-md p-5 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <h2 className="text-base font-bold text-foreground flex items-center space-x-2">
                 <Package className="h-4 w-4" />

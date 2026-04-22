@@ -11,6 +11,7 @@ type ReturnRow = {
   reason: string;
   items: unknown;
   status: string;
+  is_locked: boolean | null;
   notes: string | null;
   created_by: string | null;
   created_at: string;
@@ -27,6 +28,7 @@ function mapRow(r: ReturnRow): Return {
     reason: r.reason,
     items: (Array.isArray(r.items) ? r.items : []) as ReturnItem[],
     status: (r.status || 'open') as Return['status'],
+    is_locked: r.is_locked ?? false,
     notes: r.notes || undefined,
     created_by: r.created_by || undefined,
     created_at: r.created_at,
@@ -72,7 +74,11 @@ export class SupabaseReturnsService {
 
   static async update(id: string, updates: Partial<{
     status: 'open' | 'closed';
+    is_locked: boolean;
     notes: string;
+    reason: string;
+    reference_number: string;
+    client_name: string;
     items: ReturnItem[];
   }>): Promise<Return> {
     const { data, error } = await (supabase.from('returns') as any)

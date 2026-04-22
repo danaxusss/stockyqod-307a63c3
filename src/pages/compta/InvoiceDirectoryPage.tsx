@@ -8,6 +8,7 @@ import { CompanySettingsService } from '../../utils/companySettings';
 import { PdfExportService } from '../../utils/pdfExport';
 import { PrintPreviewModal } from '../../components/PrintPreviewModal';
 import { buildWhatsAppShareUrl, openWhatsAppShare } from '../../utils/whatsappShare';
+import { SupabaseUsersService } from '../../utils/supabaseUsers';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../hooks/useAuth';
 import { exportToCSV } from '../../utils/csvExport';
@@ -54,6 +55,13 @@ export default function InvoiceDirectoryPage() {
   const [showPinModal, setShowPinModal] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [pendingDeleteInv, setPendingDeleteInv] = useState<Quote | null>(null);
+
+  // WhatsApp modal
+  const [showWaModal, setShowWaModal] = useState(false);
+  const [waTargetInv, setWaTargetInv] = useState<Quote | null>(null);
+  const [waPhone, setWaPhone] = useState('');
+  const [agentPhone, setAgentPhone] = useState<string | null>(null);
+  const [agentPhoneLoading, setAgentPhoneLoading] = useState(false);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -119,14 +127,36 @@ export default function InvoiceDirectoryPage() {
     }
   };
 
-  const handleWhatsAppShare = (inv: Quote) => {
-    const phone = inv.customer?.phoneNumber || '';
-    const msg = `Bonjour ${inv.customer?.fullName || ''},\nVeuillez trouver ci-joint votre facture ${inv.quoteNumber} d'un montant de ${fmt(inv.totalAmount)} Dh.`;
-    if (!openWhatsAppShare(buildWhatsAppShareUrl(phone, msg))) {
+  const openWaModal = async (inv: Quote) => {
+    setWaTargetInv(inv);
+    setWaPhone(inv.customer?.phoneNumber || '');
+    setAgentPhone(null);
+    setShowWaModal(true);
+    const salesName = inv.customer?.salesPerson;
+    if (salesName) {
+      setAgentPhoneLoading(true);
+      try {
+        const users = await SupabaseUsersService.getAllUsers();
+        const match = users.find(u =>
+          u.custom_seller_name?.toLowerCase().includes(salesName.toLowerCase()) ||
+          u.username?.toLowerCase() === salesName.toLowerCase()
+        );
+        setAgentPhone(match?.phone || null);
+      } finally {
+        setAgentPhoneLoading(false);
+      }
+    }
+  };
+
+  const sendWhatsApp = () => {
+    if (!waTargetInv || !waPhone.trim()) return;
+    const msg = `Bonjour ${waTargetInv.customer?.fullName || ''},\nVeuillez trouver ci-joint votre facture ${waTargetInv.quoteNumber} d'un montant de ${fmt(waTargetInv.totalAmount)} Dh.`;
+    if (!openWhatsAppShare(buildWhatsAppShareUrl(waPhone.trim(), msg))) {
       navigator.clipboard.writeText(msg).then(() =>
         showToast({ type: 'success', title: 'Copié', message: 'Message copié — ouvrez WhatsApp et collez-le.' })
       );
     }
+    setShowWaModal(false);
   };
 
   const handleEmailShare = (inv: Quote) => {
@@ -212,8 +242,18 @@ export default function InvoiceDirectoryPage() {
     return list;
   }, [invoices, search, dateFrom, dateTo, filterPayment, filterCompany, sortField, sortDir]);
 
-  const handleExportCSV = () => {
+  const handleExportCSV = async () => {
+    const { SupabaseClientsService } = await import('../../utils/supabaseClients');
+    const phones = [...new Set(filtered.map(inv => inv.customer?.phoneNumber).filter(Boolean))] as string[];
+    const clientCodeMap: Record<string, string> = {};
+    if (phones.length > 0) {
+      try {
+        const allClients = await SupabaseClientsService.getAllClients();
+        allClients.forEach(c => { if (c.client_code) clientCodeMap[c.phone_number] = c.client_code; });
+      } catch { /* non-fatal */ }
+    }
     const rows = filtered.map(inv => ({
+      'Code Client': clientCodeMap[inv.customer?.phoneNumber || ''] || '',
       'N° Facture': inv.quoteNumber,
       'Client': inv.customer?.fullName || '',
       'Téléphone': inv.customer?.phoneNumber || '',
@@ -321,7 +361,7 @@ export default function InvoiceDirectoryPage() {
                   <tr key={inv.id} className="hover:bg-accent/50">
                     <td className="px-3 py-2.5">
                       <Link to={`/compta/invoices/${inv.id}`} className="text-xs font-mono font-semibold text-primary hover:underline">{inv.quoteNumber}</Link>
-                      {inv.is_locked && <span className="ml-1 text-[9px] text-amber-400">🔒</span>}
+                      {inv.is_locked && <span className="ml-1 text-[9px] text-amber-600 dark:text-amber-400">🔒</span>}
                     </td>
                     <td className="px-3 py-2.5">
                       <div className="text-xs font-medium text-foreground">{inv.customer?.fullName || '—'}</div>
@@ -336,10 +376,10 @@ export default function InvoiceDirectoryPage() {
                       <span className="text-xs text-muted-foreground">{(inv.issuing_company_id && companies[inv.issuing_company_id]) || '—'}</span>
                     </td>
                     <td className="px-3 py-2.5">
-                      <span className="text-xs font-mono font-bold text-foreground">{fmt(inv.totalAmount)} Dh</span>
-                      {inv.payment_method && <div className="text-[9px] text-muted-foreground">{inv.payment_method}</div>}
+                      <span className="text-sm font-mono font-bold text-foreground">{fmt(inv.totalAmount)} Dh</span>
+                      {inv.payment_method && <div className="text-[10px] text-muted-foreground">{inv.payment_method}</div>}
                     </td>
-                    <td className="px-3 py-2.5 text-[10px] text-muted-foreground">
+                    <td className="px-3 py-2.5 text-xs text-muted-foreground">
                       {new Date(inv.createdAt).toLocaleDateString('fr-FR')}
                     </td>
                     <td className="px-3 py-2.5">
@@ -378,7 +418,7 @@ export default function InvoiceDirectoryPage() {
                               <Printer className="h-3.5 w-3.5 text-muted-foreground" />Aperçu impression
                             </button>
                             <button
-                              onClick={() => { setOpenMenuId(null); handleWhatsAppShare(inv); }}
+                              onClick={() => { setOpenMenuId(null); openWaModal(inv); }}
                               className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent text-foreground"
                             >
                               <MessageCircle className="h-3.5 w-3.5 text-emerald-500" />WhatsApp
@@ -448,6 +488,61 @@ export default function InvoiceDirectoryPage() {
               <button onClick={() => { setShowPinModal(false); setPendingDeleteInv(null); }} className="flex-1 px-3 py-1.5 text-sm border border-input rounded-lg hover:bg-accent text-foreground">Annuler</button>
               <button onClick={confirmDelete} disabled={!pinInput} className="flex-1 px-3 py-1.5 text-sm bg-destructive hover:bg-destructive/90 disabled:opacity-50 text-white rounded-lg">
                 Supprimer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* WhatsApp modal */}
+      {showWaModal && waTargetInv && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-sm p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                <MessageCircle className="h-4 w-4 text-emerald-500" />
+                Partager par WhatsApp
+              </h2>
+              <button onClick={() => setShowWaModal(false)} className="p-1 rounded hover:bg-secondary text-muted-foreground">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="space-y-2">
+              <label className="text-[11px] text-muted-foreground">Numéro destinataire</label>
+              <input
+                type="tel"
+                value={waPhone}
+                onChange={e => setWaPhone(e.target.value)}
+                placeholder="Ex: 0661234567"
+                className="w-full px-3 py-2 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring"
+                autoFocus
+              />
+              <div className="flex flex-col gap-1.5 pt-1">
+                {waTargetInv.customer?.phoneNumber && (
+                  <button
+                    onClick={() => setWaPhone(waTargetInv.customer!.phoneNumber)}
+                    className="flex items-center justify-between text-[11px] py-1.5 px-2.5 rounded-lg bg-primary/10 border border-primary/20 text-foreground hover:bg-primary/20"
+                  >
+                    <span>Client : <span className="font-medium">{waTargetInv.customer.fullName}</span></span>
+                    <span className="font-mono text-primary">{waTargetInv.customer.phoneNumber}</span>
+                  </button>
+                )}
+                {waTargetInv.customer?.salesPerson && (
+                  <div className="flex items-center justify-between text-[11px] py-1.5 px-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                    <span>Commercial : <span className="font-medium">{waTargetInv.customer.salesPerson}</span></span>
+                    {agentPhoneLoading
+                      ? <span className="italic text-muted-foreground">chargement…</span>
+                      : agentPhone
+                        ? <button onClick={() => setWaPhone(agentPhone)} className="font-mono text-emerald-500 hover:underline">{agentPhone}</button>
+                        : <span className="italic text-muted-foreground">non configuré</span>}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setShowWaModal(false)} className="flex-1 px-3 py-2 text-sm border border-border rounded-lg text-muted-foreground hover:bg-secondary">Annuler</button>
+              <button onClick={sendWhatsApp} disabled={!waPhone.trim()} className="flex-1 px-3 py-2 text-sm bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg flex items-center justify-center gap-2">
+                <MessageCircle className="h-4 w-4" />Envoyer
               </button>
             </div>
           </div>

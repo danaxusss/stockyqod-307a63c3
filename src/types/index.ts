@@ -102,7 +102,8 @@ export interface Quote {
   avance_amount?: number;
   payment_methods_json?: PaymentEntry[];
   // Financial document pipeline fields
-  document_type?: 'quote' | 'bl' | 'proforma' | 'invoice';
+  document_type?: 'quote' | 'bl' | 'proforma' | 'invoice' | 'avoir';
+  avoir_reason?: string;
   parent_document_id?: string;
   source_bl_ids?: string[];
   paid_amount?: number;
@@ -177,6 +178,7 @@ export interface Return {
   reason: string;
   items: ReturnItem[];
   status: 'open' | 'closed';
+  is_locked?: boolean;
   notes?: string;
   created_by?: string;
   created_at: string;

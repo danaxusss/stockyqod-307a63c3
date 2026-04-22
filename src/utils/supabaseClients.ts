@@ -131,6 +131,29 @@ export class SupabaseClientsService {
     return data;
   }
 
+  static async smartUpsertClient(client: CreateClientRequest): Promise<Client> {
+    const existing = await SupabaseClientsService.getClientByPhone(client.phone_number);
+    if (existing) {
+      // Update name/address fields; if no code yet, assign one
+      const updates: UpdateClientRequest & { client_code?: string } = {
+        full_name: client.full_name,
+        address: client.address || existing.address,
+        city: client.city || existing.city,
+        ice: client.ice || existing.ice,
+        email: client.email || existing.email,
+      };
+      if (!existing.client_code) {
+        const firstLetter = (client.full_name?.trim()?.[0] || 'X').toUpperCase();
+        try {
+          const { data: codeData } = await (supabase.rpc as any)('next_client_code', { p_first_letter: firstLetter });
+          if (codeData) (updates as any).client_code = codeData as string;
+        } catch { /* non-fatal */ }
+      }
+      return SupabaseClientsService.updateClient(existing.id, updates);
+    }
+    return SupabaseClientsService.createClient(client);
+  }
+
   static async deleteClient(id: string): Promise<void> {
     const { error } = await supabase
       .from('clients')

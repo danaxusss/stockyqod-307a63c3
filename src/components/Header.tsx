@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   Package, RefreshCw, LogOut, Shield, FileText, User, Cloud, CloudOff,
   Settings, UserCheck, ShoppingBag, BookOpen, Building2, ChevronDown,
-  Truck, Receipt, Calculator, BarChart3, Users, ShoppingCart, LucideIcon, RotateCcw, Sun, Moon, Upload,
+  Truck, Receipt, Calculator, BarChart3, Users, ShoppingCart, LucideIcon, RotateCcw, Sun, Moon, Upload, FileX,
 } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { Link, useLocation } from 'react-router-dom';
@@ -213,6 +213,7 @@ export function Header() {
                   { to: '/compta/invoices', icon: Receipt, label: 'Factures' },
                   { to: '/compta/clients', icon: Calculator, label: 'Clients (financier)' },
                   { to: '/compta/returns', icon: RotateCcw, label: 'Retours' },
+                  { to: '/compta/avoirs', icon: FileX, label: 'Avoirs' },
                 ]}
               />
             )}

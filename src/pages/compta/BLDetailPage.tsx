@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Truck, Download, ArrowLeft, FileText, Building2, Loader, Pencil, Check, X, Plus, CopyPlus, Search as SearchIcon, Printer } from 'lucide-react';
+import { Truck, Download, ArrowLeft, FileText, Building2, Loader, Pencil, Check, X, Plus, CopyPlus, Search as SearchIcon, Printer, Eye, EyeOff } from 'lucide-react';
 import { Quote, QuoteItem, Company, Product } from '../../types';
 import { SupabaseDocumentsService } from '../../utils/supabaseDocuments';
 import { SupabaseCompaniesService } from '../../utils/supabaseCompanies';
@@ -9,6 +9,7 @@ import { CompanySettingsService, CompanySettings } from '../../utils/companySett
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../hooks/useAuth';
 import { ClientDropdown } from '../../components/ClientDropdown';
+import { ClientFormModal } from '../../components/ClientFormModal';
 import { ProductSearchModal } from '../../components/ProductSearchModal';
 import { PrintPreviewModal } from '../../components/PrintPreviewModal';
 
@@ -43,6 +44,9 @@ export default function BLDetailPage() {
   const [showPrintPreview, setShowPrintPreview] = useState(false);
   const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
   const [previewFilename, setPreviewFilename] = useState('');
+  const [blPricesOverride, setBlPricesOverride] = useState<boolean | null>(null);
+  const [showClientForm, setShowClientForm] = useState(false);
+  const [clientFormInitialName, setClientFormInitialName] = useState('');
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -162,7 +166,8 @@ export default function BLDetailPage() {
       const freshSettings = bl.company_id
         ? await CompanySettingsService.getSettings(bl.company_id).catch(() => companySettings)
         : companySettings;
-      await PdfExportService.exportQuoteToPdf(bl, freshSettings, undefined, undefined, useStamp, 'bl', freshSettings?.bl_show_prices ?? true);
+      const showPrices = blPricesOverride !== null ? blPricesOverride : (freshSettings?.bl_show_prices ?? true);
+      await PdfExportService.exportQuoteToPdf(bl, freshSettings, undefined, undefined, useStamp, 'bl', showPrices);
     } catch (e) {
       showToast({ type: 'error', title: 'Erreur PDF', message: String(e) });
     }
@@ -228,6 +233,13 @@ export default function BLDetailPage() {
                 🔏
               </button>
             )}
+            <button
+              onClick={() => setBlPricesOverride(v => v === null ? !(companySettings?.bl_show_prices ?? true) : !v)}
+              title={`Prix dans le BL : ${(blPricesOverride !== null ? blPricesOverride : (companySettings?.bl_show_prices ?? true)) ? 'affichés' : 'masqués'} — cliquer pour basculer`}
+              className={`p-1.5 rounded-lg transition-colors ${(blPricesOverride !== null ? blPricesOverride : (companySettings?.bl_show_prices ?? true)) ? 'bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/40' : 'hover:bg-accent text-muted-foreground'}`}
+            >
+              {(blPricesOverride !== null ? blPricesOverride : (companySettings?.bl_show_prices ?? true)) ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+            </button>
             <button onClick={handleExportPdf} className="flex items-center space-x-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
               <Download className="h-3.5 w-3.5" /><span>PDF</span>
             </button>
@@ -235,7 +247,8 @@ export default function BLDetailPage() {
               onClick={async () => {
                 if (!bl) return;
                 const freshSettings = await CompanySettingsService.getSettings(bl.company_id!);
-                const { blob, filename } = await PdfExportService.generatePdfBlob(bl, freshSettings, undefined, undefined, useStamp, 'bl', freshSettings?.bl_show_prices ?? true);
+                const showPrices2 = blPricesOverride !== null ? blPricesOverride : (freshSettings?.bl_show_prices ?? true);
+                const { blob, filename } = await PdfExportService.generatePdfBlob(bl, freshSettings, undefined, undefined, useStamp, 'bl', showPrices2);
                 setPreviewBlob(blob);
                 setPreviewFilename(filename);
                 setShowPrintPreview(true);
@@ -284,6 +297,7 @@ export default function BLDetailPage() {
                     setDraftCustomerCity(client.city || '');
                   }
                 }}
+                onCreateNew={q => { setClientFormInitialName(q || ''); setShowClientForm(true); }}
                 placeholder="Rechercher un client..."
               />
             : <p className="font-medium text-foreground">{bl.customer?.fullName || '—'}</p>}
@@ -421,6 +435,19 @@ export default function BLDetailPage() {
 
       {showPrintPreview && previewBlob && (
         <PrintPreviewModal blob={previewBlob} filename={previewFilename} onClose={() => { setShowPrintPreview(false); setPreviewBlob(null); }} />
+      )}
+
+      {showClientForm && (
+        <ClientFormModal
+          initialName={clientFormInitialName}
+          onSave={client => {
+            setDraftCustomerName(client.full_name);
+            setDraftCustomerPhone(client.phone_number);
+            setDraftCustomerCity(client.city || '');
+            setShowClientForm(false);
+          }}
+          onClose={() => setShowClientForm(false)}
+        />
       )}
     </div>
   );

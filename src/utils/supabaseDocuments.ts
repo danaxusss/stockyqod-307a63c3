@@ -69,7 +69,9 @@ function mapDocRow(row: DocRow): Quote {
 
 export interface ClientFinancialRow {
   clientName: string;
+  fullName: string;
   phoneNumber: string;
+  clientCode?: string;
   totalAmount: number;
   paidAmount: number;
   remaining: number;
@@ -353,7 +355,7 @@ export class SupabaseDocumentsService {
   }
 
   // Fetch all documents of a given type — bypasses company filter (compta global view)
-  static async getAllByType(type: 'bl' | 'proforma' | 'invoice'): Promise<Quote[]> {
+  static async getAllByType(type: 'bl' | 'proforma' | 'invoice' | 'avoir'): Promise<Quote[]> {
     const { data, error } = await (supabase.from('quotes') as any)
       .select('*')
       .eq('document_type', type)
@@ -409,6 +411,7 @@ export class SupabaseDocumentsService {
       } else {
         clientMap.set(name, {
           clientName: name,
+          fullName: name,
           phoneNumber: phone,
           totalAmount: total,
           paidAmount: paid,
@@ -425,6 +428,23 @@ export class SupabaseDocumentsService {
       const name = info?.fullName || '—';
       const entry = clientMap.get(name);
       if (entry) entry.invoiceCount += 1;
+    }
+
+    // Enrich with client_code from clients table
+    const phones = Array.from(clientMap.values()).map(r => r.phoneNumber).filter(Boolean);
+    if (phones.length > 0) {
+      const { data: clientRows } = await (supabase.from('clients') as any)
+        .select('phone_number, client_code')
+        .in('phone_number', phones);
+      if (clientRows) {
+        const codeByPhone = new Map<string, string>();
+        for (const c of clientRows as { phone_number: string; client_code: string | null }[]) {
+          if (c.client_code) codeByPhone.set(c.phone_number, c.client_code);
+        }
+        for (const row of clientMap.values()) {
+          row.clientCode = codeByPhone.get(row.phoneNumber);
+        }
+      }
     }
 
     return Array.from(clientMap.values()).sort((a, b) => b.remaining - a.remaining);
@@ -558,6 +578,56 @@ export class SupabaseDocumentsService {
       .select('*')
       .single();
     if (insertErr) throw new Error(`Erreur duplication: ${insertErr.message}`);
+    return mapDocRow(newDoc as DocRow);
+  }
+
+  static async createAvoirFromInvoice(invoiceId: string, reason: string): Promise<Quote> {
+    const { data: srcData, error: srcErr } = await (supabase.from('quotes') as any)
+      .select('*')
+      .eq('id', invoiceId)
+      .single();
+    if (srcErr || !srcData) throw new Error('Facture introuvable');
+
+    const src = srcData as DocRow;
+    const companyId = src.company_id || src.issuing_company_id || getCompanyContext().companyId;
+    if (!companyId) throw new Error('Société non trouvée');
+
+    const { data: numData, error: numErr } = await (supabase.rpc as any)('next_document_number', {
+      p_company_id: companyId,
+      p_doc_type: 'avoir',
+    });
+    if (numErr) throw new Error(`Erreur numérotation avoir: ${numErr.message}`);
+    const avoirNumber = `AV-${String(numData as number).padStart(4, '0')}`;
+
+    const now = new Date().toISOString();
+    const newId = crypto.randomUUID();
+    const insertData: Record<string, unknown> = {
+      id: newId,
+      quote_number: avoirNumber,
+      created_at: now,
+      updated_at: now,
+      status: 'final',
+      is_locked: false,
+      customer_info: src.customer_info,
+      items: src.items,
+      total_amount: src.total_amount,
+      notes: reason || null,
+      notes2: null,
+      document_type: 'avoir',
+      parent_document_id: invoiceId,
+      company_id: src.company_id || null,
+      issuing_company_id: src.issuing_company_id || null,
+      payment_date: null,
+      payment_method: null,
+      avance_amount: 0,
+      payment_methods_json: [],
+    };
+
+    const { data: newDoc, error: insertErr } = await (supabase.from('quotes') as any)
+      .insert(insertData)
+      .select('*')
+      .single();
+    if (insertErr) throw new Error(`Erreur création avoir: ${insertErr.message}`);
     return mapDocRow(newDoc as DocRow);
   }
 }

@@ -1,0 +1,169 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { FileX, Search, Download, Trash2 } from 'lucide-react';
+import { Quote } from '../../types';
+import { SupabaseDocumentsService } from '../../utils/supabaseDocuments';
+import { CompanySettingsService } from '../../utils/companySettings';
+import { SupabaseCompaniesService } from '../../utils/supabaseCompanies';
+import { PdfExportService } from '../../utils/pdfExport';
+import { useToast } from '../../context/ToastContext';
+import { useAuth } from '../../hooks/useAuth';
+
+function fmt(n: number) {
+  return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(n);
+}
+
+export default function AvoirDirectoryPage() {
+  const { isSuperAdmin, isCompta } = useAuth();
+  const { showToast } = useToast();
+  const navigate = useNavigate();
+
+  const [avoirs, setAvoirs] = useState<Quote[]>([]);
+  const [companies, setCompanies] = useState<Record<string, string>>({});
+  const [isLoading, setIsLoading] = useState(true);
+  const [search, setSearch] = useState('');
+
+  const load = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const [data, allCompanies] = await Promise.all([
+        SupabaseDocumentsService.getAllByType('avoir'),
+        SupabaseCompaniesService.getAllCompanies(),
+      ]);
+      setAvoirs(data);
+      const map: Record<string, string> = {};
+      allCompanies.forEach(c => { map[c.id] = c.name; });
+      setCompanies(map);
+    } catch (e) {
+      showToast({ type: 'error', title: 'Erreur', message: String(e) });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [showToast]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const filtered = avoirs.filter(a => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      a.quoteNumber.toLowerCase().includes(q) ||
+      (a.customer?.fullName || '').toLowerCase().includes(q)
+    );
+  });
+
+  const handleExportPdf = async (av: Quote) => {
+    try {
+      const compId = av.issuing_company_id || av.company_id;
+      const settings = compId ? await CompanySettingsService.getSettings(compId).catch(() => null) : null;
+      const companySettings = settings || (compId ? await (async () => {
+        const c = await SupabaseCompaniesService.getCompanyById(compId);
+        return c ? { company_name: c.name, address: c.address, phone: c.phone, email: c.email, ice: c.ice } as any : null;
+      })() : null);
+      await PdfExportService.exportQuoteToPdf(av, companySettings, undefined, undefined, undefined, 'avoir');
+    } catch (e) {
+      showToast({ type: 'error', title: 'Erreur PDF', message: String(e) });
+    }
+  };
+
+  const handleDelete = async (av: Quote) => {
+    if (!window.confirm(`Supprimer l'avoir ${av.quoteNumber} ?`)) return;
+    try {
+      await SupabaseDocumentsService.deleteDocument(av.id);
+      showToast({ type: 'success', message: 'Avoir supprimé' });
+      await load();
+    } catch (e: any) {
+      showToast({ type: 'error', message: e?.message || 'Erreur suppression' });
+    }
+  };
+
+  if (!isSuperAdmin && !isCompta) {
+    return <div className="text-center py-12 text-muted-foreground">Accès réservé au rôle Comptabilité.</div>;
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="glass rounded-xl shadow-lg p-4">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center space-x-2.5">
+            <div className="p-2 bg-violet-600 rounded-lg">
+              <FileX className="h-4 w-4 text-white" />
+            </div>
+            <div>
+              <h1 className="text-lg font-bold text-foreground">Avoirs</h1>
+              <p className="text-xs text-muted-foreground">{filtered.length} avoir{filtered.length !== 1 ? 's' : ''}</p>
+            </div>
+          </div>
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Rechercher..."
+              className="pl-8 pr-3 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring w-56"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="glass rounded-xl shadow-lg overflow-hidden">
+        {isLoading ? (
+          <div className="p-8 text-center"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto" /></div>
+        ) : filtered.length === 0 ? (
+          <div className="p-8 text-center text-muted-foreground">
+            <FileX className="h-10 w-10 mx-auto mb-3 opacity-30" />
+            <p className="text-sm">Aucun avoir</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-secondary/50">
+                <tr>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">N° Avoir</th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Client</th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Société</th>
+                  <th className="px-3 py-2 text-right text-[11px] font-medium text-muted-foreground uppercase">Montant</th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Date</th>
+                  <th className="px-3 py-2 text-right text-[11px] font-medium text-muted-foreground uppercase">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {filtered.map(av => (
+                  <tr key={av.id} className="hover:bg-accent/30 transition-colors">
+                    <td className="px-3 py-2.5">
+                      <Link to={`/compta/avoirs/${av.id}`} className="text-xs font-mono font-semibold text-violet-600 dark:text-violet-400 hover:underline">{av.quoteNumber}</Link>
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <div className="text-xs font-medium text-foreground">{av.customer?.fullName || '—'}</div>
+                      {av.customer?.phoneNumber && <div className="text-[10px] text-muted-foreground">{av.customer.phoneNumber}</div>}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <span className="text-xs text-muted-foreground">{(av.issuing_company_id && companies[av.issuing_company_id]) || '—'}</span>
+                    </td>
+                    <td className="px-3 py-2.5 text-right">
+                      <span className="text-sm font-mono font-bold text-foreground">{fmt(av.totalAmount)} Dh</span>
+                    </td>
+                    <td className="px-3 py-2.5 text-xs text-muted-foreground">
+                      {new Date(av.createdAt).toLocaleDateString('fr-FR')}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <div className="flex items-center justify-end gap-1">
+                        <button onClick={() => handleExportPdf(av)} className="p-1.5 text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 rounded" title="Télécharger PDF">
+                          <Download className="h-3.5 w-3.5" />
+                        </button>
+                        <button onClick={() => handleDelete(av)} className="p-1.5 text-destructive hover:bg-destructive/10 rounded" title="Supprimer">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

@@ -9,6 +9,7 @@ import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../hooks/useAuth';
 import { buildWhatsAppShareUrl, openPreparingWhatsAppWindow, redirectPreparingWindowToWhatsApp, openWhatsAppShare } from '../../utils/whatsappShare';
 import { ClientDropdown } from '../../components/ClientDropdown';
+import { ClientFormModal } from '../../components/ClientFormModal';
 import { SupabaseUsersService } from '../../utils/supabaseUsers';
 import { ProductSearchModal } from '../../components/ProductSearchModal';
 import { PrintPreviewModal } from '../../components/PrintPreviewModal';
@@ -63,6 +64,13 @@ export default function InvoiceDetailPage() {
   const [showPrintPreview, setShowPrintPreview] = useState(false);
   const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
   const [previewFilename, setPreviewFilename] = useState('');
+  // Client form
+  const [showClientForm, setShowClientForm] = useState(false);
+  const [clientFormInitialName, setClientFormInitialName] = useState('');
+  // Avoir
+  const [showAvoirModal, setShowAvoirModal] = useState(false);
+  const [avoirReason, setAvoirReason] = useState('');
+  const [avoirLoading, setAvoirLoading] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -322,7 +330,7 @@ export default function InvoiceDetailPage() {
               <button
                 onClick={() => setUseStamp(v => !v)}
                 title={useStamp ? 'Retirer le tampon' : 'Apposer le tampon'}
-                className={`p-1.5 rounded-lg transition-colors text-base leading-none ${useStamp ? 'bg-amber-500/20 text-amber-400 ring-1 ring-amber-500/40' : 'hover:bg-accent text-muted-foreground'}`}
+                className={`p-1.5 rounded-lg transition-colors text-base leading-none ${useStamp ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400 ring-1 ring-amber-500/40' : 'hover:bg-accent text-muted-foreground'}`}
               >
                 ✍🏻
               </button>
@@ -394,6 +402,15 @@ export default function InvoiceDetailPage() {
             >
               <CopyPlus className="h-4 w-4" />
             </button>
+            {(isSuperAdmin || isCompta) && invoice.status === 'final' && (
+              <button
+                onClick={() => { setAvoirReason(''); setShowAvoirModal(true); }}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs bg-violet-600 hover:bg-violet-700 text-white rounded-lg"
+                title="Créer un avoir (note de crédit)"
+              >
+                <X className="h-3 w-3" />Avoir
+              </button>
+            )}
           </>
         )}
       </div>
@@ -433,6 +450,7 @@ export default function InvoiceDetailPage() {
                     setDraftCustomerCity(client.city || '');
                   }
                 }}
+                onCreateNew={q => { setClientFormInitialName(q || ''); setShowClientForm(true); }}
                 placeholder="Rechercher un client..."
               />
             : <p className="font-medium text-foreground">{invoice.customer?.fullName || '—'}</p>}
@@ -563,7 +581,7 @@ export default function InvoiceDetailPage() {
                   {draftAvance > 0 && (
                     <div className="text-right">
                       <div className="text-[10px] text-muted-foreground mb-0.5">Reste NET TTC</div>
-                      <div className="text-sm font-bold font-mono text-amber-400">{fmt(Math.max(0, (invoice?.totalAmount ?? 0) - draftAvance))} Dh</div>
+                      <div className="text-sm font-bold font-mono text-amber-600 dark:text-amber-400">{fmt(Math.max(0, (invoice?.totalAmount ?? 0) - draftAvance))} Dh</div>
                     </div>
                   )}
                 </div>
@@ -575,7 +593,7 @@ export default function InvoiceDetailPage() {
               <span className="text-muted-foreground">Avance :</span>
               <span className="font-mono font-bold">{fmt(invoice.avance_amount!)} Dh</span>
               <span className="text-muted-foreground">Reste :</span>
-              <span className="font-mono font-bold text-amber-400">{fmt(Math.max(0, invoice.totalAmount - invoice.avance_amount!))} Dh</span>
+              <span className="font-mono font-bold text-amber-600 dark:text-amber-400">{fmt(Math.max(0, invoice.totalAmount - invoice.avance_amount!))} Dh</span>
             </div>
           )}
         </div>
@@ -711,7 +729,7 @@ export default function InvoiceDetailPage() {
           <div className="glass rounded-xl shadow-2xl w-full max-w-sm p-5 space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-base font-bold text-foreground flex items-center gap-2">
-                <MessageCircle className="h-4 w-4 text-emerald-400" />Envoyer sur WhatsApp
+                <MessageCircle className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />Envoyer sur WhatsApp
               </h2>
               <button onClick={() => setShowWaModal(false)} className="p-1 hover:bg-accent rounded-lg"><X className="h-4 w-4" /></button>
             </div>
@@ -791,6 +809,66 @@ export default function InvoiceDetailPage() {
             <div className="flex space-x-2">
               <button onClick={() => setShowPinModal(false)} className="flex-1 px-3 py-1.5 text-sm border border-input rounded-lg hover:bg-accent text-foreground">Annuler</button>
               <button onClick={confirmUnlock} className="flex-1 px-3 py-1.5 text-sm bg-amber-500 hover:bg-amber-600 text-white rounded-lg">Déverrouiller</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showClientForm && (
+        <ClientFormModal
+          initialName={clientFormInitialName}
+          onSave={client => {
+            setDraftCustomerName(client.full_name);
+            setDraftCustomerPhone(client.phone_number);
+            setDraftCustomerCity(client.city || '');
+            setShowClientForm(false);
+          }}
+          onClose={() => setShowClientForm(false)}
+        />
+      )}
+
+      {/* Avoir modal */}
+      {showAvoirModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-sm p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                <X className="h-4 w-4 text-violet-500" />Créer un avoir
+              </h2>
+              <button onClick={() => setShowAvoirModal(false)} className="p-1 rounded hover:bg-secondary text-muted-foreground"><X className="h-4 w-4" /></button>
+            </div>
+            <p className="text-xs text-muted-foreground">Un avoir sera créé pour la facture <span className="font-mono font-semibold text-foreground">{invoice.quoteNumber}</span>.</p>
+            <div>
+              <label className="text-[11px] text-muted-foreground block mb-1">Motif de l'avoir</label>
+              <textarea
+                value={avoirReason}
+                onChange={e => setAvoirReason(e.target.value)}
+                placeholder="Ex: Retour marchandise, erreur de facturation..."
+                rows={3}
+                className="w-full px-3 py-2 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring resize-none"
+                autoFocus
+              />
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setShowAvoirModal(false)} className="flex-1 px-3 py-2 text-sm border border-border rounded-lg text-muted-foreground hover:bg-secondary">Annuler</button>
+              <button
+                onClick={async () => {
+                  setAvoirLoading(true);
+                  try {
+                    const avoir = await SupabaseDocumentsService.createAvoirFromInvoice(invoice.id, avoirReason);
+                    setShowAvoirModal(false);
+                    navigate(`/compta/avoirs/${avoir.id}`);
+                  } catch (e: any) {
+                    showToast({ type: 'error', message: e?.message || 'Erreur création avoir' });
+                  } finally {
+                    setAvoirLoading(false);
+                  }
+                }}
+                disabled={avoirLoading}
+                className="flex-1 px-3 py-2 text-sm bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded-lg"
+              >
+                {avoirLoading ? 'Création...' : 'Créer l\'avoir'}
+              </button>
             </div>
           </div>
         </div>

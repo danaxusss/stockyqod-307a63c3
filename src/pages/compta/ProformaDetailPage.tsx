@@ -8,6 +8,7 @@ import { PdfExportService } from '../../utils/pdfExport';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../hooks/useAuth';
 import { ClientDropdown } from '../../components/ClientDropdown';
+import { ClientFormModal } from '../../components/ClientFormModal';
 import { ProductSearchModal } from '../../components/ProductSearchModal';
 import { PrintPreviewModal } from '../../components/PrintPreviewModal';
 
@@ -52,6 +53,8 @@ export default function ProformaDetailPage() {
   const [showPrintPreview, setShowPrintPreview] = useState(false);
   const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
   const [previewFilename, setPreviewFilename] = useState('');
+  const [showClientForm, setShowClientForm] = useState(false);
+  const [clientFormInitialName, setClientFormInitialName] = useState('');
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -322,6 +325,7 @@ export default function ProformaDetailPage() {
                     setDraftCustomerCity(client.city || '');
                   }
                 }}
+                onCreateNew={q => { setClientFormInitialName(q || ''); setShowClientForm(true); }}
                 placeholder="Rechercher un client..."
               />
             : <p className="font-medium text-foreground">{proforma.customer?.fullName || '—'}</p>}
@@ -532,6 +536,19 @@ export default function ProformaDetailPage() {
 
       {showPrintPreview && previewBlob && (
         <PrintPreviewModal blob={previewBlob} filename={previewFilename} onClose={() => { setShowPrintPreview(false); setPreviewBlob(null); }} />
+      )}
+
+      {showClientForm && (
+        <ClientFormModal
+          initialName={clientFormInitialName}
+          onSave={client => {
+            setDraftCustomerName(client.full_name);
+            setDraftCustomerPhone(client.phone_number);
+            setDraftCustomerCity(client.city || '');
+            setShowClientForm(false);
+          }}
+          onClose={() => setShowClientForm(false)}
+        />
       )}
     </div>
   );
