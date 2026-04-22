@@ -55,8 +55,8 @@ export function QuotesHistoryPage() {
   useEffect(() => {
     if (!openMenuId) return;
     const close = () => setOpenMenuId(null);
-    document.addEventListener('click', close, true);
-    return () => document.removeEventListener('click', close, true);
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
   }, [openMenuId]);
 
   useEffect(() => {
@@ -349,7 +349,7 @@ export function QuotesHistoryPage() {
                               <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 16 16"><circle cx="4" cy="8" r="1.2"/><circle cx="8" cy="8" r="1.2"/><circle cx="12" cy="8" r="1.2"/></svg>
                             </button>
                             {openMenuId === quote.id && (
-                              <div className="absolute right-0 top-full mt-1 z-30 flex flex-col bg-card border border-border rounded-lg shadow-lg py-1 min-w-[160px]">
+                              <div onClick={e => e.stopPropagation()} className="absolute right-0 top-full mt-1 z-30 flex flex-col bg-card border border-border rounded-lg shadow-lg py-1 min-w-[160px]">
                                 <button
                                   onClick={async () => {
                                     setOpenMenuId(null);
