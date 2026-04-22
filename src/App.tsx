@@ -37,6 +37,7 @@ const AvoirDirectoryPage = React.lazy(() => import('./pages/compta/AvoirDirector
 const AvoirDetailPage = React.lazy(() => import('./pages/compta/AvoirDetailPage'));
 const BackupPage = React.lazy(() => import('./pages/BackupPage'));
 const ImportPage = React.lazy(() => import('./pages/ImportPage'));
+const ComptabiliteComingSoon = React.lazy(() => import('./pages/ComptabiliteComingSoon'));
 
 function PageLoader() {
   return (
@@ -114,6 +115,7 @@ function AppContent() {
             )}
             {(isCompta || isSuperAdmin) && (
               <>
+                <Route path="/comptabilite" element={<ComptabiliteComingSoon />} />
                 <Route path="/compta/bls" element={<BLDirectoryPage />} />
                 <Route path="/compta/bls/:id" element={<BLDetailPage />} />
                 <Route path="/compta/proformas" element={<ProformaDirectoryPage />} />

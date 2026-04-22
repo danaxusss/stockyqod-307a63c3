@@ -3,10 +3,10 @@ import {
   Package, RefreshCw, LogOut, Shield, FileText, User, Cloud, CloudOff,
   Settings, UserCheck, ShoppingBag, BookOpen, Building2, ChevronDown,
   Truck, Receipt, Calculator, BarChart3, Users, ShoppingCart, LucideIcon,
-  RotateCcw, Sun, Moon, Upload, FileX,
+  RotateCcw, Sun, Moon, Upload, FileX, BookMarked,
 } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, NavLink } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useUserAuth } from '../hooks/useUserAuth';
 import { useAppContext } from '../context/AppContext';
@@ -266,12 +266,12 @@ export function Header() {
               />
             )}
 
-            {/* Comptabilité */}
+            {/* Facturation (formerly Comptabilité) */}
             {(isCompta || isSuperAdmin) && (
               <NavDropdown
                 id="compta"
                 icon={Receipt}
-                label="Comptabilité"
+                label="Facturation"
                 openId={openDropdown}
                 onToggle={toggleDropdown}
                 items={[
@@ -283,6 +283,27 @@ export function Header() {
                   { to: '/compta/avoirs', icon: FileX, label: 'Avoirs' },
                 ]}
               />
+            )}
+
+            {/* Comptabilité — coming soon */}
+            {(isCompta || isSuperAdmin) && (
+              <NavLink
+                to="/comptabilite"
+                className={({ isActive }) => `
+                  group flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium
+                  transition-all duration-150
+                  ${isActive
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-accent/40'
+                  }
+                `}
+              >
+                <BookMarked className="h-3.5 w-3.5 shrink-0" />
+                <span className="hidden sm:inline">Comptabilité</span>
+                <span className="hidden sm:inline ml-0.5 text-[8px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400 bg-amber-500/12 px-1 py-0.5 rounded">
+                  Bientôt
+                </span>
+              </NavLink>
             )}
 
             {/* Admin */}
@@ -306,34 +327,26 @@ export function Header() {
             {/* Divider */}
             <div className="w-px h-4 bg-border/60 mx-1" />
 
-            {/* User indicator */}
+            {/* User greeting */}
             {isAdmin && (
               <div
-                className="
-                  flex items-center gap-1.5 px-2 py-1 rounded-lg
-                  bg-primary/10 border border-primary/20
-                "
-                title={displayName ? `Admin: ${displayName}` : 'Administrateur'}
+                className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-primary/10 border border-primary/20"
+                title={displayName ? `Connecté en tant que : ${displayName}` : 'Administrateur'}
               >
-                <Shield className="h-3 w-3 text-primary" />
-                {displayName && (
-                  <span className="hidden sm:inline text-[10px] font-semibold text-primary max-w-[70px] truncate">
-                    {displayName}
-                  </span>
-                )}
+                <Shield className="h-3 w-3 text-primary shrink-0" />
+                <span className="hidden sm:inline text-[10px] font-semibold text-primary max-w-[120px] truncate">
+                  {displayName ? `Bonjour, ${displayName}` : 'Admin'}
+                </span>
               </div>
             )}
             {!isAdmin && isUserAuthenticated && displayName && (
               <div
-                className="
-                  flex items-center gap-1.5 px-2 py-1 rounded-lg
-                  bg-secondary border border-border
-                "
-                title={`Utilisateur: ${displayName}`}
+                className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-secondary border border-border"
+                title={`Connecté : ${displayName}`}
               >
-                <User className="h-3 w-3 text-muted-foreground" />
-                <span className="hidden sm:inline text-[10px] font-medium text-muted-foreground max-w-[70px] truncate">
-                  {displayName}
+                <User className="h-3 w-3 text-muted-foreground shrink-0" />
+                <span className="hidden sm:inline text-[10px] font-medium text-muted-foreground max-w-[120px] truncate">
+                  Bonjour, {displayName}
                 </span>
               </div>
             )}

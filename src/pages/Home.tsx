@@ -372,10 +372,10 @@ export function Home() {
         </div>
       </section>
 
-      {/* ── Comptabilité ── */}
+      {/* ── Facturation ── */}
       {(isCompta || isSuperAdmin) && (
         <section>
-          <SectionLabel>Comptabilité</SectionLabel>
+          <SectionLabel>Facturation</SectionLabel>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
             <ActionCard to="/compta/bls"      icon={Truck}      accent="bg-teal-600"   title="BL"              desc="Livraisons"      size="small" />
             <ActionCard to="/compta/proformas" icon={FileText}   accent="bg-emerald-600" title="Proformas"      desc="Gestion"         size="small" />
