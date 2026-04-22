@@ -472,6 +472,8 @@ export default function InvoiceDetailPage() {
       {/* Payment info */}
       <div className="glass rounded-lg p-4 space-y-3 text-sm">
         <p className="text-xs font-semibold text-foreground">Paiement</p>
+
+        {/* Primary payment fields */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div>
             <p className="text-[11px] text-muted-foreground mb-0.5">Date</p>
@@ -511,92 +513,133 @@ export default function InvoiceDetailPage() {
               ? <input value={draftPaymentBank} onChange={e => setDraftPaymentBank(e.target.value)} className={inputCls} placeholder="Nom de la banque…" />
               : <p className="text-foreground">{invoice.payment_bank || '—'}</p>}
           </div>
+        </div>
 
-          {/* Additional payment methods */}
-          {isEditing && (
-            <div className="mt-4 border border-border rounded-xl overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setShowExtraPayments(v => !v)}
-                className="w-full flex items-center justify-between px-3 py-2.5 bg-secondary/50 hover:bg-secondary transition-colors text-xs font-medium text-foreground"
-              >
-                <span className="flex items-center gap-1.5">
-                  <Plus className="h-3.5 w-3.5 text-primary" />
-                  Règlements supplémentaires
-                  {draftPaymentMethods.length > 0 && (
-                    <span className="ml-1 px-1.5 py-0.5 bg-primary/15 text-primary rounded-full text-[10px] font-semibold">{draftPaymentMethods.length}</span>
-                  )}
-                </span>
-                {showExtraPayments ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
-              </button>
-              {showExtraPayments && (
-                <div className="p-3 space-y-2">
-                  {draftPaymentMethods.map((pm, idx) => (
-                    <div key={idx} className="grid grid-cols-[1fr_1fr_1fr_90px_28px] gap-2 items-center">
-                      <select value={pm.method} onChange={e => setDraftPaymentMethods(prev => prev.map((p, i) => i === idx ? { ...p, method: e.target.value } : p))} className={inputCls}>
-                        <option value="">— Mode —</option>
-                        <option value="Virement bancaire">Virement</option>
-                        <option value="Chèque">Chèque</option>
-                        <option value="Espèces">Espèces</option>
-                        <option value="Versement">Versement</option>
-                        <option value="Effet de commerce">Effet</option>
-                      </select>
-                      <input value={pm.reference || ''} onChange={e => setDraftPaymentMethods(prev => prev.map((p, i) => i === idx ? { ...p, reference: e.target.value } : p))} className={inputCls} placeholder="Référence" />
-                      <input value={pm.bank || ''} onChange={e => setDraftPaymentMethods(prev => prev.map((p, i) => i === idx ? { ...p, bank: e.target.value } : p))} className={inputCls} placeholder="Banque" />
-                      <input type="number" value={pm.amount || ''} onChange={e => setDraftPaymentMethods(prev => prev.map((p, i) => i === idx ? { ...p, amount: Number(e.target.value) } : p))} className={inputCls} placeholder="Montant" />
-                      <button onClick={() => setDraftPaymentMethods(prev => prev.filter((_, i) => i !== idx))} className="flex items-center justify-center h-full text-destructive hover:bg-destructive/10 rounded-lg transition-colors">
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  ))}
-                  <button
-                    onClick={() => setDraftPaymentMethods(prev => [...prev, { method: '', reference: '', bank: '', amount: 0 }])}
-                    className="flex items-center gap-1.5 text-xs text-primary hover:underline mt-1"
-                  >
-                    <Plus className="h-3 w-3" />Ajouter un règlement
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
+        {/* Additional payment methods — full width row */}
+        {isEditing && (
+          <div className="border border-border rounded-xl overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowExtraPayments(v => !v)}
+              className="w-full flex items-center justify-between px-4 py-3 bg-secondary/50 hover:bg-secondary transition-colors text-xs font-medium text-foreground"
+            >
+              <span className="flex items-center gap-1.5">
+                <Plus className="h-3.5 w-3.5 text-primary" />
+                Règlements supplémentaires
+                {draftPaymentMethods.length > 0 && (
+                  <span className="px-1.5 py-0.5 bg-primary/15 text-primary rounded-full text-[10px] font-semibold">
+                    {draftPaymentMethods.length}
+                  </span>
+                )}
+              </span>
+              {showExtraPayments
+                ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" />
+                : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
+            </button>
+            {showExtraPayments && (
+              <div className="p-4 space-y-2.5">
+                {draftPaymentMethods.map((pm, idx) => (
+                  <div key={idx} className="grid grid-cols-[1fr_1fr_1fr_110px_32px] gap-2 items-center">
+                    <select
+                      value={pm.method}
+                      onChange={e => setDraftPaymentMethods(prev => prev.map((p, i) => i === idx ? { ...p, method: e.target.value } : p))}
+                      className={inputCls}
+                    >
+                      <option value="">— Mode —</option>
+                      <option value="Virement bancaire">Virement</option>
+                      <option value="Chèque">Chèque</option>
+                      <option value="Espèces">Espèces</option>
+                      <option value="Versement">Versement</option>
+                      <option value="Effet de commerce">Effet</option>
+                    </select>
+                    <input
+                      value={pm.reference || ''}
+                      onChange={e => setDraftPaymentMethods(prev => prev.map((p, i) => i === idx ? { ...p, reference: e.target.value } : p))}
+                      className={inputCls} placeholder="Référence"
+                    />
+                    <input
+                      value={pm.bank || ''}
+                      onChange={e => setDraftPaymentMethods(prev => prev.map((p, i) => i === idx ? { ...p, bank: e.target.value } : p))}
+                      className={inputCls} placeholder="Banque"
+                    />
+                    <input
+                      type="number"
+                      value={pm.amount || ''}
+                      onChange={e => setDraftPaymentMethods(prev => prev.map((p, i) => i === idx ? { ...p, amount: Number(e.target.value) } : p))}
+                      className={`${inputCls} text-right`} placeholder="Montant"
+                    />
+                    <button
+                      onClick={() => setDraftPaymentMethods(prev => prev.filter((_, i) => i !== idx))}
+                      className="flex items-center justify-center w-8 h-7 text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  onClick={() => setDraftPaymentMethods(prev => [...prev, { method: '', reference: '', bank: '', amount: 0 }])}
+                  className="flex items-center gap-1.5 text-xs text-primary hover:underline pt-0.5"
+                >
+                  <Plus className="h-3 w-3" />Ajouter un règlement
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
-          {/* Avance */}
-          {isEditing && (
-            <div className="mt-3 border border-border rounded-xl overflow-hidden">
-              <label className="w-full flex items-center justify-between px-3 py-2.5 bg-secondary/50 cursor-pointer hover:bg-secondary transition-colors">
-                <span className="text-xs font-medium text-foreground flex items-center gap-1.5">
-                  <ChevronDown className="h-3.5 w-3.5 text-primary" />
-                  Avance sur facture
-                </span>
-                <input type="checkbox" checked={showAvance} onChange={e => setShowAvance(e.target.checked)} className="h-4 w-4 rounded accent-primary" />
-              </label>
-              {showAvance && (
-                <div className="p-3 flex items-center gap-3">
-                  <div className="flex-1">
-                    <label className="block text-[10px] text-muted-foreground mb-1">Montant avance (Dh)</label>
-                    <input type="number" min="0" step="0.01" value={draftAvance}
+        {/* Avance sur facture — full width row */}
+        {isEditing && (
+          <div className="border border-border rounded-xl overflow-hidden">
+            <label className="w-full flex items-center justify-between px-4 py-3 bg-secondary/50 cursor-pointer hover:bg-secondary transition-colors">
+              <span className="text-xs font-medium text-foreground flex items-center gap-1.5">
+                <ChevronDown className="h-3.5 w-3.5 text-primary" />
+                Avance sur facture
+              </span>
+              <input
+                type="checkbox"
+                checked={showAvance}
+                onChange={e => setShowAvance(e.target.checked)}
+                className="h-4 w-4 rounded accent-primary"
+              />
+            </label>
+            {showAvance && (
+              <div className="p-4">
+                <div className="flex items-end gap-4">
+                  <div className="flex-1 max-w-xs">
+                    <label className="block text-[11px] text-muted-foreground mb-1">Montant avance (Dh)</label>
+                    <input
+                      type="number" min="0" step="0.01"
+                      value={draftAvance}
                       onChange={e => setDraftAvance(Number(e.target.value))}
-                      className={inputCls} placeholder="0.00" />
+                      className={inputCls} placeholder="0.00"
+                    />
                   </div>
                   {draftAvance > 0 && (
-                    <div className="text-right">
+                    <div className="pb-0.5">
                       <div className="text-[10px] text-muted-foreground mb-0.5">Reste NET TTC</div>
-                      <div className="text-sm font-bold font-mono text-amber-600 dark:text-amber-400">{fmt(Math.max(0, (invoice?.totalAmount ?? 0) - draftAvance))} Dh</div>
+                      <div className="text-base font-bold font-mono text-amber-600 dark:text-amber-400">
+                        {fmt(Math.max(0, (invoice?.totalAmount ?? 0) - draftAvance))} Dh
+                      </div>
                     </div>
                   )}
                 </div>
-              )}
-            </div>
-          )}
-          {!isEditing && (invoice.avance_amount ?? 0) > 0 && (
-            <div className="mt-2 flex items-center gap-2 text-xs text-foreground">
-              <span className="text-muted-foreground">Avance :</span>
-              <span className="font-mono font-bold">{fmt(invoice.avance_amount!)} Dh</span>
-              <span className="text-muted-foreground">Reste :</span>
-              <span className="font-mono font-bold text-amber-600 dark:text-amber-400">{fmt(Math.max(0, invoice.totalAmount - invoice.avance_amount!))} Dh</span>
-            </div>
-          )}
-        </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* View-mode: avance display */}
+        {!isEditing && (invoice.avance_amount ?? 0) > 0 && (
+          <div className="flex items-center gap-3 text-xs pt-1">
+            <span className="text-muted-foreground">Avance :</span>
+            <span className="font-mono font-bold text-foreground">{fmt(invoice.avance_amount!)} Dh</span>
+            <span className="text-border">·</span>
+            <span className="text-muted-foreground">Reste :</span>
+            <span className="font-mono font-bold text-amber-600 dark:text-amber-400">
+              {fmt(Math.max(0, invoice.totalAmount - invoice.avance_amount!))} Dh
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Items table */}
