@@ -343,36 +343,39 @@ export default function InvoiceDirectoryPage() {
                       {new Date(inv.createdAt).toLocaleDateString('fr-FR')}
                     </td>
                     <td className="px-3 py-2.5">
-                      <div className="relative">
-                        <button
-                          onClick={e => { e.stopPropagation(); setOpenMenuId(openMenuId === inv.id ? null : inv.id); }}
-                          className="p-1.5 text-muted-foreground hover:bg-accent rounded transition-colors"
-                          title="Plus d'actions"
+                      <div className="flex items-center gap-1">
+                        {/* Always-visible: Open + Download */}
+                        <Link
+                          to={`/compta/invoices/${inv.id}`}
+                          className="p-1.5 text-primary hover:bg-primary/10 rounded transition-colors"
+                          title="Ouvrir"
                         >
-                          <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 16 16"><circle cx="4" cy="8" r="1.2"/><circle cx="8" cy="8" r="1.2"/><circle cx="12" cy="8" r="1.2"/></svg>
+                          <Eye className="h-3.5 w-3.5" />
+                        </Link>
+                        <button
+                          onClick={() => handleExportPdf(inv)}
+                          className="p-1.5 text-blue-500 hover:bg-blue-500/10 rounded transition-colors"
+                          title="Télécharger PDF"
+                        >
+                          <Download className="h-3.5 w-3.5" />
                         </button>
-                        {openMenuId === inv.id && (
+
+                        {/* ⋯ menu for the rest */}
+                        <div className="relative">
+                          <button
+                            onClick={e => { e.stopPropagation(); setOpenMenuId(openMenuId === inv.id ? null : inv.id); }}
+                            className="p-1.5 text-muted-foreground hover:bg-accent rounded transition-colors"
+                            title="Plus d'actions"
+                          >
+                            <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 16 16"><circle cx="4" cy="8" r="1.2"/><circle cx="8" cy="8" r="1.2"/><circle cx="12" cy="8" r="1.2"/></svg>
+                          </button>
+                          {openMenuId === inv.id && (
                           <div onClick={e => e.stopPropagation()} className="absolute right-0 top-full mt-1 z-30 flex flex-col bg-card border border-border rounded-lg shadow-lg py-1 min-w-[170px]">
                             <button
-                              onClick={() => { setOpenMenuId(null); navigate(`/compta/invoices/${inv.id}`); }}
-                              className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent text-foreground"
-                            >
-                              <Eye className="h-3.5 w-3.5 text-muted-foreground" />Ouvrir
-                            </button>
-                            <button
-                              onClick={async () => {
-                                setOpenMenuId(null);
-                                await handlePreview(inv);
-                              }}
+                              onClick={async () => { setOpenMenuId(null); await handlePreview(inv); }}
                               className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent text-foreground"
                             >
                               <Printer className="h-3.5 w-3.5 text-muted-foreground" />Aperçu impression
-                            </button>
-                            <button
-                              onClick={() => { setOpenMenuId(null); handleExportPdf(inv); }}
-                              className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent text-foreground"
-                            >
-                              <Download className="h-3.5 w-3.5 text-muted-foreground" />Télécharger PDF
                             </button>
                             <button
                               onClick={() => { setOpenMenuId(null); handleWhatsAppShare(inv); }}
@@ -400,7 +403,8 @@ export default function InvoiceDirectoryPage() {
                               <Trash2 className="h-3.5 w-3.5" />Supprimer
                             </button>
                           </div>
-                        )}
+                          )}
+                        </div>
                       </div>
                     </td>
                   </tr>
