@@ -147,7 +147,9 @@ export function Header() {
 
   const handleLogout = () => { adminLogout(); userLogout(); };
 
-  const displayName = currentUser?.username || authenticatedUser?.username || null;
+  const displayName =
+    currentUser?.custom_seller_name?.trim() || currentUser?.username ||
+    authenticatedUser?.custom_seller_name?.trim() || authenticatedUser?.username || null;
   const showLogoutButton = isAdmin || isUserAuthenticated;
   const isOnline = syncInfo.isOnline;
 
