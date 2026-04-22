@@ -202,6 +202,7 @@ export interface AppUser {
   allowed_brands: string[];
   price_display_type: 'normal' | 'reseller' | 'buy' | 'calculated';
   custom_seller_name?: string;
+  phone?: string;
   created_at: Date;
   updated_at: Date;
 }
@@ -218,6 +219,7 @@ export interface CreateAppUserRequest {
   allowed_brands?: string[];
   price_display_type?: 'normal' | 'reseller' | 'buy' | 'calculated';
   custom_seller_name?: string;
+  phone?: string;
 }
 
 export interface UpdateAppUserRequest {
@@ -232,6 +234,7 @@ export interface UpdateAppUserRequest {
   allowed_brands?: string[];
   price_display_type?: 'normal' | 'reseller' | 'buy' | 'calculated';
   custom_seller_name?: string;
+  phone?: string;
 }
 
 export interface UserPermissions {

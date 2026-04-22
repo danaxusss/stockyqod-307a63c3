@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Link } from 'react-router-dom';
-import { Receipt, Search, Download, Trash2, ChevronUp, ChevronDown, Filter, X } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Receipt, Search, Download, Trash2, ChevronUp, ChevronDown, X, MoreHorizontal, Eye, Printer, MessageCircle, Mail, Copy, Lock } from 'lucide-react';
 import { Quote } from '../../types';
 import { SupabaseDocumentsService } from '../../utils/supabaseDocuments';
 import { SupabaseCompaniesService } from '../../utils/supabaseCompanies';
+import { CompanySettingsService } from '../../utils/companySettings';
 import { PdfExportService } from '../../utils/pdfExport';
+import { PrintPreviewModal } from '../../components/PrintPreviewModal';
+import { buildWhatsAppShareUrl, openWhatsAppShare } from '../../utils/whatsappShare';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../hooks/useAuth';
 import { exportToCSV } from '../../utils/csvExport';
@@ -21,6 +24,8 @@ const PAYMENT_METHODS = ['Tous', 'Virement', 'Chèque', 'Espèces', 'Carte', 'Ef
 export default function InvoiceDirectoryPage() {
   const { isSuperAdmin, isCompta } = useAuth();
   const { showToast } = useToast();
+  const navigate = useNavigate();
+
   const [invoices, setInvoices] = useState<Quote[]>([]);
   const [companies, setCompanies] = useState<Record<string, string>>({});
   const [companyList, setCompanyList] = useState<{ id: string; name: string }[]>([]);
@@ -36,6 +41,19 @@ export default function InvoiceDirectoryPage() {
   // Sort
   const [sortField, setSortField] = useState<SortField>('date');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
+
+  // Menu
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+
+  // Print preview
+  const [showPrintPreview, setShowPrintPreview] = useState(false);
+  const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
+  const [previewFilename, setPreviewFilename] = useState('');
+
+  // Delete PIN modal
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [pinInput, setPinInput] = useState('');
+  const [pendingDeleteInv, setPendingDeleteInv] = useState<Quote | null>(null);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -58,33 +76,103 @@ export default function InvoiceDirectoryPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const handleDelete = async (id: string, num: string) => {
-    if (!window.confirm(`Supprimer la facture ${num} ? Action irréversible.`)) return;
+  useEffect(() => {
+    if (!openMenuId) return;
+    const close = () => setOpenMenuId(null);
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [openMenuId]);
+
+  const buildSettings = async (inv: Quote) => {
+    const compId = inv.issuing_company_id || inv.company_id;
+    const company = compId ? await SupabaseCompaniesService.getCompanyById(compId) : null;
+    if (!company) return null;
+    return {
+      company_name: company.name, address: company.address, phone: company.phone,
+      phone2: company.phone2, email: company.email, ice: company.ice, rc: company.rc,
+      if_number: company.if_number, cnss: company.cnss, patente: company.patente,
+      logo_url: company.logo_url, logo_size: company.logo_size,
+      tva_rate: company.tva_rate, quote_validity_days: company.quote_validity_days,
+      payment_terms: company.payment_terms, quote_visible_fields: company.quote_visible_fields,
+      quote_style: { accentColor: company.accent_color, fontFamily: company.font_family, showBorders: true, borderRadius: 1, headerSize: 'large', totalsStyle: 'highlighted' },
+    } as any;
+  };
+
+  const handleExportPdf = async (inv: Quote) => {
     try {
-      await SupabaseDocumentsService.deleteDocument(id);
-      showToast({ type: 'success', message: `${num} supprimée` });
-      await load();
+      const settings = await buildSettings(inv);
+      await PdfExportService.exportQuoteToPdf(inv, settings, undefined, undefined, undefined, 'invoice');
     } catch (e) {
-      showToast({ type: 'error', title: 'Erreur', message: String(e) });
+      showToast({ type: 'error', title: 'Erreur PDF', message: String(e) });
     }
   };
 
-  const handleExportPdf = async (invoice: Quote) => {
+  const handlePreview = async (inv: Quote) => {
     try {
-      const compId = invoice.issuing_company_id || invoice.company_id;
-      const company = compId ? await SupabaseCompaniesService.getCompanyById(compId) : null;
-      const settings = company ? {
-        company_name: company.name, address: company.address, phone: company.phone,
-        phone2: company.phone2, email: company.email, ice: company.ice, rc: company.rc,
-        if_number: company.if_number, cnss: company.cnss, patente: company.patente,
-        logo_url: company.logo_url, logo_size: company.logo_size,
-        tva_rate: company.tva_rate, quote_validity_days: company.quote_validity_days,
-        payment_terms: company.payment_terms, quote_visible_fields: company.quote_visible_fields,
-        quote_style: { accentColor: company.accent_color, fontFamily: company.font_family, showBorders: true, borderRadius: 1, headerSize: 'large', totalsStyle: 'highlighted' },
-      } as any : null;
-      await PdfExportService.exportQuoteToPdf(invoice, settings, undefined, undefined, undefined, 'invoice');
+      const settings = await buildSettings(inv);
+      const { blob, filename } = await PdfExportService.generatePdfBlob(inv, settings, undefined, undefined, undefined, 'invoice');
+      setPreviewBlob(blob);
+      setPreviewFilename(filename);
+      setShowPrintPreview(true);
     } catch (e) {
-      showToast({ type: 'error', title: 'Erreur PDF', message: String(e) });
+      showToast({ type: 'error', title: 'Erreur aperçu', message: String(e) });
+    }
+  };
+
+  const handleWhatsAppShare = (inv: Quote) => {
+    const phone = inv.customer?.phoneNumber || '';
+    const msg = `Bonjour ${inv.customer?.fullName || ''},\nVeuillez trouver ci-joint votre facture ${inv.quoteNumber} d'un montant de ${fmt(inv.totalAmount)} Dh.`;
+    if (!openWhatsAppShare(buildWhatsAppShareUrl(phone, msg))) {
+      navigator.clipboard.writeText(msg).then(() =>
+        showToast({ type: 'success', title: 'Copié', message: 'Message copié — ouvrez WhatsApp et collez-le.' })
+      );
+    }
+  };
+
+  const handleEmailShare = (inv: Quote) => {
+    const subject = encodeURIComponent(`Facture ${inv.quoteNumber}`);
+    const body = encodeURIComponent(`Bonjour ${inv.customer?.fullName || ''},\n\nVeuillez trouver ci-joint votre facture ${inv.quoteNumber} d'un montant de ${fmt(inv.totalAmount)} Dh.\n\nCordialement`);
+    window.location.href = `mailto:${inv.customer?.phoneNumber ? '' : ''}?subject=${subject}&body=${body}`;
+  };
+
+  const handleDuplicate = async (inv: Quote) => {
+    if (!window.confirm('Dupliquer cette facture ?')) return;
+    try {
+      const dup = await SupabaseDocumentsService.duplicateDocument(inv.id);
+      navigate(`/compta/invoices/${dup.id}`);
+    } catch (e: any) {
+      showToast({ type: 'error', message: e?.message || 'Erreur duplication' });
+    }
+  };
+
+  const initiateDelete = (inv: Quote) => {
+    setPendingDeleteInv(inv);
+    setPinInput('');
+    setShowPinModal(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!pendingDeleteInv) return;
+    try {
+      const compId = pendingDeleteInv.issuing_company_id || pendingDeleteInv.company_id;
+      const freshSettings = compId ? await CompanySettingsService.getSettings(compId).catch(() => null) : null;
+      const expectedPin = freshSettings?.special_pin;
+      if (!expectedPin) {
+        showToast({ type: 'error', message: 'Aucun PIN spécial configuré dans les paramètres société' });
+        return;
+      }
+      if (pinInput !== expectedPin) {
+        showToast({ type: 'error', message: 'PIN incorrect' });
+        return;
+      }
+      await SupabaseDocumentsService.deleteDocument(pendingDeleteInv.id);
+      showToast({ type: 'success', message: `${pendingDeleteInv.quoteNumber} supprimée` });
+      setShowPinModal(false);
+      setPendingDeleteInv(null);
+      setPinInput('');
+      await load();
+    } catch (e) {
+      showToast({ type: 'error', message: String(e) });
     }
   };
 
@@ -107,17 +195,12 @@ export default function InvoiceDirectoryPage() {
         && !inv.customer?.fullName?.toLowerCase().includes(q)
         && !(inv.customer as any)?.client_code?.toLowerCase().includes(q)
         && !inv.customer?.phoneNumber?.toLowerCase().includes(q)) return false;
-
       if (dateFrom && new Date(inv.createdAt) < new Date(dateFrom)) return false;
       if (dateTo && new Date(inv.createdAt) > new Date(dateTo + 'T23:59:59')) return false;
-
       if (filterPayment !== 'Tous' && inv.payment_method?.toLowerCase() !== filterPayment.toLowerCase()) return false;
-
       if (filterCompany && inv.issuing_company_id !== filterCompany) return false;
-
       return true;
     });
-
     list.sort((a, b) => {
       let cmp = 0;
       if (sortField === 'quoteNumber') cmp = a.quoteNumber.localeCompare(b.quoteNumber);
@@ -126,7 +209,6 @@ export default function InvoiceDirectoryPage() {
       else if (sortField === 'total') cmp = a.totalAmount - b.totalAmount;
       return sortDir === 'asc' ? cmp : -cmp;
     });
-
     return list;
   }, [invoices, search, dateFrom, dateTo, filterPayment, filterCompany, sortField, sortDir]);
 
@@ -188,26 +270,16 @@ export default function InvoiceDirectoryPage() {
             )}
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            <input
-              type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-              className="px-2 py-1.5 text-xs border border-input rounded-lg bg-secondary text-foreground"
-              title="Date de début"
-            />
-            <input
-              type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-              className="px-2 py-1.5 text-xs border border-input rounded-lg bg-secondary text-foreground"
-              title="Date de fin"
-            />
-            <select
-              value={filterPayment} onChange={e => setFilterPayment(e.target.value)}
-              className="px-2 py-1.5 text-xs border border-input rounded-lg bg-secondary text-foreground"
-            >
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+              className="px-2 py-1.5 text-xs border border-input rounded-lg bg-secondary text-foreground" title="Date de début" />
+            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+              className="px-2 py-1.5 text-xs border border-input rounded-lg bg-secondary text-foreground" title="Date de fin" />
+            <select value={filterPayment} onChange={e => setFilterPayment(e.target.value)}
+              className="px-2 py-1.5 text-xs border border-input rounded-lg bg-secondary text-foreground">
               {PAYMENT_METHODS.map(m => <option key={m}>{m}</option>)}
             </select>
-            <select
-              value={filterCompany} onChange={e => setFilterCompany(e.target.value)}
-              className="px-2 py-1.5 text-xs border border-input rounded-lg bg-secondary text-foreground"
-            >
+            <select value={filterCompany} onChange={e => setFilterCompany(e.target.value)}
+              className="px-2 py-1.5 text-xs border border-input rounded-lg bg-secondary text-foreground">
               <option value="">Toutes les sociétés</option>
               {companyList.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
@@ -257,15 +329,11 @@ export default function InvoiceDirectoryPage() {
                     </td>
                     <td className="px-3 py-2.5">
                       {inv.parent_document_id ? (
-                        <Link to={`/compta/proformas/${inv.parent_document_id}`} className="text-xs text-primary hover:underline font-mono">
-                          Voir Proforma
-                        </Link>
+                        <Link to={`/compta/proformas/${inv.parent_document_id}`} className="text-xs text-primary hover:underline font-mono">Voir Proforma</Link>
                       ) : <span className="text-[10px] text-muted-foreground">—</span>}
                     </td>
                     <td className="px-3 py-2.5">
-                      <span className="text-xs text-muted-foreground">
-                        {(inv.issuing_company_id && companies[inv.issuing_company_id]) || '—'}
-                      </span>
+                      <span className="text-xs text-muted-foreground">{(inv.issuing_company_id && companies[inv.issuing_company_id]) || '—'}</span>
                     </td>
                     <td className="px-3 py-2.5">
                       <span className="text-xs font-mono font-bold text-foreground">{fmt(inv.totalAmount)} Dh</span>
@@ -275,14 +343,63 @@ export default function InvoiceDirectoryPage() {
                       {new Date(inv.createdAt).toLocaleDateString('fr-FR')}
                     </td>
                     <td className="px-3 py-2.5">
-                      <div className="flex items-center space-x-1">
-                        <button onClick={() => handleExportPdf(inv)} className="p-1 text-blue-500 hover:bg-blue-500/10 rounded" title="Export PDF">
-                          <Download className="h-3.5 w-3.5" />
+                      <div className="relative">
+                        <button
+                          onClick={e => { e.stopPropagation(); setOpenMenuId(openMenuId === inv.id ? null : inv.id); }}
+                          className="p-1.5 text-muted-foreground hover:bg-accent rounded transition-colors"
+                          title="Plus d'actions"
+                        >
+                          <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 16 16"><circle cx="4" cy="8" r="1.2"/><circle cx="8" cy="8" r="1.2"/><circle cx="12" cy="8" r="1.2"/></svg>
                         </button>
-                        {isSuperAdmin && (
-                          <button onClick={() => handleDelete(inv.id, inv.quoteNumber)} className="p-1 text-destructive hover:bg-destructive/10 rounded" title="Supprimer">
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
+                        {openMenuId === inv.id && (
+                          <div onClick={e => e.stopPropagation()} className="absolute right-0 top-full mt-1 z-30 flex flex-col bg-card border border-border rounded-lg shadow-lg py-1 min-w-[170px]">
+                            <button
+                              onClick={() => { setOpenMenuId(null); navigate(`/compta/invoices/${inv.id}`); }}
+                              className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent text-foreground"
+                            >
+                              <Eye className="h-3.5 w-3.5 text-muted-foreground" />Ouvrir
+                            </button>
+                            <button
+                              onClick={async () => {
+                                setOpenMenuId(null);
+                                await handlePreview(inv);
+                              }}
+                              className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent text-foreground"
+                            >
+                              <Printer className="h-3.5 w-3.5 text-muted-foreground" />Aperçu impression
+                            </button>
+                            <button
+                              onClick={() => { setOpenMenuId(null); handleExportPdf(inv); }}
+                              className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent text-foreground"
+                            >
+                              <Download className="h-3.5 w-3.5 text-muted-foreground" />Télécharger PDF
+                            </button>
+                            <button
+                              onClick={() => { setOpenMenuId(null); handleWhatsAppShare(inv); }}
+                              className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent text-foreground"
+                            >
+                              <MessageCircle className="h-3.5 w-3.5 text-emerald-500" />WhatsApp
+                            </button>
+                            <button
+                              onClick={() => { setOpenMenuId(null); handleEmailShare(inv); }}
+                              className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent text-foreground"
+                            >
+                              <Mail className="h-3.5 w-3.5 text-primary" />Email
+                            </button>
+                            <button
+                              onClick={async () => { setOpenMenuId(null); await handleDuplicate(inv); }}
+                              className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent text-foreground"
+                            >
+                              <Copy className="h-3.5 w-3.5 text-muted-foreground" />Dupliquer
+                            </button>
+                            <div className="border-t border-border my-0.5" />
+                            <button
+                              onClick={() => { setOpenMenuId(null); initiateDelete(inv); }}
+                              className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-destructive/10 text-destructive"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />Supprimer
+                            </button>
+                          </div>
                         )}
                       </div>
                     </td>
@@ -293,6 +410,45 @@ export default function InvoiceDirectoryPage() {
           </div>
         )}
       </div>
+
+      {/* Print preview */}
+      {showPrintPreview && previewBlob && (
+        <PrintPreviewModal blob={previewBlob} filename={previewFilename} onClose={() => { setShowPrintPreview(false); setPreviewBlob(null); }} />
+      )}
+
+      {/* Delete PIN modal */}
+      {showPinModal && pendingDeleteInv && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="glass rounded-xl shadow-2xl w-full max-w-sm p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-bold text-foreground flex items-center gap-2">
+                <Lock className="h-4 w-4 text-destructive" />Supprimer la facture
+              </h2>
+              <button onClick={() => { setShowPinModal(false); setPendingDeleteInv(null); }} className="p-1 hover:bg-accent rounded-lg">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Saisir le PIN spécial pour supprimer <span className="font-mono font-semibold text-foreground">{pendingDeleteInv.quoteNumber}</span>.
+            </p>
+            <input
+              type="password"
+              value={pinInput}
+              onChange={e => setPinInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') confirmDelete(); }}
+              className="w-full px-3 py-2 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring tracking-widest text-center"
+              placeholder="••••••"
+              autoFocus
+            />
+            <div className="flex space-x-2">
+              <button onClick={() => { setShowPinModal(false); setPendingDeleteInv(null); }} className="flex-1 px-3 py-1.5 text-sm border border-input rounded-lg hover:bg-accent text-foreground">Annuler</button>
+              <button onClick={confirmDelete} disabled={!pinInput} className="flex-1 px-3 py-1.5 text-sm bg-destructive hover:bg-destructive/90 disabled:opacity-50 text-white rounded-lg">
+                Supprimer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

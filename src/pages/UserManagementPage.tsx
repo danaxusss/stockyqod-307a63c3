@@ -22,6 +22,7 @@ interface UserFormData {
   allowed_brands: string[];
   price_display_type: string;
   custom_seller_name: string;
+  phone: string;
 }
 
 const initialFormData: UserFormData = {
@@ -35,7 +36,8 @@ const initialFormData: UserFormData = {
   allowed_stock_locations: [],
   allowed_brands: [],
   price_display_type: 'normal',
-  custom_seller_name: ''
+  custom_seller_name: '',
+  phone: ''
 };
 
 export default function UserManagementPage() {
@@ -143,7 +145,8 @@ export default function UserManagementPage() {
         allowed_stock_locations: formData.allowed_stock_locations,
         allowed_brands: formData.allowed_brands,
         price_display_type: formData.price_display_type,
-        custom_seller_name: formData.custom_seller_name.trim()
+        custom_seller_name: formData.custom_seller_name.trim(),
+        phone: formData.phone.trim()
       };
 
       await SupabaseUsersService.createUser(userData);
@@ -171,7 +174,8 @@ export default function UserManagementPage() {
       allowed_stock_locations: user.allowed_stock_locations,
       allowed_brands: user.allowed_brands || [],
       price_display_type: user.price_display_type,
-      custom_seller_name: user.custom_seller_name || ''
+      custom_seller_name: user.custom_seller_name || '',
+      phone: user.phone || ''
     });
   };
 
@@ -200,7 +204,8 @@ export default function UserManagementPage() {
         allowed_stock_locations: formData.allowed_stock_locations,
         allowed_brands: formData.allowed_brands,
         price_display_type: formData.price_display_type,
-        custom_seller_name: formData.custom_seller_name.trim()
+        custom_seller_name: formData.custom_seller_name.trim(),
+        phone: formData.phone.trim()
       };
       if (formData.pin) updates.pin = formData.pin;
 
@@ -517,6 +522,14 @@ export default function UserManagementPage() {
                   <input type="text" value={formData.custom_seller_name} onChange={e => handleInputChange('custom_seller_name', e.target.value)}
                     className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground" placeholder="ex: Ahmed — Commercial Casablanca" />
                 </div>
+              </div>
+
+              {/* Phone */}
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1">Téléphone (WhatsApp)</label>
+                <input type="tel" value={formData.phone} onChange={e => handleInputChange('phone', e.target.value)}
+                  className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground" placeholder="ex: 0661234567" />
+                <p className="text-[10px] text-muted-foreground mt-1">Utilisé pour le partage WhatsApp vers le commercial.</p>
               </div>
 
               {/* Price type */}

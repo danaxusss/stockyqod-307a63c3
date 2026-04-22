@@ -672,3 +672,50 @@ DROP TRIGGER IF EXISTS update_returns_updated_at ON public.returns;
 CREATE TRIGGER update_returns_updated_at
   BEFORE UPDATE ON public.returns FOR EACH ROW
   EXECUTE FUNCTION public.update_updated_at_column();
+
+-- ── app_users: phone for WhatsApp sharing ────────────────────
+ALTER TABLE public.app_users ADD COLUMN IF NOT EXISTS phone text NOT NULL DEFAULT '';
+
+-- Update RPCs to include phone
+DROP FUNCTION IF EXISTS public.get_app_users_safe();
+CREATE FUNCTION public.get_app_users_safe()
+RETURNS TABLE(id uuid, username text, is_admin boolean, is_superadmin boolean, is_compta boolean,
+  company_id uuid, can_create_quote boolean, allowed_stock_locations text[], allowed_brands text[],
+  price_display_type text, custom_seller_name text, phone text, created_at timestamptz, updated_at timestamptz)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public'
+AS $$
+  SELECT id, username, is_admin, is_superadmin, is_compta, company_id, can_create_quote,
+    allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, phone,
+    created_at, updated_at
+  FROM public.app_users ORDER BY created_at DESC;
+$$;
+
+DROP FUNCTION IF EXISTS public.get_app_user_by_id_safe(uuid);
+CREATE FUNCTION public.get_app_user_by_id_safe(p_id uuid)
+RETURNS TABLE(id uuid, username text, is_admin boolean, is_superadmin boolean, is_compta boolean,
+  company_id uuid, can_create_quote boolean, allowed_stock_locations text[], allowed_brands text[],
+  price_display_type text, custom_seller_name text, phone text, created_at timestamptz, updated_at timestamptz)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public'
+AS $$
+  SELECT id, username, is_admin, is_superadmin, is_compta, company_id, can_create_quote,
+    allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, phone,
+    created_at, updated_at
+  FROM public.app_users WHERE app_users.id = p_id;
+$$;
+
+DROP FUNCTION IF EXISTS public.get_app_user_by_username_safe(text);
+CREATE FUNCTION public.get_app_user_by_username_safe(p_username text)
+RETURNS TABLE(id uuid, username text, is_admin boolean, is_superadmin boolean, is_compta boolean,
+  company_id uuid, can_create_quote boolean, allowed_stock_locations text[], allowed_brands text[],
+  price_display_type text, custom_seller_name text, phone text, created_at timestamptz, updated_at timestamptz)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public'
+AS $$
+  SELECT id, username, is_admin, is_superadmin, is_compta, company_id, can_create_quote,
+    allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, phone,
+    created_at, updated_at
+  FROM public.app_users WHERE app_users.username = p_username;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.get_app_users_safe() TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.get_app_user_by_id_safe(uuid) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.get_app_user_by_username_safe(text) TO anon, authenticated;

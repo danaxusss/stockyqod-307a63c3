@@ -13,6 +13,7 @@ type SafeAppUserRow = {
   allowed_brands: string[];
   price_display_type: string;
   custom_seller_name: string;
+  phone: string;
   created_at: string;
   updated_at: string;
 };
@@ -52,8 +53,9 @@ export class SupabaseUsersService {
         allowed_brands: userData.allowed_brands || [],
         price_display_type: userData.price_display_type || 'normal',
         custom_seller_name: userData.custom_seller_name || '',
+        phone: userData.phone || '',
       })
-      .select('id, username, is_admin, is_superadmin, is_compta, company_id, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, created_at, updated_at')
+      .select('id, username, is_admin, is_superadmin, is_compta, company_id, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, phone, created_at, updated_at')
       .single();
 
     if (error) {
@@ -103,12 +105,13 @@ export class SupabaseUsersService {
     if (updates.allowed_brands !== undefined) updateData.allowed_brands = updates.allowed_brands;
     if (updates.price_display_type !== undefined) updateData.price_display_type = updates.price_display_type;
     if (updates.custom_seller_name !== undefined) updateData.custom_seller_name = updates.custom_seller_name;
+    if (updates.phone !== undefined) updateData.phone = updates.phone;
 
     const { data, error } = await supabase
       .from('app_users')
       .update(updateData)
       .eq('id', id)
-      .select('id, username, is_admin, is_superadmin, is_compta, company_id, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, created_at, updated_at')
+      .select('id, username, is_admin, is_superadmin, is_compta, company_id, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, phone, created_at, updated_at')
       .single();
 
     if (error) {
@@ -177,6 +180,7 @@ export class SupabaseUsersService {
       allowed_brands: data.allowed_brands || [],
       price_display_type: (data.price_display_type || 'normal') as AppUser['price_display_type'],
       custom_seller_name: data.custom_seller_name || '',
+      phone: data.phone || '',
       created_at: new Date(data.created_at),
       updated_at: new Date(data.updated_at)
     };

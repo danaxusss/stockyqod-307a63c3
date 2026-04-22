@@ -9,6 +9,7 @@ import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../hooks/useAuth';
 import { buildWhatsAppShareUrl, openPreparingWhatsAppWindow, redirectPreparingWindowToWhatsApp, openWhatsAppShare } from '../../utils/whatsappShare';
 import { ClientDropdown } from '../../components/ClientDropdown';
+import { SupabaseUsersService } from '../../utils/supabaseUsers';
 import { ProductSearchModal } from '../../components/ProductSearchModal';
 import { PrintPreviewModal } from '../../components/PrintPreviewModal';
 
@@ -54,6 +55,8 @@ export default function InvoiceDetailPage() {
   // WhatsApp
   const [showWaModal, setShowWaModal] = useState(false);
   const [waPhone, setWaPhone] = useState('');
+  const [agentPhone, setAgentPhone] = useState<string | null>(null);
+  const [agentPhoneLoading, setAgentPhoneLoading] = useState(false);
   // Product search
   const [showProductSearch, setShowProductSearch] = useState(false);
   // Print preview
@@ -342,7 +345,22 @@ export default function InvoiceDetailPage() {
               <Printer className="h-3.5 w-3.5" /><span>Aperçu</span>
             </button>
             <button
-              onClick={() => { setWaPhone(invoice.customer?.phoneNumber || ''); setShowWaModal(true); }}
+              onClick={async () => {
+                setWaPhone(invoice.customer?.phoneNumber || '');
+                setAgentPhone(null);
+                setAgentPhoneLoading(true);
+                setShowWaModal(true);
+                try {
+                  const users = await SupabaseUsersService.getAllUsers();
+                  const salesName = invoice.customer?.salesPerson?.trim().toLowerCase() || '';
+                  const match = salesName ? users.find(u =>
+                    (u.custom_seller_name && u.custom_seller_name.trim().toLowerCase().includes(salesName)) ||
+                    u.username.trim().toLowerCase() === salesName
+                  ) : null;
+                  setAgentPhone(match?.phone || '');
+                } catch { setAgentPhone(''); }
+                finally { setAgentPhoneLoading(false); }
+              }}
               className="flex items-center space-x-1.5 px-3 py-1.5 text-sm bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg"
               title="Partager sur WhatsApp"
             >
@@ -478,21 +496,27 @@ export default function InvoiceDetailPage() {
 
           {/* Additional payment methods */}
           {isEditing && (
-            <div className="mt-3">
+            <div className="mt-4 border border-border rounded-xl overflow-hidden">
               <button
                 type="button"
                 onClick={() => setShowExtraPayments(v => !v)}
-                className="flex items-center space-x-1.5 text-xs text-primary hover:underline"
+                className="w-full flex items-center justify-between px-3 py-2.5 bg-secondary/50 hover:bg-secondary transition-colors text-xs font-medium text-foreground"
               >
-                {showExtraPayments ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                <span>Règlements supplémentaires</span>
+                <span className="flex items-center gap-1.5">
+                  <Plus className="h-3.5 w-3.5 text-primary" />
+                  Règlements supplémentaires
+                  {draftPaymentMethods.length > 0 && (
+                    <span className="ml-1 px-1.5 py-0.5 bg-primary/15 text-primary rounded-full text-[10px] font-semibold">{draftPaymentMethods.length}</span>
+                  )}
+                </span>
+                {showExtraPayments ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
               </button>
               {showExtraPayments && (
-                <div className="mt-2 space-y-2">
+                <div className="p-3 space-y-2">
                   {draftPaymentMethods.map((pm, idx) => (
-                    <div key={idx} className="grid grid-cols-4 gap-2 items-center">
+                    <div key={idx} className="grid grid-cols-[1fr_1fr_1fr_90px_28px] gap-2 items-center">
                       <select value={pm.method} onChange={e => setDraftPaymentMethods(prev => prev.map((p, i) => i === idx ? { ...p, method: e.target.value } : p))} className={inputCls}>
-                        <option value="">Mode</option>
+                        <option value="">— Mode —</option>
                         <option value="Virement bancaire">Virement</option>
                         <option value="Chèque">Chèque</option>
                         <option value="Espèces">Espèces</option>
@@ -501,14 +525,17 @@ export default function InvoiceDetailPage() {
                       </select>
                       <input value={pm.reference || ''} onChange={e => setDraftPaymentMethods(prev => prev.map((p, i) => i === idx ? { ...p, reference: e.target.value } : p))} className={inputCls} placeholder="Référence" />
                       <input value={pm.bank || ''} onChange={e => setDraftPaymentMethods(prev => prev.map((p, i) => i === idx ? { ...p, bank: e.target.value } : p))} className={inputCls} placeholder="Banque" />
-                      <div className="flex items-center gap-1">
-                        <input type="number" value={pm.amount || ''} onChange={e => setDraftPaymentMethods(prev => prev.map((p, i) => i === idx ? { ...p, amount: Number(e.target.value) } : p))} className={`${inputCls} flex-1`} placeholder="Montant" />
-                        <button onClick={() => setDraftPaymentMethods(prev => prev.filter((_, i) => i !== idx))} className="p-1 text-destructive hover:bg-destructive/10 rounded"><X className="h-3 w-3" /></button>
-                      </div>
+                      <input type="number" value={pm.amount || ''} onChange={e => setDraftPaymentMethods(prev => prev.map((p, i) => i === idx ? { ...p, amount: Number(e.target.value) } : p))} className={inputCls} placeholder="Montant" />
+                      <button onClick={() => setDraftPaymentMethods(prev => prev.filter((_, i) => i !== idx))} className="flex items-center justify-center h-full text-destructive hover:bg-destructive/10 rounded-lg transition-colors">
+                        <X className="h-3.5 w-3.5" />
+                      </button>
                     </div>
                   ))}
-                  <button onClick={() => setDraftPaymentMethods(prev => [...prev, { method: '', reference: '', bank: '', amount: 0 }])} className="flex items-center space-x-1.5 text-xs text-primary hover:underline">
-                    <Plus className="h-3 w-3" /><span>Ajouter un règlement</span>
+                  <button
+                    onClick={() => setDraftPaymentMethods(prev => [...prev, { method: '', reference: '', bank: '', amount: 0 }])}
+                    className="flex items-center gap-1.5 text-xs text-primary hover:underline mt-1"
+                  >
+                    <Plus className="h-3 w-3" />Ajouter un règlement
                   </button>
                 </div>
               )}
@@ -517,15 +544,29 @@ export default function InvoiceDetailPage() {
 
           {/* Avance */}
           {isEditing && (
-            <div className="mt-3 flex items-center gap-3">
-              <label className="flex items-center gap-2 text-xs text-foreground cursor-pointer">
-                <input type="checkbox" checked={showAvance} onChange={e => setShowAvance(e.target.checked)} className="h-3.5 w-3.5 rounded" />
-                Avance
+            <div className="mt-3 border border-border rounded-xl overflow-hidden">
+              <label className="w-full flex items-center justify-between px-3 py-2.5 bg-secondary/50 cursor-pointer hover:bg-secondary transition-colors">
+                <span className="text-xs font-medium text-foreground flex items-center gap-1.5">
+                  <ChevronDown className="h-3.5 w-3.5 text-primary" />
+                  Avance sur facture
+                </span>
+                <input type="checkbox" checked={showAvance} onChange={e => setShowAvance(e.target.checked)} className="h-4 w-4 rounded accent-primary" />
               </label>
               {showAvance && (
-                <input type="number" min="0" step="0.01" value={draftAvance}
-                  onChange={e => setDraftAvance(Number(e.target.value))}
-                  className={`${inputCls} w-32`} placeholder="Montant avance" />
+                <div className="p-3 flex items-center gap-3">
+                  <div className="flex-1">
+                    <label className="block text-[10px] text-muted-foreground mb-1">Montant avance (Dh)</label>
+                    <input type="number" min="0" step="0.01" value={draftAvance}
+                      onChange={e => setDraftAvance(Number(e.target.value))}
+                      className={inputCls} placeholder="0.00" />
+                  </div>
+                  {draftAvance > 0 && (
+                    <div className="text-right">
+                      <div className="text-[10px] text-muted-foreground mb-0.5">Reste NET TTC</div>
+                      <div className="text-sm font-bold font-mono text-amber-400">{fmt(Math.max(0, (invoice?.totalAmount ?? 0) - draftAvance))} Dh</div>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           )}
@@ -633,16 +674,26 @@ export default function InvoiceDetailPage() {
         <div className="glass rounded-lg p-3 space-y-2">
           <p className="text-[11px] text-muted-foreground">Notes</p>
           <textarea value={draftNotes} onChange={e => setDraftNotes(e.target.value)}
-            rows={2} placeholder="Notes..."
+            rows={2} placeholder="Note client (visible sur le PDF)..."
             className="w-full px-2 py-1.5 text-sm border border-input rounded bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-none" />
-          <textarea value={draftNotes2} onChange={e => setDraftNotes2(e.target.value)}
-            rows={2} placeholder="Note interne 2 (optionnel)..."
-            className="w-full px-2 py-1.5 text-sm border border-input rounded bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-none" />
+          <div className="relative">
+            <hr className="border-border mb-2" />
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 mb-1">Note interne</p>
+            <textarea value={draftNotes2} onChange={e => setDraftNotes2(e.target.value)}
+              rows={2} placeholder="Note interne (non visible sur le PDF)..."
+              className="w-full px-2 py-1.5 text-sm border border-input rounded bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-none" />
+          </div>
         </div>
       ) : (invoice.notes || invoice.notes2) ? (
-        <div className="glass rounded-lg p-3 space-y-1">
+        <div className="glass rounded-lg p-3 space-y-2">
           {invoice.notes && <p className="text-sm text-muted-foreground italic">{invoice.notes}</p>}
-          {invoice.notes2 && <p className="text-sm text-muted-foreground italic">{invoice.notes2}</p>}
+          {invoice.notes && invoice.notes2 && <hr className="border-border" />}
+          {invoice.notes2 && (
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 mb-0.5">Note interne</p>
+              <p className="text-sm text-muted-foreground italic">{invoice.notes2}</p>
+            </div>
+          )}
         </div>
       ) : null}
 
@@ -674,14 +725,24 @@ export default function InvoiceDetailPage() {
                 placeholder="Ex: 0661234567"
                 autoFocus
               />
-              {invoice.customer?.phoneNumber && (
-                <button
-                  onClick={() => setWaPhone(invoice.customer!.phoneNumber)}
-                  className="mt-1 text-[11px] text-primary hover:underline"
-                >
-                  Utiliser le téléphone client ({invoice.customer.phoneNumber})
-                </button>
-              )}
+              <div className="mt-2 space-y-1.5">
+                {invoice.customer?.salesPerson && (
+                  <div className="flex items-center justify-between text-[11px] py-1.5 px-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                    <span className="text-muted-foreground">
+                      Commercial : <span className="text-foreground font-medium">{invoice.customer.salesPerson}</span>
+                    </span>
+                    {agentPhoneLoading ? (
+                      <span className="text-muted-foreground italic">chargement…</span>
+                    ) : agentPhone ? (
+                      <button onClick={() => setWaPhone(agentPhone)} className="text-emerald-500 font-medium hover:underline">
+                        {agentPhone}
+                      </button>
+                    ) : (
+                      <span className="text-muted-foreground italic">non configuré</span>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
             <div className="flex space-x-2">
               <button onClick={() => setShowWaModal(false)} className="flex-1 px-3 py-1.5 text-sm border border-input rounded-lg hover:bg-accent text-foreground">Annuler</button>
