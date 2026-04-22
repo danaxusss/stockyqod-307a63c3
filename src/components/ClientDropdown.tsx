@@ -120,7 +120,15 @@ export function ClientDropdown({ value, onChange, placeholder = 'Rechercher un c
       {showNoResults && onCreateNew && (
         <button
           type="button"
-          onMouseDown={() => { setOpen(false); onCreateNew(query); }}
+          onMouseDown={() => {
+            const q = query;
+            // Reset dropdown completely so it doesn't keep searching in the background
+            setOpen(false);
+            setQuery('');
+            setResults([]);
+            if (debounceRef.current) clearTimeout(debounceRef.current);
+            onCreateNew(q);
+          }}
           className="w-full text-left px-3 py-2 hover:bg-accent transition-colors flex items-center space-x-2 text-primary"
         >
           <Plus className="h-3.5 w-3.5" />
@@ -130,7 +138,14 @@ export function ClientDropdown({ value, onChange, placeholder = 'Rechercher un c
       {!showNoResults && onCreateNew && results.length > 0 && (
         <button
           type="button"
-          onMouseDown={() => { setOpen(false); onCreateNew(query); }}
+          onMouseDown={() => {
+            const q = query;
+            setOpen(false);
+            setQuery('');
+            setResults([]);
+            if (debounceRef.current) clearTimeout(debounceRef.current);
+            onCreateNew(q);
+          }}
           className="w-full text-left px-3 py-2 hover:bg-accent transition-colors border-t border-border flex items-center space-x-2 text-primary"
         >
           <Plus className="h-3.5 w-3.5" />

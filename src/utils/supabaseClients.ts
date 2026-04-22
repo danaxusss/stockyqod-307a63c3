@@ -154,6 +154,17 @@ export class SupabaseClientsService {
     return SupabaseClientsService.createClient(client);
   }
 
+  static async assignClientCode(clientId: string, firstLetter: string): Promise<string | null> {
+    try {
+      const { data: codeData } = await (supabase.rpc as any)('next_client_code', { p_first_letter: firstLetter });
+      if (!codeData) return null;
+      await supabase.from('clients').update({ client_code: codeData }).eq('id', clientId);
+      return codeData as string;
+    } catch {
+      return null;
+    }
+  }
+
   static async deleteClient(id: string): Promise<void> {
     const { error } = await supabase
       .from('clients')

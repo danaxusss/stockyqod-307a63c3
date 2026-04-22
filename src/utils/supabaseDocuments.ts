@@ -68,6 +68,7 @@ function mapDocRow(row: DocRow): Quote {
 }
 
 export interface ClientFinancialRow {
+  clientId?: string;       // id from clients table — undefined for legacy quote-only customers
   clientName: string;
   fullName: string;
   phoneNumber: string;
@@ -381,73 +382,133 @@ export class SupabaseDocumentsService {
     if (error) throw new Error(`Erreur suppression: ${error.message}`);
   }
 
-  // Aggregate proformas by customer for the Client Financial view
+  // Unified client financial view:
+  // - Sources ALL clients from the clients table (registered clients always appear)
+  // - Enriches with aggregated proforma/invoice data (LEFT JOIN by phone)
+  // - Also appends legacy "quote-only" customers not in clients table
   static async getClientFinancialSummary(): Promise<ClientFinancialRow[]> {
-    const { data, error } = await (supabase.from('quotes') as any)
-      .select('customer_info, total_amount, paid_amount, status')
-      .eq('document_type', 'proforma');
-    if (error) throw new Error(`Erreur résumé clients: ${error.message}`);
+    const { companyId, isSuperAdmin } = getCompanyContext();
 
-    const { data: invoiceData } = await (supabase.from('quotes') as any)
-      .select('customer_info, parent_document_id')
-      .eq('document_type', 'invoice');
+    // ── 1. All registered clients ──────────────────────────────────────────
+    let clientQuery = (supabase.from('clients') as any)
+      .select('id, full_name, phone_number, client_code')
+      .order('full_name', { ascending: true });
+    if (!isSuperAdmin && companyId) clientQuery = clientQuery.eq('company_id', companyId);
+    const { data: clientRows, error: clientErr } = await clientQuery;
+    if (clientErr) throw new Error(`Erreur clients: ${clientErr.message}`);
 
-    // Group proformas by client name
-    const clientMap = new Map<string, ClientFinancialRow>();
-    for (const row of (data as any[]) || []) {
-      const info = row.customer_info as CustomerInfo;
-      const name = info?.fullName || '—';
-      const phone = info?.phoneNumber || '';
-      const total = Number(row.total_amount || 0);
-      const paid = Number(row.paid_amount || 0);
-      const remaining = total - paid;
+    // ── 2. Quote documents (proformas + invoices) for aggregation ───────────
+    let docQuery = (supabase.from('quotes') as any)
+      .select('customer_info, total_amount, paid_amount, document_type')
+      .in('document_type', ['proforma', 'invoice']);
+    if (!isSuperAdmin && companyId) docQuery = docQuery.eq('company_id', companyId);
+    const { data: docData } = await docQuery;
 
-      const existing = clientMap.get(name);
-      if (existing) {
-        existing.totalAmount += total;
-        existing.paidAmount += paid;
-        existing.remaining += remaining;
+    // ── 3. Build aggregation map keyed by phone_number ──────────────────────
+    interface Agg {
+      totalAmount: number; paidAmount: number;
+      proformaCount: number; invoiceCount: number;
+      name: string; // client name from first encountered quote
+    }
+    const byPhone = new Map<string, Agg>();
+
+    for (const doc of (docData as any[]) || []) {
+      const info = doc.customer_info as CustomerInfo;
+      const phone = (info?.phoneNumber || '').trim();
+      const name  = (info?.fullName   || '').trim();
+      if (!phone) continue; // skip phone-less entries (handled separately below)
+
+      const existing = byPhone.get(phone) || {
+        totalAmount: 0, paidAmount: 0, proformaCount: 0, invoiceCount: 0, name,
+      };
+      if (doc.document_type === 'proforma') {
+        existing.totalAmount  += Number(doc.total_amount || 0);
+        existing.paidAmount   += Number(doc.paid_amount  || 0);
         existing.proformaCount += 1;
       } else {
-        clientMap.set(name, {
-          clientName: name,
-          fullName: name,
-          phoneNumber: phone,
-          totalAmount: total,
-          paidAmount: paid,
-          remaining,
-          proformaCount: 1,
-          invoiceCount: 0,
-        });
+        existing.invoiceCount += 1;
       }
+      if (!existing.name && name) existing.name = name;
+      byPhone.set(phone, existing);
     }
 
-    // Count invoices per client
-    for (const inv of (invoiceData as any[]) || []) {
-      const info = inv.customer_info as CustomerInfo;
-      const name = info?.fullName || '—';
-      const entry = clientMap.get(name);
-      if (entry) entry.invoiceCount += 1;
-    }
-
-    // Enrich with client_code from clients table
-    const phones = Array.from(clientMap.values()).map(r => r.phoneNumber).filter(Boolean);
-    if (phones.length > 0) {
-      const { data: clientRows } = await (supabase.from('clients') as any)
-        .select('phone_number, client_code')
-        .in('phone_number', phones);
-      if (clientRows) {
-        const codeByPhone = new Map<string, string>();
-        for (const c of clientRows as { phone_number: string; client_code: string | null }[]) {
-          if (c.client_code) codeByPhone.set(c.phone_number, c.client_code);
-        }
-        for (const row of clientMap.values()) {
-          row.clientCode = codeByPhone.get(row.phoneNumber);
-        }
+    // Also collect name-only (no phone) quote customers for legacy fallback
+    const byName = new Map<string, Agg>();
+    for (const doc of (docData as any[]) || []) {
+      const info = doc.customer_info as CustomerInfo;
+      const phone = (info?.phoneNumber || '').trim();
+      const name  = (info?.fullName   || '').trim();
+      if (phone || !name) continue;
+      const existing = byName.get(name) || {
+        totalAmount: 0, paidAmount: 0, proformaCount: 0, invoiceCount: 0, name,
+      };
+      if (doc.document_type === 'proforma') {
+        existing.totalAmount  += Number(doc.total_amount || 0);
+        existing.paidAmount   += Number(doc.paid_amount  || 0);
+        existing.proformaCount += 1;
+      } else {
+        existing.invoiceCount += 1;
       }
+      byName.set(name, existing);
     }
 
-    return Array.from(clientMap.values()).sort((a, b) => b.remaining - a.remaining);
+    // ── 4. Build rows — registered clients first ────────────────────────────
+    const rows: ClientFinancialRow[] = [];
+    const seenPhones = new Set<string>();
+
+    for (const c of (clientRows as any[]) || []) {
+      const phone = (c.phone_number || '').trim();
+      const agg = (phone && byPhone.get(phone)) || {
+        totalAmount: 0, paidAmount: 0, proformaCount: 0, invoiceCount: 0, name: c.full_name,
+      };
+      if (phone) seenPhones.add(phone);
+      rows.push({
+        clientId:    c.id,
+        clientCode:  c.client_code || undefined,
+        clientName:  c.full_name,
+        fullName:    c.full_name,
+        phoneNumber: phone,
+        totalAmount:  agg.totalAmount,
+        paidAmount:   agg.paidAmount,
+        remaining:    agg.totalAmount - agg.paidAmount,
+        proformaCount: agg.proformaCount,
+        invoiceCount:  agg.invoiceCount,
+      });
+    }
+
+    // ── 5. Legacy: quote customers not in clients table (by phone) ──────────
+    for (const [phone, agg] of byPhone) {
+      if (seenPhones.has(phone)) continue;
+      rows.push({
+        clientName:  agg.name || phone,
+        fullName:    agg.name || phone,
+        phoneNumber: phone,
+        totalAmount:  agg.totalAmount,
+        paidAmount:   agg.paidAmount,
+        remaining:    agg.totalAmount - agg.paidAmount,
+        proformaCount: agg.proformaCount,
+        invoiceCount:  agg.invoiceCount,
+      });
+    }
+
+    // ── 6. Legacy: name-only quote customers (no phone) ─────────────────────
+    for (const [name, agg] of byName) {
+      rows.push({
+        clientName:  name,
+        fullName:    name,
+        phoneNumber: '',
+        totalAmount:  agg.totalAmount,
+        paidAmount:   agg.paidAmount,
+        remaining:    agg.totalAmount - agg.paidAmount,
+        proformaCount: agg.proformaCount,
+        invoiceCount:  agg.invoiceCount,
+      });
+    }
+
+    // Sort: clients with balance first, then alphabetical
+    return rows.sort((a, b) =>
+      b.remaining - a.remaining || b.totalAmount - a.totalAmount || a.clientName.localeCompare(b.clientName)
+    );
   }
 
   // Fetch all BL documents (compta global view) — optionally filter by client name

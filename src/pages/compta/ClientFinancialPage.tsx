@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Calculator, Search, Download, Plus } from 'lucide-react';
+import { Calculator, Search, Download, Plus, Hash } from 'lucide-react';
 import { SupabaseDocumentsService, ClientFinancialRow } from '../../utils/supabaseDocuments';
+import { SupabaseClientsService } from '../../utils/supabaseClients';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../hooks/useAuth';
 import { exportToCSV } from '../../utils/csvExport';
@@ -25,6 +26,22 @@ export default function ClientFinancialPage() {
     try {
       const data = await SupabaseDocumentsService.getClientFinancialSummary();
       setRows(data);
+
+      // Silently generate client codes for registered clients that don't have one yet
+      const missing = data.filter(r => r.clientId && !r.clientCode);
+      if (missing.length > 0) {
+        await Promise.all(
+          missing.map(r =>
+            SupabaseClientsService.assignClientCode(
+              r.clientId!,
+              (r.fullName?.[0] || 'X').toUpperCase()
+            )
+          )
+        );
+        // Reload to show the newly generated codes
+        const fresh = await SupabaseDocumentsService.getClientFinancialSummary();
+        setRows(fresh);
+      }
     } catch (e) {
       showToast({ type: 'error', title: 'Erreur', message: String(e) });
     } finally {
@@ -35,12 +52,14 @@ export default function ClientFinancialPage() {
   useEffect(() => { load(); }, [load]);
 
   const filtered = rows.filter(r =>
-    !search || r.clientName.toLowerCase().includes(search.toLowerCase())
+    !search ||
+    r.clientName.toLowerCase().includes(search.toLowerCase()) ||
+    (r.clientCode || '').toLowerCase().includes(search.toLowerCase()) ||
+    (r.phoneNumber || '').includes(search)
   );
 
-  // Summary stats
   const totalRemaining = filtered.reduce((s, r) => s + r.remaining, 0);
-  const totalBilled = filtered.reduce((s, r) => s + r.paidAmount, 0);
+  const totalBilled    = filtered.reduce((s, r) => s + r.totalAmount, 0);
 
   if (!isSuperAdmin && !isCompta) {
     return <div className="text-center py-12 text-muted-foreground">Accès réservé au rôle Comptabilité.</div>;
@@ -56,34 +75,36 @@ export default function ClientFinancialPage() {
             </div>
             <div>
               <h1 className="text-lg font-bold text-foreground">Clients (financier)</h1>
-              <p className="text-xs text-muted-foreground">{filtered.length} client{filtered.length !== 1 ? 's' : ''}</p>
+              <p className="text-xs text-muted-foreground">
+                {filtered.length} client{filtered.length !== 1 ? 's' : ''}
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowClientForm(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
-          >
-            <Plus className="h-3.5 w-3.5" /><span>Nouveau client</span>
-          </button>
-          <button
-            onClick={() => {
-              const rows = filtered.map(r => ({
-                'Code Client': r.clientCode || '',
-                'Client': r.fullName || r.clientName,
-                'Téléphone': r.phoneNumber || '',
-                'Total Facturé': r.totalAmount,
-                'Payé': r.paidAmount,
-                'Reste': r.remaining,
-                'N° Proformas': r.proformaCount,
-                'N° Factures': r.invoiceCount,
-              }));
-              exportToCSV(rows, `clients-financier-${new Date().toISOString().slice(0, 10)}`);
-            }}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-border rounded-lg hover:bg-accent text-foreground"
-          >
-            <Download className="h-3.5 w-3.5" /><span>CSV</span>
-          </button>
+            <button
+              onClick={() => setShowClientForm(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
+            >
+              <Plus className="h-3.5 w-3.5" /><span>Nouveau client</span>
+            </button>
+            <button
+              onClick={() => {
+                const exportRows = filtered.map(r => ({
+                  'Code Client':   r.clientCode || '',
+                  'Client':        r.fullName || r.clientName,
+                  'Téléphone':     r.phoneNumber || '',
+                  'Total Facturé': r.totalAmount,
+                  'Payé':          r.paidAmount,
+                  'Reste':         r.remaining,
+                  'N° Proformas':  r.proformaCount,
+                  'N° Factures':   r.invoiceCount,
+                }));
+                exportToCSV(exportRows, `clients-financier-${new Date().toISOString().slice(0, 10)}`);
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-border rounded-lg hover:bg-accent text-foreground"
+            >
+              <Download className="h-3.5 w-3.5" /><span>CSV</span>
+            </button>
           </div>
         </div>
 
@@ -91,7 +112,7 @@ export default function ClientFinancialPage() {
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <input
             type="text" value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Rechercher un client..."
+            placeholder="Rechercher par nom, code ou téléphone..."
             className="w-full pl-8 pr-3 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground"
           />
         </div>
@@ -99,11 +120,15 @@ export default function ClientFinancialPage() {
         {/* Summary */}
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-secondary rounded-lg p-3 text-center">
-            <div className="text-base font-bold text-emerald-600">{fmt(totalBilled)} Dh</div>
+            <div className="text-base font-bold text-emerald-600 dark:text-emerald-400 finance-amount">
+              {fmt(totalBilled)} Dh
+            </div>
             <div className="text-[11px] text-muted-foreground mt-0.5">Total Facturé</div>
           </div>
           <div className="bg-secondary rounded-lg p-3 text-center">
-            <div className="text-base font-bold text-destructive">{fmt(totalRemaining)} Dh</div>
+            <div className="text-base font-bold text-destructive finance-amount">
+              {fmt(totalRemaining)} Dh
+            </div>
             <div className="text-[11px] text-muted-foreground mt-0.5">Reste à Payer</div>
           </div>
         </div>
@@ -121,18 +146,33 @@ export default function ClientFinancialPage() {
             <table className="w-full">
               <thead className="bg-secondary">
                 <tr>
-                  {['Client', 'Tel', 'Total', 'Payé', 'Reste', 'Proformas', 'Factures'].map(h => (
-                    <th key={h} className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">{h}</th>
+                  {['Code', 'Client', 'Tel', 'Total', 'Payé', 'Reste', 'Pro.', 'Fact.'].map(h => (
+                    <th key={h} className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">
+                      {h}
+                    </th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {filtered.map(row => (
+                {filtered.map((row, idx) => (
                   <tr
-                    key={row.clientName}
+                    key={row.clientId || `${row.clientName}-${idx}`}
                     className="hover:bg-accent/50 cursor-pointer"
                     onClick={() => navigate(`/compta/proformas?client=${encodeURIComponent(row.clientName)}`)}
                   >
+                    {/* Code Client */}
+                    <td className="px-3 py-2.5">
+                      {row.clientCode ? (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-primary/10 text-primary">
+                          {row.clientCode}
+                        </span>
+                      ) : row.clientId ? (
+                        <span className="text-[10px] text-muted-foreground/50 italic">—</span>
+                      ) : (
+                        <span className="text-[10px] text-muted-foreground/30">n/a</span>
+                      )}
+                    </td>
+
                     <td className="px-3 py-2.5">
                       <span className="text-xs font-medium text-foreground">{row.clientName}</span>
                     </td>
@@ -140,13 +180,13 @@ export default function ClientFinancialPage() {
                       <span className="text-[10px] text-muted-foreground">{row.phoneNumber || '—'}</span>
                     </td>
                     <td className="px-3 py-2.5">
-                      <span className="text-xs font-mono text-foreground">{fmt(row.totalAmount)} Dh</span>
+                      <span className="text-xs font-mono text-foreground finance-amount">{fmt(row.totalAmount)} Dh</span>
                     </td>
                     <td className="px-3 py-2.5">
-                      <span className="text-xs font-mono text-emerald-600">{fmt(row.paidAmount)} Dh</span>
+                      <span className="text-xs font-mono text-emerald-600 dark:text-emerald-400 finance-amount">{fmt(row.paidAmount)} Dh</span>
                     </td>
                     <td className="px-3 py-2.5">
-                      <span className={`text-xs font-mono font-bold ${row.remaining > 0 ? 'text-destructive' : 'text-emerald-600'}`}>
+                      <span className={`text-xs font-mono font-bold finance-amount ${row.remaining > 0 ? 'text-destructive' : 'text-emerald-600 dark:text-emerald-400'}`}>
                         {fmt(row.remaining)} Dh
                       </span>
                     </td>
