@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
-import { FileText, Search, Download, Trash2, ChevronUp, ChevronDown } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { FileText, Search, Download, Trash2, ChevronUp, ChevronDown, Plus } from 'lucide-react';
 import { Quote } from '../../types';
 import { SupabaseDocumentsService } from '../../utils/supabaseDocuments';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../hooks/useAuth';
+import { getCompanyContext } from '../../utils/supabaseCompanyFilter';
 import { PdfExportService } from '../../utils/pdfExport';
 import { SupabaseCompaniesService } from '../../utils/supabaseCompanies';
 import { exportToCSV } from '../../utils/csvExport';
@@ -24,7 +25,10 @@ function fmt(n: number) {
 export default function ProformaDirectoryPage() {
   const { isSuperAdmin, isCompta } = useAuth();
   const { showToast } = useToast();
+  const navigate = useNavigate();
   const [proformas, setProformas] = useState<Quote[]>([]);
+  const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
+  const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'encours' | 'solde'>('all');
@@ -34,8 +38,12 @@ export default function ProformaDirectoryPage() {
   const load = useCallback(async () => {
     setIsLoading(true);
     try {
-      const data = await SupabaseDocumentsService.getAllByType('proforma');
+      const [data, allCo] = await Promise.all([
+        SupabaseDocumentsService.getAllByType('proforma'),
+        SupabaseCompaniesService.getAllCompanies(),
+      ]);
       setProformas(data);
+      setCompanies(allCo.map(c => ({ id: c.id, name: c.name })));
     } catch (e) {
       showToast({ type: 'error', title: 'Erreur', message: String(e) });
     } finally {
@@ -44,6 +52,21 @@ export default function ProformaDirectoryPage() {
   }, [showToast]);
 
   useEffect(() => { load(); }, [load]);
+
+  const handleNewProforma = async () => {
+    const { companyId: ctxId } = getCompanyContext();
+    const compId = ctxId || companies[0]?.id;
+    if (!compId) { showToast({ type: 'error', message: 'Aucune société disponible' }); return; }
+    setIsCreatingNew(true);
+    try {
+      const doc = await SupabaseDocumentsService.createEmptyDocument('proforma', compId);
+      navigate(`/compta/proformas/${doc.id}?new=1`);
+    } catch (e) {
+      showToast({ type: 'error', message: String(e) });
+    } finally {
+      setIsCreatingNew(false);
+    }
+  };
 
   const handleDelete = async (id: string, num: string) => {
     if (!window.confirm(`Supprimer le proforma ${num} ? Action irréversible.`)) return;
@@ -127,24 +150,33 @@ export default function ProformaDirectoryPage() {
               <p className="text-xs text-muted-foreground">{filtered.length} document{filtered.length !== 1 ? 's' : ''}</p>
             </div>
           </div>
-          <button
-            onClick={() => {
-              const rows = filtered.map(p => ({
-                'N° Proforma': p.quoteNumber,
-                'Client': p.customer?.fullName || '',
-                'Téléphone': p.customer?.phoneNumber || '',
-                'Total TTC': p.totalAmount,
-                'Payé': p.paid_amount || 0,
-                'Reste': p.totalAmount - (p.paid_amount || 0),
-                'Statut': p.status,
-                'Date': new Date(p.createdAt).toLocaleDateString('fr-FR'),
-              }));
-              exportToCSV(rows, `proformas-${new Date().toISOString().slice(0, 10)}`);
-            }}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-border rounded-lg hover:bg-accent text-foreground"
-          >
-            <Download className="h-3.5 w-3.5" /><span>CSV</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleNewProforma}
+              disabled={isCreatingNew}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50"
+            >
+              <Plus className="h-3.5 w-3.5" /><span>{isCreatingNew ? '...' : 'Nouveau proforma'}</span>
+            </button>
+            <button
+              onClick={() => {
+                const rows = filtered.map(p => ({
+                  'N° Proforma': p.quoteNumber,
+                  'Client': p.customer?.fullName || '',
+                  'Téléphone': p.customer?.phoneNumber || '',
+                  'Total TTC': p.totalAmount,
+                  'Payé': p.paid_amount || 0,
+                  'Reste': p.totalAmount - (p.paid_amount || 0),
+                  'Statut': p.status,
+                  'Date': new Date(p.createdAt).toLocaleDateString('fr-FR'),
+                }));
+                exportToCSV(rows, `proformas-${new Date().toISOString().slice(0, 10)}`);
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-border rounded-lg hover:bg-accent text-foreground"
+            >
+              <Download className="h-3.5 w-3.5" /><span>CSV</span>
+            </button>
+          </div>
         </div>
 
         <div className="flex gap-2 flex-wrap">

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Truck, Search, Download, Trash2, CheckSquare, Square, FileText, Building2 } from 'lucide-react';
+import { Truck, Search, Download, Trash2, CheckSquare, Square, FileText, Building2, Plus } from 'lucide-react';
 import { Quote, Company } from '../../types';
 import { SupabaseDocumentsService } from '../../utils/supabaseDocuments';
 import { SupabaseCompaniesService } from '../../utils/supabaseCompanies';
@@ -28,6 +28,7 @@ export default function BLDirectoryPage() {
   const [singleProformaBL, setSingleProformaBL] = useState<Quote | null>(null);
   const [targetCompanyId, setTargetCompanyId] = useState('');
   const [isCreating, setIsCreating] = useState(false);
+  const [isCreatingNew, setIsCreatingNew] = useState(false);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -46,6 +47,20 @@ export default function BLDirectoryPage() {
   }, [showToast]);
 
   useEffect(() => { load(); }, [load]);
+
+  const handleNewBL = async () => {
+    const compId = companies[0]?.id;
+    if (!compId) { showToast({ type: 'error', message: 'Aucune société disponible' }); return; }
+    setIsCreatingNew(true);
+    try {
+      const doc = await SupabaseDocumentsService.createEmptyDocument('bl', compId);
+      navigate(`/compta/bls/${doc.id}?new=1`);
+    } catch (e) {
+      showToast({ type: 'error', message: String(e) });
+    } finally {
+      setIsCreatingNew(false);
+    }
+  };
 
   const toggleRow = (id: string) =>
     setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -152,6 +167,14 @@ export default function BLDirectoryPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={handleNewBL}
+              disabled={isCreatingNew}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg font-medium"
+            >
+              {isCreatingNew ? <div className="h-3.5 w-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+              <span>Nouveau BL</span>
+            </button>
             <button onClick={handleExportCSV} className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-border rounded-lg hover:bg-accent text-foreground">
               <Download className="h-3.5 w-3.5" /><span>CSV</span>
             </button>

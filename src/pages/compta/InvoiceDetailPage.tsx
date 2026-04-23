@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { Receipt, Download, ArrowLeft, Loader, Pencil, Check, X, Plus, Calendar, Lock, Unlock, ChevronDown, ChevronUp, MessageCircle, Copy, CopyPlus, Search as SearchIcon, Mail, Printer, CheckCircle, Clock, AlertCircle } from 'lucide-react';
 import { Quote, QuoteItem, PaymentEntry, Product } from '../../types';
 import { SupabaseDocumentsService } from '../../utils/supabaseDocuments';
@@ -23,6 +23,7 @@ const inputCls = 'w-full px-2 py-1 text-xs border border-input rounded bg-backgr
 export default function InvoiceDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { isSuperAdmin, isCompta } = useAuth();
   const { showToast } = useToast();
 
@@ -105,6 +106,11 @@ export default function InvoiceDetailPage() {
   }, [id, showToast]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Auto-enter edit mode for freshly created documents
+  useEffect(() => {
+    if (searchParams.get('new') === '1' && invoice && !isEditing) startEdit();
+  }, [invoice, searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const startEdit = () => {
     if (!invoice) return;

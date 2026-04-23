@@ -581,6 +581,37 @@ export class SupabaseDocumentsService {
     return this.createProformaFromBLs([blId], targetCompanyId);
   }
 
+  // Create a blank document of the given type directly (no source document needed).
+  // Used by "Nouveau BL / Proforma / Facture" buttons in directory pages.
+  static async createEmptyDocument(
+    type: 'bl' | 'proforma' | 'invoice',
+    companyId: string
+  ): Promise<Quote> {
+    const number = await this.nextNumber(companyId, type);
+    const now = new Date().toISOString();
+    const newId = crypto.randomUUID();
+    const emptyCustomer = { fullName: '', phoneNumber: '', address: '', city: '', salesPerson: '', ice: '' };
+    const row: Record<string, unknown> = {
+      id: newId,
+      quote_number: number,
+      created_at: now,
+      updated_at: now,
+      status: 'draft',
+      customer_info: emptyCustomer,
+      items: [],
+      total_amount: 0,
+      document_type: type,
+      company_id: companyId,
+      paid_amount: 0,
+    };
+    const { data, error } = await (supabase.from('quotes') as any)
+      .insert(row)
+      .select('*')
+      .single();
+    if (error) throw new Error(`Erreur création ${type}: ${error.message}`);
+    return mapDocRow(data as DocRow);
+  }
+
   // Update any document fields (quote number, customer, items, notes, status)
   static async updateDocument(
     id: string,

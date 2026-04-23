@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { CheckSquare, Square, Download, FileText, ArrowLeft, Building2, Loader, Pencil, Check, X, Plus, CopyPlus, Search as SearchIcon, Printer } from 'lucide-react';
 import { Quote, QuoteItem, Company, Product } from '../../types';
 import { SupabaseDocumentsService } from '../../utils/supabaseDocuments';
@@ -27,6 +27,7 @@ const inputCls = 'w-full px-2 py-1 text-xs border border-input rounded bg-backgr
 export default function ProformaDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { isSuperAdmin, isCompta } = useAuth();
   const { showToast } = useToast();
 
@@ -77,6 +78,10 @@ export default function ProformaDetailPage() {
   }, [id, showToast]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (searchParams.get('new') === '1' && proforma && !isEditing) startEdit();
+  }, [proforma, searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const startEdit = () => {
     if (!proforma) return;

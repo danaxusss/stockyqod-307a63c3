@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Receipt, Search, Download, Trash2, ChevronUp, ChevronDown, X, Eye, Printer, MessageCircle, Mail, Copy, Lock, CheckCircle, Clock, AlertCircle } from 'lucide-react';
+import { Receipt, Search, Download, Trash2, ChevronUp, ChevronDown, X, Eye, Printer, MessageCircle, Mail, Copy, Lock, CheckCircle, Clock, AlertCircle, Plus } from 'lucide-react';
 import { Quote, PaymentEntry } from '../../types';
 import { SupabaseDocumentsService } from '../../utils/supabaseDocuments';
 import { SupabaseCompaniesService } from '../../utils/supabaseCompanies';
@@ -12,6 +12,7 @@ import { buildWhatsAppShareUrl, openWhatsAppShare } from '../../utils/whatsappSh
 import { SupabaseUsersService } from '../../utils/supabaseUsers';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../hooks/useAuth';
+import { getCompanyContext } from '../../utils/supabaseCompanyFilter';
 import { exportToCSV } from '../../utils/csvExport';
 
 function fmt(n: number) {
@@ -42,6 +43,7 @@ export default function InvoiceDirectoryPage() {
   const [companies, setCompanies] = useState<Record<string, string>>({});
   const [companyList, setCompanyList] = useState<{ id: string; name: string }[]>([]);
   const [proformaNumbers, setProformaNumbers] = useState<Record<string, string>>({});
+  const [isCreating, setIsCreating] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   // Filters
@@ -100,6 +102,21 @@ export default function InvoiceDirectoryPage() {
   }, [showToast]);
 
   useEffect(() => { load(); }, [load]);
+
+  const handleNewInvoice = async () => {
+    const { companyId: ctxId } = getCompanyContext();
+    const compId = ctxId || companyList[0]?.id;
+    if (!compId) { showToast({ type: 'error', message: 'Aucune société disponible' }); return; }
+    setIsCreating(true);
+    try {
+      const doc = await SupabaseDocumentsService.createEmptyDocument('invoice', compId);
+      navigate(`/compta/invoices/${doc.id}?new=1`);
+    } catch (e) {
+      showToast({ type: 'error', message: String(e) });
+    } finally {
+      setIsCreating(false);
+    }
+  };
 
   useEffect(() => {
     if (!openMenuId) return;
@@ -317,9 +334,19 @@ export default function InvoiceDirectoryPage() {
               <p className="text-xs text-muted-foreground">{filtered.length} / {invoices.length} facture{invoices.length !== 1 ? 's' : ''}</p>
             </div>
           </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleNewInvoice}
+              disabled={isCreating}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg font-medium"
+            >
+              {isCreating ? <div className="h-3.5 w-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+              <span>Nouvelle facture</span>
+            </button>
           <button onClick={handleExportCSV} className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-border rounded-lg hover:bg-accent text-foreground">
             <Download className="h-3.5 w-3.5" /><span>CSV</span>
           </button>
+          </div>
         </div>
 
         {/* Filters */}
