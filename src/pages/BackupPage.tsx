@@ -59,10 +59,10 @@ export default function BackupPage() {
 
   useEffect(() => {
     if (!isSuperAdmin) return;
-    const { companyId, isSuperAdmin: sa } = getCompanyContext();
-    BackupService.getAvailableYears(companyId, sa).then(years => {
+    const { companyId } = getCompanyContext();
+    BackupService.getAvailableYears(companyId, isSuperAdmin).then(years => {
       setAvailableYears(years);
-      if (years.length > 0) setSelectedYear(years[0]);
+      if (years.length > 0) setSelectedYear(years[years.length - 1]);
     }).catch(() => {});
   }, [isSuperAdmin]);
 
@@ -131,16 +131,15 @@ export default function BackupPage() {
     if (resetPhrase !== RESET_PHRASE) return;
     setIsResetting(true);
     setResetMsg('');
-    const { companyId, isSuperAdmin: sa } = getCompanyContext();
+    const { companyId } = getCompanyContext();
     try {
-      await BackupService.resetAllData(companyId, sa, msg => setResetMsg(msg));
+      await BackupService.resetAllData(companyId, isSuperAdmin, msg => setResetMsg(msg));
       setResetMsg('');
       setResetPhrase('');
       showToast({ type: 'success', title: 'Réinitialisation terminée', message: 'Toutes les données transactionnelles ont été supprimées.' });
-      // Refresh available years
-      const years = await BackupService.getAvailableYears(companyId, sa);
+      const years = await BackupService.getAvailableYears(companyId, isSuperAdmin);
       setAvailableYears(years);
-      setSelectedYear(years[0] ?? null);
+      setSelectedYear(years[years.length - 1] ?? null);
     } catch (e) {
       showToast({ type: 'error', title: 'Erreur réinitialisation', message: String(e) });
     } finally {
@@ -154,9 +153,9 @@ export default function BackupPage() {
     setIsArchiving(true);
     setArchiveMsg('');
     setArchiveDownloaded(false);
-    const { companyId, isSuperAdmin: sa } = getCompanyContext();
+    const { companyId } = getCompanyContext();
     try {
-      const data = await BackupService.exportDocumentsByYear(selectedYear, companyId, sa, msg => setArchiveMsg(msg));
+      const data = await BackupService.exportDocumentsByYear(selectedYear, companyId, isSuperAdmin, msg => setArchiveMsg(msg));
       BackupService.downloadArchive(data, selectedYear);
       setArchiveDownloaded(true);
       setArchiveMsg('');
@@ -174,15 +173,15 @@ export default function BackupPage() {
     if (!window.confirm(`Supprimer définitivement tous les documents de ${selectedYear} de la base de données ?\n\nCes données ont été exportées dans stocky-archive-${selectedYear}.json — conservez ce fichier pour les restaurer en cas de besoin.`)) return;
     setIsArchiving(true);
     setArchiveMsg('');
-    const { companyId, isSuperAdmin: sa } = getCompanyContext();
+    const { companyId } = getCompanyContext();
     try {
-      await BackupService.deleteDocumentsByYear(selectedYear, companyId, sa, msg => setArchiveMsg(msg));
+      await BackupService.deleteDocumentsByYear(selectedYear, companyId, isSuperAdmin, msg => setArchiveMsg(msg));
       setArchiveDownloaded(false);
       setArchiveMsg('');
       showToast({ type: 'success', title: `Documents ${selectedYear} supprimés`, message: 'Les données ont été retirées de la base.' });
-      const years = await BackupService.getAvailableYears(companyId, sa);
+      const years = await BackupService.getAvailableYears(companyId, isSuperAdmin);
       setAvailableYears(years);
-      setSelectedYear(years[0] ?? null);
+      setSelectedYear(years[years.length - 1] ?? null);
     } catch (e) {
       showToast({ type: 'error', title: 'Erreur suppression archive', message: String(e) });
     } finally {
@@ -369,7 +368,10 @@ export default function BackupPage() {
         </p>
 
         {availableYears.length === 0 ? (
-          <p className="text-xs text-muted-foreground italic">Aucune donnée documentaire disponible.</p>
+          <div className="flex items-start gap-2 p-3 bg-secondary rounded-lg text-xs text-muted-foreground">
+            <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-amber-500" />
+            <span>Aucun document trouvé dans la base. Créez des devis, BLs ou factures — les années disponibles apparaîtront ici automatiquement.</span>
+          </div>
         ) : (
           <div className="space-y-3">
             <div className="flex items-center gap-3">
