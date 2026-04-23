@@ -1,10 +1,12 @@
-import React, { useState, useRef } from 'react';
-import { Download, Upload, Database, CheckCircle, AlertCircle, Loader, RotateCcw, FileJson, ChevronDown, ChevronUp } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Download, Upload, Database, CheckCircle, AlertCircle, Loader, RotateCcw, FileJson, ChevronDown, ChevronUp, Trash2, Archive } from 'lucide-react';
 import { BackupService, BackupData, BackupProgress } from '../utils/backupService';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../context/ToastContext';
+import { getCompanyContext } from '../utils/supabaseCompanyFilter';
 
 const LAST_BACKUP_KEY = 'stocky_last_backup';
+const RESET_PHRASE = 'RÉINITIALISER TOUTES LES DONNÉES';
 
 function fmtBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} o`;
@@ -41,7 +43,28 @@ export default function BackupPage() {
   const [restoreResults, setRestoreResults] = useState<Record<string, { upserted: number; errors: number }> | null>(null);
   const [showSummary, setShowSummary] = useState(false);
 
+  // Reset state
+  const [resetPhrase, setResetPhrase] = useState('');
+  const [isResetting, setIsResetting] = useState(false);
+  const [resetMsg, setResetMsg] = useState('');
+
+  // Archive state
+  const [availableYears, setAvailableYears] = useState<number[]>([]);
+  const [selectedYear, setSelectedYear] = useState<number | null>(null);
+  const [isArchiving, setIsArchiving] = useState(false);
+  const [archiveMsg, setArchiveMsg] = useState('');
+  const [archiveDownloaded, setArchiveDownloaded] = useState(false);
+
   const lastBackup = localStorage.getItem(LAST_BACKUP_KEY);
+
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    const { companyId, isSuperAdmin: sa } = getCompanyContext();
+    BackupService.getAvailableYears(companyId, sa).then(years => {
+      setAvailableYears(years);
+      if (years.length > 0) setSelectedYear(years[0]);
+    }).catch(() => {});
+  }, [isSuperAdmin]);
 
   if (!isSuperAdmin) {
     return <div className="text-center py-12 text-muted-foreground">Accès réservé au Super Admin.</div>;
@@ -103,6 +126,70 @@ export default function BackupPage() {
 
   const progressPct = (p: BackupProgress) =>
     p.total === 0 ? 0 : Math.round((p.done / p.total) * 100);
+
+  const handleReset = async () => {
+    if (resetPhrase !== RESET_PHRASE) return;
+    setIsResetting(true);
+    setResetMsg('');
+    const { companyId, isSuperAdmin: sa } = getCompanyContext();
+    try {
+      await BackupService.resetAllData(companyId, sa, msg => setResetMsg(msg));
+      setResetMsg('');
+      setResetPhrase('');
+      showToast({ type: 'success', title: 'Réinitialisation terminée', message: 'Toutes les données transactionnelles ont été supprimées.' });
+      // Refresh available years
+      const years = await BackupService.getAvailableYears(companyId, sa);
+      setAvailableYears(years);
+      setSelectedYear(years[0] ?? null);
+    } catch (e) {
+      showToast({ type: 'error', title: 'Erreur réinitialisation', message: String(e) });
+    } finally {
+      setIsResetting(false);
+      setResetMsg('');
+    }
+  };
+
+  const handleArchiveExport = async () => {
+    if (!selectedYear) return;
+    setIsArchiving(true);
+    setArchiveMsg('');
+    setArchiveDownloaded(false);
+    const { companyId, isSuperAdmin: sa } = getCompanyContext();
+    try {
+      const data = await BackupService.exportDocumentsByYear(selectedYear, companyId, sa, msg => setArchiveMsg(msg));
+      BackupService.downloadArchive(data, selectedYear);
+      setArchiveDownloaded(true);
+      setArchiveMsg('');
+      showToast({ type: 'success', title: `Archive ${selectedYear} téléchargée`, message: `${(data.tables.quotes || []).length} document(s) exporté(s)` });
+    } catch (e) {
+      showToast({ type: 'error', title: 'Erreur export archive', message: String(e) });
+    } finally {
+      setIsArchiving(false);
+      setArchiveMsg('');
+    }
+  };
+
+  const handleArchiveDelete = async () => {
+    if (!selectedYear || !archiveDownloaded) return;
+    if (!window.confirm(`Supprimer définitivement tous les documents de ${selectedYear} de la base de données ?\n\nCes données ont été exportées dans stocky-archive-${selectedYear}.json — conservez ce fichier pour les restaurer en cas de besoin.`)) return;
+    setIsArchiving(true);
+    setArchiveMsg('');
+    const { companyId, isSuperAdmin: sa } = getCompanyContext();
+    try {
+      await BackupService.deleteDocumentsByYear(selectedYear, companyId, sa, msg => setArchiveMsg(msg));
+      setArchiveDownloaded(false);
+      setArchiveMsg('');
+      showToast({ type: 'success', title: `Documents ${selectedYear} supprimés`, message: 'Les données ont été retirées de la base.' });
+      const years = await BackupService.getAvailableYears(companyId, sa);
+      setAvailableYears(years);
+      setSelectedYear(years[0] ?? null);
+    } catch (e) {
+      showToast({ type: 'error', title: 'Erreur suppression archive', message: String(e) });
+    } finally {
+      setIsArchiving(false);
+      setArchiveMsg('');
+    }
+  };
 
   return (
     <div className="space-y-5 max-w-3xl mx-auto">
@@ -269,6 +356,115 @@ export default function BackupPage() {
           </div>
         </div>
       )}
+
+      {/* Archive by year */}
+      <div className="glass rounded-xl shadow-lg p-5 space-y-4">
+        <div className="flex items-center space-x-2">
+          <Archive className="h-4 w-4 text-blue-500" />
+          <h2 className="text-sm font-semibold text-foreground">Archiver par année</h2>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Exporte tous les documents d'une année dans un fichier JSON, puis les retire de la base active.
+          Ce fichier peut être ré-importé à tout moment via le bouton "Restaurer" en cas de besoin.
+        </p>
+
+        {availableYears.length === 0 ? (
+          <p className="text-xs text-muted-foreground italic">Aucune donnée documentaire disponible.</p>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <label className="text-xs font-medium text-foreground whitespace-nowrap">Année à archiver :</label>
+              <select
+                value={selectedYear ?? ''}
+                onChange={e => { setSelectedYear(Number(e.target.value)); setArchiveDownloaded(false); }}
+                className="px-3 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring"
+              >
+                {availableYears.map(y => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </div>
+
+            {archiveMsg && (
+              <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                <Loader className="h-3 w-3 animate-spin" />{archiveMsg}
+              </p>
+            )}
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={handleArchiveExport}
+                disabled={isArchiving || !selectedYear}
+                className="flex items-center space-x-2 px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg transition-colors font-medium"
+              >
+                {isArchiving && !archiveDownloaded ? <Loader className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                <span>Exporter {selectedYear}</span>
+              </button>
+
+              {archiveDownloaded && (
+                <button
+                  onClick={handleArchiveDelete}
+                  disabled={isArchiving}
+                  className="flex items-center space-x-2 px-4 py-2 text-sm bg-destructive hover:bg-destructive/90 disabled:opacity-50 text-white rounded-lg transition-colors font-medium"
+                >
+                  {isArchiving ? <Loader className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  <span>Supprimer {selectedYear} de la base</span>
+                </button>
+              )}
+            </div>
+
+            {archiveDownloaded && (
+              <div className="flex items-start gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg text-xs text-amber-700 dark:text-amber-400">
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                <span>Archive téléchargée. Conservez ce fichier en lieu sûr — il est la seule copie des données {selectedYear} après suppression.</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Reset all data */}
+      <div className="glass rounded-xl shadow-lg p-5 space-y-4 border border-destructive/20">
+        <div className="flex items-center space-x-2">
+          <Trash2 className="h-4 w-4 text-destructive" />
+          <h2 className="text-sm font-semibold text-destructive">Réinitialisation complète</h2>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Supprime <strong>définitivement</strong> tous les devis, BLs, proformas, factures, avoirs, retours et clients.
+          Les produits, paramètres, modèles et utilisateurs ne sont <strong>pas</strong> affectés.
+          Cette action est irréversible — effectuez une sauvegarde avant de continuer.
+        </p>
+
+        <div className="space-y-2">
+          <label className="block text-xs font-medium text-foreground">
+            Pour confirmer, tapez exactement : <span className="font-mono text-destructive select-all">{RESET_PHRASE}</span>
+          </label>
+          <input
+            type="text"
+            value={resetPhrase}
+            onChange={e => setResetPhrase(e.target.value)}
+            placeholder="Tapez la phrase de confirmation…"
+            className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring font-mono"
+            disabled={isResetting}
+            autoComplete="off"
+          />
+        </div>
+
+        {resetMsg && (
+          <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+            <Loader className="h-3 w-3 animate-spin" />{resetMsg}
+          </p>
+        )}
+
+        <button
+          onClick={handleReset}
+          disabled={isResetting || resetPhrase !== RESET_PHRASE}
+          className="flex items-center space-x-2 px-4 py-2 text-sm bg-destructive hover:bg-destructive/90 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-medium"
+        >
+          {isResetting ? <Loader className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+          <span>{isResetting ? 'Réinitialisation en cours…' : 'Réinitialiser maintenant'}</span>
+        </button>
+      </div>
 
       {/* Info box */}
       <div className="rounded-lg border border-border p-4 space-y-2 text-xs text-muted-foreground">

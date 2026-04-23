@@ -3,6 +3,7 @@ import { supabase } from './supabaseClient';
 export interface BackupData {
   version: string;
   created_at: string;
+  archive_year?: number;
   tables: Record<string, unknown[]>;
 }
 
@@ -129,5 +130,156 @@ export class BackupService {
 
   static summary(data: BackupData): { table: string; rows: number }[] {
     return BACKUP_TABLES.map(t => ({ table: t, rows: (data.tables[t] || []).length }));
+  }
+
+  // Returns the list of years that have document data (based on quotes.created_at).
+  static async getAvailableYears(
+    companyId: string | null,
+    isSuperAdmin: boolean
+  ): Promise<number[]> {
+    let q = (supabase.from('quotes') as any)
+      .select('created_at')
+      .order('created_at', { ascending: true })
+      .limit(1);
+    if (!isSuperAdmin && companyId) q = q.eq('company_id', companyId);
+    const { data: oldest } = await q;
+
+    let q2 = (supabase.from('quotes') as any)
+      .select('created_at')
+      .order('created_at', { ascending: false })
+      .limit(1);
+    if (!isSuperAdmin && companyId) q2 = q2.eq('company_id', companyId);
+    const { data: newest } = await q2;
+
+    if (!oldest?.length || !newest?.length) return [];
+    const minYear = new Date(oldest[0].created_at).getFullYear();
+    const maxYear = new Date(newest[0].created_at).getFullYear();
+    const years: number[] = [];
+    for (let y = minYear; y <= maxYear; y++) years.push(y);
+    return years;
+  }
+
+  // Exports all quotes/BLs/proformas/invoices/avoirs/returns created in a given year.
+  // The result uses the same BackupData format — it can be re-imported via restore().
+  static async exportDocumentsByYear(
+    year: number,
+    companyId: string | null,
+    isSuperAdmin: boolean,
+    onProgress?: (msg: string) => void
+  ): Promise<BackupData> {
+    const start = `${year}-01-01T00:00:00.000Z`;
+    const end   = `${year + 1}-01-01T00:00:00.000Z`;
+
+    onProgress?.('Chargement des documents…');
+    let qDocs = (supabase.from('quotes') as any)
+      .select('*')
+      .gte('created_at', start)
+      .lt('created_at', end)
+      .order('created_at');
+    if (!isSuperAdmin && companyId) qDocs = qDocs.eq('company_id', companyId);
+    const { data: docs, error: docsErr } = await qDocs;
+    if (docsErr) throw new Error(`Erreur export documents: ${docsErr.message}`);
+
+    onProgress?.('Chargement des retours…');
+    let qRet = (supabase.from('returns') as any)
+      .select('*')
+      .gte('created_at', start)
+      .lt('created_at', end)
+      .order('created_at');
+    if (!isSuperAdmin && companyId) qRet = qRet.eq('company_id', companyId);
+    const { data: rets } = await qRet;
+
+    return {
+      version: '1.0',
+      created_at: new Date().toISOString(),
+      archive_year: year,
+      tables: {
+        quotes:  docs  || [],
+        returns: rets  || [],
+      },
+    };
+  }
+
+  // Downloads an archive JSON for the given year.
+  static downloadArchive(data: BackupData, year: number): void {
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `stocky-archive-${year}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // Deletes all documents (quotes table + returns) created in the given year.
+  // Returns the count of deleted quote rows.
+  static async deleteDocumentsByYear(
+    year: number,
+    companyId: string | null,
+    isSuperAdmin: boolean,
+    onProgress?: (msg: string) => void
+  ): Promise<number> {
+    const start = `${year}-01-01T00:00:00.000Z`;
+    const end   = `${year + 1}-01-01T00:00:00.000Z`;
+
+    onProgress?.('Suppression des retours…');
+    let qRet = (supabase.from('returns') as any)
+      .delete()
+      .gte('created_at', start)
+      .lt('created_at', end);
+    if (!isSuperAdmin && companyId) qRet = qRet.eq('company_id', companyId);
+    await qRet;
+
+    onProgress?.('Suppression des documents…');
+    let qDocs = (supabase.from('quotes') as any)
+      .delete()
+      .gte('created_at', start)
+      .lt('created_at', end);
+    if (!isSuperAdmin && companyId) qDocs = qDocs.eq('company_id', companyId);
+    const { error } = await qDocs;
+    if (error) throw new Error(`Erreur suppression documents: ${error.message}`);
+
+    return 0; // row count not reliably returned by delete in all Supabase configs
+  }
+
+  // Deletes ALL transactional data (quotes, clients, returns, document_counters)
+  // for the given company. Products and settings are never touched.
+  static async resetAllData(
+    companyId: string | null,
+    isSuperAdmin: boolean,
+    onProgress?: (msg: string) => void
+  ): Promise<void> {
+    const applyFilter = (q: any) =>
+      !isSuperAdmin && companyId ? q.eq('company_id', companyId) : q;
+
+    onProgress?.('Suppression des retours…');
+    const { error: e1 } = await applyFilter(
+      (supabase.from('returns') as any).delete().not('id', 'is', null)
+    );
+    if (e1) throw new Error(`returns: ${e1.message}`);
+
+    onProgress?.('Suppression des documents (devis, BL, proformas, factures…)…');
+    const { error: e2 } = await applyFilter(
+      (supabase.from('quotes') as any).delete().not('id', 'is', null)
+    );
+    if (e2) throw new Error(`quotes: ${e2.message}`);
+
+    onProgress?.('Suppression des clients…');
+    const { error: e3 } = await applyFilter(
+      (supabase.from('clients') as any).delete().not('id', 'is', null)
+    );
+    if (e3) throw new Error(`clients: ${e3.message}`);
+
+    onProgress?.('Réinitialisation des compteurs de numérotation…');
+    const qCounters = isSuperAdmin && !companyId
+      ? (supabase.from('document_counters') as any).delete().not('id', 'is', null)
+      : companyId
+        ? (supabase.from('document_counters') as any).delete().eq('company_id', companyId)
+        : null;
+    if (qCounters) {
+      const { error: e4 } = await qCounters;
+      if (e4) throw new Error(`document_counters: ${e4.message}`);
+    }
   }
 }
