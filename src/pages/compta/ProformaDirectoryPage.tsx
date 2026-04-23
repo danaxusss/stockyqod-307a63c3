@@ -111,9 +111,11 @@ export default function ProformaDirectoryPage() {
   const filtered = proformas
     .filter(p => {
       const q = search.toLowerCase();
+      const clientCode = ((p.customer as any)?.clientCode || (p.customer as any)?.client_code || '').toLowerCase();
       const matchSearch = !q || p.quoteNumber.toLowerCase().includes(q)
         || p.customer?.fullName?.toLowerCase().includes(q)
-        || p.customer?.phoneNumber?.toLowerCase().includes(q);
+        || p.customer?.phoneNumber?.toLowerCase().includes(q)
+        || clientCode.includes(q);
       const remaining = p.totalAmount - (p.paid_amount || 0);
       const matchStatus =
         filterStatus === 'all' ||
@@ -184,7 +186,7 @@ export default function ProformaDirectoryPage() {
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
             <input
               type="text" value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="N° proforma, client..."
+              placeholder="N° proforma, client, code..."
               className="w-full pl-8 pr-3 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground"
             />
           </div>

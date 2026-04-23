@@ -75,10 +75,12 @@ export default function ReturnsPage() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     let list = q
-      ? returns.filter(r =>
-          r.reference_number.toLowerCase().includes(q) ||
-          r.client_name.toLowerCase().includes(q)
-        )
+      ? returns.filter(r => {
+          const code = (clientCodeMap[r.client_name.toLowerCase()] || '').toLowerCase();
+          return r.reference_number.toLowerCase().includes(q) ||
+            r.client_name.toLowerCase().includes(q) ||
+            code.includes(q);
+        })
       : returns;
     list = [...list].sort((a, b) => {
       let cmp = 0;

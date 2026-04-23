@@ -46,9 +46,11 @@ export default function AvoirDirectoryPage() {
   const filtered = avoirs.filter(a => {
     const q = search.trim().toLowerCase();
     if (!q) return true;
+    const clientCode = ((a.customer as any)?.clientCode || (a.customer as any)?.client_code || '').toLowerCase();
     return (
       a.quoteNumber.toLowerCase().includes(q) ||
-      (a.customer?.fullName || '').toLowerCase().includes(q)
+      (a.customer?.fullName || '').toLowerCase().includes(q) ||
+      clientCode.includes(q)
     );
   });
 

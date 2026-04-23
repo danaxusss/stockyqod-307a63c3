@@ -124,9 +124,11 @@ export default function BLDirectoryPage() {
 
   const filtered = bls.filter(b => {
     const q = search.toLowerCase();
+    const clientCode = ((b.customer as any)?.clientCode || (b.customer as any)?.client_code || '').toLowerCase();
     return !q || b.quoteNumber.toLowerCase().includes(q)
       || b.customer?.fullName?.toLowerCase().includes(q)
-      || b.customer?.phoneNumber?.toLowerCase().includes(q);
+      || b.customer?.phoneNumber?.toLowerCase().includes(q)
+      || clientCode.includes(q);
   });
 
   const handleExportCSV = () => {
@@ -194,7 +196,7 @@ export default function BLDirectoryPage() {
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <input
             type="text" value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="N° BL, client..."
+            placeholder="N° BL, client, code..."
             className="w-full pl-8 pr-3 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground"
           />
         </div>

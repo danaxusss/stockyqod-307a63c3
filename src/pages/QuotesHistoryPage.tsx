@@ -63,7 +63,10 @@ export function QuotesHistoryPage() {
     let filtered = [...quotes];
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      filtered = filtered.filter(quote => quote.quoteNumber.toLowerCase().includes(q) || quote.customer.fullName.toLowerCase().includes(q) || quote.customer.phoneNumber.includes(q) || quote.customer.city.toLowerCase().includes(q));
+      filtered = filtered.filter(quote => {
+        const code = ((quote.customer as any)?.clientCode || (quote.customer as any)?.client_code || '').toLowerCase();
+        return quote.quoteNumber.toLowerCase().includes(q) || quote.customer.fullName.toLowerCase().includes(q) || quote.customer.phoneNumber.includes(q) || quote.customer.city.toLowerCase().includes(q) || code.includes(q);
+      });
     }
     if (statusFilter !== 'all') filtered = filtered.filter(quote => quote.status === statusFilter);
     if (dateRange.start) { const s = new Date(dateRange.start); filtered = filtered.filter(quote => quote.createdAt >= s); }
