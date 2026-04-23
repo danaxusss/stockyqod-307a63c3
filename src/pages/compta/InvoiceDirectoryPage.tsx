@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Receipt, Search, Download, Trash2, ChevronUp, ChevronDown, X, MoreHorizontal, Eye, Printer, MessageCircle, Mail, Copy, Lock } from 'lucide-react';
-import { Quote } from '../../types';
+import { Receipt, Search, Download, Trash2, ChevronUp, ChevronDown, X, Eye, Printer, MessageCircle, Mail, Copy, Lock, CheckCircle, Clock, AlertCircle } from 'lucide-react';
+import { Quote, PaymentEntry } from '../../types';
 import { SupabaseDocumentsService } from '../../utils/supabaseDocuments';
 import { SupabaseCompaniesService } from '../../utils/supabaseCompanies';
+import { SupabaseClientsService } from '../../utils/supabaseClients';
 import { CompanySettingsService } from '../../utils/companySettings';
 import { PdfExportService } from '../../utils/pdfExport';
 import { PrintPreviewModal } from '../../components/PrintPreviewModal';
@@ -17,7 +18,17 @@ function fmt(n: number) {
   return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(n);
 }
 
-type SortField = 'quoteNumber' | 'customer' | 'date' | 'total';
+function computePayment(inv: Quote) {
+  const avance = inv.avance_amount || 0;
+  const paid = avance + (inv.payment_methods_json || []).reduce((s, e) => s + (e.amount || 0), 0);
+  const reste = Math.max(0, inv.totalAmount - paid);
+  const status: 'paid' | 'partial' | 'unpaid' =
+    reste <= 0 && (paid > 0 || inv.totalAmount === 0) ? 'paid' :
+    paid > 0 ? 'partial' : 'unpaid';
+  return { avance, paid, reste, status };
+}
+
+type SortField = 'quoteNumber' | 'customer' | 'date' | 'total' | 'reste';
 type SortDir = 'asc' | 'desc';
 
 const PAYMENT_METHODS = ['Tous', 'Virement', 'Chèque', 'Espèces', 'Carte', 'Effet', 'Versement'];
@@ -30,6 +41,7 @@ export default function InvoiceDirectoryPage() {
   const [invoices, setInvoices] = useState<Quote[]>([]);
   const [companies, setCompanies] = useState<Record<string, string>>({});
   const [companyList, setCompanyList] = useState<{ id: string; name: string }[]>([]);
+  const [proformaNumbers, setProformaNumbers] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(true);
 
   // Filters
@@ -38,6 +50,7 @@ export default function InvoiceDirectoryPage() {
   const [dateTo, setDateTo] = useState('');
   const [filterPayment, setFilterPayment] = useState('Tous');
   const [filterCompany, setFilterCompany] = useState('');
+  const [filterPayStatus, setFilterPayStatus] = useState<'all' | 'paid' | 'partial' | 'unpaid'>('all');
 
   // Sort
   const [sortField, setSortField] = useState<SortField>('date');
@@ -66,15 +79,19 @@ export default function InvoiceDirectoryPage() {
   const load = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [data, allCompanies] = await Promise.all([
+      const [data, allCompanies, proformas] = await Promise.all([
         SupabaseDocumentsService.getAllByType('invoice'),
         SupabaseCompaniesService.getAllCompanies(),
+        SupabaseDocumentsService.getAllByType('proforma'),
       ]);
       setInvoices(data);
       const map: Record<string, string> = {};
       allCompanies.forEach(c => { map[c.id] = c.name; });
       setCompanies(map);
       setCompanyList(allCompanies.map(c => ({ id: c.id, name: c.name })));
+      const pMap: Record<string, string> = {};
+      proformas.forEach(p => { pMap[p.id] = p.quoteNumber; });
+      setProformaNumbers(pMap);
     } catch (e) {
       showToast({ type: 'error', title: 'Erreur', message: String(e) });
     } finally {
@@ -221,14 +238,19 @@ export default function InvoiceDirectoryPage() {
   const filtered = useMemo(() => {
     let list = invoices.filter(inv => {
       const q = search.toLowerCase();
+      const clientCode = ((inv.customer as any)?.clientCode || (inv.customer as any)?.client_code || '').toLowerCase();
       if (q && !inv.quoteNumber.toLowerCase().includes(q)
         && !inv.customer?.fullName?.toLowerCase().includes(q)
-        && !(inv.customer as any)?.client_code?.toLowerCase().includes(q)
+        && !clientCode.includes(q)
         && !inv.customer?.phoneNumber?.toLowerCase().includes(q)) return false;
       if (dateFrom && new Date(inv.createdAt) < new Date(dateFrom)) return false;
       if (dateTo && new Date(inv.createdAt) > new Date(dateTo + 'T23:59:59')) return false;
       if (filterPayment !== 'Tous' && inv.payment_method?.toLowerCase() !== filterPayment.toLowerCase()) return false;
       if (filterCompany && inv.issuing_company_id !== filterCompany) return false;
+      if (filterPayStatus !== 'all') {
+        const { status } = computePayment(inv);
+        if (status !== filterPayStatus) return false;
+      }
       return true;
     });
     list.sort((a, b) => {
@@ -237,10 +259,11 @@ export default function InvoiceDirectoryPage() {
       else if (sortField === 'customer') cmp = (a.customer?.fullName || '').localeCompare(b.customer?.fullName || '');
       else if (sortField === 'date') cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
       else if (sortField === 'total') cmp = a.totalAmount - b.totalAmount;
+      else if (sortField === 'reste') cmp = computePayment(a).reste - computePayment(b).reste;
       return sortDir === 'asc' ? cmp : -cmp;
     });
     return list;
-  }, [invoices, search, dateFrom, dateTo, filterPayment, filterCompany, sortField, sortDir]);
+  }, [invoices, search, dateFrom, dateTo, filterPayment, filterCompany, filterPayStatus, sortField, sortDir]);
 
   const handleExportCSV = async () => {
     const { SupabaseClientsService } = await import('../../utils/supabaseClients');
@@ -252,23 +275,31 @@ export default function InvoiceDirectoryPage() {
         allClients.forEach(c => { if (c.client_code) clientCodeMap[c.phone_number] = c.client_code; });
       } catch { /* non-fatal */ }
     }
-    const rows = filtered.map(inv => ({
-      'Code Client': clientCodeMap[inv.customer?.phoneNumber || ''] || '',
-      'N° Facture': inv.quoteNumber,
-      'Client': inv.customer?.fullName || '',
-      'Téléphone': inv.customer?.phoneNumber || '',
-      'Ville': inv.customer?.city || '',
-      'Société Émettrice': (inv.issuing_company_id && companies[inv.issuing_company_id]) || '',
-      'Total TTC': inv.totalAmount,
-      'Mode Paiement': inv.payment_method || '',
-      'Référence Paiement': inv.payment_reference || '',
-      'Date': new Date(inv.createdAt).toLocaleDateString('fr-FR'),
-    }));
+    const rows = filtered.map(inv => {
+      const { avance, paid, reste, status } = computePayment(inv);
+      const statusLabel = status === 'paid' ? 'Payé' : status === 'partial' ? 'Partiel' : 'Non payé';
+      return {
+        'Code Client': ((inv.customer as any)?.clientCode || clientCodeMap[inv.customer?.phoneNumber || ''] || ''),
+        'N° Facture': inv.quoteNumber,
+        'Client': inv.customer?.fullName || '',
+        'Téléphone': inv.customer?.phoneNumber || '',
+        'Ville': inv.customer?.city || '',
+        'Société Émettrice': (inv.issuing_company_id && companies[inv.issuing_company_id]) || '',
+        'Total TTC': inv.totalAmount,
+        'Avance': avance || '',
+        'Total Payé': paid,
+        'Reste': reste,
+        'Statut Paiement': statusLabel,
+        'Mode Paiement': inv.payment_method || '',
+        'Référence Paiement': inv.payment_reference || '',
+        'Date': new Date(inv.createdAt).toLocaleDateString('fr-FR'),
+      };
+    });
     exportToCSV(rows, `factures-${new Date().toISOString().slice(0, 10)}`);
   };
 
-  const hasFilters = search || dateFrom || dateTo || filterPayment !== 'Tous' || filterCompany;
-  const clearFilters = () => { setSearch(''); setDateFrom(''); setDateTo(''); setFilterPayment('Tous'); setFilterCompany(''); };
+  const hasFilters = search || dateFrom || dateTo || filterPayment !== 'Tous' || filterCompany || filterPayStatus !== 'all';
+  const clearFilters = () => { setSearch(''); setDateFrom(''); setDateTo(''); setFilterPayment('Tous'); setFilterCompany(''); setFilterPayStatus('all'); };
 
   if (!isSuperAdmin && !isCompta) {
     return <div className="text-center py-12 text-muted-foreground">Accès réservé au rôle Comptabilité.</div>;
@@ -309,7 +340,7 @@ export default function InvoiceDirectoryPage() {
               </button>
             )}
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
             <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
               className="px-2 py-1.5 text-xs border border-input rounded-lg bg-secondary text-foreground" title="Date de début" />
             <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
@@ -317,6 +348,13 @@ export default function InvoiceDirectoryPage() {
             <select value={filterPayment} onChange={e => setFilterPayment(e.target.value)}
               className="px-2 py-1.5 text-xs border border-input rounded-lg bg-secondary text-foreground">
               {PAYMENT_METHODS.map(m => <option key={m}>{m}</option>)}
+            </select>
+            <select value={filterPayStatus} onChange={e => setFilterPayStatus(e.target.value as any)}
+              className="px-2 py-1.5 text-xs border border-input rounded-lg bg-secondary text-foreground">
+              <option value="all">Tous les statuts</option>
+              <option value="paid">Payé</option>
+              <option value="partial">Partiel</option>
+              <option value="unpaid">Non payé</option>
             </select>
             <select value={filterCompany} onChange={e => setFilterCompany(e.target.value)}
               className="px-2 py-1.5 text-xs border border-input rounded-lg bg-secondary text-foreground">
@@ -350,6 +388,12 @@ export default function InvoiceDirectoryPage() {
                   <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase cursor-pointer hover:text-foreground" onClick={() => toggleSort('total')}>
                     Total TTC <SortIcon field="total" />
                   </th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Avance</th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Payé</th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase cursor-pointer hover:text-foreground" onClick={() => toggleSort('reste')}>
+                    Reste <SortIcon field="reste" />
+                  </th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Statut</th>
                   <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase cursor-pointer hover:text-foreground" onClick={() => toggleSort('date')}>
                     Date <SortIcon field="date" />
                   </th>
@@ -357,7 +401,10 @@ export default function InvoiceDirectoryPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {filtered.map(inv => (
+                {filtered.map(inv => {
+                  const { avance, paid, reste, status } = computePayment(inv);
+                  const clientCode = (inv.customer as any)?.clientCode || (inv.customer as any)?.client_code || '';
+                  return (
                   <tr key={inv.id} className="hover:bg-accent/50">
                     <td className="px-3 py-2.5">
                       <Link to={`/compta/invoices/${inv.id}`} className="text-xs font-mono font-semibold text-primary hover:underline">{inv.quoteNumber}</Link>
@@ -366,10 +413,13 @@ export default function InvoiceDirectoryPage() {
                     <td className="px-3 py-2.5">
                       <div className="text-xs font-medium text-foreground">{inv.customer?.fullName || '—'}</div>
                       {inv.customer?.phoneNumber && <div className="text-[10px] text-muted-foreground">{inv.customer.phoneNumber}</div>}
+                      {clientCode && <span className="inline-block mt-0.5 text-[9px] font-mono bg-blue-500/10 text-blue-600 dark:text-blue-400 px-1 rounded">{clientCode}</span>}
                     </td>
                     <td className="px-3 py-2.5">
-                      {inv.parent_document_id ? (
-                        <Link to={`/compta/proformas/${inv.parent_document_id}`} className="text-xs text-primary hover:underline font-mono">Voir Proforma</Link>
+                      {inv.parent_document_id && proformaNumbers[inv.parent_document_id] ? (
+                        <Link to={`/compta/proformas/${inv.parent_document_id}`} className="text-xs font-mono text-primary hover:underline">
+                          {proformaNumbers[inv.parent_document_id]}
+                        </Link>
                       ) : <span className="text-[10px] text-muted-foreground">—</span>}
                     </td>
                     <td className="px-3 py-2.5">
@@ -379,10 +429,36 @@ export default function InvoiceDirectoryPage() {
                       <span className="text-sm font-mono font-bold text-foreground">{fmt(inv.totalAmount)} Dh</span>
                       {inv.payment_method && <div className="text-[10px] text-muted-foreground">{inv.payment_method}</div>}
                     </td>
+                    <td className="px-3 py-2.5 text-xs font-mono text-muted-foreground">
+                      {avance > 0 ? fmt(avance) : '—'}
+                    </td>
+                    <td className="px-3 py-2.5 text-xs font-mono text-emerald-600 dark:text-emerald-400">
+                      {paid > 0 ? fmt(paid) : '—'}
+                    </td>
+                    <td className="px-3 py-2.5 text-xs font-mono font-semibold text-amber-600 dark:text-amber-400">
+                      {reste > 0 ? fmt(reste) : '—'}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      {status === 'paid' && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                          <CheckCircle className="h-3 w-3" />Payé
+                        </span>
+                      )}
+                      {status === 'partial' && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                          <Clock className="h-3 w-3" />Partiel
+                        </span>
+                      )}
+                      {status === 'unpaid' && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-red-500/10 text-red-600 dark:text-red-400">
+                          <AlertCircle className="h-3 w-3" />Non payé
+                        </span>
+                      )}
+                    </td>
                     <td className="px-3 py-2.5 text-xs text-muted-foreground">
                       {new Date(inv.createdAt).toLocaleDateString('fr-FR')}
                     </td>
-                    <td className="px-3 py-2.5">
+                    <td className="px-3 py-2.5 whitespace-nowrap">
                       <div className="flex items-center gap-1">
                         {/* Always-visible: Open + Download */}
                         <Link
@@ -448,7 +524,8 @@ export default function InvoiceDirectoryPage() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

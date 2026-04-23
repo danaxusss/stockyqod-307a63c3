@@ -667,12 +667,26 @@ export class PdfExportService {
 
     drawTotalsRow('TOTAL TTC', this.formatCurrency(totalTTC) + ' Dh', true);
 
-    // === AVANCE block (invoice) ===
-    if (documentType === 'invoice' && (quote.avance_amount ?? 0) > 0) {
-      const avance = quote.avance_amount!;
-      const reste = totalTTC - avance;
-      drawTotalsRow('AVANCE', '-' + this.formatCurrency(avance) + ' Dh');
-      drawTotalsRow('RESTE NET TTC', this.formatCurrency(Math.max(0, reste)) + ' Dh', true);
+    // === PAYMENT SUMMARY block (invoice) ===
+    if (documentType === 'invoice') {
+      const avance = quote.avance_amount ?? 0;
+      const paymentsTotal = (quote.payment_methods_json || []).reduce((s: number, e: any) => s + (e.amount || 0), 0);
+      const totalPaid = avance + paymentsTotal;
+      const reste = Math.max(0, totalTTC - totalPaid);
+      if (avance > 0) {
+        drawTotalsRow('AVANCE REÇUE', '-' + this.formatCurrency(avance) + ' Dh');
+      }
+      if (paymentsTotal > 0) {
+        drawTotalsRow('PAIEMENTS REÇUS', '-' + this.formatCurrency(paymentsTotal) + ' Dh');
+      }
+      if (totalPaid > 0) {
+        if (reste <= 0) {
+          drawTotalsRow('FACTURE SOLDÉE ✓', this.formatCurrency(totalTTC) + ' Dh', true);
+        } else {
+          drawTotalsRow('TOTAL PAYÉ', this.formatCurrency(totalPaid) + ' Dh');
+          drawTotalsRow('RESTE À PAYER', this.formatCurrency(reste) + ' Dh', true);
+        }
+      }
     }
 
     } // end !isBL
