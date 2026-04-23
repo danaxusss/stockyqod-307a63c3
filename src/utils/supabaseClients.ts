@@ -60,11 +60,10 @@ export class SupabaseClientsService {
   }
 
   static async getClientByPhone(phone: string): Promise<Client | null> {
-    const { data, error } = await supabase
-      .from('clients')
-      .select('*')
-      .eq('phone_number', phone)
-      .maybeSingle();
+    const { companyId, isSuperAdmin } = getCompanyContext();
+    let query = supabase.from('clients').select('*').eq('phone_number', phone);
+    if (!isSuperAdmin && companyId) query = query.eq('company_id', companyId);
+    const { data, error } = await query.maybeSingle();
     if (error) throw error;
     return data;
   }
@@ -121,12 +120,10 @@ export class SupabaseClientsService {
   }
 
   static async updateClient(id: string, updates: UpdateClientRequest): Promise<Client> {
-    const { data, error } = await supabase
-      .from('clients')
-      .update(updates)
-      .eq('id', id)
-      .select()
-      .single();
+    const { companyId, isSuperAdmin } = getCompanyContext();
+    let query = supabase.from('clients').update(updates).eq('id', id);
+    if (!isSuperAdmin && companyId) query = query.eq('company_id', companyId);
+    const { data, error } = await query.select().single();
     if (error) throw error;
     return data;
   }
@@ -155,10 +152,13 @@ export class SupabaseClientsService {
   }
 
   static async assignClientCode(clientId: string, firstLetter: string): Promise<string | null> {
+    const { companyId, isSuperAdmin } = getCompanyContext();
     try {
       const { data: codeData } = await (supabase.rpc as any)('next_client_code', { p_first_letter: firstLetter });
       if (!codeData) return null;
-      await supabase.from('clients').update({ client_code: codeData }).eq('id', clientId);
+      let q = supabase.from('clients').update({ client_code: codeData }).eq('id', clientId);
+      if (!isSuperAdmin && companyId) q = q.eq('company_id', companyId);
+      await q;
       return codeData as string;
     } catch {
       return null;
@@ -166,10 +166,10 @@ export class SupabaseClientsService {
   }
 
   static async deleteClient(id: string): Promise<void> {
-    const { error } = await supabase
-      .from('clients')
-      .delete()
-      .eq('id', id);
+    const { companyId, isSuperAdmin } = getCompanyContext();
+    let query = supabase.from('clients').delete().eq('id', id);
+    if (!isSuperAdmin && companyId) query = query.eq('company_id', companyId);
+    const { error } = await query;
     if (error) throw error;
   }
 }

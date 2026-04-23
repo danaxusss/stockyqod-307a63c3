@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Calculator, Search, Download, Plus, Hash } from 'lucide-react';
+import { Calculator, Search, Download, Plus, Trash2 } from 'lucide-react';
 import { SupabaseDocumentsService, ClientFinancialRow } from '../../utils/supabaseDocuments';
 import { SupabaseClientsService } from '../../utils/supabaseClients';
 import { useToast } from '../../context/ToastContext';
@@ -50,6 +50,52 @@ export default function ClientFinancialPage() {
   }, [showToast]);
 
   useEffect(() => { load(); }, [load]);
+
+  const handleDelete = useCallback(async (row: ClientFinancialRow, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!row.clientId) {
+      showToast({ type: 'error', message: 'Client non enregistré — suppression impossible.' });
+      return;
+    }
+    const phone = row.phoneNumber?.trim() || '';
+    let counts = { invoiceCount: 0, blCount: 0, proformaCount: 0, quoteCount: 0, avoirCount: 0 };
+    try {
+      counts = await SupabaseDocumentsService.getClientDocumentCounts(phone);
+    } catch { /* non-fatal */ }
+
+    const hardLinked = counts.invoiceCount + counts.blCount + counts.proformaCount + counts.avoirCount;
+
+    if (hardLinked > 0) {
+      const parts = [
+        counts.invoiceCount > 0 && `${counts.invoiceCount} facture(s)`,
+        counts.blCount > 0 && `${counts.blCount} BL(s)`,
+        counts.proformaCount > 0 && `${counts.proformaCount} proforma(s)`,
+        counts.avoirCount > 0 && `${counts.avoirCount} avoir(s)`,
+      ].filter(Boolean).join(', ');
+      showToast({ type: 'error', title: 'Suppression impossible', message: `Ce client a ${parts}. Supprimez ces documents d'abord.` });
+      return;
+    }
+
+    if (counts.quoteCount > 0) {
+      if (!window.confirm(`Ce client a ${counts.quoteCount} devis. Supprimer le client et tous ses devis ?`)) return;
+      try {
+        if (phone) await SupabaseDocumentsService.deleteClientQuotesByPhone(phone);
+      } catch (err: any) {
+        showToast({ type: 'error', message: `Erreur suppression devis: ${err?.message}` });
+        return;
+      }
+    } else {
+      if (!window.confirm(`Supprimer le client ${row.clientName} ?`)) return;
+    }
+
+    try {
+      await SupabaseClientsService.deleteClient(row.clientId);
+      showToast({ type: 'success', message: 'Client supprimé' });
+      load();
+    } catch (err: any) {
+      showToast({ type: 'error', message: err?.message || 'Erreur lors de la suppression' });
+    }
+  }, [showToast, load]);
 
   const filtered = rows.filter(r =>
     !search ||
@@ -146,7 +192,7 @@ export default function ClientFinancialPage() {
             <table className="w-full">
               <thead className="bg-secondary">
                 <tr>
-                  {['Code', 'Client', 'Tel', 'Total', 'Payé', 'Reste', 'Pro.', 'Fact.'].map(h => (
+                  {['Code', 'Client', 'Tel', 'Total', 'Payé', 'Reste', 'Pro.', 'Fact.', ''].map(h => (
                     <th key={h} className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">
                       {h}
                     </th>
@@ -199,6 +245,17 @@ export default function ClientFinancialPage() {
                       <span className="px-1.5 py-0.5 rounded text-[10px] bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-semibold">
                         {row.invoiceCount}
                       </span>
+                    </td>
+                    <td className="px-3 py-2.5">
+                      {row.clientId && (isSuperAdmin || isCompta) && (
+                        <button
+                          onClick={(e) => handleDelete(row, e)}
+                          className="p-1 text-destructive hover:bg-destructive/10 rounded transition-colors"
+                          title="Supprimer le client"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

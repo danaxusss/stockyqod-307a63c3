@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Users, Search, Plus, Edit, Trash2, X, Check, Loader, Phone, Mail, MapPin, Building, SortAsc, SortDesc, ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import { SupabaseClientsService, Client, CreateClientRequest } from '../utils/supabaseClients';
+import { SupabaseDocumentsService } from '../utils/supabaseDocuments';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../hooks/useAuth';
 
@@ -138,13 +139,42 @@ export default function ClientsPage() {
   };
 
   const handleDelete = async (client: Client) => {
-    if (!window.confirm(`Supprimer le client ${client.full_name} ?`)) return;
+    const phone = client.phone_number?.trim();
+    let counts = { invoiceCount: 0, blCount: 0, proformaCount: 0, quoteCount: 0, avoirCount: 0 };
+    try {
+      counts = await SupabaseDocumentsService.getClientDocumentCounts(phone);
+    } catch { /* non-fatal — proceed with caution */ }
+
+    const hardLinked = counts.invoiceCount + counts.blCount + counts.proformaCount + counts.avoirCount;
+
+    if (hardLinked > 0) {
+      const parts = [
+        counts.invoiceCount > 0 && `${counts.invoiceCount} facture(s)`,
+        counts.blCount > 0 && `${counts.blCount} BL(s)`,
+        counts.proformaCount > 0 && `${counts.proformaCount} proforma(s)`,
+        counts.avoirCount > 0 && `${counts.avoirCount} avoir(s)`,
+      ].filter(Boolean).join(', ');
+      showToast({ type: 'error', title: 'Suppression impossible', message: `Ce client a ${parts}. Supprimez ces documents d'abord.` });
+      return;
+    }
+
+    if (counts.quoteCount > 0) {
+      if (!window.confirm(`Ce client a ${counts.quoteCount} devis. Supprimer le client et tous ses devis ?`)) return;
+      try {
+        await SupabaseDocumentsService.deleteClientQuotesByPhone(phone);
+      } catch (err: any) {
+        showToast({ type: 'error', message: `Erreur suppression devis: ${err?.message}` });
+        return;
+      }
+    } else {
+      if (!window.confirm(`Supprimer le client ${client.full_name} ?`)) return;
+    }
+
     try {
       await SupabaseClientsService.deleteClient(client.id);
       showToast({ type: 'success', message: 'Client supprimé' });
       await loadClients();
     } catch (err: any) {
-      console.error('Delete client error:', err);
       showToast({ type: 'error', message: err?.message || 'Erreur lors de la suppression' });
     }
   };

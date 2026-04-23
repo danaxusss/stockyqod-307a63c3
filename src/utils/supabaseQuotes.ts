@@ -78,18 +78,20 @@ export class SupabaseQuotesService {
   }
 
   static async updateQuoteStatus(id: string, status: string): Promise<void> {
-    const { error } = await (supabase.from('quotes') as any)
+    const { companyId, bypassFilter } = getCompanyContext();
+    let q = (supabase.from('quotes') as any)
       .update({ status, updated_at: new Date().toISOString() })
       .eq('id', id);
+    if (!bypassFilter && companyId) q = q.eq('company_id', companyId);
+    const { error } = await q;
     if (error) throw new Error(`Failed to update quote status: ${error.message}`);
   }
 
   static async getQuote(id: string): Promise<Quote | null> {
-    const { data, error } = await supabase
-      .from('quotes')
-      .select('*')
-      .eq('id', id)
-      .single();
+    const { companyId, bypassFilter } = getCompanyContext();
+    let q = (supabase.from('quotes') as any).select('*').eq('id', id);
+    if (!bypassFilter && companyId) q = q.eq('company_id', companyId);
+    const { data, error } = await q.single();
 
     if (error) {
       if (error.code === 'PGRST116') return null;
@@ -121,14 +123,11 @@ export class SupabaseQuotesService {
   }
 
   static async deleteQuote(id: string): Promise<void> {
-    const { error } = await supabase
-      .from('quotes')
-      .delete()
-      .eq('id', id);
-
-    if (error) {
-      throw new Error(`Failed to delete quote: ${error.message}`);
-    }
+    const { companyId, bypassFilter } = getCompanyContext();
+    let q = (supabase.from('quotes') as any).delete().eq('id', id);
+    if (!bypassFilter && companyId) q = q.eq('company_id', companyId);
+    const { error } = await q;
+    if (error) throw new Error(`Failed to delete quote: ${error.message}`);
   }
 
   static async searchQuotes(query: string, filterBySalesPerson?: string): Promise<Quote[]> {
@@ -275,9 +274,12 @@ export class SupabaseQuotesService {
     finalQuotes: number;
     averageValue: number;
   }> {
-    const { data, error } = await supabase
-      .from('quotes')
-      .select('status, total_amount');
+    const { companyId, bypassFilter } = getCompanyContext();
+    let q = (supabase.from('quotes') as any)
+      .select('status, total_amount')
+      .or('document_type.eq.quote,document_type.is.null');
+    if (!bypassFilter && companyId) q = q.eq('company_id', companyId);
+    const { data, error } = await q;
 
     if (error) {
       throw new Error(`Failed to fetch quote stats: ${error.message}`);

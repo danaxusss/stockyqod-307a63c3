@@ -81,17 +81,21 @@ export class SupabaseReturnsService {
     client_name: string;
     items: ReturnItem[];
   }>): Promise<Return> {
-    const { data, error } = await (supabase.from('returns') as any)
+    const { companyId, isSuperAdmin } = getCompanyContext();
+    let q = (supabase.from('returns') as any)
       .update({ ...updates, updated_at: new Date().toISOString() })
-      .eq('id', id)
-      .select('*')
-      .single();
+      .eq('id', id);
+    if (!isSuperAdmin && companyId) q = q.eq('company_id', companyId);
+    const { data, error } = await q.select('*').single();
     if (error) throw error;
     return mapRow(data as ReturnRow);
   }
 
   static async delete(id: string): Promise<void> {
-    const { error } = await (supabase.from('returns') as any).delete().eq('id', id);
+    const { companyId, isSuperAdmin } = getCompanyContext();
+    let q = (supabase.from('returns') as any).delete().eq('id', id);
+    if (!isSuperAdmin && companyId) q = q.eq('company_id', companyId);
+    const { error } = await q;
     if (error) throw error;
   }
 }

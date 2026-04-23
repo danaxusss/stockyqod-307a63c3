@@ -355,21 +355,23 @@ export class SupabaseDocumentsService {
     return mapDocRow(newInvoice as DocRow);
   }
 
-  // Fetch all documents of a given type — bypasses company filter (compta global view)
   static async getAllByType(type: 'bl' | 'proforma' | 'invoice' | 'avoir'): Promise<Quote[]> {
-    const { data, error } = await (supabase.from('quotes') as any)
+    const { companyId, bypassFilter } = getCompanyContext();
+    let q = (supabase.from('quotes') as any)
       .select('*')
       .eq('document_type', type)
       .order('created_at', { ascending: false });
+    if (!bypassFilter && companyId) q = q.eq('company_id', companyId);
+    const { data, error } = await q;
     if (error) throw new Error(`Erreur chargement documents: ${error.message}`);
     return ((data as DocRow[]) || []).map(mapDocRow);
   }
 
   static async getById(id: string): Promise<Quote | null> {
-    const { data, error } = await (supabase.from('quotes') as any)
-      .select('*')
-      .eq('id', id)
-      .single();
+    const { companyId, bypassFilter } = getCompanyContext();
+    let q = (supabase.from('quotes') as any).select('*').eq('id', id);
+    if (!bypassFilter && companyId) q = q.eq('company_id', companyId);
+    const { data, error } = await q.single();
     if (error) {
       if (error.code === 'PGRST116') return null;
       throw new Error(`Erreur chargement document: ${error.message}`);
@@ -378,8 +380,50 @@ export class SupabaseDocumentsService {
   }
 
   static async deleteDocument(id: string): Promise<void> {
-    const { error } = await (supabase.from('quotes') as any).delete().eq('id', id);
+    const { companyId, bypassFilter } = getCompanyContext();
+    let q = (supabase.from('quotes') as any).delete().eq('id', id);
+    if (!bypassFilter && companyId) q = q.eq('company_id', companyId);
+    const { error } = await q;
     if (error) throw new Error(`Erreur suppression: ${error.message}`);
+  }
+
+  // Returns document counts per type for a client identified by phone number.
+  // Used to enforce deletion rules: block if invoices/BLs/proformas, confirm if quotes only.
+  static async getClientDocumentCounts(phone: string): Promise<{
+    invoiceCount: number;
+    blCount: number;
+    proformaCount: number;
+    quoteCount: number;
+    avoirCount: number;
+  }> {
+    if (!phone) return { invoiceCount: 0, blCount: 0, proformaCount: 0, quoteCount: 0, avoirCount: 0 };
+    const { companyId, isSuperAdmin } = getCompanyContext();
+    let q = (supabase.from('quotes') as any)
+      .select('document_type')
+      .eq('customer_info->>phoneNumber', phone);
+    if (!isSuperAdmin && companyId) q = q.eq('company_id', companyId);
+    const { data } = await q;
+    const docs = (data || []) as { document_type: string | null }[];
+    return {
+      invoiceCount:  docs.filter(d => d.document_type === 'invoice').length,
+      blCount:       docs.filter(d => d.document_type === 'bl').length,
+      proformaCount: docs.filter(d => d.document_type === 'proforma').length,
+      quoteCount:    docs.filter(d => !d.document_type || d.document_type === 'quote').length,
+      avoirCount:    docs.filter(d => d.document_type === 'avoir').length,
+    };
+  }
+
+  // Deletes all quote-type documents for a client (used when cascading client deletion).
+  static async deleteClientQuotesByPhone(phone: string): Promise<void> {
+    if (!phone) return;
+    const { companyId, isSuperAdmin } = getCompanyContext();
+    let q = (supabase.from('quotes') as any)
+      .delete()
+      .eq('customer_info->>phoneNumber', phone)
+      .or('document_type.eq.quote,document_type.is.null');
+    if (!isSuperAdmin && companyId) q = q.eq('company_id', companyId);
+    const { error } = await q;
+    if (error) throw new Error(`Erreur suppression devis: ${error.message}`);
   }
 
   // Unified client financial view:
@@ -511,13 +555,15 @@ export class SupabaseDocumentsService {
     );
   }
 
-  // Fetch all BL documents (compta global view) — optionally filter by client name
   static async getBLsForClient(clientName: string): Promise<Quote[]> {
-    const { data, error } = await (supabase.from('quotes') as any)
+    const { companyId, bypassFilter } = getCompanyContext();
+    let q = (supabase.from('quotes') as any)
       .select('*')
       .eq('document_type', 'bl')
       .eq('status', 'draft')
       .order('created_at', { ascending: false });
+    if (!bypassFilter && companyId) q = q.eq('company_id', companyId);
+    const { data, error } = await q;
     if (error) throw new Error(`Erreur BLs: ${error.message}`);
     const docs = ((data as DocRow[]) || []).map(mapDocRow);
     return clientName
@@ -576,11 +622,10 @@ export class SupabaseDocumentsService {
     if (updates.payment_methods_json !== undefined) updateData.payment_methods_json = updates.payment_methods_json;
     if (updates.quote_date !== undefined) updateData.quote_date = updates.quote_date || null;
 
-    const { data, error } = await (supabase.from('quotes') as any)
-      .update(updateData)
-      .eq('id', id)
-      .select('*')
-      .single();
+    const { companyId, bypassFilter } = getCompanyContext();
+    let q = (supabase.from('quotes') as any).update(updateData).eq('id', id);
+    if (!bypassFilter && companyId) q = q.eq('company_id', companyId);
+    const { data, error } = await q.select('*').single();
     if (error) throw new Error(`Erreur mise à jour: ${error.message}`);
     return mapDocRow(data as DocRow);
   }
