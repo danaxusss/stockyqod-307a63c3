@@ -103,6 +103,10 @@ export default function ProformaDetailPage() {
 
   const handleSave = async () => {
     if (!proforma) return;
+    if (!draftCustomerName.trim()) {
+      showToast({ type: 'error', title: 'Client requis', message: 'Veuillez saisir le nom du client avant de sauvegarder.' });
+      return;
+    }
     setIsSaving(true);
     try {
       await SupabaseDocumentsService.updateDocument(proforma.id, {

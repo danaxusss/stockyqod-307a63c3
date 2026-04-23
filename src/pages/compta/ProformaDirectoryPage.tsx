@@ -242,7 +242,11 @@ export default function ProformaDirectoryPage() {
                       <td className="px-3 py-2.5 text-right text-xs font-mono text-foreground">{fmt(p.totalAmount)} Dh</td>
                       <td className="px-3 py-2.5 text-right text-xs font-mono text-emerald-600">{fmt(p.paid_amount || 0)} Dh</td>
                       <td className="px-3 py-2.5 text-right text-xs font-mono font-bold text-destructive">{fmt(remaining)} Dh</td>
-                      <td className="px-3 py-2.5">{statusBadge(p.status)}</td>
+                      <td className="px-3 py-2.5">
+                        {!p.customer?.fullName?.trim()
+                          ? <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-secondary text-muted-foreground border border-border">Brouillon vide</span>
+                          : statusBadge(p.status)}
+                      </td>
                       <td className="px-3 py-2.5 text-[10px] text-muted-foreground">
                         {new Date(p.createdAt).toLocaleDateString('fr-FR')}
                       </td>

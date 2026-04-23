@@ -253,7 +253,11 @@ export default function BLDirectoryPage() {
                       <td className="px-3 py-2.5">
                         <span className="text-xs text-muted-foreground">{bl.items.length} article{bl.items.length !== 1 ? 's' : ''}</span>
                       </td>
-                      <td className="px-3 py-2.5">{statusBadge(bl.status)}</td>
+                      <td className="px-3 py-2.5">
+                        {!bl.customer?.fullName?.trim()
+                          ? <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-secondary text-muted-foreground border border-border">Brouillon vide</span>
+                          : statusBadge(bl.status)}
+                      </td>
                       <td className="px-3 py-2.5 text-[10px] text-muted-foreground">
                         {new Date(bl.createdAt).toLocaleDateString('fr-FR')}
                       </td>

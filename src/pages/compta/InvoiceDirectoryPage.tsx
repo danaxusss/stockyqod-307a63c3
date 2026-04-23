@@ -24,7 +24,7 @@ function computePayment(inv: Quote) {
   const paid = avance + (inv.payment_methods_json || []).reduce((s, e) => s + (e.amount || 0), 0);
   const reste = Math.max(0, inv.totalAmount - paid);
   const status: 'paid' | 'partial' | 'unpaid' =
-    reste <= 0 && (paid > 0 || inv.totalAmount === 0) ? 'paid' :
+    reste <= 0 && paid > 0 ? 'paid' :
     paid > 0 ? 'partial' : 'unpaid';
   return { avance, paid, reste, status };
 }
@@ -465,17 +465,19 @@ export default function InvoiceDirectoryPage() {
                       {reste > 0 ? fmt(reste) : '—'}
                     </td>
                     <td className="px-3 py-2.5">
-                      {status === 'paid' && (
+                      {!inv.customer?.fullName?.trim() ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-secondary text-muted-foreground border border-border">
+                          Brouillon vide
+                        </span>
+                      ) : status === 'paid' ? (
                         <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
                           <CheckCircle className="h-3 w-3" />Payé
                         </span>
-                      )}
-                      {status === 'partial' && (
+                      ) : status === 'partial' ? (
                         <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400">
                           <Clock className="h-3 w-3" />Partiel
                         </span>
-                      )}
-                      {status === 'unpaid' && (
+                      ) : (
                         <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-red-500/10 text-red-600 dark:text-red-400">
                           <AlertCircle className="h-3 w-3" />Non payé
                         </span>
