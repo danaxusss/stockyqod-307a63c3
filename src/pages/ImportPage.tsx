@@ -1,9 +1,9 @@
 import React, { useState, useRef } from 'react';
-import { Upload, Download, FileText, Users, Truck, Receipt, ArrowLeft, ArrowRight, CheckCircle, AlertCircle, Loader, X } from 'lucide-react';
+import { Upload, Download, FileText, Users, Truck, Receipt, ArrowLeft, ArrowRight, CheckCircle, AlertCircle, Loader, X, RotateCcw, FileX } from 'lucide-react';
 import {
   ImportDocType, TEMPLATES, downloadTemplate, parseCSVFile,
-  importClients, importDocuments,
-  ParsedClient, ParsedDocument,
+  importClients, importDocuments, importReturns,
+  ParsedClient, ParsedDocument, ParsedReturn,
 } from '../utils/csvImport';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
@@ -14,6 +14,8 @@ const TYPE_CONFIG: { type: ImportDocType; label: string; icon: React.ElementType
   { type: 'bl',       label: 'BL',        icon: Truck,     color: 'text-teal-400 bg-teal-500/10 border-teal-500/30' },
   { type: 'proforma', label: 'Proforma',  icon: FileText,  color: 'text-amber-400 bg-amber-500/10 border-amber-500/30' },
   { type: 'invoice',  label: 'Facture',   icon: Receipt,   color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30' },
+  { type: 'avoir',    label: 'Avoir',     icon: FileX,     color: 'text-rose-400 bg-rose-500/10 border-rose-500/30' },
+  { type: 'retour',   label: 'Retour',    icon: RotateCcw, color: 'text-orange-400 bg-orange-500/10 border-orange-500/30' },
 ];
 
 export default function ImportPage() {
@@ -27,13 +29,15 @@ export default function ImportPage() {
   const [warnings, setWarnings] = useState<string[]>([]);
   const [parsedClients, setParsedClients] = useState<ParsedClient[]>([]);
   const [parsedDocs, setParsedDocs] = useState<ParsedDocument[]>([]);
+  const [parsedReturns, setParsedReturns] = useState<ParsedReturn[]>([]);
   const [isImporting, setIsImporting] = useState(false);
   const [importResult, setImportResult] = useState<{ created: number; errors: string[] } | null>(null);
 
   if (!isAdmin && !isSuperAdmin) return null;
 
   const isClients = docType === 'clients';
-  const previewCount = isClients ? parsedClients.length : parsedDocs.length;
+  const isReturns = docType === 'retour';
+  const previewCount = isClients ? parsedClients.length : isReturns ? parsedReturns.length : parsedDocs.length;
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -47,9 +51,15 @@ export default function ImportPage() {
       if (docType === 'clients') {
         setParsedClients(result.rows as ParsedClient[]);
         setParsedDocs([]);
+        setParsedReturns([]);
+      } else if (docType === 'retour') {
+        setParsedReturns(result.rows as ParsedReturn[]);
+        setParsedClients([]);
+        setParsedDocs([]);
       } else {
         setParsedDocs(result.rows as ParsedDocument[]);
         setParsedClients([]);
+        setParsedReturns([]);
       }
       if ((result.rows as any[]).length > 0) setStep(2);
     };
@@ -63,6 +73,7 @@ export default function ImportPage() {
     try {
       let result;
       if (isClients) result = await importClients(parsedClients);
+      else if (isReturns) result = await importReturns(parsedReturns);
       else result = await importDocuments(parsedDocs, docType);
       setImportResult(result);
       setStep(3);
@@ -81,6 +92,7 @@ export default function ImportPage() {
     setWarnings([]);
     setParsedClients([]);
     setParsedDocs([]);
+    setParsedReturns([]);
     setImportResult(null);
   };
 
@@ -111,7 +123,7 @@ export default function ImportPage() {
         <div className="space-y-4">
           <div className="glass rounded-xl p-4">
             <h2 className="text-sm font-semibold text-foreground mb-3">1. Choisir le type de données</h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2">
               {TYPE_CONFIG.map(({ type, label, icon: Icon, color }) => (
                 <button
                   key={type}
@@ -189,7 +201,7 @@ export default function ImportPage() {
               <div>
                 <h2 className="text-sm font-semibold text-foreground">Aperçu — {fileName}</h2>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  {previewCount} {isClients ? 'client(s)' : 'document(s)'} détecté(s)
+                  {previewCount} {isClients ? 'client(s)' : isReturns ? 'retour(s)' : 'document(s)'} détecté(s)
                   {' '}· <button onClick={() => setStep(1)} className="text-primary hover:underline">Changer de fichier</button>
                 </p>
               </div>
@@ -226,16 +238,21 @@ export default function ImportPage() {
               {isClients ? (
                 <table className="text-xs w-full">
                   <thead><tr className="bg-muted">
-                    {['Nom', 'Téléphone', 'Adresse', 'Ville', 'ICE', 'Email'].map(h => (
+                    {['Code', 'Nom', 'Téléphone', 'Adresse', 'Ville', 'ICE', 'Email'].map(h => (
                       <th key={h} className="px-3 py-2 text-left font-medium text-foreground border-r border-border last:border-r-0">{h}</th>
                     ))}
                   </tr></thead>
                   <tbody>
                     {parsedClients.slice(0, 50).map((c, i) => (
                       <tr key={i} className="border-t border-border hover:bg-accent/50">
+                        <td className="px-3 py-1.5">
+                          {c.client_code
+                            ? <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary">{c.client_code}</span>
+                            : <span className="text-muted-foreground/50">auto</span>}
+                        </td>
                         <td className="px-3 py-1.5 text-foreground font-medium">{c.full_name}</td>
                         <td className="px-3 py-1.5 text-muted-foreground">{c.phone_number || '—'}</td>
-                        <td className="px-3 py-1.5 text-muted-foreground max-w-[150px] truncate">{c.address || '—'}</td>
+                        <td className="px-3 py-1.5 text-muted-foreground max-w-[120px] truncate">{c.address || '—'}</td>
                         <td className="px-3 py-1.5 text-muted-foreground">{c.city || '—'}</td>
                         <td className="px-3 py-1.5 text-muted-foreground font-mono">{c.ice || '—'}</td>
                         <td className="px-3 py-1.5 text-muted-foreground">{c.email || '—'}</td>
@@ -243,10 +260,35 @@ export default function ImportPage() {
                     ))}
                   </tbody>
                 </table>
+              ) : isReturns ? (
+                <table className="text-xs w-full">
+                  <thead><tr className="bg-muted">
+                    {['Réf.', 'Client', 'Raison', 'Lignes', 'Statut'].map(h => (
+                      <th key={h} className="px-3 py-2 text-left font-medium text-foreground border-r border-border last:border-r-0 whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr></thead>
+                  <tbody>
+                    {parsedReturns.slice(0, 50).map((r, i) => (
+                      <tr key={i} className="border-t border-border hover:bg-accent/50">
+                        <td className="px-3 py-1.5 text-primary font-medium font-mono">{r.referenceNumber}</td>
+                        <td className="px-3 py-1.5 text-foreground">{r.clientName || '—'}</td>
+                        <td className="px-3 py-1.5 text-muted-foreground max-w-[160px] truncate">{r.reason || '—'}</td>
+                        <td className="px-3 py-1.5 text-center">
+                          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-primary/10 text-primary text-[10px] font-bold">{r.items.length}</span>
+                        </td>
+                        <td className="px-3 py-1.5">
+                          <span className={`inline-flex px-1.5 py-0.5 text-[10px] rounded-full font-medium ${r.status === 'closed' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'}`}>
+                            {r.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               ) : (
                 <table className="text-xs w-full">
                   <thead><tr className="bg-muted">
-                    {['N°', 'Client', 'Téléphone', 'Lignes', 'Total HT estimé', 'Statut'].map(h => (
+                    {['N°', 'Code Client', 'Client', 'Téléphone', 'Lignes', 'Total HT estimé', 'Statut'].map(h => (
                       <th key={h} className="px-3 py-2 text-left font-medium text-foreground border-r border-border last:border-r-0 whitespace-nowrap">{h}</th>
                     ))}
                   </tr></thead>
@@ -256,6 +298,11 @@ export default function ImportPage() {
                       return (
                         <tr key={i} className="border-t border-border hover:bg-accent/50">
                           <td className="px-3 py-1.5 text-primary font-medium font-mono">{d.numero}</td>
+                          <td className="px-3 py-1.5">
+                            {d.clientCode
+                              ? <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary">{d.clientCode}</span>
+                              : <span className="text-muted-foreground/40">—</span>}
+                          </td>
                           <td className="px-3 py-1.5 text-foreground">{d.clientName || '—'}</td>
                           <td className="px-3 py-1.5 text-muted-foreground">{d.clientPhone || '—'}</td>
                           <td className="px-3 py-1.5 text-center">
