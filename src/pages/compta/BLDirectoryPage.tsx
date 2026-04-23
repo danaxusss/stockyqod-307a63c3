@@ -29,6 +29,8 @@ export default function BLDirectoryPage() {
   const [targetCompanyId, setTargetCompanyId] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
+  const [pageSize, setPageSize] = useState(20);
+  const [page, setPage] = useState(1);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -149,6 +151,8 @@ export default function BLDirectoryPage() {
 
   const eligibleCount = filtered.filter(b => b.status !== 'final').length;
   const selectedEligible = selectedIds.filter(id => filtered.find(b => b.id === id && b.status !== 'final'));
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
 
   if (!isSuperAdmin && !isCompta) {
     return <div className="text-center py-12 text-muted-foreground">Accès réservé au rôle Comptabilité.</div>;
@@ -212,6 +216,7 @@ export default function BLDirectoryPage() {
             Aucun BL trouvé. Créez-en un depuis <Link to="/quotes-history" className="text-primary hover:underline">l'historique des devis</Link>.
           </div>
         ) : (
+          <>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-secondary">
@@ -229,7 +234,7 @@ export default function BLDirectoryPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {filtered.map(bl => {
+                {paginated.map(bl => {
                   const isSelected = selectedIds.includes(bl.id);
                   const isFinal = bl.status === 'final';
                   return (
@@ -296,6 +301,23 @@ export default function BLDirectoryPage() {
               </tbody>
             </table>
           </div>
+          <div className="px-4 py-2.5 border-t border-border flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Afficher</span>
+              <select value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }} className="px-2 py-1 text-xs border border-input rounded bg-background text-foreground">
+                {[20, 30, 50].map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+              <span className="text-xs text-muted-foreground">/ {filtered.length}</span>
+            </div>
+            {totalPages > 1 && (
+              <div className="flex items-center gap-1.5">
+                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-2 py-1 text-xs border border-border rounded hover:bg-accent disabled:opacity-50">Préc.</button>
+                <span className="px-2 text-xs text-muted-foreground">{page}/{totalPages}</span>
+                <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="px-2 py-1 text-xs border border-border rounded hover:bg-accent disabled:opacity-50">Suiv.</button>
+              </div>
+            )}
+          </div>
+          </>
         )}
       </div>
 

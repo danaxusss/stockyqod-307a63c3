@@ -14,7 +14,7 @@ import { buildWhatsAppShareUrl, openWhatsAppShare } from '../utils/whatsappShare
 import { exportToCSV } from '../utils/csvExport';
 import { PrintPreviewModal } from '../components/PrintPreviewModal';
 
-const QUOTES_PER_PAGE = 10;
+const PAGE_SIZES = [20, 30, 50];
 type SortField = 'quoteNumber' | 'customerName' | 'createdAt' | 'totalAmount' | 'status';
 type SortOrder = 'asc' | 'desc';
 
@@ -37,6 +37,8 @@ export function QuotesHistoryPage() {
   const [previewFilename, setPreviewFilename] = useState('');
   const [isCreatingBL, setIsCreatingBL] = useState<string | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [menuDirection, setMenuDirection] = useState<'up' | 'down'>('down');
+  const [pageSize, setPageSize] = useState(20);
   const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null);
 
   const loadQuotes = useCallback(async () => {
@@ -87,6 +89,8 @@ export function QuotesHistoryPage() {
     });
     setFilteredQuotes(filtered); setCurrentPage(1);
   }, [quotes, searchQuery, statusFilter, dateRange, sortField, sortOrder]);
+
+  useEffect(() => { setCurrentPage(1); }, [pageSize]);
 
   const handleSort = (field: SortField) => { if (sortField === field) setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc'); else { setSortField(field); setSortOrder('asc'); } };
 
@@ -207,9 +211,9 @@ export function QuotesHistoryPage() {
     window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   };
 
-  const totalPages = Math.ceil(filteredQuotes.length / QUOTES_PER_PAGE);
-  const startIndex = (currentPage - 1) * QUOTES_PER_PAGE;
-  const currentQuotes = filteredQuotes.slice(startIndex, startIndex + QUOTES_PER_PAGE);
+  const totalPages = Math.max(1, Math.ceil(filteredQuotes.length / pageSize));
+  const startIndex = (currentPage - 1) * pageSize;
+  const currentQuotes = filteredQuotes.slice(startIndex, startIndex + pageSize);
   const getSortIcon = (field: SortField) => { if (sortField !== field) return null; return sortOrder === 'asc' ? <SortAsc className="h-4 w-4" /> : <SortDesc className="h-4 w-4" />; };
   const formatDate = (date: Date) => date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
   const formatCurrency = (amount: number) => new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount);
@@ -349,14 +353,14 @@ export function QuotesHistoryPage() {
                           {/* More actions dropdown */}
                           <div className="relative">
                             <button
-                              onClick={e => { e.stopPropagation(); setOpenMenuId(openMenuId === quote.id ? null : quote.id); }}
+                              onClick={e => { e.stopPropagation(); const rect = e.currentTarget.getBoundingClientRect(); setMenuDirection(window.innerHeight - rect.bottom < 220 ? 'up' : 'down'); setOpenMenuId(openMenuId === quote.id ? null : quote.id); }}
                               className="p-1.5 text-muted-foreground hover:bg-accent rounded transition-colors"
                               title="Plus d'actions"
                             >
                               <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 16 16"><circle cx="4" cy="8" r="1.2"/><circle cx="8" cy="8" r="1.2"/><circle cx="12" cy="8" r="1.2"/></svg>
                             </button>
                             {openMenuId === quote.id && (
-                              <div onClick={e => e.stopPropagation()} className="absolute right-0 top-full mt-1 z-30 flex flex-col bg-card border border-border rounded-lg shadow-lg py-1 min-w-[160px]">
+                              <div onClick={e => e.stopPropagation()} className={`absolute right-0 z-30 flex flex-col bg-card border border-border rounded-lg shadow-lg py-1 min-w-[160px] ${menuDirection === 'up' ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
                                 <button
                                   onClick={async () => {
                                     setOpenMenuId(null);
@@ -411,18 +415,22 @@ export function QuotesHistoryPage() {
                 </tbody>
               </table>
             </div>
-            {totalPages > 1 && (
-              <div className="px-4 py-2.5 border-t border-border">
-                <div className="flex items-center justify-between">
-                  <div className="text-xs text-muted-foreground">Affichage de {startIndex + 1} à {Math.min(startIndex + QUOTES_PER_PAGE, filteredQuotes.length)} sur {filteredQuotes.length}</div>
-                  <div className="flex items-center space-x-1.5">
-                    <button onClick={() => setCurrentPage(p => Math.max(1, p-1))} disabled={currentPage === 1} className="px-2 py-1 text-xs border border-border rounded hover:bg-accent disabled:opacity-50">Préc.</button>
-                    <span className="px-2 py-1 text-xs text-muted-foreground">{currentPage}/{totalPages}</span>
-                    <button onClick={() => setCurrentPage(p => Math.min(totalPages, p+1))} disabled={currentPage === totalPages} className="px-2 py-1 text-xs border border-border rounded hover:bg-accent disabled:opacity-50">Suiv.</button>
-                  </div>
-                </div>
+            <div className="px-4 py-2.5 border-t border-border flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Afficher</span>
+                <select value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setCurrentPage(1); }} className="px-2 py-1 text-xs border border-input rounded bg-background text-foreground">
+                  {PAGE_SIZES.map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+                <span className="text-xs text-muted-foreground">/ {filteredQuotes.length}</span>
               </div>
-            )}
+              {totalPages > 1 && (
+                <div className="flex items-center gap-1.5">
+                  <button onClick={() => setCurrentPage(p => Math.max(1, p-1))} disabled={currentPage === 1} className="px-2 py-1 text-xs border border-border rounded hover:bg-accent disabled:opacity-50">Préc.</button>
+                  <span className="px-2 text-xs text-muted-foreground">{currentPage}/{totalPages}</span>
+                  <button onClick={() => setCurrentPage(p => Math.min(totalPages, p+1))} disabled={currentPage === totalPages} className="px-2 py-1 text-xs border border-border rounded hover:bg-accent disabled:opacity-50">Suiv.</button>
+                </div>
+              )}
+            </div>
           </>
         )}
       </div>

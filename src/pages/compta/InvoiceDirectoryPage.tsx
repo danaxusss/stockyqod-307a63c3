@@ -60,6 +60,11 @@ export default function InvoiceDirectoryPage() {
 
   // Menu
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [menuDirection, setMenuDirection] = useState<'up' | 'down'>('down');
+
+  // Pagination
+  const [pageSize, setPageSize] = useState(20);
+  const [page, setPage] = useState(1);
 
   // Print preview
   const [showPrintPreview, setShowPrintPreview] = useState(false);
@@ -281,6 +286,11 @@ export default function InvoiceDirectoryPage() {
     return list;
   }, [invoices, search, dateFrom, dateTo, filterPayment, filterCompany, filterPayStatus, sortField, sortDir]);
 
+  useEffect(() => { setPage(1); }, [filtered]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
+
   const handleExportCSV = async () => {
     const { SupabaseClientsService } = await import('../../utils/supabaseClients');
     const phones = [...new Set(filtered.map(inv => inv.customer?.phoneNumber).filter(Boolean))] as string[];
@@ -399,6 +409,7 @@ export default function InvoiceDirectoryPage() {
         ) : filtered.length === 0 ? (
           <div className="p-8 text-center text-sm text-muted-foreground">Aucune facture trouvée</div>
         ) : (
+          <>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-secondary">
@@ -428,7 +439,7 @@ export default function InvoiceDirectoryPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {filtered.map(inv => {
+                {paginated.map(inv => {
                   const { avance, paid, reste, status } = computePayment(inv);
                   const clientCode = (inv.customer as any)?.clientCode || (inv.customer as any)?.client_code || '';
                   return (
@@ -512,14 +523,14 @@ export default function InvoiceDirectoryPage() {
                         {/* ⋯ menu for the rest */}
                         <div className="relative">
                           <button
-                            onClick={e => { e.stopPropagation(); setOpenMenuId(openMenuId === inv.id ? null : inv.id); }}
+                            onClick={e => { e.stopPropagation(); const rect = e.currentTarget.getBoundingClientRect(); setMenuDirection(window.innerHeight - rect.bottom < 220 ? 'up' : 'down'); setOpenMenuId(openMenuId === inv.id ? null : inv.id); }}
                             className="p-1.5 text-muted-foreground hover:bg-accent rounded transition-colors"
                             title="Plus d'actions"
                           >
                             <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 16 16"><circle cx="4" cy="8" r="1.2"/><circle cx="8" cy="8" r="1.2"/><circle cx="12" cy="8" r="1.2"/></svg>
                           </button>
                           {openMenuId === inv.id && (
-                          <div onClick={e => e.stopPropagation()} className="absolute right-0 top-full mt-1 z-30 flex flex-col bg-card border border-border rounded-lg shadow-lg py-1 min-w-[170px]">
+                          <div onClick={e => e.stopPropagation()} className={`absolute right-0 z-30 flex flex-col bg-card border border-border rounded-lg shadow-lg py-1 min-w-[170px] ${menuDirection === 'up' ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
                             <button
                               onClick={async () => { setOpenMenuId(null); await handlePreview(inv); }}
                               className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent text-foreground"
@@ -562,6 +573,23 @@ export default function InvoiceDirectoryPage() {
               </tbody>
             </table>
           </div>
+          <div className="px-4 py-2.5 border-t border-border flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Afficher</span>
+              <select value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }} className="px-2 py-1 text-xs border border-input rounded bg-background text-foreground">
+                {[20, 30, 50].map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+              <span className="text-xs text-muted-foreground">/ {filtered.length}</span>
+            </div>
+            {totalPages > 1 && (
+              <div className="flex items-center gap-1.5">
+                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-2 py-1 text-xs border border-border rounded hover:bg-accent disabled:opacity-50">Préc.</button>
+                <span className="px-2 text-xs text-muted-foreground">{page}/{totalPages}</span>
+                <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="px-2 py-1 text-xs border border-border rounded hover:bg-accent disabled:opacity-50">Suiv.</button>
+              </div>
+            )}
+          </div>
+          </>
         )}
       </div>
 

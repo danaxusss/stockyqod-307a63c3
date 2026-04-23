@@ -22,6 +22,8 @@ export default function AvoirDirectoryPage() {
   const [companies, setCompanies] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [pageSize, setPageSize] = useState(20);
+  const [page, setPage] = useState(1);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -53,6 +55,9 @@ export default function AvoirDirectoryPage() {
       clientCode.includes(q)
     );
   });
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
 
   const handleExportPdf = async (av: Quote) => {
     try {
@@ -118,6 +123,7 @@ export default function AvoirDirectoryPage() {
             <p className="text-sm">Aucun avoir</p>
           </div>
         ) : (
+          <>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-secondary/50">
@@ -132,7 +138,7 @@ export default function AvoirDirectoryPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {filtered.map(av => (
+                {paginated.map(av => (
                   <tr key={av.id} className="hover:bg-accent/30 transition-colors">
                     <td className="px-3 py-2.5">
                       <Link to={`/compta/avoirs/${av.id}`} className="text-xs font-mono font-semibold text-violet-600 dark:text-violet-400 hover:underline">{av.quoteNumber}</Link>
@@ -168,6 +174,23 @@ export default function AvoirDirectoryPage() {
               </tbody>
             </table>
           </div>
+          <div className="px-4 py-2.5 border-t border-border flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Afficher</span>
+              <select value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }} className="px-2 py-1 text-xs border border-input rounded bg-background text-foreground">
+                {[20, 30, 50].map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+              <span className="text-xs text-muted-foreground">/ {filtered.length}</span>
+            </div>
+            {totalPages > 1 && (
+              <div className="flex items-center gap-1.5">
+                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-2 py-1 text-xs border border-border rounded hover:bg-accent disabled:opacity-50">Préc.</button>
+                <span className="px-2 text-xs text-muted-foreground">{page}/{totalPages}</span>
+                <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="px-2 py-1 text-xs border border-border rounded hover:bg-accent disabled:opacity-50">Suiv.</button>
+              </div>
+            )}
+          </div>
+          </>
         )}
       </div>
     </div>

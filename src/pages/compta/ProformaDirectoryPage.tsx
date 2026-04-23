@@ -34,6 +34,8 @@ export default function ProformaDirectoryPage() {
   const [filterStatus, setFilterStatus] = useState<'all' | 'encours' | 'solde'>('all');
   const [sortKey, setSortKey] = useState<SortKey>('date');
   const [sortAsc, setSortAsc] = useState(false);
+  const [pageSize, setPageSize] = useState(20);
+  const [page, setPage] = useState(1);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -131,6 +133,9 @@ export default function ProformaDirectoryPage() {
       return sortAsc ? diff : -diff;
     });
 
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
+
   if (!isSuperAdmin && !isCompta) {
     return <div className="text-center py-12 text-muted-foreground">Accès réservé au rôle Comptabilité.</div>;
   }
@@ -207,6 +212,7 @@ export default function ProformaDirectoryPage() {
         ) : filtered.length === 0 ? (
           <div className="p-8 text-center text-sm text-muted-foreground">Aucun proforma trouvé</div>
         ) : (
+          <>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-secondary">
@@ -229,7 +235,7 @@ export default function ProformaDirectoryPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {filtered.map(p => {
+                {paginated.map(p => {
                   const remaining = p.totalAmount - (p.paid_amount || 0);
                   return (
                     <tr key={p.id} className="hover:bg-accent/50">
@@ -277,6 +283,23 @@ export default function ProformaDirectoryPage() {
               </tbody>
             </table>
           </div>
+          <div className="px-4 py-2.5 border-t border-border flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Afficher</span>
+              <select value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }} className="px-2 py-1 text-xs border border-input rounded bg-background text-foreground">
+                {[20, 30, 50].map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+              <span className="text-xs text-muted-foreground">/ {filtered.length}</span>
+            </div>
+            {totalPages > 1 && (
+              <div className="flex items-center gap-1.5">
+                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-2 py-1 text-xs border border-border rounded hover:bg-accent disabled:opacity-50">Préc.</button>
+                <span className="px-2 text-xs text-muted-foreground">{page}/{totalPages}</span>
+                <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="px-2 py-1 text-xs border border-border rounded hover:bg-accent disabled:opacity-50">Suiv.</button>
+              </div>
+            )}
+          </div>
+          </>
         )}
       </div>
     </div>
