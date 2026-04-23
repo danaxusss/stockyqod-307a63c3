@@ -202,8 +202,7 @@ export default function InvoiceDirectoryPage() {
     if (!pendingDeleteInv) return;
     try {
       const compId = pendingDeleteInv.issuing_company_id || pendingDeleteInv.company_id;
-      const freshSettings = compId ? await CompanySettingsService.getSettings(compId).catch(() => null) : null;
-      const expectedPin = freshSettings?.special_pin;
+      const expectedPin = await CompanySettingsService.resolveSpecialPin(compId);
       if (!expectedPin) {
         showToast({ type: 'error', message: 'Aucun PIN spécial configuré dans les paramètres société' });
         return;

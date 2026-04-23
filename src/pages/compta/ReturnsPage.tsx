@@ -118,8 +118,8 @@ export default function ReturnsPage() {
     if (!pendingEditId) return;
     const { companyId } = getCompanyContext();
     try {
-      const settings = companyId ? await CompanySettingsService.getSettings(companyId) : null;
-      if (!settings?.special_pin || pinInput !== settings.special_pin) {
+      const expectedPin = await CompanySettingsService.resolveSpecialPin(companyId);
+      if (!expectedPin || pinInput !== expectedPin) {
         showToast({ type: 'error', message: 'PIN incorrect' });
         return;
       }

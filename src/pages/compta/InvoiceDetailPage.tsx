@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { Receipt, Download, ArrowLeft, Loader, Pencil, Check, X, Plus, Calendar, Lock, Unlock, ChevronDown, ChevronUp, MessageCircle, Copy, CopyPlus, Search as SearchIcon, Mail, Printer } from 'lucide-react';
+import { Receipt, Download, ArrowLeft, Loader, Pencil, Check, X, Plus, Calendar, Lock, Unlock, ChevronDown, ChevronUp, MessageCircle, Copy, CopyPlus, Search as SearchIcon, Mail, Printer, CheckCircle, Clock, AlertCircle } from 'lucide-react';
 import { Quote, QuoteItem, PaymentEntry, Product } from '../../types';
 import { SupabaseDocumentsService } from '../../utils/supabaseDocuments';
 import { PdfExportService } from '../../utils/pdfExport';
@@ -71,6 +71,19 @@ export default function InvoiceDetailPage() {
   const [showAvoirModal, setShowAvoirModal] = useState(false);
   const [avoirReason, setAvoirReason] = useState('');
   const [avoirLoading, setAvoirLoading] = useState(false);
+
+  const paymentSummary = useMemo(() => {
+    if (!invoice) return null;
+    const avance = invoice.avance_amount || 0;
+    const entries = (invoice.payment_methods_json || []) as PaymentEntry[];
+    const paymentsTotal = entries.reduce((s, e) => s + (e.amount || 0), 0);
+    const totalPaid = avance + paymentsTotal;
+    const reste = Math.max(0, invoice.totalAmount - totalPaid);
+    const status: 'paid' | 'partial' | 'unpaid' =
+      reste <= 0 && (totalPaid > 0 || invoice.totalAmount === 0) ? 'paid' :
+      totalPaid > 0 ? 'partial' : 'unpaid';
+    return { avance, entries, paymentsTotal, totalPaid, reste, status };
+  }, [invoice]);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -204,10 +217,7 @@ export default function InvoiceDetailPage() {
     try {
       // Always fetch fresh settings so a PIN set after page load is picked up
       const compId = invoice.issuing_company_id || invoice.company_id;
-      const freshSettings = compId
-        ? await CompanySettingsService.getSettings(compId).catch(() => null)
-        : null;
-      const expectedPin = freshSettings?.special_pin || companySettings?.special_pin;
+      const expectedPin = await CompanySettingsService.resolveSpecialPin(compId);
       if (!expectedPin) {
         showToast({ type: 'error', message: 'Aucun PIN configuré dans les paramètres société' });
         return;
@@ -295,9 +305,26 @@ export default function InvoiceDetailPage() {
             <option value="final">Finalisé</option>
           </select>
         ) : (
-          <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
-            {invoice.status === 'final' ? 'Finalisé' : 'Brouillon'}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+              {invoice.status === 'final' ? 'Finalisé' : 'Brouillon'}
+            </span>
+            {paymentSummary && paymentSummary.status === 'paid' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300">
+                <CheckCircle className="h-3 w-3" />Soldée
+              </span>
+            )}
+            {paymentSummary && paymentSummary.status === 'partial' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">
+                <Clock className="h-3 w-3" />Partiel
+              </span>
+            )}
+            {paymentSummary && paymentSummary.status === 'unpaid' && invoice.status === 'final' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300">
+                <AlertCircle className="h-3 w-3" />Non payée
+              </span>
+            )}
+          </div>
         )}
         {isEditing ? (
           <>
@@ -618,7 +645,7 @@ export default function InvoiceDetailPage() {
                     <div className="pb-0.5">
                       <div className="text-[10px] text-muted-foreground mb-0.5">Reste NET TTC</div>
                       <div className="text-base font-bold font-mono text-amber-600 dark:text-amber-400">
-                        {fmt(Math.max(0, (invoice?.totalAmount ?? 0) - draftAvance))} Dh
+                        {fmt(Math.max(0, (invoice?.totalAmount ?? 0) - draftAvance - draftPaymentMethods.reduce((s, e) => s + (e.amount || 0), 0)))} Dh
                       </div>
                     </div>
                   )}
@@ -628,16 +655,35 @@ export default function InvoiceDetailPage() {
           </div>
         )}
 
-        {/* View-mode: avance display */}
-        {!isEditing && (invoice.avance_amount ?? 0) > 0 && (
-          <div className="flex items-center gap-3 text-xs pt-1">
-            <span className="text-muted-foreground">Avance :</span>
-            <span className="font-mono font-bold text-foreground">{fmt(invoice.avance_amount!)} Dh</span>
-            <span className="text-border">·</span>
-            <span className="text-muted-foreground">Reste :</span>
-            <span className="font-mono font-bold text-amber-600 dark:text-amber-400">
-              {fmt(Math.max(0, invoice.totalAmount - invoice.avance_amount!))} Dh
-            </span>
+        {/* View-mode: full payment summary */}
+        {!isEditing && paymentSummary && (paymentSummary.avance > 0 || paymentSummary.entries.length > 0) && (
+          <div className="border-t border-border pt-3 space-y-2">
+            {paymentSummary.avance > 0 && (
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Avance reçue</span>
+                <span className="font-mono font-semibold text-foreground">{fmt(paymentSummary.avance)} Dh</span>
+              </div>
+            )}
+            {paymentSummary.entries.filter(e => e.amount || e.method).map((e, i) => (
+              <div key={i} className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground flex items-center gap-2">
+                  {e.method || 'Règlement'}
+                  {e.reference && <span className="font-mono text-[10px] bg-secondary px-1.5 py-0.5 rounded">{e.reference}</span>}
+                  {e.bank && <span className="text-[10px] text-muted-foreground">{e.bank}</span>}
+                </span>
+                <span className="font-mono font-semibold text-foreground">{e.amount ? fmt(e.amount) + ' Dh' : '—'}</span>
+              </div>
+            ))}
+            <div className="border-t border-border pt-2 flex items-center justify-between text-xs font-semibold">
+              <span className="text-muted-foreground">Total payé</span>
+              <span className="font-mono text-emerald-600 dark:text-emerald-400">{fmt(paymentSummary.totalPaid)} Dh</span>
+            </div>
+            <div className="flex items-center justify-between text-sm font-bold">
+              <span className="text-muted-foreground">{paymentSummary.reste <= 0 ? 'Facture soldée ✓' : 'Reste à payer'}</span>
+              <span className={`font-mono ${paymentSummary.reste <= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                {paymentSummary.reste <= 0 ? '0,00 Dh' : fmt(paymentSummary.reste) + ' Dh'}
+              </span>
+            </div>
           </div>
         )}
       </div>
