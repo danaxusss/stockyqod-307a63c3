@@ -221,7 +221,7 @@ export default function BLDirectoryPage() {
                         : <Square className="h-3.5 w-3.5" />}
                     </button>
                   </th>
-                  {['N° BL', 'Client', 'Articles', 'Statut', 'Date', 'Actions'].map(h => (
+                  {['N° BL', 'Code', 'Client', 'Articles', 'Statut', 'Date', 'Actions'].map(h => (
                     <th key={h} className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">{h}</th>
                   ))}
                 </tr>
@@ -245,6 +245,9 @@ export default function BLDirectoryPage() {
                         <Link to={`/compta/bls/${bl.id}`} className="text-xs font-mono font-semibold text-primary hover:underline">
                           {bl.quoteNumber}
                         </Link>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        {(() => { const c = (bl.customer as any)?.clientCode || (bl.customer as any)?.client_code || ''; return c ? <span className="text-[10px] font-mono bg-blue-500/10 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded">{c}</span> : <span className="text-[10px] text-muted-foreground">—</span>; })()}
                       </td>
                       <td className="px-3 py-2.5">
                         <div className="text-xs font-medium text-foreground">{bl.customer?.fullName || '—'}</div>

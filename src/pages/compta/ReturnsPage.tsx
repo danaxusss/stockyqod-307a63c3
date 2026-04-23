@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { RotateCcw, Plus, Trash2, X, Check, Loader, ChevronDown, ChevronUp, Lock, Unlock, Search, Pencil } from 'lucide-react';
 import { Return, ReturnItem, Product } from '../../types';
 import { SupabaseReturnsService } from '../../utils/supabaseReturns';
+import { SupabaseClientsService } from '../../utils/supabaseClients';
 import { CompanySettingsService } from '../../utils/companySettings';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../hooks/useAuth';
@@ -25,6 +26,7 @@ export default function ReturnsPage() {
   const { showToast } = useToast();
   const { isSuperAdmin, isCompta } = useAuth();
   const [returns, setReturns] = useState<Return[]>([]);
+  const [clientCodeMap, setClientCodeMap] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(true);
 
   // Create / Edit modal
@@ -53,8 +55,14 @@ export default function ReturnsPage() {
   const load = useCallback(async () => {
     setIsLoading(true);
     try {
-      const data = await SupabaseReturnsService.getAll();
+      const [data, clients] = await Promise.all([
+        SupabaseReturnsService.getAll(),
+        SupabaseClientsService.getAllClients().catch(() => []),
+      ]);
       setReturns(data);
+      const map: Record<string, string> = {};
+      clients.forEach(c => { if (c.client_code) map[c.full_name.toLowerCase()] = c.client_code; });
+      setClientCodeMap(map);
     } catch {
       showToast({ type: 'error', message: 'Erreur chargement retours' });
     } finally {
@@ -283,7 +291,13 @@ export default function ReturnsPage() {
                         {ret.status === 'open' ? 'Ouvert' : 'Clôturé'}
                       </span>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">{ret.client_name} — {ret.reason || '—'}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {ret.client_name}
+                      {clientCodeMap[ret.client_name.toLowerCase()] && (
+                        <span className="ml-1.5 text-[9px] font-mono bg-blue-500/10 text-blue-600 dark:text-blue-400 px-1 py-0.5 rounded">{clientCodeMap[ret.client_name.toLowerCase()]}</span>
+                      )}
+                      {' — '}{ret.reason || '—'}
+                    </p>
                   </div>
                   <span className="text-[11px] text-muted-foreground flex-shrink-0">{new Date(ret.created_at).toLocaleDateString('fr-FR')}</span>
                   <button

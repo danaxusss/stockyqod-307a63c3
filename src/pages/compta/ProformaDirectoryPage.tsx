@@ -210,6 +210,7 @@ export default function ProformaDirectoryPage() {
               <thead className="bg-secondary">
                 <tr>
                   <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">N° Proforma</th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Code</th>
                   <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Client</th>
                   <th className="px-3 py-2 text-right text-[11px] font-medium text-muted-foreground uppercase cursor-pointer" onClick={() => handleSort('total')}>
                     Total TTC <SortIcon k="total" />
@@ -234,6 +235,9 @@ export default function ProformaDirectoryPage() {
                         <Link to={`/compta/proformas/${p.id}`} className="text-xs font-mono font-semibold text-primary hover:underline">
                           {p.quoteNumber}
                         </Link>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        {(() => { const c = (p.customer as any)?.clientCode || (p.customer as any)?.client_code || ''; return c ? <span className="text-[10px] font-mono bg-blue-500/10 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded">{c}</span> : <span className="text-[10px] text-muted-foreground">—</span>; })()}
                       </td>
                       <td className="px-3 py-2.5">
                         <div className="text-xs font-medium text-foreground">{p.customer?.fullName || '—'}</div>

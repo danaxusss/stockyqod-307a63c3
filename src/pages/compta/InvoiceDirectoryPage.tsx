@@ -409,6 +409,7 @@ export default function InvoiceDirectoryPage() {
                   <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase cursor-pointer hover:text-foreground" onClick={() => toggleSort('customer')}>
                     Client <SortIcon field="customer" />
                   </th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Code</th>
                   <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Proforma</th>
                   <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Société</th>
                   <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase cursor-pointer hover:text-foreground" onClick={() => toggleSort('total')}>
@@ -439,7 +440,11 @@ export default function InvoiceDirectoryPage() {
                     <td className="px-3 py-2.5">
                       <div className="text-xs font-medium text-foreground">{inv.customer?.fullName || '—'}</div>
                       {inv.customer?.phoneNumber && <div className="text-[10px] text-muted-foreground">{inv.customer.phoneNumber}</div>}
-                      {clientCode && <span className="inline-block mt-0.5 text-[9px] font-mono bg-blue-500/10 text-blue-600 dark:text-blue-400 px-1 rounded">{clientCode}</span>}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      {clientCode
+                        ? <span className="text-[10px] font-mono bg-blue-500/10 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded">{clientCode}</span>
+                        : <span className="text-[10px] text-muted-foreground">—</span>}
                     </td>
                     <td className="px-3 py-2.5">
                       {inv.parent_document_id && proformaNumbers[inv.parent_document_id] ? (
