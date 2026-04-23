@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import { Receipt, Search, Download, Trash2, ChevronUp, ChevronDown, X, Eye, Printer, MessageCircle, Mail, Copy, Lock, CheckCircle, Clock, AlertCircle, Plus } from 'lucide-react';
 import { Quote, PaymentEntry } from '../../types';
@@ -58,9 +59,10 @@ export default function InvoiceDirectoryPage() {
   const [sortField, setSortField] = useState<SortField>('date');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
 
-  // Menu
+  // Actions menu
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
+
 
   // Pagination
   const [pageSize, setPageSize] = useState(20);
@@ -108,6 +110,13 @@ export default function InvoiceDirectoryPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => {
+    if (!openMenuId) return;
+    const close = () => setOpenMenuId(null);
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [openMenuId]);
+
   const handleNewInvoice = async () => {
     const { companyId: ctxId } = getCompanyContext();
     const compId = ctxId || companyList[0]?.id;
@@ -123,12 +132,6 @@ export default function InvoiceDirectoryPage() {
     }
   };
 
-  useEffect(() => {
-    if (!openMenuId) return;
-    const close = () => setOpenMenuId(null);
-    document.addEventListener('click', close);
-    return () => document.removeEventListener('click', close);
-  }, [openMenuId]);
 
   const buildSettings = async (inv: Quote) => {
     const compId = inv.issuing_company_id || inv.company_id;
@@ -504,67 +507,51 @@ export default function InvoiceDirectoryPage() {
                     </td>
                     <td className="px-3 py-2.5 whitespace-nowrap">
                       <div className="flex items-center gap-1">
-                        {/* Always-visible: Open + Download */}
-                        <Link
-                          to={`/compta/invoices/${inv.id}`}
-                          className="p-1.5 text-primary hover:bg-primary/10 rounded transition-colors"
-                          title="Ouvrir"
-                        >
+                        <Link to={`/compta/invoices/${inv.id}`} className="p-1.5 text-primary hover:bg-primary/10 rounded transition-colors" title="Ouvrir">
                           <Eye className="h-3.5 w-3.5" />
                         </Link>
-                        <button
-                          onClick={() => handleExportPdf(inv)}
-                          className="p-1.5 text-blue-500 hover:bg-blue-500/10 rounded transition-colors"
-                          title="Télécharger PDF"
-                        >
+                        <button onClick={() => handleExportPdf(inv)} className="p-1.5 text-blue-500 hover:bg-blue-500/10 rounded transition-colors" title="Télécharger PDF">
                           <Download className="h-3.5 w-3.5" />
                         </button>
-
-                        {/* ⋯ menu for the rest */}
-                        <div className="relative">
-                          <button
-                            onClick={e => { e.stopPropagation(); const rect = e.currentTarget.getBoundingClientRect(); const spaceBelow = window.innerHeight - rect.bottom; const s: React.CSSProperties = { position: 'fixed', right: window.innerWidth - rect.right, zIndex: 9999, minWidth: 180 }; if (spaceBelow < 240) { s.bottom = window.innerHeight - rect.top + 2; } else { s.top = rect.bottom + 2; } setMenuStyle(s); setOpenMenuId(openMenuId === inv.id ? null : inv.id); }}
-                            className="p-1.5 text-muted-foreground hover:bg-accent rounded transition-colors"
-                            title="Plus d'actions"
-                          >
-                            <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 16 16"><circle cx="4" cy="8" r="1.2"/><circle cx="8" cy="8" r="1.2"/><circle cx="12" cy="8" r="1.2"/></svg>
-                          </button>
-                          {openMenuId === inv.id && (
+                        <button
+                          onClick={e => {
+                            e.stopPropagation();
+                            const btn = e.currentTarget.getBoundingClientRect();
+                            const body = document.body.getBoundingClientRect();
+                            const menuW = 188;
+                            const menuH = 210;
+                            const top = window.innerHeight - btn.bottom < menuH + 8
+                              ? btn.top - body.top - menuH - 4
+                              : btn.bottom - body.top + 4;
+                            setMenuStyle({ position: 'absolute', left: Math.max(-body.left + 4, btn.right - menuW - body.left), top, zIndex: 9999, minWidth: menuW });
+                            setOpenMenuId(openMenuId === inv.id ? null : inv.id);
+                          }}
+                          className="p-1.5 text-muted-foreground hover:bg-accent rounded transition-colors"
+                          title="Plus d'actions"
+                        >
+                          <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 16 16"><circle cx="4" cy="8" r="1.2"/><circle cx="8" cy="8" r="1.2"/><circle cx="12" cy="8" r="1.2"/></svg>
+                        </button>
+                        {openMenuId === inv.id && createPortal(
                           <div onClick={e => e.stopPropagation()} style={menuStyle} className="flex flex-col bg-card border border-border rounded-lg shadow-xl py-1">
-                            <button
-                              onClick={async () => { setOpenMenuId(null); await handlePreview(inv); }}
-                              className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent text-foreground"
-                            >
+                            <button onClick={async () => { setOpenMenuId(null); await handlePreview(inv); }} className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent text-foreground">
                               <Printer className="h-3.5 w-3.5 text-muted-foreground" />Aperçu impression
                             </button>
-                            <button
-                              onClick={() => { setOpenMenuId(null); openWaModal(inv); }}
-                              className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent text-foreground"
-                            >
+                            <button onClick={() => { setOpenMenuId(null); openWaModal(inv); }} className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent text-foreground">
                               <MessageCircle className="h-3.5 w-3.5 text-emerald-500" />WhatsApp
                             </button>
-                            <button
-                              onClick={() => { setOpenMenuId(null); handleEmailShare(inv); }}
-                              className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent text-foreground"
-                            >
+                            <button onClick={() => { setOpenMenuId(null); handleEmailShare(inv); }} className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent text-foreground">
                               <Mail className="h-3.5 w-3.5 text-primary" />Email
                             </button>
-                            <button
-                              onClick={async () => { setOpenMenuId(null); await handleDuplicate(inv); }}
-                              className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent text-foreground"
-                            >
+                            <button onClick={async () => { setOpenMenuId(null); await handleDuplicate(inv); }} className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent text-foreground">
                               <Copy className="h-3.5 w-3.5 text-muted-foreground" />Dupliquer
                             </button>
                             <div className="border-t border-border my-0.5" />
-                            <button
-                              onClick={() => { setOpenMenuId(null); initiateDelete(inv); }}
-                              className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-destructive/10 text-destructive"
-                            >
+                            <button onClick={() => { setOpenMenuId(null); initiateDelete(inv); }} className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-destructive/10 text-destructive">
                               <Trash2 className="h-3.5 w-3.5" />Supprimer
                             </button>
-                          </div>
-                          )}
-                        </div>
+                          </div>,
+                          document.body
+                        )}
                       </div>
                     </td>
                   </tr>
