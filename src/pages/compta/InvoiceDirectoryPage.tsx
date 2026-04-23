@@ -60,7 +60,7 @@ export default function InvoiceDirectoryPage() {
 
   // Menu
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-  const [menuDirection, setMenuDirection] = useState<'up' | 'down'>('down');
+  const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
 
   // Pagination
   const [pageSize, setPageSize] = useState(20);
@@ -523,14 +523,14 @@ export default function InvoiceDirectoryPage() {
                         {/* ⋯ menu for the rest */}
                         <div className="relative">
                           <button
-                            onClick={e => { e.stopPropagation(); const rect = e.currentTarget.getBoundingClientRect(); setMenuDirection(window.innerHeight - rect.bottom < 220 ? 'up' : 'down'); setOpenMenuId(openMenuId === inv.id ? null : inv.id); }}
+                            onClick={e => { e.stopPropagation(); const rect = e.currentTarget.getBoundingClientRect(); const spaceBelow = window.innerHeight - rect.bottom; const s: React.CSSProperties = { position: 'fixed', right: window.innerWidth - rect.right, zIndex: 9999, minWidth: 180 }; if (spaceBelow < 240) { s.bottom = window.innerHeight - rect.top + 2; } else { s.top = rect.bottom + 2; } setMenuStyle(s); setOpenMenuId(openMenuId === inv.id ? null : inv.id); }}
                             className="p-1.5 text-muted-foreground hover:bg-accent rounded transition-colors"
                             title="Plus d'actions"
                           >
                             <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 16 16"><circle cx="4" cy="8" r="1.2"/><circle cx="8" cy="8" r="1.2"/><circle cx="12" cy="8" r="1.2"/></svg>
                           </button>
                           {openMenuId === inv.id && (
-                          <div onClick={e => e.stopPropagation()} className={`absolute right-0 z-30 flex flex-col bg-card border border-border rounded-lg shadow-lg py-1 min-w-[170px] ${menuDirection === 'up' ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
+                          <div onClick={e => e.stopPropagation()} style={menuStyle} className="flex flex-col bg-card border border-border rounded-lg shadow-xl py-1">
                             <button
                               onClick={async () => { setOpenMenuId(null); await handlePreview(inv); }}
                               className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent text-foreground"
