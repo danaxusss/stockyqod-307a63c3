@@ -13,6 +13,7 @@ type ReturnRow = {
   status: string;
   is_locked: boolean | null;
   notes: string | null;
+  return_date: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -30,6 +31,7 @@ function mapRow(r: ReturnRow): Return {
     status: (r.status || 'open') as Return['status'],
     is_locked: r.is_locked ?? false,
     notes: r.notes || undefined,
+    return_date: r.return_date || undefined,
     created_by: r.created_by || undefined,
     created_at: r.created_at,
     updated_at: r.updated_at,
@@ -52,6 +54,7 @@ export class SupabaseReturnsService {
     reason: string;
     items: ReturnItem[];
     notes?: string;
+    return_date?: string;
     reference_document_id?: string;
   }): Promise<Return> {
     const { companyId } = getCompanyContext();
@@ -62,6 +65,7 @@ export class SupabaseReturnsService {
         reason: payload.reason,
         items: payload.items,
         notes: payload.notes || null,
+        return_date: payload.return_date || null,
         reference_document_id: payload.reference_document_id || null,
         status: 'open',
         ...(companyId ? { company_id: companyId } : {}),
@@ -80,6 +84,7 @@ export class SupabaseReturnsService {
     reference_number: string;
     client_name: string;
     items: ReturnItem[];
+    return_date: string | null;
   }>): Promise<Return> {
     const { companyId, isSuperAdmin } = getCompanyContext();
     let q = (supabase.from('returns') as any)

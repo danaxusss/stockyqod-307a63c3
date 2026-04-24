@@ -725,6 +725,9 @@ GRANT EXECUTE ON FUNCTION public.get_app_user_by_username_safe(text) TO anon, au
 -- returns: add is_locked column
 ALTER TABLE public.returns ADD COLUMN IF NOT EXISTS is_locked boolean NOT NULL DEFAULT false;
 
+-- returns: add return_date column (defaults to created_at date)
+ALTER TABLE public.returns ADD COLUMN IF NOT EXISTS return_date date;
+
 -- quotes: allow 'avoir' document_type
 ALTER TABLE public.quotes DROP CONSTRAINT IF EXISTS quotes_document_type_check;
 ALTER TABLE public.quotes ADD CONSTRAINT quotes_document_type_check

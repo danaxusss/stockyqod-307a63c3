@@ -183,6 +183,7 @@ export interface Return {
   status: 'open' | 'closed';
   is_locked?: boolean;
   notes?: string;
+  return_date?: string;
   created_by?: string;
   created_at: string;
   updated_at: string;

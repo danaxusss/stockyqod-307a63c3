@@ -16,6 +16,7 @@ const EMPTY_FORM = {
   client_name: '',
   reason: '',
   notes: '',
+  return_date: new Date().toISOString().split('T')[0],
   items: [{ barcode: '', label: '', quantity: 1 }] as ReturnItem[],
 };
 
@@ -116,6 +117,7 @@ export default function ReturnsPage() {
       client_name: ret.client_name,
       reason: ret.reason,
       notes: ret.notes || '',
+      return_date: ret.return_date || new Date(ret.created_at).toISOString().split('T')[0],
       items: ret.items.length ? ret.items : [{ barcode: '', label: '', quantity: 1 }],
     });
     setShowModal(true);
@@ -160,6 +162,7 @@ export default function ReturnsPage() {
         client_name: form.client_name.trim(),
         reason: form.reason.trim(),
         notes: form.notes.trim() || undefined,
+        return_date: form.return_date || null,
         items: form.items.filter(i => i.label.trim()),
       };
       if (editingId) {
@@ -309,7 +312,7 @@ export default function ReturnsPage() {
                       {' — '}{ret.reason || '—'}
                     </p>
                   </div>
-                  <span className="text-[11px] text-muted-foreground flex-shrink-0">{new Date(ret.created_at).toLocaleDateString('fr-FR')}</span>
+                  <span className="text-[11px] text-muted-foreground flex-shrink-0">{ret.return_date ? new Date(ret.return_date).toLocaleDateString('fr-FR') : new Date(ret.created_at).toLocaleDateString('fr-FR')}</span>
                   <button
                     onClick={() => toggleLock(ret)}
                     className={`p-1 rounded hover:bg-accent flex-shrink-0 ${ret.is_locked ? 'text-amber-500' : 'text-muted-foreground'}`}
@@ -392,6 +395,10 @@ export default function ReturnsPage() {
                   <label className="block text-xs font-medium text-foreground mb-1">Client *</label>
                   <input className={inputCls} value={form.client_name} onChange={e => setForm(f => ({ ...f, client_name: e.target.value }))} placeholder="Nom du client" />
                 </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1">Date du retour</label>
+                <input type="date" className={inputCls} value={form.return_date} onChange={e => setForm(f => ({ ...f, return_date: e.target.value }))} />
               </div>
               <div>
                 <label className="block text-xs font-medium text-foreground mb-1">Motif</label>
