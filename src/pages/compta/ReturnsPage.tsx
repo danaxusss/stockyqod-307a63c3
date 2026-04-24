@@ -266,15 +266,6 @@ export default function ReturnsPage() {
               <option value="open">Ouverts</option>
               <option value="closed">Clôturés</option>
             </select>
-            <select value={sortField} onChange={e => setSortField(e.target.value as SortField)}
-              className="px-2 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring">
-              <option value="date">Date</option>
-              <option value="reference">Référence</option>
-            </select>
-            <button onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}
-              className="px-2 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground hover:bg-accent">
-              {sortDir === 'asc' ? '↑' : '↓'}
-            </button>
             <button onClick={openCreate} className="flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm whitespace-nowrap">
               <Plus className="h-3.5 w-3.5" /><span>Nouveau retour</span>
             </button>
@@ -294,6 +285,18 @@ export default function ReturnsPage() {
           </div>
         ) : (
           <>
+          <div className="grid grid-cols-[auto_1fr_auto_auto] bg-secondary/50 border-b border-border text-[11px] font-medium text-muted-foreground uppercase">
+            <div className="px-4 py-2 w-8" />
+            <div className="py-2 flex gap-6">
+              <button onClick={() => toggleSort('reference')} className={`flex items-center gap-0.5 hover:text-foreground select-none cursor-pointer ${sortField === 'reference' ? 'text-foreground' : ''}`}>
+                Référence / Client{sortField === 'reference' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : <span className="opacity-30"> ↕</span>}
+              </button>
+            </div>
+            <button onClick={() => toggleSort('date')} className={`px-4 py-2 flex items-center gap-0.5 hover:text-foreground select-none cursor-pointer ${sortField === 'date' ? 'text-foreground' : ''}`}>
+              Date{sortField === 'date' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : <span className="opacity-30"> ↕</span>}
+            </button>
+            <div className="px-4 py-2 w-40" />
+          </div>
           <div className="divide-y divide-border">
             {paginated.map(ret => (
               <div key={ret.id}>

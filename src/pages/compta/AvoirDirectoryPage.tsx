@@ -135,6 +135,15 @@ export default function AvoirDirectoryPage() {
     }
   };
 
+  const toggleSort = (field: typeof sortField) => {
+    if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortField(field); setSortDir('asc'); }
+  };
+  const SortIcon = ({ field }: { field: typeof sortField }) => {
+    if (sortField !== field) return <span className="ml-0.5 opacity-30">↕</span>;
+    return sortDir === 'asc' ? <span className="ml-0.5">↑</span> : <span className="ml-0.5">↓</span>;
+  };
+
   if (!isSuperAdmin && !isCompta) {
     return <div className="text-center py-12 text-muted-foreground">Accès réservé au rôle Comptabilité.</div>;
   }
@@ -166,17 +175,6 @@ export default function AvoirDirectoryPage() {
                 {allCompanyList.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             )}
-            <select value={sortField} onChange={e => setSortField(e.target.value as any)}
-              className="px-2 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring">
-              <option value="date">Date</option>
-              <option value="number">N° Avoir</option>
-              <option value="amount">Montant</option>
-              <option value="client">Client</option>
-            </select>
-            <button onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}
-              className="px-2 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground hover:bg-accent">
-              {sortDir === 'asc' ? '↑' : '↓'}
-            </button>
             <button onClick={openCreateModal}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-violet-600 hover:bg-violet-700 text-white rounded-lg transition-colors">
               <Plus className="h-3.5 w-3.5" /><span>Nouvel avoir</span>
@@ -199,12 +197,12 @@ export default function AvoirDirectoryPage() {
             <table className="w-full">
               <thead className="bg-secondary/50">
                 <tr>
-                  <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">N° Avoir</th>
+                  <th onClick={() => toggleSort('number')} className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase cursor-pointer hover:text-foreground select-none">N° Avoir<SortIcon field="number" /></th>
                   <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Code</th>
-                  <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Client</th>
+                  <th onClick={() => toggleSort('client')} className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase cursor-pointer hover:text-foreground select-none">Client<SortIcon field="client" /></th>
                   <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Société</th>
-                  <th className="px-3 py-2 text-right text-[11px] font-medium text-muted-foreground uppercase">Montant</th>
-                  <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Date</th>
+                  <th onClick={() => toggleSort('amount')} className="px-3 py-2 text-right text-[11px] font-medium text-muted-foreground uppercase cursor-pointer hover:text-foreground select-none">Montant<SortIcon field="amount" /></th>
+                  <th onClick={() => toggleSort('date')} className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase cursor-pointer hover:text-foreground select-none">Date<SortIcon field="date" /></th>
                   <th className="px-3 py-2 text-right text-[11px] font-medium text-muted-foreground uppercase">Actions</th>
                 </tr>
               </thead>
