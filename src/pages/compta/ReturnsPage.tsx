@@ -43,8 +43,9 @@ export default function ReturnsPage() {
   // Expand
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  // Search / sort
+  // Search / sort / filter
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'closed'>('all');
   const [sortField, setSortField] = useState<SortField>('date');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [pageSize, setPageSize] = useState(20);
@@ -77,24 +78,24 @@ export default function ReturnsPage() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    let list = q
-      ? returns.filter(r => {
-          const code = (clientCodeMap[r.client_name.toLowerCase()] || '').toLowerCase();
-          return r.reference_number.toLowerCase().includes(q) ||
-            r.client_name.toLowerCase().includes(q) ||
-            code.includes(q);
-        })
-      : returns;
+    let list = returns.filter(r => {
+      if (statusFilter !== 'all' && r.status !== statusFilter) return false;
+      if (!q) return true;
+      const code = (clientCodeMap[r.client_name.toLowerCase()] || '').toLowerCase();
+      return r.reference_number.toLowerCase().includes(q) ||
+        r.client_name.toLowerCase().includes(q) ||
+        code.includes(q);
+    });
     list = [...list].sort((a, b) => {
       let cmp = 0;
-      if (sortField === 'date') cmp = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      if (sortField === 'date') cmp = new Date(a.return_date || a.created_at).getTime() - new Date(b.return_date || b.created_at).getTime();
       else cmp = a.reference_number.localeCompare(b.reference_number);
       return sortDir === 'asc' ? cmp : -cmp;
     });
     return list;
   }, [returns, search, sortField, sortDir, clientCodeMap]);
 
-  useEffect(() => { setPage(1); }, [filtered]);
+  useEffect(() => { setPage(1); }, [filtered, statusFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
@@ -248,19 +249,34 @@ export default function ReturnsPage() {
               <p className="text-xs text-muted-foreground">{filtered.length} retour{filtered.length !== 1 ? 's' : ''}</p>
             </div>
           </div>
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <div className="relative flex-1 max-w-xs">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <input
                 type="text"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder="Rechercher..."
-                className="w-full pl-8 pr-3 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring"
+                className="pl-8 pr-3 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring w-48"
               />
             </div>
-            <button onClick={openCreate} className="flex items-center space-x-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm whitespace-nowrap">
-              <Plus className="h-3.5 w-3.5" /><span>Nouveau</span>
+            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as any)}
+              className="px-2 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring">
+              <option value="all">Tous</option>
+              <option value="open">Ouverts</option>
+              <option value="closed">Clôturés</option>
+            </select>
+            <select value={sortField} onChange={e => setSortField(e.target.value as SortField)}
+              className="px-2 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring">
+              <option value="date">Date</option>
+              <option value="reference">Référence</option>
+            </select>
+            <button onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}
+              className="px-2 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground hover:bg-accent">
+              {sortDir === 'asc' ? '↑' : '↓'}
+            </button>
+            <button onClick={openCreate} className="flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm whitespace-nowrap">
+              <Plus className="h-3.5 w-3.5" /><span>Nouveau retour</span>
             </button>
           </div>
         </div>
@@ -268,16 +284,6 @@ export default function ReturnsPage() {
 
       {/* List */}
       <div className="glass rounded-xl shadow-lg overflow-hidden">
-        {/* Sort header */}
-        <div className="px-4 py-2 border-b border-border bg-secondary/30 flex items-center gap-4 text-[11px] text-muted-foreground">
-          <button onClick={() => toggleSort('reference')} className="hover:text-foreground font-medium">
-            Référence <SortIcon field="reference" />
-          </button>
-          <span className="flex-1" />
-          <button onClick={() => toggleSort('date')} className="hover:text-foreground font-medium">
-            Date <SortIcon field="date" />
-          </button>
-        </div>
 
         {isLoading ? (
           <div className="p-8 text-center"><Loader className="h-6 w-6 animate-spin text-primary mx-auto" /></div>

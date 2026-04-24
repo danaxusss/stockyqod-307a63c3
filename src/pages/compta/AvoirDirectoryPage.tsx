@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { FileX, Search, Download, Trash2, Plus, X, Loader } from 'lucide-react';
 import { Quote, Company } from '../../types';
@@ -23,6 +23,9 @@ export default function AvoirDirectoryPage() {
   const [companies, setCompanies] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [companyFilter, setCompanyFilter] = useState('');
+  const [sortField, setSortField] = useState<'date' | 'number' | 'amount' | 'client'>('date');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [pageSize, setPageSize] = useState(20);
   const [page, setPage] = useState(1);
 
@@ -81,16 +84,28 @@ export default function AvoirDirectoryPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const filtered = avoirs.filter(a => {
+  const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return true;
-    const clientCode = ((a.customer as any)?.clientCode || (a.customer as any)?.client_code || '').toLowerCase();
-    return (
-      a.quoteNumber.toLowerCase().includes(q) ||
-      (a.customer?.fullName || '').toLowerCase().includes(q) ||
-      clientCode.includes(q)
-    );
-  });
+    let list = avoirs.filter(a => {
+      if (companyFilter && (a.issuing_company_id || a.company_id) !== companyFilter) return false;
+      if (!q) return true;
+      const clientCode = ((a.customer as any)?.clientCode || (a.customer as any)?.client_code || '').toLowerCase();
+      return (
+        a.quoteNumber.toLowerCase().includes(q) ||
+        (a.customer?.fullName || '').toLowerCase().includes(q) ||
+        clientCode.includes(q)
+      );
+    });
+    list = [...list].sort((a, b) => {
+      let cmp = 0;
+      if (sortField === 'date') cmp = new Date(a.quote_date || a.createdAt).getTime() - new Date(b.quote_date || b.createdAt).getTime();
+      else if (sortField === 'number') cmp = a.quoteNumber.localeCompare(b.quoteNumber);
+      else if (sortField === 'amount') cmp = a.totalAmount - b.totalAmount;
+      else if (sortField === 'client') cmp = (a.customer?.fullName || '').localeCompare(b.customer?.fullName || '');
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+    return list;
+  }, [avoirs, search, companyFilter, sortField, sortDir]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
@@ -125,7 +140,7 @@ export default function AvoirDirectoryPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="max-w-7xl mx-auto space-y-4">
       <div className="glass rounded-xl shadow-lg p-4">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center space-x-2.5">
@@ -137,17 +152,31 @@ export default function AvoirDirectoryPage() {
               <p className="text-xs text-muted-foreground">{filtered.length} avoir{filtered.length !== 1 ? 's' : ''}</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-              <input
-                type="text"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
+              <input type="text" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
                 placeholder="Rechercher..."
-                className="pl-8 pr-3 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring w-56"
-              />
+                className="pl-8 pr-3 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring w-48" />
             </div>
+            {isSuperAdmin && (
+              <select value={companyFilter} onChange={e => { setCompanyFilter(e.target.value); setPage(1); }}
+                className="px-2 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring">
+                <option value="">Toutes sociétés</option>
+                {allCompanyList.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            )}
+            <select value={sortField} onChange={e => setSortField(e.target.value as any)}
+              className="px-2 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring">
+              <option value="date">Date</option>
+              <option value="number">N° Avoir</option>
+              <option value="amount">Montant</option>
+              <option value="client">Client</option>
+            </select>
+            <button onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}
+              className="px-2 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground hover:bg-accent">
+              {sortDir === 'asc' ? '↑' : '↓'}
+            </button>
             <button onClick={openCreateModal}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-violet-600 hover:bg-violet-700 text-white rounded-lg transition-colors">
               <Plus className="h-3.5 w-3.5" /><span>Nouvel avoir</span>
