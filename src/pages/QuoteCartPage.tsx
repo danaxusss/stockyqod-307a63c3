@@ -1341,7 +1341,7 @@ export function QuoteCartPage() {
                           </select>
                         </div>
                         <div className="text-xs text-muted-foreground mt-1">
-                          Achat: {(item.product.buyprice / (1 + (companySettings?.tva_rate ?? 20) / 100)).toFixed(2)} Dh HT
+                          Achat: {item.product.buyprice.toFixed(2)} Dh
                         </div>
                       </td>
                       <td className="px-4 py-4">
