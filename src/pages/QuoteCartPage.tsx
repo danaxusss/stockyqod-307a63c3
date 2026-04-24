@@ -27,7 +27,8 @@ import {
   Send,
   MessageCircle,
   Mail,
-  Truck
+  Truck,
+  AlertCircle
 } from 'lucide-react';
 import { Quote, QuoteItem, CustomerInfo, Product } from '../types';
 import { ExcelExportService } from '../utils/excelExport';
@@ -118,6 +119,13 @@ export function QuoteCartPage() {
   const [clientSuggestions, setClientSuggestions] = useState<Client[]>([]);
   const [showClientSuggestions, setShowClientSuggestions] = useState(false);
   const [clientSearchTimeout, setClientSearchTimeout] = useState<NodeJS.Timeout | null>(null);
+
+  // Duplicate client detection
+  const [duplicateModal, setDuplicateModal] = useState<{
+    existing: Client[];
+    pending: { full_name: string; phone_number: string; address: string; city: string; ice: string };
+    resolve: (client: Client | 'create') => void;
+  } | null>(null);
 
   // Tech sheets link state
   const [attachTechSheets, setAttachTechSheets] = useState(false);
@@ -279,6 +287,7 @@ export function QuoteCartPage() {
       address: client.address || prev.address,
       city: client.city || prev.city,
       ice: client.ice || prev.ice,
+      clientCode: client.client_code || prev.clientCode,
     }));
     setShowClientSuggestions(false);
     setClientSuggestions([]);
@@ -644,13 +653,31 @@ export function QuoteCartPage() {
       // Upsert client record if phone number provided
       if (customer.phoneNumber.trim()) {
         try {
-          await SupabaseClientsService.smartUpsertClient({
-            full_name: customer.fullName.trim(),
-            phone_number: customer.phoneNumber.trim(),
-            address: customer.address?.trim() || '',
-            city: customer.city?.trim() || '',
-            ice: customer.ice?.trim() || '',
-          });
+          const phone = customer.phoneNumber.trim();
+          const name = customer.fullName.trim();
+          // Check if phone already exists (known client) — if not, look for similar names
+          const existingByPhone = await SupabaseClientsService.getClientByPhone(phone);
+          let clientRequest = { full_name: name, phone_number: phone, address: customer.address?.trim() || '', city: customer.city?.trim() || '', ice: customer.ice?.trim() || '' };
+          if (!existingByPhone && name.length >= 3) {
+            const similar = await SupabaseClientsService.findSimilarByName(name, phone);
+            if (similar.length > 0) {
+              // Pause save flow — ask user what to do
+              const choice = await new Promise<import('../utils/supabaseClients').Client | 'create'>((resolve) => {
+                setDuplicateModal({ existing: similar, pending: clientRequest, resolve });
+              });
+              if (choice !== 'create') {
+                // User picked an existing client — use it
+                setCustomer(prev => ({ ...prev, clientCode: choice.client_code || prev.clientCode }));
+                // No need to create a new client; just continue saving
+                setIsSaving(false);
+                return;
+              }
+            }
+          }
+          const savedClient = await SupabaseClientsService.smartUpsertClient(clientRequest);
+          if (savedClient?.client_code && savedClient.client_code !== customer.clientCode) {
+            setCustomer(prev => ({ ...prev, clientCode: savedClient.client_code }));
+          }
         } catch (e) {
           console.error('Failed to upsert client:', e);
         }
@@ -741,7 +768,8 @@ export function QuoteCartPage() {
 
     setIsExporting(true);
     try {
-      const freshSettings = await CompanySettingsService.getSettings(companyId || undefined).catch(() => companySettings);
+      const quoteCompanyId = quote?.company_id || quote?.issuing_company_id || companyId;
+      const freshSettings = await CompanySettingsService.getSettings(quoteCompanyId || undefined).catch(() => companySettings);
       const { totalAmount } = calculateTotals();
       const quoteData: Quote = {
         id: quote?.id || crypto.randomUUID(),
@@ -846,18 +874,19 @@ export function QuoteCartPage() {
   const sendWhatsAppToPhonenumber = async (phone: string) => {
     const waPopup = openPreparingWhatsAppWindow();
     setIsExporting(true);
+    const quoteCompanyId = quote?.company_id || quote?.issuing_company_id || companyId;
+    const freshSettings = await CompanySettingsService.getSettings(quoteCompanyId || undefined).catch(() => companySettings);
     try {
-      const freshSettings = await CompanySettingsService.getSettings(companyId || undefined).catch(() => companySettings);
       const quoteData: Quote = { id: quote?.id || crypto.randomUUID(), quoteNumber, commandNumber: commandNumber || undefined, createdAt: quote?.createdAt || new Date(), updatedAt: new Date(), status, customer, items, totalAmount, notes, notes2: notes2 || undefined, quote_date: quoteDate || undefined };
       await PdfExportService.exportQuoteToPdf(quoteData, freshSettings || companySettings, undefined, undefined, useStamp);
     } catch { /* continue */ }
     setIsExporting(false);
 
-    const tvaRate = companySettings?.tva_rate ?? 20;
+    const tvaRate = freshSettings?.tva_rate ?? companySettings?.tva_rate ?? 20;
     const totalHT = totalAmount / (1 + tvaRate / 100);
     const totalTVA = totalAmount - totalHT;
-    const tpl = companySettings?.share_templates?.whatsapp || DEFAULT_SHARE_TEMPLATES.whatsapp;
-    const companyName = companySettings?.company_name?.trim() || 'Restonet';
+    const tpl = freshSettings?.share_templates?.whatsapp || companySettings?.share_templates?.whatsapp || DEFAULT_SHARE_TEMPLATES.whatsapp;
+    const companyName = freshSettings?.company_name?.trim() || companySettings?.company_name?.trim() || 'Restonet';
     const msg = tpl
       .replace(/{client}/g, customer.fullName || '')
       .replace(/{entreprise}/g, companyName)
@@ -868,9 +897,9 @@ export function QuoteCartPage() {
       .replace(/{tva}/g, String(tvaRate))
       .replace(/{nb_articles}/g, String(totalItems))
       .replace(/{date}/g, ExcelExportService.formatDate(quote?.createdAt || new Date()))
-      .replace(/{telephone}/g, companySettings?.phone || '')
-      .replace(/{email}/g, companySettings?.email || '')
-      .replace(/{adresse}/g, companySettings?.address || '');
+      .replace(/{telephone}/g, freshSettings?.phone || companySettings?.phone || '')
+      .replace(/{email}/g, freshSettings?.email || companySettings?.email || '')
+      .replace(/{adresse}/g, freshSettings?.address || companySettings?.address || '');
 
     const waUrl = buildWhatsAppShareUrl(phone, msg);
     const redirected = redirectPreparingWindowToWhatsApp(waUrl, waPopup);
@@ -1795,6 +1824,52 @@ export function QuoteCartPage() {
               >
                 Rester sur le devis
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Duplicate Client Detection Modal */}
+      {duplicateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="glass rounded-xl shadow-2xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center space-x-3">
+              <div className="p-2 rounded-full bg-amber-500/10">
+                <AlertCircle className="h-5 w-5 text-amber-500" />
+              </div>
+              <div>
+                <p className="text-base font-bold text-foreground">Client similaire détecté</p>
+                <p className="text-xs text-muted-foreground">Un ou plusieurs clients avec un nom similaire existent déjà</p>
+              </div>
+            </div>
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              {duplicateModal.existing.map(c => (
+                <button
+                  key={c.id}
+                  onClick={() => { duplicateModal.resolve(c); setDuplicateModal(null); }}
+                  className="w-full text-left p-3 rounded-lg border border-input hover:bg-accent transition-colors"
+                >
+                  <p className="text-sm font-medium text-foreground">{c.full_name}</p>
+                  <p className="text-xs text-muted-foreground">{c.phone_number} {c.client_code ? `· ${c.client_code}` : ''}</p>
+                </button>
+              ))}
+            </div>
+            <div className="pt-2 border-t border-border space-y-2">
+              <p className="text-xs text-muted-foreground">Vous pouvez utiliser un client existant ou créer un nouveau client distinct.</p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { duplicateModal.resolve('create'); setDuplicateModal(null); }}
+                  className="flex-1 px-4 py-2 text-sm bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg transition-colors font-medium"
+                >
+                  Créer nouveau client
+                </button>
+                <button
+                  onClick={() => setDuplicateModal(null)}
+                  className="px-4 py-2 text-sm border border-input text-foreground hover:bg-accent rounded-lg transition-colors"
+                >
+                  Annuler
+                </button>
+              </div>
             </div>
           </div>
         </div>

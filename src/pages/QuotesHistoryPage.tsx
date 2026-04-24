@@ -139,16 +139,15 @@ export function QuotesHistoryPage() {
     }
   };
 
-  const getCompanyShareIdentity = () => {
-    const companyName = companySettings?.company_name?.trim() || 'Restonet';
-    const companyPhone = companySettings?.phone?.trim() || companySettings?.phone_gsm?.trim() || companySettings?.phone2?.trim() || companySettings?.phone_dir?.trim() || '';
-    const companyEmail = companySettings?.email?.trim() || '';
-
+  const getShareIdentityFromSettings = (s: CompanySettings | null) => {
+    const companyName = s?.company_name?.trim() || companySettings?.company_name?.trim() || 'Restonet';
+    const companyPhone = s?.phone?.trim() || s?.phone_gsm?.trim() || s?.phone2?.trim() || s?.phone_dir?.trim() || companySettings?.phone?.trim() || '';
+    const companyEmail = s?.email?.trim() || companySettings?.email?.trim() || '';
     return { companyName, companyPhone, companyEmail };
   };
 
-  const buildWhatsAppShareText = (quote: Quote) => {
-    const { companyName, companyPhone, companyEmail } = getCompanyShareIdentity();
+  const buildWhatsAppShareText = (quote: Quote, s: CompanySettings | null) => {
+    const { companyName, companyPhone, companyEmail } = getShareIdentityFromSettings(s);
     const customerName = quote.customer.fullName?.trim();
 
     return [
@@ -169,8 +168,8 @@ export function QuotesHistoryPage() {
     ].filter(Boolean).join('\n');
   };
 
-  const buildEmailShareContent = (quote: Quote) => {
-    const { companyName, companyPhone, companyEmail } = getCompanyShareIdentity();
+  const buildEmailShareContent = (quote: Quote, s: CompanySettings | null) => {
+    const { companyName, companyPhone, companyEmail } = getShareIdentityFromSettings(s);
     const customerName = quote.customer.fullName?.trim();
 
     return {
@@ -195,7 +194,8 @@ export function QuotesHistoryPage() {
   };
 
   const handleWhatsAppShare = async (quote: Quote) => {
-    const messageText = buildWhatsAppShareText(quote);
+    const s = await CompanySettingsService.getSettings(quote.company_id).catch(() => companySettings);
+    const messageText = buildWhatsAppShareText(quote, s);
     const shareUrl = buildWhatsAppShareUrl(quote.customer.phoneNumber || '', messageText);
 
     if (!openWhatsAppShare(shareUrl)) {
@@ -208,8 +208,9 @@ export function QuotesHistoryPage() {
     }
   };
 
-  const handleEmailShare = (quote: Quote) => {
-    const { subject, body } = buildEmailShareContent(quote);
+  const handleEmailShare = async (quote: Quote) => {
+    const s = await CompanySettingsService.getSettings(quote.company_id).catch(() => companySettings);
+    const { subject, body } = buildEmailShareContent(quote, s);
     window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   };
 

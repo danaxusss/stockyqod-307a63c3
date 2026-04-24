@@ -210,6 +210,13 @@ export class PdfExportService {
       const footerTotalHeight = footerLines.length * footerLineHeight + 4;
       const footerBaseY = pageHeight - footerTotalHeight - 2;
 
+      // Disclaimer line above footer separator
+      const disclaimer = '* Les produits et prix de ce devis peuvent légèrement évoluer lors de la confirmation selon les disponibilités en stock et les variations de prix à l\'arrivage. Des produits similaires ou de qualité supérieure pourront être proposés en substitution.';
+      doc.setFont(font, 'italic');
+      doc.setFontSize(4.5);
+      doc.setTextColor(160, 160, 160);
+      doc.text(disclaimer, pageWidth / 2, footerBaseY - 3.5, { align: 'center', maxWidth: contentWidth });
+
       doc.setDrawColor(...ACCENT);
       doc.setLineWidth(0.5);
       doc.line(margin, footerBaseY, pageWidth - margin, footerBaseY);

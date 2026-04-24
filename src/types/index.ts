@@ -77,6 +77,7 @@ export interface CustomerInfo {
   city: string;
   ice?: string;
   salesPerson: string;
+  clientCode?: string;
 }
 
 export interface PaymentEntry {

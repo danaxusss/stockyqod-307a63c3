@@ -43,29 +43,44 @@ export class SupabaseClientsService {
     return data || [];
   }
 
+  // Client base is shared globally — search across all companies to avoid duplicates
   static async searchClients(query: string): Promise<Client[]> {
     const q = query.trim();
     if (!q) return [];
-    const { companyId, isSuperAdmin } = getCompanyContext();
-    let dbQuery = supabase
+    const { data, error } = await supabase
       .from('clients')
       .select('*')
       .or(`full_name.ilike.%${q}%,phone_number.ilike.%${q}%,client_code.ilike.%${q}%`)
       .order('full_name')
       .limit(10);
-    if (!isSuperAdmin && companyId) dbQuery = dbQuery.eq('company_id', companyId);
-    const { data, error } = await dbQuery;
     if (error) throw error;
     return data || [];
   }
 
+  // Global phone lookup — phone numbers are unique across the entire client base
   static async getClientByPhone(phone: string): Promise<Client | null> {
-    const { companyId, isSuperAdmin } = getCompanyContext();
-    let query = supabase.from('clients').select('*').eq('phone_number', phone);
-    if (!isSuperAdmin && companyId) query = query.eq('company_id', companyId);
-    const { data, error } = await query.maybeSingle();
+    const { data, error } = await supabase
+      .from('clients')
+      .select('*')
+      .eq('phone_number', phone)
+      .maybeSingle();
     if (error) throw error;
     return data;
+  }
+
+  // Find clients with a similar name but a different phone number (duplicate detection)
+  static async findSimilarByName(name: string, excludePhone?: string): Promise<Client[]> {
+    const q = name.trim();
+    if (!q || q.length < 3) return [];
+    let query = supabase
+      .from('clients')
+      .select('*')
+      .ilike('full_name', `%${q}%`)
+      .limit(5);
+    if (excludePhone) query = query.neq('phone_number', excludePhone);
+    const { data, error } = await query;
+    if (error) return [];
+    return data || [];
   }
 
   static async upsertClient(client: CreateClientRequest): Promise<Client> {

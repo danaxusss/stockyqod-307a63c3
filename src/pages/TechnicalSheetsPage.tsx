@@ -382,6 +382,18 @@ export function TechnicalSheetsPage() {
     }
   };
 
+  const quickShareSheet = async (sheetId: string) => {
+    try {
+      const token = crypto.randomUUID();
+      await supabase.from('sheet_share_links').insert({ token, sheet_ids: [sheetId], title: null, expires_at: null });
+      const shareUrl = `${window.location.origin}/share/${token}`;
+      await navigator.clipboard.writeText(shareUrl);
+      showToast({ type: 'success', title: 'Lien copié', message: 'Lien de partage copié dans le presse-papiers' });
+    } catch {
+      showToast({ type: 'error', message: 'Erreur lors de la création du lien' });
+    }
+  };
+
   const fetchShareLinks = async () => {
     try {
       const { data } = await supabase.from('sheet_share_links').select('*').order('created_at', { ascending: false });
@@ -509,6 +521,10 @@ export function TechnicalSheetsPage() {
                   <button onClick={() => openSheetDetail(sheet)}
                     className="flex items-center gap-1 px-2.5 py-1.5 bg-secondary hover:bg-secondary/80 text-secondary-foreground rounded-lg text-xs transition-colors">
                     <Package className="h-3 w-3" /> Produits
+                  </button>
+                  <button onClick={() => quickShareSheet(sheet.id)} title="Copier lien de partage"
+                    className="flex items-center gap-1 px-2.5 py-1.5 bg-violet-500/10 hover:bg-violet-500/20 text-violet-600 rounded-lg text-xs transition-colors">
+                    <Link2 className="h-3 w-3" />
                   </button>
                   {isAdmin && (
                     <button onClick={() => handleDeleteSheet(sheet)}
