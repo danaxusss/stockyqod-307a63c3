@@ -287,7 +287,7 @@ export default function InvoiceDetailPage() {
   if (isLoading) return <div className="flex items-center justify-center min-h-[40vh]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>;
   if (!invoice) return <div className="text-center py-12 text-muted-foreground">Facture introuvable.</div>;
 
-  const tvaRate = 20;
+  const tvaRate = companySettings?.tva_rate ?? 20;
   const draftTotal = draftItems.reduce((s, i) => s + i.subtotal, 0);
 
   return (

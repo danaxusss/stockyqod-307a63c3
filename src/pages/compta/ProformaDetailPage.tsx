@@ -415,7 +415,7 @@ export default function ProformaDetailPage() {
               {(isEditing ? draftItems : proforma.items).map((item, idx) => {
                 const billed = item.is_billed === true;
                 const selected = selectedIds.includes(item.id);
-                const tvaRate = 20;
+                const tvaRate = companies.find(c => c.id === proforma.company_id)?.tva_rate ?? 20;
                 const unitHT = item.unitPrice / (1 + tvaRate / 100);
                 const totalHT = unitHT * item.quantity;
                 return (

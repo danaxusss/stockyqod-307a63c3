@@ -9,6 +9,7 @@ import { SupabaseUsersService } from '../utils/supabaseUsers';
 import { SupabaseCompaniesService } from '../utils/supabaseCompanies';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../hooks/useAuth';
+import { useAppContext } from '../context/AppContext';
 
 const ROLE_OPTIONS: { value: AppUserRole; label: string; description: string }[] = [
   { value: 'super_admin',  label: 'Super Admin',       description: 'Contrôle total — toutes sociétés, gestion utilisateurs' },
@@ -65,6 +66,19 @@ const initialFormData: UserFormData = {
 export default function UserManagementPage() {
   const { showToast } = useToast();
   const { isSuperAdmin, authReady } = useAuth();
+  const { state } = useAppContext();
+
+  // Compute average price ratios from catalogue for the price type hints
+  const priceRatios = React.useMemo(() => {
+    const products = state.products.filter(p => p.price > 0 && p.buyprice > 0 && p.reseller_price > 0);
+    if (products.length === 0) return null;
+    const avgResellerRatio = products.reduce((s, p) => s + p.reseller_price / p.price, 0) / products.length;
+    const avgBuyRatio = products.reduce((s, p) => s + p.buyprice / p.price, 0) / products.length;
+    return {
+      reseller: Math.round((1 - avgResellerRatio) * 100),
+      buy: Math.round((1 - avgBuyRatio) * 100),
+    };
+  }, [state.products]);
 
   const [users, setUsers] = useState<AppUser[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -565,12 +579,15 @@ export default function UserManagementPage() {
                 <label className="block text-xs font-medium text-foreground mb-1">Type de prix affiché</label>
                 <select value={formData.price_display_type} onChange={e => handleInputChange('price_display_type', e.target.value)}
                   className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground">
-                  <option value="normal">Prix Normal (vente)</option>
-                  <option value="reseller">Prix Revendeur</option>
-                  <option value="buy">Prix d'Achat</option>
-                  <option value="calculated">Prix Calculé (avec marge)</option>
+                  <option value="normal">Prix Normal — prix de vente catalogue (100%)</option>
+                  <option value="reseller">Prix Revendeur{priceRatios ? ` — -${priceRatios.reseller}% du prix normal` : ' — prix remisé partenaire'}</option>
+                  <option value="buy">Prix d'Achat{priceRatios ? ` — -${priceRatios.buy}% du prix normal` : ' — coût de revient'}</option>
+                  <option value="calculated">Prix Calculé — prix achat + % marge saisie</option>
                 </select>
-                <p className="text-[10px] text-muted-foreground mt-1">Définit le calcul de prix affiché par défaut pour cet utilisateur.</p>
+                {formData.price_display_type === 'normal' && <p className="text-[10px] text-muted-foreground mt-1">Prix TTC catalogue — utilisé pour les devis client standard.</p>}
+                {formData.price_display_type === 'reseller' && <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">⚠ Prix remisé pour revendeurs{priceRatios ? ` (≈ -${priceRatios.reseller}% vs prix normal)` : ''} — TTC catalogue.</p>}
+                {formData.price_display_type === 'buy' && <p className="text-[10px] text-orange-600 dark:text-orange-400 mt-1">⚠ Prix coûtant{priceRatios ? ` (≈ -${priceRatios.buy}% vs prix normal)` : ''} — usage interne, marge nulle si facturé tel quel.</p>}
+                {formData.price_display_type === 'calculated' && <p className="text-[10px] text-blue-600 dark:text-blue-400 mt-1">Prix d'achat + % marge défini ligne par ligne dans le devis.</p>}
               </div>
 
               {/* Brand restrictions */}

@@ -357,16 +357,18 @@ export function QuoteCartPage() {
 
   // Add product from search to quote
   const addProductToQuote = (product: Product) => {
+    // Respect the user's configured price display type
+    const initialPrice = getDisplayPrice(product);
     const newItem: QuoteItem = {
       id: `${product.barcode}-${Date.now()}`,
       product,
       priceType: 'normal',
       marginPercentage: globalMargin,
-      finalPrice: product.price,
+      finalPrice: initialPrice,
       addedAt: new Date(),
-      unitPrice: product.price,
+      unitPrice: initialPrice,
       quantity: 1,
-      subtotal: product.price
+      subtotal: initialPrice
     };
 
     setItems(prev => [...prev, newItem]);
@@ -1339,23 +1341,28 @@ export function QuoteCartPage() {
                           </select>
                         </div>
                         <div className="text-xs text-muted-foreground mt-1">
-                          Base: {item.product.buyprice.toFixed(2)} Dh
+                          Achat: {(item.product.buyprice / (1 + (companySettings?.tva_rate ?? 20) / 100)).toFixed(2)} Dh HT
                         </div>
                       </td>
                       <td className="px-4 py-4">
-                        <input
-                          type="number"
-                          value={parseFloat((item.unitPrice / (1 + (companySettings?.tva_rate ?? 20) / 100)).toFixed(2))}
-                          onChange={(e) => {
-                            const htValue = parseFloat(e.target.value) || 0;
-                            const ttcValue = htValue * (1 + (companySettings?.tva_rate ?? 20) / 100);
-                            updateItemUnitPrice(item.id, ttcValue);
-                          }}
-                          className="w-20 px-2 py-1 text-sm border border-input rounded focus:ring-2 focus:ring-ring bg-secondary text-foreground"
-                          step="0.01"
-                          min="0"
-                        />
-                        <span className="ml-1 text-sm text-muted-foreground">Dh</span>
+                        <div className="flex items-center space-x-1">
+                          <input
+                            type="number"
+                            value={parseFloat((item.unitPrice / (1 + (companySettings?.tva_rate ?? 20) / 100)).toFixed(2))}
+                            onChange={(e) => {
+                              const htValue = parseFloat(e.target.value) || 0;
+                              const ttcValue = htValue * (1 + (companySettings?.tva_rate ?? 20) / 100);
+                              updateItemUnitPrice(item.id, ttcValue);
+                            }}
+                            className="w-20 px-2 py-1 text-sm border border-input rounded focus:ring-2 focus:ring-ring bg-secondary text-foreground"
+                            step="0.01"
+                            min="0"
+                          />
+                          <span className="text-sm text-muted-foreground">Dh</span>
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          TTC: {item.unitPrice.toFixed(2)} Dh
+                        </div>
                       </td>
                       <td className="px-4 py-4">
                         <div className="flex items-center space-x-2">
