@@ -44,6 +44,7 @@ export default function ProformaDetailPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [draftNumber, setDraftNumber] = useState('');
+  const [draftDate, setDraftDate] = useState('');
   const [draftCustomerName, setDraftCustomerName] = useState('');
   const [draftCustomerPhone, setDraftCustomerPhone] = useState('');
   const [draftCustomerCity, setDraftCustomerCity] = useState('');
@@ -86,6 +87,7 @@ export default function ProformaDetailPage() {
   const startEdit = () => {
     if (!proforma) return;
     setDraftNumber(proforma.quoteNumber);
+    setDraftDate(proforma.quote_date || new Date(proforma.createdAt).toISOString().split('T')[0]);
     setDraftCustomerName(proforma.customer?.fullName || '');
     setDraftCustomerPhone(proforma.customer?.phoneNumber || '');
     setDraftCustomerCity(proforma.customer?.city || '');
@@ -111,6 +113,7 @@ export default function ProformaDetailPage() {
     try {
       await SupabaseDocumentsService.updateDocument(proforma.id, {
         quoteNumber: draftNumber,
+        quote_date: draftDate || null,
         customer: { ...proforma.customer, fullName: draftCustomerName, phoneNumber: draftCustomerPhone, city: draftCustomerCity },
         items: draftItems,
         notes: draftNotes.trim() || null,
@@ -221,12 +224,16 @@ export default function ProformaDetailPage() {
         </button>
         <div className="flex-1 min-w-0">
           {isEditing ? (
-            <input value={draftNumber} onChange={e => setDraftNumber(e.target.value)}
-              className="text-lg font-bold font-mono w-full px-2 py-0.5 border border-input rounded bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
+            <div className="flex items-center gap-2 flex-wrap">
+              <input value={draftNumber} onChange={e => setDraftNumber(e.target.value)}
+                className="text-lg font-bold font-mono px-2 py-0.5 border border-input rounded bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
+              <input type="date" value={draftDate} onChange={e => setDraftDate(e.target.value)}
+                className="text-xs px-2 py-0.5 border border-input rounded bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
+            </div>
           ) : (
             <>
               <h1 className="text-lg font-bold text-foreground font-mono">{proforma.quoteNumber}</h1>
-              <p className="text-xs text-muted-foreground">{proforma.customer?.fullName} — {new Date(proforma.createdAt).toLocaleDateString('fr-FR')}</p>
+              <p className="text-xs text-muted-foreground">{proforma.customer?.fullName} — {proforma.quote_date ? new Date(proforma.quote_date).toLocaleDateString('fr-FR') : new Date(proforma.createdAt).toLocaleDateString('fr-FR')}</p>
             </>
           )}
         </div>

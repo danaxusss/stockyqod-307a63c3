@@ -36,6 +36,7 @@ export default function InvoiceDetailPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [draftNumber, setDraftNumber] = useState('');
+  const [draftDate, setDraftDate] = useState('');
   const [draftCustomerName, setDraftCustomerName] = useState('');
   const [draftCustomerPhone, setDraftCustomerPhone] = useState('');
   const [draftCustomerCity, setDraftCustomerCity] = useState('');
@@ -115,6 +116,7 @@ export default function InvoiceDetailPage() {
   const startEdit = () => {
     if (!invoice) return;
     setDraftNumber(invoice.quoteNumber);
+    setDraftDate(invoice.quote_date || new Date(invoice.createdAt).toISOString().split('T')[0]);
     setDraftCustomerName(invoice.customer?.fullName || '');
     setDraftCustomerPhone(invoice.customer?.phoneNumber || '');
     setDraftCustomerCity(invoice.customer?.city || '');
@@ -159,6 +161,7 @@ export default function InvoiceDetailPage() {
         payment_bank: draftPaymentBank || null,
         avance_amount: showAvance ? draftAvance : 0,
         payment_methods_json: draftPaymentMethods.length > 0 ? draftPaymentMethods : [],
+        quote_date: draftDate || null,
       });
       showToast({ type: 'success', title: 'Facture mise à jour', message: 'Modifications sauvegardées' });
       setIsEditing(false);
@@ -299,12 +302,16 @@ export default function InvoiceDetailPage() {
         </button>
         <div className="flex-1 min-w-0">
           {isEditing ? (
-            <input value={draftNumber} onChange={e => setDraftNumber(e.target.value)}
-              className="text-lg font-bold font-mono w-full px-2 py-0.5 border border-input rounded bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
+            <div className="flex items-center gap-2 flex-wrap">
+              <input value={draftNumber} onChange={e => setDraftNumber(e.target.value)}
+                className="text-lg font-bold font-mono px-2 py-0.5 border border-input rounded bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
+              <input type="date" value={draftDate} onChange={e => setDraftDate(e.target.value)}
+                className="text-xs px-2 py-0.5 border border-input rounded bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
+            </div>
           ) : (
             <>
               <h1 className="text-lg font-bold text-foreground font-mono">{invoice.quoteNumber}</h1>
-              <p className="text-xs text-muted-foreground">{invoice.customer?.fullName} — {new Date(invoice.createdAt).toLocaleDateString('fr-FR')}</p>
+              <p className="text-xs text-muted-foreground">{invoice.customer?.fullName} — {invoice.quote_date ? new Date(invoice.quote_date).toLocaleDateString('fr-FR') : new Date(invoice.createdAt).toLocaleDateString('fr-FR')}</p>
             </>
           )}
         </div>

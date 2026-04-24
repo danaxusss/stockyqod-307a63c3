@@ -22,6 +22,7 @@ export default function AvoirDetailPage() {
 
   const [avoir, setAvoir] = useState<Quote | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [avoirDate, setAvoirDate] = useState('');
   const [showPrintPreview, setShowPrintPreview] = useState(false);
   const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
   const [previewFilename, setPreviewFilename] = useState('');
@@ -32,6 +33,7 @@ export default function AvoirDetailPage() {
     try {
       const doc = await SupabaseDocumentsService.getById(id);
       setAvoir(doc);
+      setAvoirDate(doc?.quote_date || new Date(doc?.createdAt || Date.now()).toISOString().split('T')[0]);
     } catch (e) {
       showToast({ type: 'error', title: 'Erreur', message: String(e) });
     } finally {
@@ -82,7 +84,20 @@ export default function AvoirDetailPage() {
         </button>
         <div className="flex-1 min-w-0">
           <h1 className="text-lg font-bold text-foreground font-mono text-violet-600 dark:text-violet-400">{avoir.quoteNumber}</h1>
-          <p className="text-xs text-muted-foreground">{avoir.customer?.fullName} — {new Date(avoir.createdAt).toLocaleDateString('fr-FR')}</p>
+          <div className="flex items-center gap-2 mt-0.5">
+            <span className="text-xs text-muted-foreground">{avoir.customer?.fullName} —</span>
+            <input
+              type="date"
+              value={avoirDate}
+              onChange={e => setAvoirDate(e.target.value)}
+              onBlur={async () => {
+                if (!avoir) return;
+                try { await SupabaseDocumentsService.updateDocument(avoir.id, { quote_date: avoirDate || null }); }
+                catch { /* ignore */ }
+              }}
+              className="text-xs px-1.5 py-0.5 border border-input rounded bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+          </div>
         </div>
         <button onClick={handleExportPdf} className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
           <Download className="h-3.5 w-3.5" /><span>PDF</span>

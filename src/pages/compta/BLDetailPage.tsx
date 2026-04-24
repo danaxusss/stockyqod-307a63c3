@@ -38,6 +38,7 @@ export default function BLDetailPage() {
   const [draftCustomerName, setDraftCustomerName] = useState('');
   const [draftCustomerPhone, setDraftCustomerPhone] = useState('');
   const [draftCustomerCity, setDraftCustomerCity] = useState('');
+  const [draftDate, setDraftDate] = useState('');
   const [draftNotes, setDraftNotes] = useState('');
   const [draftStatus, setDraftStatus] = useState('');
   const [draftItems, setDraftItems] = useState<QuoteItem[]>([]);
@@ -84,6 +85,7 @@ export default function BLDetailPage() {
     setDraftCustomerName(bl.customer?.fullName || '');
     setDraftCustomerPhone(bl.customer?.phoneNumber || '');
     setDraftCustomerCity(bl.customer?.city || '');
+    setDraftDate(bl.quote_date || new Date(bl.createdAt).toISOString().split('T')[0]);
     setDraftNotes(bl.notes || '');
     setDraftStatus(bl.status);
     setDraftItems(bl.items.map(i => ({
@@ -105,6 +107,7 @@ export default function BLDetailPage() {
     try {
       await SupabaseDocumentsService.updateDocument(bl.id, {
         quoteNumber: draftNumber,
+        quote_date: draftDate || null,
         customer: { ...bl.customer, fullName: draftCustomerName, phoneNumber: draftCustomerPhone, city: draftCustomerCity },
         items: draftItems,
         notes: draftNotes.trim() || null,
@@ -197,12 +200,16 @@ export default function BLDetailPage() {
         </button>
         <div className="flex-1 min-w-0">
           {isEditing ? (
-            <input value={draftNumber} onChange={e => setDraftNumber(e.target.value)}
-              className="text-lg font-bold font-mono w-full px-2 py-0.5 border border-input rounded bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
+            <div className="flex items-center gap-2 flex-wrap">
+              <input value={draftNumber} onChange={e => setDraftNumber(e.target.value)}
+                className="text-lg font-bold font-mono px-2 py-0.5 border border-input rounded bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
+              <input type="date" value={draftDate} onChange={e => setDraftDate(e.target.value)}
+                className="text-xs px-2 py-0.5 border border-input rounded bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
+            </div>
           ) : (
             <>
               <h1 className="text-lg font-bold text-foreground font-mono">{bl.quoteNumber}</h1>
-              <p className="text-xs text-muted-foreground">{bl.customer?.fullName} — {new Date(bl.createdAt).toLocaleDateString('fr-FR')}</p>
+              <p className="text-xs text-muted-foreground">{bl.customer?.fullName} — {bl.quote_date ? new Date(bl.quote_date).toLocaleDateString('fr-FR') : new Date(bl.createdAt).toLocaleDateString('fr-FR')}</p>
             </>
           )}
         </div>
