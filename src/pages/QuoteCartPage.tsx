@@ -961,7 +961,7 @@ export function QuoteCartPage() {
         </div>
 
         {/* Quote Details */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <div className="flex items-center space-x-2 p-2 bg-secondary rounded-lg">
             <Hash className="h-4 w-4 text-primary flex-shrink-0" />
             <div className="flex-1 min-w-0">
@@ -970,6 +970,18 @@ export function QuoteCartPage() {
                 type="text"
                 value={quoteNumber}
                 onChange={e => setQuoteNumber(e.target.value)}
+                className="text-xs font-semibold text-foreground bg-transparent border-none outline-none w-full"
+              />
+            </div>
+          </div>
+          <div className="flex items-center space-x-2 p-2 bg-secondary rounded-lg">
+            <Calendar className="h-4 w-4 text-primary flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] text-muted-foreground">Date du devis</p>
+              <input
+                type="date"
+                value={quoteDate}
+                onChange={e => setQuoteDate(e.target.value)}
                 className="text-xs font-semibold text-foreground bg-transparent border-none outline-none w-full"
               />
             </div>
@@ -1488,12 +1500,6 @@ export function QuoteCartPage() {
           <Edit3 className="h-4 w-4" />
           <span>Notes</span>
         </h2>
-        <DatePicker
-          label="Date du devis"
-          value={quoteDate}
-          onChange={setQuoteDate}
-          className="mb-2"
-        />
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
