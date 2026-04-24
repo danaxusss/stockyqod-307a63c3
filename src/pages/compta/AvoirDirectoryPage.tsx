@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { FileX, Search, Download, Trash2 } from 'lucide-react';
-import { Quote } from '../../types';
+import { FileX, Search, Download, Trash2, Plus, X, Loader } from 'lucide-react';
+import { Quote, Company } from '../../types';
 import { SupabaseDocumentsService } from '../../utils/supabaseDocuments';
 import { CompanySettingsService } from '../../utils/companySettings';
 import { SupabaseCompaniesService } from '../../utils/supabaseCompanies';
@@ -14,16 +14,22 @@ function fmt(n: number) {
 }
 
 export default function AvoirDirectoryPage() {
-  const { isSuperAdmin, isCompta } = useAuth();
+  const { isSuperAdmin, isCompta, companyId: authCompanyId } = useAuth();
   const { showToast } = useToast();
   const navigate = useNavigate();
 
   const [avoirs, setAvoirs] = useState<Quote[]>([]);
+  const [allCompanyList, setAllCompanyList] = useState<Company[]>([]);
   const [companies, setCompanies] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [pageSize, setPageSize] = useState(20);
   const [page, setPage] = useState(1);
+
+  // New avoir modal
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createForm, setCreateForm] = useState({ companyId: '', customerName: '', customerPhone: '', totalAmount: '', reason: '' });
+  const [isCreating, setIsCreating] = useState(false);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -33,6 +39,7 @@ export default function AvoirDirectoryPage() {
         SupabaseCompaniesService.getAllCompanies(),
       ]);
       setAvoirs(data);
+      setAllCompanyList(allCompanies);
       const map: Record<string, string> = {};
       allCompanies.forEach(c => { map[c.id] = c.name; });
       setCompanies(map);
@@ -42,6 +49,35 @@ export default function AvoirDirectoryPage() {
       setIsLoading(false);
     }
   }, [showToast]);
+
+  const openCreateModal = () => {
+    setCreateForm({ companyId: authCompanyId || '', customerName: '', customerPhone: '', totalAmount: '', reason: '' });
+    setShowCreateModal(true);
+  };
+
+  const handleCreate = async () => {
+    if (!createForm.companyId) { showToast({ type: 'error', message: 'Sélectionnez une société' }); return; }
+    if (!createForm.customerName.trim()) { showToast({ type: 'error', message: 'Nom du client requis' }); return; }
+    const amount = parseFloat(createForm.totalAmount);
+    if (isNaN(amount) || amount <= 0) { showToast({ type: 'error', message: 'Montant invalide' }); return; }
+    setIsCreating(true);
+    try {
+      const avoir = await SupabaseDocumentsService.createAvoirStandalone({
+        companyId: createForm.companyId,
+        customerName: createForm.customerName.trim(),
+        customerPhone: createForm.customerPhone.trim() || undefined,
+        totalAmount: amount,
+        reason: createForm.reason.trim() || undefined,
+      });
+      setShowCreateModal(false);
+      await load();
+      navigate(`/compta/avoirs/${avoir.id}`);
+    } catch (e: any) {
+      showToast({ type: 'error', message: e?.message || 'Erreur création avoir' });
+    } finally {
+      setIsCreating(false);
+    }
+  };
 
   useEffect(() => { load(); }, [load]);
 
@@ -101,15 +137,21 @@ export default function AvoirDirectoryPage() {
               <p className="text-xs text-muted-foreground">{filtered.length} avoir{filtered.length !== 1 ? 's' : ''}</p>
             </div>
           </div>
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <input
-              type="text"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Rechercher..."
-              className="pl-8 pr-3 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring w-56"
-            />
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <input
+                type="text"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Rechercher..."
+                className="pl-8 pr-3 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring w-56"
+              />
+            </div>
+            <button onClick={openCreateModal}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-violet-600 hover:bg-violet-700 text-white rounded-lg transition-colors">
+              <Plus className="h-3.5 w-3.5" /><span>Nouvel avoir</span>
+            </button>
           </div>
         </div>
       </div>
@@ -193,6 +235,65 @@ export default function AvoirDirectoryPage() {
           </>
         )}
       </div>
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="glass rounded-xl shadow-2xl w-full max-w-md p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-bold text-foreground flex items-center gap-2">
+                <FileX className="h-4 w-4 text-violet-500" />Nouvel avoir
+              </h2>
+              <button onClick={() => setShowCreateModal(false)} className="p-1 rounded hover:bg-secondary text-muted-foreground"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="space-y-3">
+              {isSuperAdmin && (
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1">Société *</label>
+                  <select value={createForm.companyId} onChange={e => setCreateForm(f => ({ ...f, companyId: e.target.value }))}
+                    className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-1 focus:ring-primary">
+                    <option value="">-- Sélectionner --</option>
+                    {allCompanyList.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1">Client *</label>
+                  <input value={createForm.customerName} onChange={e => setCreateForm(f => ({ ...f, customerName: e.target.value }))}
+                    className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-1 focus:ring-primary"
+                    placeholder="Nom du client" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1">Téléphone</label>
+                  <input value={createForm.customerPhone} onChange={e => setCreateForm(f => ({ ...f, customerPhone: e.target.value }))}
+                    className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-1 focus:ring-primary"
+                    placeholder="0600000000" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1">Montant TTC (Dh) *</label>
+                <input type="number" min="0" step="0.01" value={createForm.totalAmount} onChange={e => setCreateForm(f => ({ ...f, totalAmount: e.target.value }))}
+                  className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-1 focus:ring-primary"
+                  placeholder="0.00" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1">Motif</label>
+                <input value={createForm.reason} onChange={e => setCreateForm(f => ({ ...f, reason: e.target.value }))}
+                  className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-1 focus:ring-primary"
+                  placeholder="Ex: Retour produit, remise accordée..." />
+              </div>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setShowCreateModal(false)}
+                className="flex-1 px-3 py-2 text-sm border border-input rounded-lg hover:bg-accent text-foreground">Annuler</button>
+              <button onClick={handleCreate} disabled={isCreating}
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded-lg">
+                {isCreating ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                <span>{isCreating ? 'Création...' : 'Créer l\'avoir'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

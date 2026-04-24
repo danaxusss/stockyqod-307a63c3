@@ -718,6 +718,46 @@ export class SupabaseDocumentsService {
     return mapDocRow(newDoc as DocRow);
   }
 
+  static async createAvoirStandalone(payload: {
+    companyId: string;
+    issuingCompanyId?: string;
+    customerName: string;
+    customerPhone?: string;
+    totalAmount: number;
+    reason?: string;
+    items?: unknown[];
+  }): Promise<Quote> {
+    const { data: numData, error: numErr } = await (supabase.rpc as any)('next_document_number', {
+      p_company_id: payload.companyId,
+      p_doc_type: 'avoir',
+    });
+    if (numErr) throw new Error(`Erreur numérotation avoir: ${numErr.message}`);
+    const avoirNumber = `AV-${String(numData as number).padStart(4, '0')}`;
+    const now = new Date().toISOString();
+    const newId = crypto.randomUUID();
+    const insertData: Record<string, unknown> = {
+      id: newId,
+      quote_number: avoirNumber,
+      created_at: now,
+      updated_at: now,
+      status: 'final',
+      is_locked: false,
+      customer_info: { fullName: payload.customerName, phoneNumber: payload.customerPhone || '', address: '', city: '', salesPerson: '' },
+      items: payload.items || [],
+      total_amount: payload.totalAmount,
+      notes: payload.reason || null,
+      document_type: 'avoir',
+      company_id: payload.companyId,
+      issuing_company_id: payload.issuingCompanyId || payload.companyId,
+      avance_amount: 0,
+      payment_methods_json: [],
+    };
+    const { data: newDoc, error: insertErr } = await (supabase.from('quotes') as any)
+      .insert(insertData).select('*').single();
+    if (insertErr) throw new Error(`Erreur création avoir: ${insertErr.message}`);
+    return mapDocRow(newDoc as DocRow);
+  }
+
   static async createAvoirFromInvoice(invoiceId: string, reason: string): Promise<Quote> {
     const { data: srcData, error: srcErr } = await (supabase.from('quotes') as any)
       .select('*')
