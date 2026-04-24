@@ -10,8 +10,9 @@ export const Permissions = {
     u.new_role === 'super_admin' ||
     (u.new_role === 'manager' && u.cross_branch_read === true),
 
+  // compta is reserved for future accounting — no access yet
   canAccessCompta: (u: AppUser) =>
-    u.new_role === 'super_admin' || u.new_role === 'compta',
+    u.new_role === 'super_admin' || u.new_role === 'facturation',
 
   canCreateQuote: (u: AppUser) =>
     u.new_role !== 'super_admin' &&
@@ -30,11 +31,12 @@ export const Permissions = {
 export function deriveRoleFlags(newRole: AppUserRole | null | undefined) {
   const role = newRole ?? null;
   return {
-    isSuperAdmin:  role === 'super_admin',
-    isAdmin:       role === 'super_admin' || role === 'admin',
-    isCompta:      role === 'compta',
-    isManager:     role === 'manager',
-    isSeniorSales: role === 'senior_sales',
-    isJuniorSales: role === 'junior_sales',
+    isSuperAdmin:   role === 'super_admin',
+    isAdmin:        role === 'super_admin' || role === 'admin',
+    isFacturation:  role === 'facturation',
+    isCompta:       role === 'compta',
+    isManager:      role === 'manager',
+    isSeniorSales:  role === 'senior_sales',
+    isJuniorSales:  role === 'junior_sales',
   };
 }

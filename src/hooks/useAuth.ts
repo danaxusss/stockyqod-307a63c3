@@ -92,10 +92,11 @@ export function useAuth() {
     const flags = appRole
       ? deriveRoleFlags(appRole)
       : {
-          isSuperAdmin: user.is_superadmin || false,
-          isAdmin: user.is_admin || user.is_superadmin || false,
-          isCompta: user.is_compta || false,
-          isManager: false,
+          isSuperAdmin:  user.is_superadmin || false,
+          isAdmin:       user.is_admin || user.is_superadmin || false,
+          isFacturation: false,
+          isCompta:      user.is_compta || false,
+          isManager:     false,
           isSeniorSales: false,
           isJuniorSales: false,
         };
@@ -106,6 +107,7 @@ export function useAuth() {
       priceDisplayType: user.price_display_type,
       isAdmin: flags.isAdmin,
       isSuperAdmin: flags.isSuperAdmin,
+      isFacturation: flags.isFacturation,
       isCompta: flags.isCompta,
       isManager: flags.isManager,
       isSeniorSales: flags.isSeniorSales,
@@ -323,6 +325,7 @@ export function useAuth() {
 
   const isAdmin = role === 'admin';
   const isSuperAdmin = userPermissions?.isSuperAdmin ?? false;
+  const isFacturation = userPermissions?.isFacturation ?? false;
   const isCompta = userPermissions?.isCompta ?? false;
   const isManager = userPermissions?.isManager ?? false;
   const isSeniorSales = userPermissions?.isSeniorSales ?? false;
@@ -337,6 +340,7 @@ export function useAuth() {
     userPermissions,
     isAdmin,
     isSuperAdmin,
+    isFacturation,
     isCompta,
     isManager,
     isSeniorSales,

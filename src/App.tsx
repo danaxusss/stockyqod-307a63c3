@@ -49,7 +49,7 @@ function PageLoader() {
 
 function AppContent() {
   const { activeLoginModalRole, openLoginModal } = useAppContext();
-  const { canCreateQuote, isSuperAdmin, isCompta } = useAuth();
+  const { canCreateQuote, isSuperAdmin, isFacturation } = useAuth();
   const { isAuthenticated: isUserAuthenticated } = useUserAuth();
 
   const handleUserLoginSuccess = () => {};
@@ -113,7 +113,7 @@ function AppContent() {
                 <Route path="/admin/import" element={<ImportPage />} />
               </>
             )}
-            {(isCompta || isSuperAdmin) && (
+            {(isFacturation || isSuperAdmin) && (
               <>
                 <Route path="/comptabilite" element={<ComptabiliteComingSoon />} />
                 <Route path="/compta/bls" element={<BLDirectoryPage />} />

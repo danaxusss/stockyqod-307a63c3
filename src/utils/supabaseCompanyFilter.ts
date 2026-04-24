@@ -22,8 +22,9 @@ export function getCompanyContext(): {
 } {
   const isSuperAdmin = _role === 'super_admin';
   const isCompta = _role === 'compta';
-  // Only super_admin and manager-with-cross_branch_read bypass company scoping.
-  // compta is scoped to own company (was a bug: previously compta bypassed).
-  const bypassFilter = _role === 'super_admin' || (_role === 'manager' && _crossBranchRead);
+  // super_admin and facturation see all companies unconditionally.
+  // manager bypasses only when cross_branch_read is enabled.
+  // compta is reserved for future accounting — scoped to own company for now.
+  const bypassFilter = _role === 'super_admin' || _role === 'facturation' || (_role === 'manager' && _crossBranchRead);
   return { companyId: _currentCompanyId, isSuperAdmin, isCompta, bypassFilter };
 }

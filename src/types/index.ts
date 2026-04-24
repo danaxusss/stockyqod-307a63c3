@@ -24,7 +24,7 @@ export interface SyncData {
 
 export type UserRole = 'sales' | 'admin';
 
-export type AppUserRole = 'super_admin' | 'admin' | 'manager' | 'compta' | 'senior_sales' | 'junior_sales';
+export type AppUserRole = 'super_admin' | 'admin' | 'manager' | 'facturation' | 'compta' | 'senior_sales' | 'junior_sales';
 
 export interface AppState {
   role: UserRole;
@@ -254,6 +254,7 @@ export interface UserPermissions {
   priceDisplayType: 'normal' | 'reseller' | 'buy' | 'calculated';
   isAdmin: boolean;
   isSuperAdmin: boolean;
+  isFacturation: boolean;
   isCompta: boolean;
   isManager: boolean;
   isSeniorSales: boolean;

@@ -110,7 +110,7 @@ export function Header() {
   const navRef = useRef<HTMLDivElement>(null);
 
   const { theme, toggle: toggleTheme } = useTheme();
-  const { isAdmin, isSuperAdmin, isCompta, companyName, currentUser, canCreateQuote, logout: adminLogout } = useAuth();
+  const { isAdmin, isSuperAdmin, isFacturation, companyName, currentUser, canCreateQuote, logout: adminLogout } = useAuth();
   const { isAuthenticated: isUserAuthenticated, authenticatedUser, logout: userLogout } = useUserAuth();
   const { syncInfo, syncData, openLoginModal } = useAppContext();
   const { showToast } = useToast();
@@ -269,7 +269,7 @@ export function Header() {
             )}
 
             {/* Facturation (formerly Comptabilité) */}
-            {(isCompta || isSuperAdmin) && (
+            {(isFacturation || isSuperAdmin) && (
               <NavDropdown
                 id="compta"
                 icon={Receipt}
@@ -288,7 +288,7 @@ export function Header() {
             )}
 
             {/* Comptabilité — coming soon */}
-            {(isCompta || isSuperAdmin) && (
+            {(isFacturation || isSuperAdmin) && (
               <NavLink
                 to="/comptabilite"
                 className={({ isActive }) => `

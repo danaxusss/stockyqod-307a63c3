@@ -735,8 +735,13 @@ ALTER TABLE public.quotes ADD CONSTRAINT quotes_document_type_check
 -- Add new_role enum column and cross_branch_read flag
 ALTER TABLE public.app_users
   ADD COLUMN IF NOT EXISTS new_role text
-    CHECK (new_role IN ('super_admin','admin','manager','compta','senior_sales','junior_sales')),
+    CHECK (new_role IN ('super_admin','admin','manager','facturation','compta','senior_sales','junior_sales')),
   ADD COLUMN IF NOT EXISTS cross_branch_read boolean NOT NULL DEFAULT false;
+
+-- V2.3.1: widen existing CHECK constraint to include 'facturation'
+ALTER TABLE public.app_users DROP CONSTRAINT IF EXISTS app_users_new_role_check;
+ALTER TABLE public.app_users ADD CONSTRAINT app_users_new_role_check
+  CHECK (new_role IN ('super_admin','admin','manager','facturation','compta','senior_sales','junior_sales'));
 
 -- Migrate existing users (only if new_role not yet set)
 UPDATE public.app_users SET new_role = 'super_admin'
