@@ -3,7 +3,8 @@ import { X, Shield, User, Eye, EyeOff, Package } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useUserAuth } from '../hooks/useUserAuth';
 import { SupabaseUsersService } from '../utils/supabaseUsers';
-import { AppUser } from '../types';
+import { SupabaseCompaniesService } from '../utils/supabaseCompanies';
+import { AppUser, Company } from '../types';
 import { useToast } from '../context/ToastContext';
 
 interface LoginModalProps {
@@ -18,6 +19,7 @@ export function LoginModal({ roleType, isInitialGate = false, onClose, onLoginSu
   const [username, setUsername] = useState('');
   const [selectedUsername, setSelectedUsername] = useState('');
   const [availableUsers, setAvailableUsers] = useState<AppUser[]>([]);
+  const [companiesMap, setCompaniesMap] = useState<Record<string, string>>({});
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -31,7 +33,13 @@ export function LoginModal({ roleType, isInitialGate = false, onClose, onLoginSu
       const fetchUsers = async () => {
         setIsLoadingUsers(true);
         try {
-          const users = await SupabaseUsersService.getAllUsers();
+          const [users, companies] = await Promise.all([
+            SupabaseUsersService.getAllUsers(),
+            SupabaseCompaniesService.getAllCompanies(),
+          ]);
+          const map: Record<string, string> = {};
+          companies.forEach((c: Company) => { map[c.id] = c.name; });
+          setCompaniesMap(map);
           setAvailableUsers(users.sort((a, b) => {
             const nameA = a.custom_seller_name || a.username;
             const nameB = b.custom_seller_name || b.username;
@@ -184,11 +192,15 @@ export function LoginModal({ roleType, isInitialGate = false, onClose, onLoginSu
                   className="w-full px-4 py-3 border border-border rounded-xl focus:ring-2 focus:ring-ring focus:border-transparent bg-background text-foreground disabled:opacity-50 transition-all"
                 >
                   <option value="">Sélectionner votre profil</option>
-                  {availableUsers.map((user) => (
-                    <option key={user.id} value={user.username}>
-                      {user.custom_seller_name ? `${user.custom_seller_name} (${user.username})` : user.username}
-                    </option>
-                  ))}
+                  {availableUsers.map((user) => {
+                    const companyName = user.company_id ? companiesMap[user.company_id] : null;
+                    const label = user.custom_seller_name
+                      ? `${user.custom_seller_name}${companyName ? ` (${companyName})` : ''}`
+                      : user.username;
+                    return (
+                      <option key={user.id} value={user.username}>{label}</option>
+                    );
+                  })}
                 </select>
               )}
             </div>
