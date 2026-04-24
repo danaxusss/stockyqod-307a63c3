@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import { AppUser, CreateAppUserRequest, UpdateAppUserRequest } from '../types';
+import { AppUser, AppUserRole, CreateAppUserRequest, UpdateAppUserRequest } from '../types';
 
 type SafeAppUserRow = {
   id: string;
@@ -7,6 +7,8 @@ type SafeAppUserRow = {
   is_admin: boolean;
   is_superadmin: boolean;
   is_compta: boolean;
+  new_role: AppUserRole | null;
+  cross_branch_read: boolean;
   company_id: string | null;
   can_create_quote: boolean;
   allowed_stock_locations: string[];
@@ -44,6 +46,8 @@ export class SupabaseUsersService {
       .insert({
         username: userData.username.trim(),
         pin: hashedPin,
+        new_role: userData.new_role || null,
+        cross_branch_read: userData.cross_branch_read || false,
         is_admin: userData.is_admin || false,
         is_superadmin: userData.is_superadmin || false,
         is_compta: userData.is_compta || false,
@@ -55,7 +59,7 @@ export class SupabaseUsersService {
         custom_seller_name: userData.custom_seller_name || '',
         phone: userData.phone || '',
       })
-      .select('id, username, is_admin, is_superadmin, is_compta, company_id, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, phone, created_at, updated_at')
+      .select('id, username, is_admin, is_superadmin, is_compta, new_role, cross_branch_read, company_id, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, phone, created_at, updated_at')
       .single();
 
     if (error) {
@@ -96,6 +100,8 @@ export class SupabaseUsersService {
 
     if (updates.username !== undefined) updateData.username = updates.username.trim();
     if (updates.pin !== undefined) updateData.pin = await hashPin(updates.pin);
+    if (updates.new_role !== undefined) updateData.new_role = updates.new_role;
+    if (updates.cross_branch_read !== undefined) updateData.cross_branch_read = updates.cross_branch_read;
     if (updates.is_admin !== undefined) updateData.is_admin = updates.is_admin;
     if (updates.is_superadmin !== undefined) updateData.is_superadmin = updates.is_superadmin;
     if (updates.is_compta !== undefined) updateData.is_compta = updates.is_compta;
@@ -111,7 +117,7 @@ export class SupabaseUsersService {
       .from('app_users')
       .update(updateData)
       .eq('id', id)
-      .select('id, username, is_admin, is_superadmin, is_compta, company_id, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, phone, created_at, updated_at')
+      .select('id, username, is_admin, is_superadmin, is_compta, new_role, cross_branch_read, company_id, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, phone, created_at, updated_at')
       .single();
 
     if (error) {
@@ -174,6 +180,8 @@ export class SupabaseUsersService {
       is_admin: data.is_admin,
       is_superadmin: data.is_superadmin || false,
       is_compta: data.is_compta || false,
+      new_role: data.new_role || undefined,
+      cross_branch_read: data.cross_branch_read || false,
       company_id: data.company_id || undefined,
       can_create_quote: data.can_create_quote,
       allowed_stock_locations: data.allowed_stock_locations || [],

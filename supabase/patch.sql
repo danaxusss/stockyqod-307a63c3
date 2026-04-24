@@ -729,3 +729,68 @@ ALTER TABLE public.returns ADD COLUMN IF NOT EXISTS is_locked boolean NOT NULL D
 ALTER TABLE public.quotes DROP CONSTRAINT IF EXISTS quotes_document_type_check;
 ALTER TABLE public.quotes ADD CONSTRAINT quotes_document_type_check
   CHECK (document_type = ANY (ARRAY['quote','bl','proforma','invoice','avoir']));
+
+-- ── V2.3 Role System Migration ─────────────────────────────────
+
+-- Add new_role enum column and cross_branch_read flag
+ALTER TABLE public.app_users
+  ADD COLUMN IF NOT EXISTS new_role text
+    CHECK (new_role IN ('super_admin','admin','manager','compta','senior_sales','junior_sales')),
+  ADD COLUMN IF NOT EXISTS cross_branch_read boolean NOT NULL DEFAULT false;
+
+-- Migrate existing users (only if new_role not yet set)
+UPDATE public.app_users SET new_role = 'super_admin'
+  WHERE is_superadmin = true AND new_role IS NULL;
+UPDATE public.app_users SET new_role = 'admin'
+  WHERE is_admin = true AND is_superadmin = false AND new_role IS NULL;
+UPDATE public.app_users SET new_role = 'compta'
+  WHERE is_compta = true AND is_admin = false AND is_superadmin = false AND new_role IS NULL;
+UPDATE public.app_users SET new_role = 'senior_sales'
+  WHERE is_admin = false AND is_superadmin = false AND is_compta = false AND new_role IS NULL;
+
+-- Update RPC functions to include new_role and cross_branch_read
+DROP FUNCTION IF EXISTS public.get_app_users_safe();
+CREATE FUNCTION public.get_app_users_safe()
+RETURNS TABLE(id uuid, username text, is_admin boolean, is_superadmin boolean, is_compta boolean,
+  company_id uuid, can_create_quote boolean, allowed_stock_locations text[], allowed_brands text[],
+  price_display_type text, custom_seller_name text, phone text, created_at timestamptz, updated_at timestamptz,
+  new_role text, cross_branch_read boolean)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public'
+AS $$
+  SELECT id, username, is_admin, is_superadmin, is_compta, company_id, can_create_quote,
+    allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, phone,
+    created_at, updated_at, new_role, cross_branch_read
+  FROM public.app_users ORDER BY created_at DESC;
+$$;
+
+DROP FUNCTION IF EXISTS public.get_app_user_by_id_safe(uuid);
+CREATE FUNCTION public.get_app_user_by_id_safe(p_id uuid)
+RETURNS TABLE(id uuid, username text, is_admin boolean, is_superadmin boolean, is_compta boolean,
+  company_id uuid, can_create_quote boolean, allowed_stock_locations text[], allowed_brands text[],
+  price_display_type text, custom_seller_name text, phone text, created_at timestamptz, updated_at timestamptz,
+  new_role text, cross_branch_read boolean)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public'
+AS $$
+  SELECT id, username, is_admin, is_superadmin, is_compta, company_id, can_create_quote,
+    allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, phone,
+    created_at, updated_at, new_role, cross_branch_read
+  FROM public.app_users WHERE app_users.id = p_id;
+$$;
+
+DROP FUNCTION IF EXISTS public.get_app_user_by_username_safe(text);
+CREATE FUNCTION public.get_app_user_by_username_safe(p_username text)
+RETURNS TABLE(id uuid, username text, is_admin boolean, is_superadmin boolean, is_compta boolean,
+  company_id uuid, can_create_quote boolean, allowed_stock_locations text[], allowed_brands text[],
+  price_display_type text, custom_seller_name text, phone text, created_at timestamptz, updated_at timestamptz,
+  new_role text, cross_branch_read boolean)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public'
+AS $$
+  SELECT id, username, is_admin, is_superadmin, is_compta, company_id, can_create_quote,
+    allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, phone,
+    created_at, updated_at, new_role, cross_branch_read
+  FROM public.app_users WHERE app_users.username = p_username;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.get_app_users_safe() TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.get_app_user_by_id_safe(uuid) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.get_app_user_by_username_safe(text) TO anon, authenticated;

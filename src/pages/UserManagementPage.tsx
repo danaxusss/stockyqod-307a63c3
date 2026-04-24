@@ -2,17 +2,36 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Users, Plus, Edit, Trash2, Shield, User, Eye, EyeOff,
-  Save, X, AlertCircle, Search, UserCheck, UserX, MapPin, DollarSign, Building2, Star, Calculator
+  Save, X, AlertCircle, Search, UserCheck, UserX, MapPin, DollarSign, Building2, Star, Calculator, GitBranch
 } from 'lucide-react';
-import { AppUser, CreateAppUserRequest, UpdateAppUserRequest, Company } from '../types';
+import { AppUser, AppUserRole, CreateAppUserRequest, UpdateAppUserRequest, Company } from '../types';
 import { SupabaseUsersService } from '../utils/supabaseUsers';
 import { SupabaseCompaniesService } from '../utils/supabaseCompanies';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../hooks/useAuth';
 
+const ROLE_OPTIONS: { value: AppUserRole; label: string; description: string }[] = [
+  { value: 'super_admin', label: 'Super Admin', description: 'Contrôle total — toutes sociétés, gestion utilisateurs' },
+  { value: 'admin', label: 'Admin Société', description: 'Gère paramètres, clients et devis de sa société' },
+  { value: 'manager', label: 'Manager', description: 'Crée des devis, peut avoir accès multi-société' },
+  { value: 'compta', label: 'Comptabilité', description: 'Accès BL, Proformas, Factures — scopé à sa société' },
+  { value: 'senior_sales', label: 'Senior Commercial', description: 'Crée et modifie tous les devis de sa société' },
+  { value: 'junior_sales', label: 'Junior Commercial', description: 'Crée des devis, ne peut modifier que les siens' },
+];
+
+function roleToLegacyFlags(role: AppUserRole) {
+  return {
+    is_superadmin: role === 'super_admin',
+    is_admin: role === 'super_admin' || role === 'admin',
+    is_compta: role === 'compta',
+  };
+}
+
 interface UserFormData {
   username: string;
   pin: string;
+  new_role: AppUserRole;
+  cross_branch_read: boolean;
   is_admin: boolean;
   is_superadmin: boolean;
   is_compta: boolean;
@@ -28,6 +47,8 @@ interface UserFormData {
 const initialFormData: UserFormData = {
   username: '',
   pin: '',
+  new_role: 'senior_sales',
+  cross_branch_read: false,
   is_admin: false,
   is_superadmin: false,
   is_compta: false,
@@ -56,7 +77,7 @@ export default function UserManagementPage() {
   const [showPin, setShowPin] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterRole, setFilterRole] = useState<'all' | 'superadmin' | 'admin' | 'compta' | 'user' | 'reseller'>('all');
+  const [filterRole, setFilterRole] = useState<'all' | AppUserRole>('all');
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
   const loadData = useCallback(async () => {
@@ -84,18 +105,13 @@ export default function UserManagementPage() {
   const handleInputChange = (field: keyof UserFormData, value: any) => {
     setFormData(prev => {
       const next = { ...prev, [field]: value };
-      // Superadmins are always admin
-      if (field === 'is_superadmin' && value === true) {
-        next.is_admin = true;
-        next.is_compta = false;
-      }
-      // Compta role is mutually exclusive with admin/superadmin
-      if (field === 'is_compta' && value === true) {
-        next.is_admin = false;
-        next.is_superadmin = false;
-      }
-      if ((field === 'is_admin' || field === 'is_superadmin') && value === true) {
-        next.is_compta = false;
+      // When new_role changes, sync legacy boolean flags for backward compat
+      if (field === 'new_role') {
+        Object.assign(next, roleToLegacyFlags(value as AppUserRole));
+        // Roles that cannot create quotes
+        if (['super_admin', 'compta'].includes(value)) next.can_create_quote = false;
+        // Non-manager: clear cross_branch_read
+        if (value !== 'manager') next.cross_branch_read = false;
       }
       return next;
     });
@@ -137,6 +153,8 @@ export default function UserManagementPage() {
       const userData: CreateAppUserRequest = {
         username: formData.username.trim(),
         pin: formData.pin,
+        new_role: formData.new_role,
+        cross_branch_read: formData.cross_branch_read,
         is_admin: formData.is_superadmin ? true : formData.is_admin,
         is_superadmin: formData.is_superadmin,
         is_compta: formData.is_compta,
@@ -163,9 +181,13 @@ export default function UserManagementPage() {
 
   const handleEditUser = (user: AppUser) => {
     setEditingUser(user);
+    const detectedRole: AppUserRole = user.new_role ||
+      (user.is_superadmin ? 'super_admin' : user.is_admin ? 'admin' : user.is_compta ? 'compta' : 'senior_sales');
     setFormData({
       username: user.username,
       pin: '',
+      new_role: detectedRole,
+      cross_branch_read: user.cross_branch_read || false,
       is_admin: user.is_admin,
       is_superadmin: user.is_superadmin || false,
       is_compta: user.is_compta || false,
@@ -196,6 +218,8 @@ export default function UserManagementPage() {
 
       const updates: UpdateAppUserRequest = {
         username: formData.username.trim(),
+        new_role: formData.new_role,
+        cross_branch_read: formData.cross_branch_read,
         is_admin: formData.is_superadmin ? true : formData.is_admin,
         is_superadmin: formData.is_superadmin,
         is_compta: formData.is_compta,
@@ -246,22 +270,26 @@ export default function UserManagementPage() {
   };
 
   const getRoleBadge = (user: AppUser) => {
-    if (user.is_superadmin) return { label: 'Superadmin', icon: Star, cls: 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300' };
-    if (user.is_admin) return { label: 'Admin', icon: Shield, cls: 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300' };
-    if (user.is_compta) return { label: 'Compta', icon: Calculator, cls: 'bg-teal-100 dark:bg-teal-900/30 text-teal-800 dark:text-teal-300' };
-    if (user.price_display_type === 'reseller') return { label: 'Revendeur', icon: DollarSign, cls: 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' };
-    return { label: 'Commercial', icon: User, cls: 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300' };
+    const role = user.new_role ||
+      (user.is_superadmin ? 'super_admin' : user.is_admin ? 'admin' : user.is_compta ? 'compta' : null);
+    switch (role) {
+      case 'super_admin': return { label: 'Super Admin', icon: Star, cls: 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300' };
+      case 'admin':       return { label: 'Admin', icon: Shield, cls: 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300' };
+      case 'manager':     return { label: 'Manager', icon: GitBranch, cls: 'bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300' };
+      case 'compta':      return { label: 'Compta', icon: Calculator, cls: 'bg-teal-100 dark:bg-teal-900/30 text-teal-800 dark:text-teal-300' };
+      case 'senior_sales': return { label: 'Sr. Commercial', icon: UserCheck, cls: 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300' };
+      case 'junior_sales': return { label: 'Jr. Commercial', icon: User, cls: 'bg-sky-100 dark:bg-sky-900/30 text-sky-800 dark:text-sky-300' };
+      default:            return { label: 'Commercial', icon: User, cls: 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300' };
+    }
   };
 
+  const getUserRole = (user: AppUser): AppUserRole =>
+    user.new_role || (user.is_superadmin ? 'super_admin' : user.is_admin ? 'admin' : user.is_compta ? 'compta' : 'senior_sales');
+
   const filteredUsers = users.filter(user => {
-    const matchesSearch = user.username.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesRole =
-      filterRole === 'all' ||
-      (filterRole === 'superadmin' && user.is_superadmin) ||
-      (filterRole === 'admin' && user.is_admin && !user.is_superadmin) ||
-      (filterRole === 'compta' && user.is_compta) ||
-      (filterRole === 'reseller' && user.price_display_type === 'reseller') ||
-      (filterRole === 'user' && !user.is_admin && !user.is_compta && user.price_display_type !== 'reseller');
+    const matchesSearch = user.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (user.custom_seller_name || '').toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesRole = filterRole === 'all' || getUserRole(user) === filterRole;
     return matchesSearch && matchesRole;
   });
 
@@ -311,11 +339,11 @@ export default function UserManagementPage() {
         <div className="flex flex-wrap gap-2 mb-4">
           {[
             { label: 'Total', value: users.length, cls: 'bg-secondary' },
-            { label: 'Superadmins', value: users.filter(u => u.is_superadmin).length, cls: 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300' },
-            { label: 'Admins', value: users.filter(u => u.is_admin && !u.is_superadmin).length, cls: 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300' },
-            { label: 'Compta', value: users.filter(u => u.is_compta).length, cls: 'bg-teal-100 dark:bg-teal-900/30 text-teal-800 dark:text-teal-300' },
-            { label: 'Commerciaux', value: users.filter(u => !u.is_admin && !u.is_compta && u.price_display_type !== 'reseller').length, cls: 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300' },
-            { label: 'Revendeurs', value: users.filter(u => u.price_display_type === 'reseller').length, cls: 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' },
+            { label: 'Super Admins', value: users.filter(u => getUserRole(u) === 'super_admin').length, cls: 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300' },
+            { label: 'Admins', value: users.filter(u => getUserRole(u) === 'admin').length, cls: 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300' },
+            { label: 'Managers', value: users.filter(u => getUserRole(u) === 'manager').length, cls: 'bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300' },
+            { label: 'Compta', value: users.filter(u => getUserRole(u) === 'compta').length, cls: 'bg-teal-100 dark:bg-teal-900/30 text-teal-800 dark:text-teal-300' },
+            { label: 'Commerciaux', value: users.filter(u => ['senior_sales','junior_sales'].includes(getUserRole(u))).length, cls: 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300' },
           ].map(({ label, value, cls }) => (
             <span key={label} className={`px-2 py-1 rounded-lg text-xs font-medium ${cls}`}>{value} {label}</span>
           ))}
@@ -330,12 +358,13 @@ export default function UserManagementPage() {
           </div>
           <select value={filterRole} onChange={e => setFilterRole(e.target.value as any)}
             className="px-2.5 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground">
-            <option value="all">Tous</option>
-            <option value="superadmin">Superadmins</option>
-            <option value="admin">Admins</option>
+            <option value="all">Tous les rôles</option>
+            <option value="super_admin">Super Admin</option>
+            <option value="admin">Admin</option>
+            <option value="manager">Manager</option>
             <option value="compta">Compta</option>
-            <option value="user">Commerciaux</option>
-            <option value="reseller">Revendeurs</option>
+            <option value="senior_sales">Sr. Commercial</option>
+            <option value="junior_sales">Jr. Commercial</option>
           </select>
         </div>
       </div>
@@ -458,52 +487,47 @@ export default function UserManagementPage() {
               {/* Role */}
               <div>
                 <h3 className="text-xs font-semibold text-foreground uppercase tracking-wider mb-3">Rôle et accès</h3>
-                <div className="space-y-2.5">
-                  <label className="flex items-center space-x-3 cursor-pointer">
-                    <input type="checkbox" checked={formData.is_superadmin} onChange={e => handleInputChange('is_superadmin', e.target.checked)}
-                      className="w-4 h-4 rounded accent-primary" />
-                    <div>
-                      <span className="text-sm font-medium text-foreground flex items-center space-x-1">
-                        <Star className="h-3.5 w-3.5 text-amber-500" /><span>Superadmin</span>
-                      </span>
-                      <p className="text-[10px] text-muted-foreground">Contrôle total — peut gérer tous les utilisateurs et toutes les sociétés</p>
-                    </div>
-                  </label>
+                <div className="space-y-3">
+                  {/* Role selector */}
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1">Rôle</label>
+                    <select value={formData.new_role} onChange={e => handleInputChange('new_role', e.target.value as AppUserRole)}
+                      className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground">
+                      {ROLE_OPTIONS.map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      {ROLE_OPTIONS.find(o => o.value === formData.new_role)?.description}
+                    </p>
+                  </div>
 
-                  {!formData.is_superadmin && !formData.is_compta && (
+                  {/* cross_branch_read — only for manager */}
+                  {formData.new_role === 'manager' && (
                     <label className="flex items-center space-x-3 cursor-pointer">
-                      <input type="checkbox" checked={formData.is_admin} onChange={e => handleInputChange('is_admin', e.target.checked)}
+                      <input type="checkbox" checked={formData.cross_branch_read}
+                        onChange={e => handleInputChange('cross_branch_read', e.target.checked)}
                         className="w-4 h-4 rounded accent-primary" />
                       <div>
                         <span className="text-sm font-medium text-foreground flex items-center space-x-1">
-                          <Shield className="h-3.5 w-3.5 text-purple-500" /><span>Admin société</span>
+                          <GitBranch className="h-3.5 w-3.5 text-orange-500" /><span>Accès multi-société</span>
                         </span>
-                        <p className="text-[10px] text-muted-foreground">Gère les paramètres de sa société, ses clients et devis — ne peut pas créer d'utilisateurs</p>
+                        <p className="text-[10px] text-muted-foreground">Ce manager peut voir les données de toutes les sociétés</p>
                       </div>
                     </label>
                   )}
 
-                  {!formData.is_superadmin && !formData.is_admin && (
+                  {/* can_create_quote — hidden for super_admin and compta (no quote access) */}
+                  {!['super_admin', 'compta'].includes(formData.new_role) && (
                     <label className="flex items-center space-x-3 cursor-pointer">
-                      <input type="checkbox" checked={formData.is_compta} onChange={e => handleInputChange('is_compta', e.target.checked)}
-                        className="w-4 h-4 rounded accent-primary" />
+                      <input type="checkbox" checked={formData.can_create_quote}
+                        onChange={e => handleInputChange('can_create_quote', e.target.checked)} className="w-4 h-4 rounded accent-primary" />
                       <div>
-                        <span className="text-sm font-medium text-foreground flex items-center space-x-1">
-                          <Calculator className="h-3.5 w-3.5 text-teal-500" /><span>Comptabilité</span>
-                        </span>
-                        <p className="text-[10px] text-muted-foreground">Accès global multi-sociétés — gestion BL, Proformas et Factures</p>
+                        <span className="text-sm font-medium text-foreground">Peut créer des devis</span>
+                        <p className="text-[10px] text-muted-foreground">Accès au panier et à la création de devis</p>
                       </div>
                     </label>
                   )}
-
-                  <label className="flex items-center space-x-3 cursor-pointer">
-                    <input type="checkbox" checked={formData.can_create_quote}
-                      onChange={e => handleInputChange('can_create_quote', e.target.checked)} className="w-4 h-4 rounded accent-primary" />
-                    <div>
-                      <span className="text-sm font-medium text-foreground">Peut créer des devis</span>
-                      <p className="text-[10px] text-muted-foreground">Accès au panier et à la création de devis</p>
-                    </div>
-                  </label>
                 </div>
               </div>
 

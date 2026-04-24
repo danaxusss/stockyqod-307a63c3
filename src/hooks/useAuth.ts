@@ -5,6 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useUserAuth } from './useUserAuth';
 import { setCompanyContext } from '../utils/supabaseCompanyFilter';
 import { SupabaseCompaniesService } from '../utils/supabaseCompanies';
+import { deriveRoleFlags } from '../lib/permissions';
 
 // Create a custom event for auth state changes
 const AUTH_CHANGE_EVENT = 'auth-state-change';
@@ -83,17 +84,34 @@ export function useAuth() {
   const loadUserData = useCallback(async (user: AppUser) => {
     setCurrentUser(user);
 
-    const isSuperAdmin = user.is_superadmin || false;
-    const isCompta = user.is_compta || false;
     const companyId = user.company_id || null;
+    const appRole = user.new_role ?? null;
+    const crossBranchRead = user.cross_branch_read ?? false;
+
+    // Derive backward-compat flags from new_role; fall back to legacy booleans during transition
+    const flags = appRole
+      ? deriveRoleFlags(appRole)
+      : {
+          isSuperAdmin: user.is_superadmin || false,
+          isAdmin: user.is_admin || user.is_superadmin || false,
+          isCompta: user.is_compta || false,
+          isManager: false,
+          isSeniorSales: false,
+          isJuniorSales: false,
+        };
 
     const permissions: UserPermissions = {
       canCreateQuote: user.can_create_quote,
       allowedStockLocations: user.allowed_stock_locations,
       priceDisplayType: user.price_display_type,
-      isAdmin: user.is_admin,
-      isSuperAdmin,
-      isCompta,
+      isAdmin: flags.isAdmin,
+      isSuperAdmin: flags.isSuperAdmin,
+      isCompta: flags.isCompta,
+      isManager: flags.isManager,
+      isSeniorSales: flags.isSeniorSales,
+      isJuniorSales: flags.isJuniorSales,
+      crossBranchRead,
+      newRole: appRole,
       companyId,
       allowedBrands: user.allowed_brands || []
     };
@@ -101,7 +119,7 @@ export function useAuth() {
     setUserPermissions(permissions);
 
     // Update the global company filter singleton
-    setCompanyContext(companyId, isSuperAdmin, isCompta);
+    setCompanyContext(companyId, appRole, crossBranchRead);
 
     // Load company name if user has a company
     if (companyId) {
@@ -111,27 +129,14 @@ export function useAuth() {
     }
 
     // Update role for backward compatibility
-    const newRole = (user.is_admin || isSuperAdmin) ? 'admin' : 'sales';
-    console.log('loadUserData - Setting role based on user.is_admin:', {
-      username: user.username,
-      is_admin: user.is_admin,
-      newRole: newRole,
-      currentRole: role
-    });
-    setRole(newRole);
-    StorageManager.setRole(newRole);
-    
+    const legacyRole: UserRole = flags.isAdmin ? 'admin' : 'sales';
+    setRole(legacyRole);
+    StorageManager.setRole(legacyRole);
+
     // Store user info in localStorage for persistence
     localStorage.setItem('inventory_current_user', JSON.stringify(user));
     localStorage.setItem('inventory_user_permissions', JSON.stringify(permissions));
-    
-    console.log('User data loaded - Final state:', {
-      username: user.username,
-      is_admin: user.is_admin,
-      role: newRole,
-      permissions: permissions
-    });
-    
+
     // Force a re-render to ensure UI updates
     triggerUpdate();
   }, []);
@@ -163,19 +168,19 @@ export function useAuth() {
 
         // Restore company context singleton from persisted data
         const restoredCompanyId = user.company_id || null;
-        const restoredSuperAdmin = user.is_superadmin || false;
-        const restoredIsCompta = user.is_compta || false;
-        setCompanyContext(restoredCompanyId, restoredSuperAdmin, restoredIsCompta);
+        const restoredRole = user.new_role ?? null;
+        const restoredCrossBranch = user.cross_branch_read ?? false;
+        setCompanyContext(restoredCompanyId, restoredRole, restoredCrossBranch);
         if (restoredCompanyId) {
           SupabaseCompaniesService.getCompanyById(restoredCompanyId)
             .then(company => setCompanyName(company?.name || null))
             .catch(() => {});
         }
 
-        // Ensure role state is correctly set based on loaded user's admin status
-        const newRole = (user.is_admin || restoredSuperAdmin) ? 'admin' : 'sales';
-        setRole(newRole);
-        StorageManager.setRole(newRole);
+        // Ensure role state is correctly set based on loaded permissions
+        const restoredLegacyRole: UserRole = (permissions.isAdmin) ? 'admin' : 'sales';
+        setRole(restoredLegacyRole);
+        StorageManager.setRole(restoredLegacyRole);
       } catch (error) {
         console.error('Failed to parse stored user data:', error);
         localStorage.removeItem('inventory_current_user');
@@ -263,7 +268,7 @@ export function useAuth() {
     setCurrentUser(null);
     setUserPermissions(null);
     setCompanyName(null);
-    setCompanyContext(null, false, false);
+    setCompanyContext(null, null, false);
     StorageManager.setRole('sales');
     
     // Clear stored user data
@@ -319,6 +324,11 @@ export function useAuth() {
   const isAdmin = role === 'admin';
   const isSuperAdmin = userPermissions?.isSuperAdmin ?? false;
   const isCompta = userPermissions?.isCompta ?? false;
+  const isManager = userPermissions?.isManager ?? false;
+  const isSeniorSales = userPermissions?.isSeniorSales ?? false;
+  const isJuniorSales = userPermissions?.isJuniorSales ?? false;
+  const crossBranchRead = userPermissions?.crossBranchRead ?? false;
+  const newRole = userPermissions?.newRole ?? null;
   const companyId = userPermissions?.companyId ?? null;
 
   return {
@@ -328,6 +338,11 @@ export function useAuth() {
     isAdmin,
     isSuperAdmin,
     isCompta,
+    isManager,
+    isSeniorSales,
+    isJuniorSales,
+    crossBranchRead,
+    newRole,
     companyId,
     companyName,
     authReady,

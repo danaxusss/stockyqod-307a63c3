@@ -24,6 +24,8 @@ export interface SyncData {
 
 export type UserRole = 'sales' | 'admin';
 
+export type AppUserRole = 'super_admin' | 'admin' | 'manager' | 'compta' | 'senior_sales' | 'junior_sales';
+
 export interface AppState {
   role: UserRole;
   isOnline: boolean;
@@ -198,6 +200,8 @@ export interface AppUser {
   is_admin: boolean;
   is_superadmin?: boolean;
   is_compta?: boolean;
+  new_role?: AppUserRole;
+  cross_branch_read?: boolean;
   company_id?: string;
   can_create_quote: boolean;
   allowed_stock_locations: string[];
@@ -215,6 +219,8 @@ export interface CreateAppUserRequest {
   is_admin?: boolean;
   is_superadmin?: boolean;
   is_compta?: boolean;
+  new_role?: AppUserRole;
+  cross_branch_read?: boolean;
   company_id?: string;
   can_create_quote?: boolean;
   allowed_stock_locations?: string[];
@@ -230,6 +236,8 @@ export interface UpdateAppUserRequest {
   is_admin?: boolean;
   is_superadmin?: boolean;
   is_compta?: boolean;
+  new_role?: AppUserRole;
+  cross_branch_read?: boolean;
   company_id?: string;
   can_create_quote?: boolean;
   allowed_stock_locations?: string[];
@@ -247,6 +255,11 @@ export interface UserPermissions {
   isAdmin: boolean;
   isSuperAdmin: boolean;
   isCompta: boolean;
+  isManager: boolean;
+  isSeniorSales: boolean;
+  isJuniorSales: boolean;
+  crossBranchRead: boolean;
+  newRole: AppUserRole | null;
   companyId: string | null;
 }
 
