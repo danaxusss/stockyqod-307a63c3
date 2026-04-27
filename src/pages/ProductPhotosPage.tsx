@@ -4,9 +4,35 @@ import { useLocation } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../hooks/useAuth';
+import { useUserAuth } from '../hooks/useUserAuth';
 import { useAppContext } from '../context/AppContext';
 import { useEscapeKey } from '../hooks/useShortcuts';
 import { ProductPhoto, Product } from '../types';
+
+const MAX_PX = 600;
+const JPEG_Q = 0.82;
+
+function compressImage(file: File): Promise<File> {
+  return new Promise(resolve => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width: w, height: h } = img;
+      if (w <= MAX_PX && h <= MAX_PX) { resolve(file); return; }
+      if (w > h) { h = Math.round(h * MAX_PX / w); w = MAX_PX; }
+      else       { w = Math.round(w * MAX_PX / h); h = MAX_PX; }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
+      canvas.toBlob(blob => {
+        resolve(blob ? new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' }) : file);
+      }, 'image/jpeg', JPEG_Q);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+}
 
 function getPublicUrl(storagePath: string) {
   return supabase.storage.from('product-photos').getPublicUrl(storagePath).data.publicUrl;
@@ -14,8 +40,12 @@ function getPublicUrl(storagePath: string) {
 
 export default function ProductPhotosPage() {
   const { showToast } = useToast();
-  const { companyId, currentUser } = useAuth();
+  const { companyId: adminCompanyId, currentUser } = useAuth();
+  const { authenticatedUser } = useUserAuth();
+  const companyId = adminCompanyId || authenticatedUser?.company_id || null;
   const { state } = useAppContext();
+
+  const [gridCols, setGridCols] = useState<6 | 9 | 12>(6);
 
   const location = useLocation();
   const initialSearch = new URLSearchParams(location.search).get('barcode') || '';
@@ -82,21 +112,21 @@ export default function ProductPhotosPage() {
       const file = arr[i];
       try {
         if (file.size > 20 * 1024 * 1024) { fail++; continue; }
+        const compressed = await compressImage(file);
         const photoId = crypto.randomUUID();
-        const ext = file.name.split('.').pop() || 'jpg';
-        const storagePath = `${companyId}/${photoId}.${ext}`;
+        const storagePath = `${companyId}/${photoId}.jpg`;
         const title = file.name.replace(/\.[^/.]+$/, '');
         const { error: uploadError } = await supabase.storage
           .from('product-photos')
-          .upload(storagePath, file, { upsert: true });
+          .upload(storagePath, compressed, { upsert: true, contentType: 'image/jpeg' });
         if (uploadError) { console.error('Upload error:', uploadError); fail++; continue; }
         const { error: insertError } = await (supabase as any).from('product_photos').insert({
           id: photoId,
           company_id: companyId,
           title,
           storage_path: storagePath,
-          file_name: file.name,
-          file_size: file.size,
+          file_name: compressed.name,
+          file_size: compressed.size,
           created_by: currentUser?.username,
         });
         if (insertError) { console.error('Insert error:', insertError); fail++; continue; }
@@ -260,6 +290,19 @@ export default function ProductPhotosPage() {
               Télécharger ({selected.size})
             </button>
           )}
+          {/* Grid mode toggle */}
+          <div className="flex items-center border border-border rounded-lg overflow-hidden text-xs font-medium">
+            {([6, 9, 12] as const).map(n => (
+              <button
+                key={n}
+                onClick={() => setGridCols(n)}
+                className={`px-2.5 py-1.5 transition-colors ${gridCols === n ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent'}`}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+
           <button
             onClick={() => bulkFileInputRef.current?.click()}
             disabled={isUploading}
@@ -311,7 +354,11 @@ export default function ProductPhotosPage() {
           <p className="text-xs text-muted-foreground mt-1">{search ? 'Modifiez votre recherche' : 'Importez des photos pour commencer'}</p>
         </div>
       ) : (
-        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2">
+        <div className={`grid gap-1.5 ${
+          gridCols === 6  ? 'grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6' :
+          gridCols === 9  ? 'grid-cols-4 sm:grid-cols-6 md:grid-cols-7 lg:grid-cols-9' :
+                            'grid-cols-5 sm:grid-cols-8 md:grid-cols-10 lg:grid-cols-12'
+        }`}>
           {filtered.map(photo => {
             const isSelected = selected.has(photo.id);
             const linkedCount = (photo.product_photo_products || []).length;
