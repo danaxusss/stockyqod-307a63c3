@@ -1,5 +1,5 @@
 // @ts-nocheck
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ShoppingCart, 
@@ -44,6 +44,7 @@ import { useQuoteCart } from '../hooks/useQuoteCart';
 import { searchProductsLocally } from '../hooks/useSearchState';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../hooks/useAuth';
+import { useKeyboardSave } from '../hooks/useShortcuts';
 import { supabase } from '@/integrations/supabase/client';
 import { useProductOverrides } from '../hooks/useProductOverrides';
 import { applyQuoteItemDisplayOverride, getQuoteItemBarcode, getQuoteItemBrand, getQuoteItemName } from '../utils/quoteItemDisplay';
@@ -201,16 +202,16 @@ export function QuoteCartPage() {
 
   // Track dirty state — mark as dirty when user edits data after initial load
   const [initialLoadDone, setInitialLoadDone] = useState(false);
+  const suppressDirtyRef = useRef(false);
   useEffect(() => {
     if (!isLoading && !initialLoadDone) {
-      // Give initial load a tick to settle
       const t = setTimeout(() => setInitialLoadDone(true), 500);
       return () => clearTimeout(t);
     }
   }, [isLoading, initialLoadDone]);
 
   useEffect(() => {
-    if (initialLoadDone) setIsDirty(true);
+    if (initialLoadDone && !suppressDirtyRef.current) setIsDirty(true);
   }, [items, customer, notes, commandNumber, status, globalMargin]);
 
   // Load company settings for PDF export (per-user company if available)
@@ -614,6 +615,7 @@ export function QuoteCartPage() {
       return;
     }
 
+    suppressDirtyRef.current = true;
     setIsSaving(true);
     try {
       const { totalAmount } = calculateTotals();
@@ -717,8 +719,11 @@ export function QuoteCartPage() {
       }
     } finally {
       setIsSaving(false);
+      setTimeout(() => { suppressDirtyRef.current = false; }, 300);
     }
   };
+
+  useKeyboardSave(() => handleSave(false));
 
   // Convert quote to BL: save quote then create BL from it
   const handleCreateBL = async () => {

@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import { useQuoteCart } from '../hooks/useQuoteCart';
 import { useAuth } from '../hooks/useAuth';
+import { useEscapeKey } from '../hooks/useShortcuts';
 import { Product, Quote, QuoteItem, CustomerInfo } from '../types';
 import { SupabaseQuotesService } from '../utils/supabaseQuotes';
 import ReactMarkdown from 'react-markdown';
@@ -196,6 +197,7 @@ async function createQuoteFromDraft(
 export function AIChatWidget() {
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
+  useEscapeKey(() => setIsOpen(false), isOpen);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);

@@ -8,6 +8,7 @@ import { PdfExportService } from '../../utils/pdfExport';
 import { CompanySettingsService, CompanySettings } from '../../utils/companySettings';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../hooks/useAuth';
+import { useKeyboardSave, useAutoSave, useEscapeKey } from '../../hooks/useShortcuts';
 import { ClientDropdown } from '../../components/ClientDropdown';
 import { ClientFormModal } from '../../components/ClientFormModal';
 import { ProductSearchModal } from '../../components/ProductSearchModal';
@@ -97,9 +98,9 @@ export default function BLDetailPage() {
     setIsEditing(true);
   };
 
-  const handleSave = async () => {
+  const handleSave = async (isAutoSave = false) => {
     if (!bl) return;
-    if (!draftCustomerName.trim()) {
+    if (!isAutoSave && !draftCustomerName.trim()) {
       showToast({ type: 'error', title: 'Client requis', message: 'Veuillez saisir le nom du client avant de sauvegarder.' });
       return;
     }
@@ -113,15 +114,21 @@ export default function BLDetailPage() {
         notes: draftNotes.trim() || null,
         status: draftStatus,
       });
-      showToast({ type: 'success', title: 'BL mis à jour', message: 'Modifications sauvegardées' });
-      setIsEditing(false);
-      await load();
+      if (!isAutoSave) {
+        showToast({ type: 'success', title: 'BL mis à jour', message: 'Modifications sauvegardées' });
+        setIsEditing(false);
+        await load();
+      }
     } catch (e) {
       showToast({ type: 'error', title: 'Erreur', message: String(e) });
     } finally {
       setIsSaving(false);
     }
   };
+
+  useKeyboardSave(() => handleSave(false), isEditing);
+  useAutoSave(() => handleSave(true), isEditing);
+  useEscapeKey(() => setIsEditing(false), isEditing);
 
   const updateDraftItem = (idx: number, field: string, value: string | number) => {
     setDraftItems(prev => prev.map((item, i) => {

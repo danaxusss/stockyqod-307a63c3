@@ -7,6 +7,7 @@ import { PdfExportService } from '../../utils/pdfExport';
 import { CompanySettingsService, CompanySettings } from '../../utils/companySettings';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../hooks/useAuth';
+import { useKeyboardSave, useAutoSave, useEscapeKey } from '../../hooks/useShortcuts';
 import { buildWhatsAppShareUrl, openPreparingWhatsAppWindow, redirectPreparingWindowToWhatsApp, openWhatsAppShare } from '../../utils/whatsappShare';
 import { ClientDropdown } from '../../components/ClientDropdown';
 import { ClientFormModal } from '../../components/ClientFormModal';
@@ -140,9 +141,9 @@ export default function InvoiceDetailPage() {
     setIsEditing(true);
   };
 
-  const handleSave = async () => {
+  const handleSave = async (isAutoSave = false) => {
     if (!invoice) return;
-    if (!draftCustomerName.trim()) {
+    if (!isAutoSave && !draftCustomerName.trim()) {
       showToast({ type: 'error', title: 'Client requis', message: 'Veuillez saisir le nom du client avant de sauvegarder.' });
       return;
     }
@@ -163,15 +164,21 @@ export default function InvoiceDetailPage() {
         payment_methods_json: draftPaymentMethods.length > 0 ? draftPaymentMethods : [],
         quote_date: draftDate || null,
       });
-      showToast({ type: 'success', title: 'Facture mise à jour', message: 'Modifications sauvegardées' });
-      setIsEditing(false);
-      await load();
+      if (!isAutoSave) {
+        showToast({ type: 'success', title: 'Facture mise à jour', message: 'Modifications sauvegardées' });
+        setIsEditing(false);
+        await load();
+      }
     } catch (e) {
       showToast({ type: 'error', title: 'Erreur', message: String(e) });
     } finally {
       setIsSaving(false);
     }
   };
+
+  useKeyboardSave(() => handleSave(false), isEditing);
+  useAutoSave(() => handleSave(true), isEditing);
+  useEscapeKey(() => setIsEditing(false), isEditing);
 
   const updateDraftItem = (idx: number, field: string, value: string | number) => {
     setDraftItems(prev => prev.map((item, i) => {

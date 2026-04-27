@@ -9,6 +9,7 @@ import { SupabaseCompaniesService } from '../../utils/supabaseCompanies';
 import { PrintPreviewModal } from '../../components/PrintPreviewModal';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../hooks/useAuth';
+import { useKeyboardSave, useAutoSave } from '../../hooks/useShortcuts';
 
 function fmt(n: number) {
   return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(n);
@@ -42,6 +43,14 @@ export default function AvoirDetailPage() {
   }, [id, showToast]);
 
   useEffect(() => { load(); }, [load]);
+
+  const saveDate = useCallback(async () => {
+    if (!avoir) return;
+    try { await SupabaseDocumentsService.updateDocument(avoir.id, { quote_date: avoirDate || null }); } catch { /* silent */ }
+  }, [avoir, avoirDate]);
+
+  useKeyboardSave(saveDate, !!avoir && !isLoading);
+  useAutoSave(saveDate, !!avoir && !isLoading);
 
   const getSettings = async (av: Quote) => {
     const compId = av.issuing_company_id || av.company_id;

@@ -8,6 +8,7 @@ import { SupabaseCompaniesService } from '../../utils/supabaseCompanies';
 import { PdfExportService } from '../../utils/pdfExport';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../hooks/useAuth';
+import { useEscapeKey } from '../../hooks/useShortcuts';
 
 function fmt(n: number) {
   return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(n);
@@ -134,6 +135,8 @@ export default function AvoirDirectoryPage() {
       showToast({ type: 'error', message: e?.message || 'Erreur suppression' });
     }
   };
+
+  useEscapeKey(() => setShowCreateModal(false), showCreateModal);
 
   const toggleSort = (field: typeof sortField) => {
     if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc');

@@ -6,6 +6,7 @@ import { SupabaseClientsService } from '../../utils/supabaseClients';
 import { CompanySettingsService } from '../../utils/companySettings';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../hooks/useAuth';
+import { useKeyboardSave, useAutoSave, useEscapeKey } from '../../hooks/useShortcuts';
 import { getCompanyContext } from '../../utils/supabaseCompanyFilter';
 import { ProductSearchModal } from '../../components/ProductSearchModal';
 
@@ -225,6 +226,11 @@ export default function ReturnsPage() {
     setShowProductSearch(false);
     setProductSearchTarget(null);
   };
+
+  useKeyboardSave(handleSave, showModal && !isSaving);
+  useAutoSave(handleSave, showModal && !!editingId);
+  useEscapeKey(() => setShowModal(false), showModal);
+  useEscapeKey(() => setShowPinModal(false), showPinModal);
 
   const SortIcon = ({ field }: { field: SortField }) => {
     if (sortField !== field) return null;
