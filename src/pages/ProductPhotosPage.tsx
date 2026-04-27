@@ -47,6 +47,8 @@ export default function ProductPhotosPage() {
   const { state } = useAppContext();
 
   const [gridCols, setGridCols] = useState<6 | 9 | 12>(6);
+  const [pageSize, setPageSize] = useState<50 | 100 | 200 | 500>(100);
+  const [page, setPage] = useState(1);
 
   const location = useLocation();
   const initialSearch = new URLSearchParams(location.search).get('barcode') || '';
@@ -98,6 +100,13 @@ export default function ProductPhotosPage() {
       (p.product_photo_products || []).some(pp => pp.barcode.toLowerCase().includes(q) || pp.product_name.toLowerCase().includes(q))
     );
   }, [photos, search]);
+
+  // Reset to page 1 whenever search or page size changes
+  useEffect(() => { setPage(1); }, [search, pageSize]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const paginated = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   // Bulk import
   const handleBulkFiles = async (files: FileList | null) => {
@@ -319,7 +328,11 @@ export default function ProductPhotosPage() {
           </div>
           <div>
             <h1 className="text-lg font-bold text-foreground leading-none">Galerie Photos</h1>
-            <p className="text-xs text-muted-foreground mt-0.5">{photos.length} photo{photos.length !== 1 ? 's' : ''}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {filtered.length !== photos.length
+                ? `${filtered.length} / ${photos.length} photos`
+                : `${photos.length} photo${photos.length !== 1 ? 's' : ''}`}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -343,6 +356,18 @@ export default function ProductPhotosPage() {
               </button>
             </>
           )}
+          {/* Page size picker */}
+          <div className="flex items-center border border-border rounded-lg overflow-hidden text-xs font-medium">
+            {([50, 100, 200, 500] as const).map(n => (
+              <button
+                key={n}
+                onClick={() => setPageSize(n)}
+                className={`px-2.5 py-1.5 transition-colors ${pageSize === n ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent'}`}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
           {/* Grid mode toggle */}
           <div className="flex items-center border border-border rounded-lg overflow-hidden text-xs font-medium">
             {([6, 9, 12] as const).map(n => (
@@ -412,7 +437,7 @@ export default function ProductPhotosPage() {
           gridCols === 9  ? 'grid-cols-4 sm:grid-cols-6 md:grid-cols-7 lg:grid-cols-9' :
                             'grid-cols-5 sm:grid-cols-8 md:grid-cols-10 lg:grid-cols-12'
         }`}>
-          {filtered.map(photo => {
+          {paginated.map(photo => {
             const isSelected = selected.has(photo.id);
             const linkedCount = (photo.product_photo_products || []).length;
             return (
@@ -447,6 +472,40 @@ export default function ProductPhotosPage() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-4 pt-4 border-t border-border">
+          <p className="text-xs text-muted-foreground">
+            {(safePage - 1) * pageSize + 1}–{Math.min(safePage * pageSize, filtered.length)} sur {filtered.length}
+          </p>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setPage(1)}
+              disabled={safePage === 1}
+              className="px-2 py-1.5 text-xs rounded-lg border border-border disabled:opacity-40 hover:bg-accent transition-colors"
+            >«</button>
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={safePage === 1}
+              className="px-3 py-1.5 text-xs rounded-lg border border-border disabled:opacity-40 hover:bg-accent transition-colors"
+            >‹ Préc.</button>
+            <span className="px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded-lg">
+              {safePage} / {totalPages}
+            </span>
+            <button
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={safePage === totalPages}
+              className="px-3 py-1.5 text-xs rounded-lg border border-border disabled:opacity-40 hover:bg-accent transition-colors"
+            >Suiv. ›</button>
+            <button
+              onClick={() => setPage(totalPages)}
+              disabled={safePage === totalPages}
+              className="px-2 py-1.5 text-xs rounded-lg border border-border disabled:opacity-40 hover:bg-accent transition-colors"
+            >»</button>
+          </div>
         </div>
       )}
 
