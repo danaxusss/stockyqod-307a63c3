@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Package, Search, Edit, Check, X, Loader, SortAsc, SortDesc, ChevronLeft, ChevronRight, Filter, Paperclip, ShoppingCart } from 'lucide-react';
+import { Package, Search, Edit, Check, X, Loader, SortAsc, SortDesc, ChevronLeft, ChevronRight, Filter, Paperclip, ShoppingCart, Images } from 'lucide-react';
 import { Product } from '../types';
 import { useAppContext } from '../context/AppContext';
 import { supabase } from '../integrations/supabase/client';
@@ -31,24 +31,31 @@ export default function ProductsPage() {
   const [editForm, setEditForm] = useState<Partial<Product>>({});
   const [isSaving, setIsSaving] = useState(false);
   const [sheetCounts, setSheetCounts] = useState<Record<string, number>>({});
+  const [photoCounts, setPhotoCounts] = useState<Record<string, number>>({});
 
   const products = state.products || [];
 
-  // Fetch sheet counts
+  // Fetch sheet + photo counts
   useEffect(() => {
-    const fetchSheetCounts = async () => {
+    const fetchCounts = async () => {
       try {
-        const { data } = await supabase.from('technical_sheet_products').select('product_barcode');
-        if (data) {
+        const [{ data: sheetData }, { data: photoData }] = await Promise.all([
+          supabase.from('technical_sheet_products').select('product_barcode'),
+          (supabase as any).from('product_photo_products').select('barcode'),
+        ]);
+        if (sheetData) {
           const counts: Record<string, number> = {};
-          data.forEach((row: any) => {
-            counts[row.product_barcode] = (counts[row.product_barcode] || 0) + 1;
-          });
+          sheetData.forEach((row: any) => { counts[row.product_barcode] = (counts[row.product_barcode] || 0) + 1; });
           setSheetCounts(counts);
+        }
+        if (photoData) {
+          const counts: Record<string, number> = {};
+          photoData.forEach((row: any) => { counts[row.barcode] = (counts[row.barcode] || 0) + 1; });
+          setPhotoCounts(counts);
         }
       } catch { /* ignore */ }
     };
-    fetchSheetCounts();
+    fetchCounts();
   }, []);
 
   const brands = useMemo(() => [...new Set(products.map(p => p.brand).filter(Boolean))].sort(), [products]);
@@ -208,6 +215,7 @@ export default function ProductsPage() {
                     const isEditing = editingBarcode === product.barcode;
                     const totalStock = Object.values(product.stock_levels || {}).reduce((s: number, v: any) => s + (Number(v) || 0), 0);
                     const hasSheets = (sheetCounts[product.barcode] || 0) > 0;
+                    const hasPhotos = (photoCounts[product.barcode] || 0) > 0;
                     return (
                       <tr key={product.barcode} className="hover:bg-accent/50">
                         <td className="px-3 py-2 text-[11px] text-muted-foreground font-mono">{product.barcode}</td>
@@ -222,6 +230,12 @@ export default function ProductsPage() {
                                 <button onClick={() => navigate('/sheets')} title={`${sheetCounts[product.barcode]} fiche(s) technique(s)`}
                                   className="p-0.5 hover:bg-primary/10 rounded transition-colors">
                                   <Paperclip className="h-3 w-3 text-primary shrink-0" />
+                                </button>
+                              )}
+                              {hasPhotos && (
+                                <button onClick={() => navigate(`/photos?barcode=${encodeURIComponent(product.barcode)}`)} title={`${photoCounts[product.barcode]} photo(s)`}
+                                  className="p-0.5 hover:bg-violet-500/10 rounded transition-colors">
+                                  <Images className="h-3 w-3 text-violet-500 shrink-0" />
                                 </button>
                               )}
                             </div>
