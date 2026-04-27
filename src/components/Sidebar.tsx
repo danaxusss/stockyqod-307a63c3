@@ -4,7 +4,7 @@ import {
   Settings, UserCheck, ShoppingBag, BookOpen, Building2,
   ChevronLeft, ChevronRight, Truck, Receipt, Calculator,
   BarChart3, Users, ShoppingCart, LucideIcon,
-  RotateCcw, Sun, Moon, Upload, FileX, BookMarked, Home,
+  RotateCcw, Sun, Moon, Upload, FileX, BookMarked, Home, Images,
 } from 'lucide-react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useTheme } from '../hooks/useTheme';
@@ -97,6 +97,7 @@ export function Sidebar() {
         { to: '/products', icon: ShoppingBag, label: 'Produits' },
         { to: '/clients', icon: UserCheck, label: 'Clients' },
         { to: '/sheets', icon: BookOpen, label: 'Fiches Techniques' },
+        { to: '/photos', icon: Images, label: 'Galerie Photos' },
       ],
     },
     ...(canCreateQuote() ? [{

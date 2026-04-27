@@ -22,6 +22,7 @@ const CompanySettingsPage = React.lazy(() => import('./pages/CompanySettingsPage
 const ClientsPage = React.lazy(() => import('./pages/ClientsPage'));
 const ProductsPage = React.lazy(() => import('./pages/ProductsPage'));
 const TechnicalSheetsPage = React.lazy(() => import('./pages/TechnicalSheetsPage'));
+const ProductPhotosPage = React.lazy(() => import('./pages/ProductPhotosPage'));
 const PublicSharePage = React.lazy(() => import('./pages/PublicSharePage'));
 const CompaniesPage = React.lazy(() => import('./pages/CompaniesPage'));
 const UserManagementPage = React.lazy(() => import('./pages/UserManagementPage'));
@@ -102,6 +103,7 @@ function AppContent() {
             <Route path="/clients" element={<ClientsPage />} />
             <Route path="/products" element={<ProductsPage />} />
             <Route path="/sheets" element={<TechnicalSheetsPage />} />
+            <Route path="/photos" element={<ProductPhotosPage />} />
             <Route path="/share/:token" element={<PublicSharePage />} />
             <Route path="/admin/statistics" element={<StatisticsPage />} />
             <Route path="/admin/settings" element={<CompanySettingsPage />} />

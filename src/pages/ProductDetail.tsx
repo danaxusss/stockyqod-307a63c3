@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { Package, ArrowLeft, Copy, MapPin, DollarSign, ShoppingCart, Home, AlertCircle, Users, Building, TrendingUp, Search, Calculator, Plus, Paperclip, Upload, Download, Trash2, Loader, FileText, X } from 'lucide-react';
+import { Package, ArrowLeft, Copy, MapPin, DollarSign, ShoppingCart, Home, AlertCircle, Users, Building, TrendingUp, Search, Calculator, Plus, Paperclip, Upload, Download, Trash2, Loader, FileText, X, Images } from 'lucide-react';
 import { Product, TechnicalSheet } from '../types';
 import { useAppContext } from '../context/AppContext';
 import { searchStateManager } from '../utils/searchStateManager';
@@ -90,6 +90,31 @@ export function ProductDetail() {
     showToast({ type: 'success', title: 'Ajouté au panier', message: `${product.name} ajouté au panier de devis` });
     if ('vibrate' in navigator) navigator.vibrate(100);
   };
+
+  // Linked photos state
+  const [linkedPhotos, setLinkedPhotos] = useState<{ id: string; storage_path: string; title: string; file_name: string }[]>([]);
+
+  const loadLinkedPhotos = useCallback(async () => {
+    if (!product) return;
+    try {
+      const { data: links } = await (supabase as any)
+        .from('product_photo_products')
+        .select('photo_id')
+        .eq('barcode', product.barcode);
+      const ids = (links || []).map((l: any) => l.photo_id);
+      if (ids.length > 0) {
+        const { data } = await (supabase as any)
+          .from('product_photos')
+          .select('id, storage_path, title, file_name')
+          .in('id', ids);
+        setLinkedPhotos(data || []);
+      } else {
+        setLinkedPhotos([]);
+      }
+    } catch { setLinkedPhotos([]); }
+  }, [product]);
+
+  useEffect(() => { loadLinkedPhotos(); }, [loadLinkedPhotos]);
 
   // Load linked sheets
   const loadLinkedSheets = useCallback(async () => {
@@ -455,6 +480,39 @@ export function ProductDetail() {
               </div>
             )}
           </div>
+
+          {/* Linked Photos Section */}
+          {linkedPhotos.length > 0 && (
+            <div className="mb-5">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                  <Images className="h-4 w-4 text-violet-500" /> Photos ({linkedPhotos.length})
+                </h3>
+                <a href={`/photos?barcode=${encodeURIComponent(product.barcode)}`} className="text-xs text-primary hover:underline">
+                  Voir tout
+                </a>
+              </div>
+              <div className="grid grid-cols-4 gap-1.5">
+                {linkedPhotos.slice(0, 8).map(photo => (
+                  <a
+                    key={photo.id}
+                    href={supabase.storage.from('product-photos').getPublicUrl(photo.storage_path).data.publicUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="aspect-square rounded-lg overflow-hidden border border-border/40 bg-secondary/30 hover:opacity-80 transition-opacity"
+                    title={photo.title || photo.file_name}
+                  >
+                    <img
+                      src={supabase.storage.from('product-photos').getPublicUrl(photo.storage_path).data.publicUrl}
+                      alt={photo.title || photo.file_name}
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                    />
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Action Buttons */}
           <div className="border-t border-border pt-4 flex flex-wrap gap-2">

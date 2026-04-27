@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useCallback, useState } from 'react';
-import { Search, Package, ArrowRight, Home, AlertCircle, SortAsc, SortDesc, Filter, ScanLine, Plus, X, Paperclip } from 'lucide-react';
+import { Search, Package, ArrowRight, Home, AlertCircle, SortAsc, SortDesc, Filter, ScanLine, Plus, X, Paperclip, Images } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useSearchState } from '../hooks/useSearchState';
 import { useAppContext } from '../context/AppContext';
@@ -21,6 +21,7 @@ export function SearchPage() {
   const [isMobile, setIsMobile] = useState(false);
   const [addedProductIds, setAddedProductIds] = useState<Set<string>>(new Set());
   const [productSheetCounts, setProductSheetCounts] = useState<Record<string, number>>({});
+  const [productPhotoCounts, setProductPhotoCounts] = useState<Record<string, number>>({});
   
   const { addToCart } = useQuoteCart();
   const { showToast } = useToast();
@@ -143,24 +144,25 @@ export function SearchPage() {
     });
   }, [results, canAccessStockLocation, canAccessBrandVariant]);
 
-  // Load sheet counts for visible products
+  // Load sheet + photo counts for visible products
   useEffect(() => {
-    const loadSheetCounts = async () => {
-      if (filteredResults.length === 0) { setProductSheetCounts({}); return; }
+    const load = async () => {
+      if (filteredResults.length === 0) { setProductSheetCounts({}); setProductPhotoCounts({}); return; }
       const barcodes = filteredResults.map(p => p.barcode);
       try {
-        const { data } = await supabase
-          .from('technical_sheet_products')
-          .select('product_barcode')
-          .in('product_barcode', barcodes);
-        const counts: Record<string, number> = {};
-        (data || []).forEach((row: any) => {
-          counts[row.product_barcode] = (counts[row.product_barcode] || 0) + 1;
-        });
-        setProductSheetCounts(counts);
-      } catch { setProductSheetCounts({}); }
+        const [{ data: sheetData }, { data: photoData }] = await Promise.all([
+          supabase.from('technical_sheet_products').select('product_barcode').in('product_barcode', barcodes),
+          (supabase as any).from('product_photo_products').select('barcode').in('barcode', barcodes),
+        ]);
+        const sheetCounts: Record<string, number> = {};
+        (sheetData || []).forEach((row: any) => { sheetCounts[row.product_barcode] = (sheetCounts[row.product_barcode] || 0) + 1; });
+        const photoCounts: Record<string, number> = {};
+        (photoData || []).forEach((row: any) => { photoCounts[row.barcode] = (photoCounts[row.barcode] || 0) + 1; });
+        setProductSheetCounts(sheetCounts);
+        setProductPhotoCounts(photoCounts);
+      } catch { setProductSheetCounts({}); setProductPhotoCounts({}); }
     };
-    loadSheetCounts();
+    load();
   }, [filteredResults]);
 
   return (
@@ -353,6 +355,11 @@ export function SearchPage() {
                         {(productSheetCounts[product.barcode] || 0) > 0 && (
                           <Link to={`/product/${encodeURIComponent(product.barcode)}`} onClick={(e) => e.stopPropagation()} title={`${productSheetCounts[product.barcode]} fiche(s) technique(s)`} className="shrink-0 text-primary hover:text-primary/80 transition-colors">
                             <Paperclip className="h-3.5 w-3.5" />
+                          </Link>
+                        )}
+                        {(productPhotoCounts[product.barcode] || 0) > 0 && (
+                          <Link to={`/photos?barcode=${encodeURIComponent(product.barcode)}`} onClick={(e) => e.stopPropagation()} title={`${productPhotoCounts[product.barcode]} photo(s)`} className="shrink-0 text-violet-500 hover:text-violet-400 transition-colors">
+                            <Images className="h-3.5 w-3.5" />
                           </Link>
                         )}
                         {product.brand && (

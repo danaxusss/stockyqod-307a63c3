@@ -297,3 +297,15 @@ export interface SheetShareLink {
   view_count: number;
   created_at: string;
 }
+
+export interface ProductPhoto {
+  id: string;
+  company_id?: string;
+  title: string;
+  storage_path: string;
+  file_name: string;
+  file_size?: number;
+  created_at: string;
+  created_by?: string;
+  product_photo_products?: { barcode: string; product_name: string }[];
+}

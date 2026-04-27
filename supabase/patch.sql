@@ -802,3 +802,43 @@ $$;
 GRANT EXECUTE ON FUNCTION public.get_app_users_safe() TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.get_app_user_by_id_safe(uuid) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.get_app_user_by_username_safe(text) TO anon, authenticated;
+
+-- ── V2.4 Product Photos Gallery ────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS public.product_photos (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id uuid REFERENCES public.companies(id) ON DELETE CASCADE,
+  title text NOT NULL DEFAULT '',
+  storage_path text NOT NULL,
+  file_name text NOT NULL,
+  file_size integer,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  created_by text
+);
+
+CREATE TABLE IF NOT EXISTS public.product_photo_products (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  photo_id uuid NOT NULL REFERENCES public.product_photos(id) ON DELETE CASCADE,
+  barcode text NOT NULL,
+  product_name text NOT NULL DEFAULT '',
+  UNIQUE(photo_id, barcode)
+);
+
+ALTER TABLE public.product_photos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.product_photo_products ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "product_photos_all" ON public.product_photos;
+CREATE POLICY "product_photos_all" ON public.product_photos FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "product_photo_products_all" ON public.product_photo_products;
+CREATE POLICY "product_photo_products_all" ON public.product_photo_products FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+-- Storage bucket: create via Supabase dashboard (Storage > New bucket "product-photos", public=true)
+-- Then run these storage policies:
+-- INSERT INTO storage.buckets (id, name, public) VALUES ('product-photos', 'product-photos', true) ON CONFLICT DO NOTHING;
+DROP POLICY IF EXISTS "photos_upload" ON storage.objects;
+DROP POLICY IF EXISTS "photos_read" ON storage.objects;
+DROP POLICY IF EXISTS "photos_delete" ON storage.objects;
+CREATE POLICY "photos_upload" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'product-photos');
+CREATE POLICY "photos_read"   ON storage.objects FOR SELECT TO authenticated USING (bucket_id = 'product-photos');
+CREATE POLICY "photos_delete" ON storage.objects FOR DELETE TO authenticated USING (bucket_id = 'product-photos');
