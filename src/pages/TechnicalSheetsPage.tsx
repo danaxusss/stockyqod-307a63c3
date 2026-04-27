@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { FileText, Upload, Search, Link2, Trash2, Download, Eye, Share2, Copy, X, Plus, Loader, ExternalLink, Calendar, Package, CheckSquare } from 'lucide-react';
+import { FileText, Upload, Search, Link2, Trash2, Download, Eye, Share2, Copy, X, Plus, Loader, ExternalLink, Calendar, Package, CheckSquare, Archive } from 'lucide-react';
+import { zipSync } from 'fflate';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../hooks/useAuth';
@@ -59,6 +60,8 @@ export function TechnicalSheetsPage() {
   const [isCreatingShare, setIsCreatingShare] = useState(false);
   const [shareLinks, setShareLinks] = useState<SheetShareLink[]>([]);
   const [showShareLinks, setShowShareLinks] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const fetchSheets = useCallback(async () => {
     setLoading(true);
@@ -412,6 +415,64 @@ export function TechnicalSheetsPage() {
     }
   };
 
+  const downloadSelectedSheets = async () => {
+    const toDownload = sheets.filter(s => selectedForShare.has(s.id));
+    if (toDownload.length === 0) return;
+    setIsDownloading(true);
+    try {
+      const files: Record<string, Uint8Array> = {};
+      await Promise.all(toDownload.map(async s => {
+        const res = await fetch(s.file_url);
+        const buf = await res.arrayBuffer();
+        const ext = s.file_url.split('.').pop()?.split('?')[0] || 'pdf';
+        const safeName = s.title.replace(/[/\\:*?"<>|]/g, '_');
+        files[`${safeName}.${ext}`] = new Uint8Array(buf);
+      }));
+      const zipped = zipSync(files, { level: 0 });
+      const blob = new Blob([zipped.buffer as ArrayBuffer], { type: 'application/zip' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `fiches_${new Date().toISOString().slice(0, 10)}.zip`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(a.href);
+    } catch {
+      showToast({ type: 'error', message: 'Erreur lors de la création du ZIP' });
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  const deleteSelectedSheets = async () => {
+    if (selectedForShare.size === 0) return;
+    const count = selectedForShare.size;
+    if (!confirm(`Supprimer ${count} fiche(s) technique(s) ?`)) return;
+    setIsDeleting(true);
+    let errorCount = 0;
+    const ids = Array.from(selectedForShare);
+    for (const id of ids) {
+      const sheet = sheets.find(s => s.id === id);
+      if (!sheet) continue;
+      try {
+        const url = new URL(sheet.file_url);
+        const pathParts = url.pathname.split('/technical-sheets/');
+        if (pathParts.length > 1) {
+          await supabase.storage.from('technical-sheets').remove([pathParts[1]]);
+        }
+        await supabase.from('technical_sheet_products').delete().eq('sheet_id', id);
+        await supabase.from('technical_sheets').delete().eq('id', id);
+      } catch { errorCount++; }
+    }
+    setSelectedForShare(new Set());
+    setIsDeleting(false);
+    showToast({
+      type: errorCount > 0 ? 'warning' : 'success',
+      message: errorCount > 0
+        ? `Suppression partielle (${errorCount} erreur(s))`
+        : `${count} fiche(s) supprimée(s)`
+    });
+    fetchSheets();
+  };
+
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -433,9 +494,24 @@ export function TechnicalSheetsPage() {
             <Link2 className="h-3.5 w-3.5" /> Liens partagés
           </button>
           {selectedForShare.size > 0 && (
-            <button onClick={() => setShowShareModal(true)} className="flex items-center gap-1.5 px-3 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-sm transition-colors">
-              <Share2 className="h-3.5 w-3.5" /> Partager ({selectedForShare.size})
-            </button>
+            <>
+              <button onClick={downloadSelectedSheets} disabled={isDownloading}
+                className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm transition-colors disabled:opacity-50">
+                {isDownloading ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Archive className="h-3.5 w-3.5" />}
+                ZIP ({selectedForShare.size})
+              </button>
+              {isAdmin && (
+                <button onClick={deleteSelectedSheets} disabled={isDeleting}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-destructive hover:bg-destructive/90 text-destructive-foreground rounded-lg text-sm transition-colors disabled:opacity-50">
+                  {isDeleting ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                  Supprimer ({selectedForShare.size})
+                </button>
+              )}
+              <button onClick={() => setShowShareModal(true)}
+                className="flex items-center gap-1.5 px-3 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-sm transition-colors">
+                <Share2 className="h-3.5 w-3.5" /> Partager ({selectedForShare.size})
+              </button>
+            </>
           )}
           {isAdmin && (
             <>

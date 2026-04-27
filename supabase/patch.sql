@@ -828,10 +828,10 @@ ALTER TABLE public.product_photos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.product_photo_products ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "product_photos_all" ON public.product_photos;
-CREATE POLICY "product_photos_all" ON public.product_photos FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "product_photos_all" ON public.product_photos FOR ALL USING (true) WITH CHECK (true);
 
 DROP POLICY IF EXISTS "product_photo_products_all" ON public.product_photo_products;
-CREATE POLICY "product_photo_products_all" ON public.product_photo_products FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "product_photo_products_all" ON public.product_photo_products FOR ALL USING (true) WITH CHECK (true);
 
 -- Storage bucket: create via Supabase dashboard (Storage > New bucket "product-photos", public=true)
 -- Then run these storage policies:
@@ -839,6 +839,6 @@ CREATE POLICY "product_photo_products_all" ON public.product_photo_products FOR 
 DROP POLICY IF EXISTS "photos_upload" ON storage.objects;
 DROP POLICY IF EXISTS "photos_read" ON storage.objects;
 DROP POLICY IF EXISTS "photos_delete" ON storage.objects;
-CREATE POLICY "photos_upload" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'product-photos');
-CREATE POLICY "photos_read"   ON storage.objects FOR SELECT TO authenticated USING (bucket_id = 'product-photos');
-CREATE POLICY "photos_delete" ON storage.objects FOR DELETE TO authenticated USING (bucket_id = 'product-photos');
+CREATE POLICY "photos_upload" ON storage.objects FOR INSERT USING (bucket_id = 'product-photos') WITH CHECK (bucket_id = 'product-photos');
+CREATE POLICY "photos_read"   ON storage.objects FOR SELECT USING (bucket_id = 'product-photos');
+CREATE POLICY "photos_delete" ON storage.objects FOR DELETE USING (bucket_id = 'product-photos');
