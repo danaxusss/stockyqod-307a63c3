@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Images, Upload, Search, Link2, Trash2, Download, X, Loader, CheckSquare, Square, ChevronLeft, ChevronRight, ZoomIn } from 'lucide-react';
+import { zipSync } from 'fflate';
 import { useLocation } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '../context/ToastContext';
@@ -168,18 +169,61 @@ export default function ProductPhotosPage() {
     });
   };
 
-  const downloadSelected = () => {
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const downloadSelected = async () => {
     const toDownload = photos.filter(p => selected.has(p.id));
-    toDownload.forEach((p, i) => {
-      setTimeout(() => {
-        const a = document.createElement('a');
-        a.href = getPublicUrl(p.storage_path);
-        a.download = p.file_name;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-      }, i * 350);
+    if (toDownload.length === 0) return;
+    setIsDownloading(true);
+    try {
+      const files: Record<string, Uint8Array> = {};
+      await Promise.all(toDownload.map(async p => {
+        const res = await fetch(getPublicUrl(p.storage_path));
+        const buf = await res.arrayBuffer();
+        const name = p.file_name.replace(/[/\\:*?"<>|]/g, '_');
+        // Deduplicate filenames
+        const key = files[name] ? `${p.id.slice(0,6)}_${name}` : name;
+        files[key] = new Uint8Array(buf);
+      }));
+      const zipped = zipSync(files, { level: 0 }); // level 0 = store only (images already compressed)
+      const blob = new Blob([zipped.buffer as ArrayBuffer], { type: 'application/zip' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `photos_${new Date().toISOString().slice(0,10)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(a.href);
+    } catch {
+      showToast({ type: 'error', message: 'Erreur lors de la création du ZIP' });
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  const deleteSelected = async () => {
+    if (!confirm(`Supprimer ${selected.size} photo(s) ? Cette action est irréversible.`)) return;
+    setIsDeleting(true);
+    const toDelete = photos.filter(p => selected.has(p.id));
+    let ok = 0, fail = 0;
+    for (const photo of toDelete) {
+      try {
+        await supabase.storage.from('product-photos').remove([photo.storage_path]);
+        await (supabase as any).from('product_photo_products').delete().eq('photo_id', photo.id);
+        const { error } = await (supabase as any).from('product_photos').delete().eq('id', photo.id);
+        if (error) throw error;
+        ok++;
+      } catch { fail++; }
+    }
+    setSelected(new Set());
+    if (lightbox && selected.has(lightbox.id)) setLightbox(null);
+    showToast({
+      type: fail > 0 ? 'warning' : 'success',
+      message: `${ok} photo(s) supprimée(s)${fail > 0 ? `, ${fail} erreur(s)` : ''}`,
     });
+    setIsDeleting(false);
+    fetchPhotos();
   };
 
   // Lightbox nav
@@ -282,13 +326,24 @@ export default function ProductPhotosPage() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {selected.size > 0 && (
-            <button
-              onClick={downloadSelected}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium transition-colors"
-            >
-              <Download className="h-4 w-4" />
-              Télécharger ({selected.size})
-            </button>
+            <>
+              <button
+                onClick={downloadSelected}
+                disabled={isDownloading}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-60"
+              >
+                {isDownloading ? <Loader className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                {isDownloading ? 'ZIP...' : `ZIP (${selected.size})`}
+              </button>
+              <button
+                onClick={deleteSelected}
+                disabled={isDeleting}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-destructive hover:bg-destructive/90 text-destructive-foreground rounded-lg text-sm font-medium transition-colors disabled:opacity-60"
+              >
+                {isDeleting ? <Loader className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                {isDeleting ? 'Suppression...' : `Supprimer (${selected.size})`}
+              </button>
+            </>
           )}
           {/* Grid mode toggle */}
           <div className="flex items-center border border-border rounded-lg overflow-hidden text-xs font-medium">
