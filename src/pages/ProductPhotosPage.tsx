@@ -72,13 +72,11 @@ export default function ProductPhotosPage() {
   const bulkFileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchPhotos = useCallback(async () => {
-    if (!companyId) { setLoading(false); return; }
     setLoading(true);
     try {
       const { data, error } = await (supabase as any)
         .from('product_photos')
         .select('*, product_photo_products(barcode, product_name)')
-        .eq('company_id', companyId)
         .order('created_at', { ascending: false });
       if (error) throw error;
       setPhotos((data || []) as unknown as ProductPhoto[]);
@@ -88,7 +86,7 @@ export default function ProductPhotosPage() {
     } finally {
       setLoading(false);
     }
-  }, [companyId, showToast]);
+  }, [showToast]);
 
   useEffect(() => { fetchPhotos(); }, [fetchPhotos]);
 
