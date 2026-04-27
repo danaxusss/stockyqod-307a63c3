@@ -1307,13 +1307,13 @@ export function QuoteCartPage() {
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                <tbody className="divide-y divide-border">
                   {currentItems.map((item, index) => (
-                    <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-accent/50">
-                      <td className="px-4 py-4 text-sm text-foreground">
+                    <tr key={item.id} className="hover:bg-accent/30 transition-colors">
+                      <td className="px-3 py-2.5 text-xs text-muted-foreground">
                         {startIndex + index + 1}
                       </td>
-                      <td className="px-4 py-4">
+                      <td className="px-3 py-2.5">
                         <div className="min-w-[10rem] sm:min-w-[18rem] space-y-2">
                           <input
                             type="text"
@@ -1343,7 +1343,7 @@ export function QuoteCartPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-4">
+                      <td className="px-3 py-2.5">
                         <div className="flex items-center space-x-1">
                           <select
                             value={item.marginPercentage}
@@ -1361,7 +1361,7 @@ export function QuoteCartPage() {
                           Achat: {item.product.buyprice.toFixed(2)} Dh
                         </div>
                       </td>
-                      <td className="px-4 py-4">
+                      <td className="px-3 py-2.5">
                         <div className="flex items-center space-x-1">
                           <input
                             type="number"
@@ -1381,12 +1381,12 @@ export function QuoteCartPage() {
                           TTC: {item.unitPrice.toFixed(2)} Dh
                         </div>
                       </td>
-                      <td className="px-4 py-4">
+                      <td className="px-3 py-2.5">
                         <div className="flex items-center space-x-2">
                           <button
                             onClick={() => updateItemQuantity(item.id, item.quantity - 1)}
                             disabled={item.quantity <= 1}
-                            className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="p-1 hover:bg-accent rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                           >
                             <Minus className="h-3 w-3" />
                           </button>
@@ -1394,18 +1394,18 @@ export function QuoteCartPage() {
                             type="number"
                             value={item.quantity}
                             onChange={(e) => updateItemQuantity(item.id, parseInt(e.target.value) || 1)}
-                            className="w-16 px-2 py-1 text-sm text-center border border-input rounded focus:ring-2 focus:ring-ring bg-secondary text-foreground"
+                            className="w-14 px-2 py-1 text-sm text-center border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
                             min="1"
                           />
                           <button
                             onClick={() => updateItemQuantity(item.id, item.quantity + 1)}
-                            className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
+                            className="p-1 hover:bg-accent rounded-lg transition-colors"
                           >
                             <Plus className="h-3 w-3" />
                           </button>
                         </div>
                       </td>
-                      <td className="px-4 py-4">
+                      <td className="px-3 py-2.5">
                         <div className="flex items-center space-x-1">
                           <input
                             type="number"
@@ -1419,13 +1419,13 @@ export function QuoteCartPage() {
                           <span className="text-sm text-muted-foreground">%</span>
                         </div>
                       </td>
-                      <td className="px-4 py-4 text-sm font-medium text-foreground">
+                      <td className="px-3 py-2.5 text-sm font-semibold text-foreground">
                         {ExcelExportService.formatCurrency(item.subtotal / (1 + (companySettings?.tva_rate ?? 20) / 100))} Dh
                       </td>
-                      <td className="px-4 py-4">
+                      <td className="px-3 py-2.5">
                         <button
                           onClick={() => removeItem(item.id)}
-                          className="p-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                          className="p-1.5 text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
                           title="Supprimer l'article"
                         >
                           <Trash2 className="h-4 w-4" />
