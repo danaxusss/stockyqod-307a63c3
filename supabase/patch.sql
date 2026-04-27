@@ -839,6 +839,6 @@ CREATE POLICY "product_photo_products_all" ON public.product_photo_products FOR 
 DROP POLICY IF EXISTS "photos_upload" ON storage.objects;
 DROP POLICY IF EXISTS "photos_read" ON storage.objects;
 DROP POLICY IF EXISTS "photos_delete" ON storage.objects;
-CREATE POLICY "photos_upload" ON storage.objects FOR INSERT USING (bucket_id = 'product-photos') WITH CHECK (bucket_id = 'product-photos');
+CREATE POLICY "photos_upload" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'product-photos');
 CREATE POLICY "photos_read"   ON storage.objects FOR SELECT USING (bucket_id = 'product-photos');
 CREATE POLICY "photos_delete" ON storage.objects FOR DELETE USING (bucket_id = 'product-photos');
