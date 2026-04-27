@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Images, Upload, Search, Link2, Trash2, Download, X, Plus, Loader, CheckSquare, Square, ChevronLeft, ChevronRight, ZoomIn } from 'lucide-react';
+import { Images, Upload, Search, Link2, Trash2, Download, X, Loader, CheckSquare, Square, ChevronLeft, ChevronRight, ZoomIn } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '../context/ToastContext';
@@ -35,6 +35,8 @@ export default function ProductPhotosPage() {
   const [linkModal, setLinkModal] = useState<ProductPhoto | null>(null);
   const [linkSearch, setLinkSearch] = useState('');
   const [linkResults, setLinkResults] = useState<Product[]>([]);
+  const [pendingLinks, setPendingLinks] = useState<Set<string>>(new Set());
+  const [isLinking, setIsLinking] = useState(false);
 
   const bulkFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -169,40 +171,54 @@ export default function ProductPhotosPage() {
     setLightboxIdx(idx);
   };
 
+  const closeLinkModal = () => { setLinkModal(null); setLinkSearch(''); setPendingLinks(new Set()); };
+
   useEscapeKey(() => {
     if (lightbox) { setLightbox(null); return; }
-    if (linkModal) { setLinkModal(null); setLinkSearch(''); }
+    if (linkModal) closeLinkModal();
   }, !!(lightbox || linkModal));
 
-  // Product link search
+  // Product link search — show up to 30 results, keep already-linked ones visible (marked)
   useEffect(() => {
     if (!linkModal || linkSearch.length < 2) { setLinkResults([]); return; }
     const q = linkSearch.toLowerCase();
-    const linked = new Set((linkModal.product_photo_products || []).map(pp => pp.barcode));
     const results = state.products
-      .filter(p => !linked.has(p.barcode) && (p.barcode.toLowerCase().includes(q) || p.name.toLowerCase().includes(q)))
-      .slice(0, 12);
+      .filter(p => p.barcode.toLowerCase().includes(q) || p.name.toLowerCase().includes(q))
+      .slice(0, 30);
     setLinkResults(results);
   }, [linkSearch, linkModal, state.products]);
 
-  const linkProduct = async (product: Product) => {
-    if (!linkModal) return;
+  const togglePending = (barcode: string) => {
+    const linked = new Set((linkModal?.product_photo_products || []).map(pp => pp.barcode));
+    if (linked.has(barcode)) return; // already linked, can't toggle
+    setPendingLinks(prev => {
+      const s = new Set(prev);
+      if (s.has(barcode)) s.delete(barcode); else s.add(barcode);
+      return s;
+    });
+  };
+
+  const confirmLinks = async () => {
+    if (!linkModal || pendingLinks.size === 0) return;
+    setIsLinking(true);
     try {
-      const { error } = await (supabase as any).from('product_photo_products').insert({
-        photo_id: linkModal.id,
-        barcode: product.barcode,
-        product_name: product.name,
-      });
+      const toInsert = linkResults
+        .filter(p => pendingLinks.has(p.barcode))
+        .map(p => ({ photo_id: linkModal.id, barcode: p.barcode, product_name: p.name }));
+      const { error } = await (supabase as any).from('product_photo_products').insert(toInsert);
       if (error) throw error;
+      const newLinks = toInsert.map(r => ({ barcode: r.barcode, product_name: r.product_name }));
       setLinkModal(prev => prev ? {
         ...prev,
-        product_photo_products: [...(prev.product_photo_products || []), { barcode: product.barcode, product_name: product.name }],
+        product_photo_products: [...(prev.product_photo_products || []), ...newLinks],
       } : null);
-      setLinkSearch('');
-      showToast({ type: 'success', message: `Lié à ${product.name}` });
+      setPendingLinks(new Set());
+      showToast({ type: 'success', message: `${toInsert.length} produit(s) liés` });
       fetchPhotos();
     } catch {
       showToast({ type: 'error', message: 'Erreur lors de la liaison' });
+    } finally {
+      setIsLinking(false);
     }
   };
 
@@ -409,81 +425,117 @@ export default function ProductPhotosPage() {
       )}
 
       {/* Link modal */}
-      {linkModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-start justify-center pt-16 px-4">
-          <div className="w-full max-w-md bg-card border border-border rounded-xl shadow-xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-secondary/50">
-              <div className="flex items-center gap-2">
-                <Link2 className="h-4 w-4 text-primary" />
-                <p className="text-sm font-semibold">Lier à un produit</p>
+      {linkModal && (() => {
+        const alreadyLinked = new Set((linkModal.product_photo_products || []).map(pp => pp.barcode));
+        return (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-start justify-center pt-10 px-4">
+            <div className="w-full max-w-md bg-card border border-border rounded-xl shadow-xl flex flex-col max-h-[85vh]">
+              {/* Header */}
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-secondary/50 shrink-0">
+                <div className="flex items-center gap-2">
+                  <Link2 className="h-4 w-4 text-primary" />
+                  <p className="text-sm font-semibold">Lier à des produits</p>
+                </div>
+                <button onClick={closeLinkModal} className="p-1 rounded text-muted-foreground hover:text-foreground">
+                  <X className="h-4 w-4" />
+                </button>
               </div>
-              <button onClick={() => { setLinkModal(null); setLinkSearch(''); }} className="p-1 rounded text-muted-foreground hover:text-foreground">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="p-4 space-y-3">
-              {/* Thumbnail */}
-              <img
-                src={getPublicUrl(linkModal.storage_path)}
-                alt={linkModal.title}
-                className="w-16 h-16 object-cover rounded-lg border border-border"
-              />
-              {/* Existing links */}
-              {(linkModal.product_photo_products || []).length > 0 && (
-                <div className="space-y-1">
-                  <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Produits liés</p>
-                  {(linkModal.product_photo_products || []).map(pp => (
-                    <div key={pp.barcode} className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-secondary/50 border border-border/60">
-                      <div className="min-w-0">
-                        <p className="text-xs font-medium truncate">{pp.product_name}</p>
-                        <p className="text-[10px] text-muted-foreground font-mono">#{pp.barcode}</p>
-                      </div>
-                      <button onClick={() => unlinkProduct(pp.barcode)} className="p-1 rounded text-muted-foreground hover:text-destructive transition-colors shrink-0">
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {/* Search */}
-              <div>
-                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1.5">Ajouter un lien</p>
-                <div className="relative">
-                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                  <input
-                    type="text"
-                    placeholder="Nom ou code-barre..."
-                    value={linkSearch}
-                    onChange={e => setLinkSearch(e.target.value)}
-                    className="w-full pl-8 pr-3 py-1.5 border border-input rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-                    autoFocus
-                  />
-                </div>
-                {linkResults.length > 0 && (
-                  <div className="mt-1.5 space-y-0.5 max-h-48 overflow-y-auto">
-                    {linkResults.map(product => (
-                      <button
-                        key={product.barcode}
-                        onClick={() => linkProduct(product)}
-                        className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left hover:bg-accent transition-colors"
-                      >
-                        <Plus className="h-3.5 w-3.5 text-primary shrink-0" />
+
+              <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
+                {/* Thumbnail */}
+                <img src={getPublicUrl(linkModal.storage_path)} alt={linkModal.title}
+                  className="w-14 h-14 object-cover rounded-lg border border-border" />
+
+                {/* Existing links */}
+                {(linkModal.product_photo_products || []).length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Produits liés</p>
+                    {(linkModal.product_photo_products || []).map(pp => (
+                      <div key={pp.barcode} className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-secondary/50 border border-border/60">
                         <div className="min-w-0">
-                          <p className="text-xs font-medium truncate">{product.name}</p>
-                          <p className="text-[10px] text-muted-foreground font-mono">#{product.barcode}</p>
+                          <p className="text-xs font-medium truncate">{pp.product_name}</p>
+                          <p className="text-[10px] text-muted-foreground font-mono">#{pp.barcode}</p>
                         </div>
-                      </button>
+                        <button onClick={() => unlinkProduct(pp.barcode)} className="p-1 rounded text-muted-foreground hover:text-destructive transition-colors shrink-0">
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     ))}
                   </div>
                 )}
-                {linkSearch.length >= 2 && linkResults.length === 0 && (
-                  <p className="text-xs text-muted-foreground mt-2 text-center">Aucun produit trouvé</p>
-                )}
+
+                {/* Search */}
+                <div>
+                  <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+                    Ajouter des liens
+                    {pendingLinks.size > 0 && <span className="ml-1.5 text-primary normal-case">{pendingLinks.size} sélectionné(s)</span>}
+                  </p>
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                    <input
+                      type="text"
+                      placeholder="Nom ou code-barre..."
+                      value={linkSearch}
+                      onChange={e => setLinkSearch(e.target.value)}
+                      className="w-full pl-8 pr-3 py-1.5 border border-input rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      autoFocus
+                    />
+                  </div>
+                  {linkResults.length > 0 && (
+                    <div className="mt-1.5 space-y-0.5 max-h-64 overflow-y-auto">
+                      {linkResults.map(product => {
+                        const isLinked = alreadyLinked.has(product.barcode);
+                        const isPending = pendingLinks.has(product.barcode);
+                        return (
+                          <button
+                            key={product.barcode}
+                            onClick={() => togglePending(product.barcode)}
+                            disabled={isLinked}
+                            className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-left transition-colors ${
+                              isLinked ? 'opacity-50 cursor-default bg-secondary/30' :
+                              isPending ? 'bg-primary/10 border border-primary/30' :
+                              'hover:bg-accent'
+                            }`}
+                          >
+                            <div className={`w-4 h-4 rounded border shrink-0 flex items-center justify-center transition-colors ${
+                              isLinked ? 'border-border bg-secondary' :
+                              isPending ? 'border-primary bg-primary' : 'border-border'
+                            }`}>
+                              {(isLinked || isPending) && <span className="text-[9px] text-white font-bold leading-none">✓</span>}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-medium truncate">{product.name}</p>
+                              <p className="text-[10px] text-muted-foreground font-mono">#{product.barcode}</p>
+                            </div>
+                            {isLinked && <span className="text-[9px] text-muted-foreground shrink-0">déjà lié</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {linkSearch.length >= 2 && linkResults.length === 0 && (
+                    <p className="text-xs text-muted-foreground mt-2 text-center">Aucun produit trouvé</p>
+                  )}
+                </div>
               </div>
+
+              {/* Footer */}
+              {pendingLinks.size > 0 && (
+                <div className="shrink-0 px-4 py-3 border-t border-border bg-background/50">
+                  <button
+                    onClick={confirmLinks}
+                    disabled={isLinking}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm font-medium transition-colors disabled:opacity-60"
+                  >
+                    {isLinking ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
+                    Lier {pendingLinks.size} produit{pendingLinks.size > 1 ? 's' : ''}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
