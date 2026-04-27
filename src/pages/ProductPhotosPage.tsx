@@ -39,6 +39,7 @@ export default function ProductPhotosPage() {
   const bulkFileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchPhotos = useCallback(async () => {
+    if (!companyId) { setLoading(false); return; }
     setLoading(true);
     try {
       const { data, error } = await (supabase as any)
@@ -48,8 +49,9 @@ export default function ProductPhotosPage() {
         .order('created_at', { ascending: false });
       if (error) throw error;
       setPhotos((data || []) as unknown as ProductPhoto[]);
-    } catch {
-      showToast({ type: 'error', message: 'Erreur lors du chargement des photos' });
+    } catch (err: any) {
+      console.error('Photos load error:', err);
+      showToast({ type: 'error', message: `Erreur: ${err?.message || 'chargement photos'}` });
     } finally {
       setLoading(false);
     }
@@ -85,7 +87,7 @@ export default function ProductPhotosPage() {
         const { error: uploadError } = await supabase.storage
           .from('product-photos')
           .upload(storagePath, file, { upsert: true });
-        if (uploadError) { fail++; continue; }
+        if (uploadError) { console.error('Upload error:', uploadError); fail++; continue; }
         const { error: insertError } = await (supabase as any).from('product_photos').insert({
           id: photoId,
           company_id: companyId,
@@ -95,7 +97,7 @@ export default function ProductPhotosPage() {
           file_size: file.size,
           created_by: currentUser?.username,
         });
-        if (insertError) { fail++; continue; }
+        if (insertError) { console.error('Insert error:', insertError); fail++; continue; }
         ok++;
       } catch { fail++; }
       setUploadProgress(Math.round(((i + 1) / arr.length) * 100));
