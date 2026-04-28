@@ -194,10 +194,10 @@ async function createQuoteFromDraft(
 }
 
 // ─── Main Widget ──────────────────────────────────────────────────────────────
-export function AIChatWidget() {
+export function AIChatWidget({ embedded = false, onClose }: { embedded?: boolean; onClose?: () => void } = {}) {
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
-  useEscapeKey(() => setIsOpen(false), isOpen);
+  useEscapeKey(() => embedded ? onClose?.() : setIsOpen(false), embedded || isOpen);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -285,10 +285,12 @@ export function AIChatWidget() {
     }
   };
 
+  const showPanel = embedded || isOpen;
+
   return (
     <>
-      {/* Floating button */}
-      {!isOpen && (
+      {/* Floating button — only when not embedded */}
+      {!embedded && !isOpen && (
         <div className="fixed bottom-6 right-6 z-40">
           <button onClick={() => setIsOpen(true)}
             className="relative flex items-center justify-center w-12 h-12 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
@@ -299,8 +301,10 @@ export function AIChatWidget() {
       )}
 
       {/* Chat panel */}
-      {isOpen && (
-        <div className="fixed bottom-0 left-0 right-0 sm:bottom-6 sm:right-6 sm:left-auto z-50 w-full sm:w-[420px] max-h-[85vh] sm:max-h-[600px] bg-background border border-border sm:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col overflow-hidden">
+      {showPanel && (
+        <div className={embedded
+          ? "h-full flex flex-col bg-background"
+          : "fixed bottom-0 left-0 right-0 sm:bottom-6 sm:right-6 sm:left-auto z-50 w-full sm:w-[420px] max-h-[85vh] sm:max-h-[600px] bg-background border border-border sm:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col overflow-hidden"}>
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 bg-primary text-primary-foreground shrink-0">
             <div className="flex items-center gap-2">
@@ -316,7 +320,7 @@ export function AIChatWidget() {
                   <RotateCcw className="h-3.5 w-3.5" />
                 </button>
               )}
-              <button onClick={() => setIsOpen(false)} className="hover:bg-primary/80 rounded p-1">
+              <button onClick={() => embedded ? onClose?.() : setIsOpen(false)} className="hover:bg-primary/80 rounded p-1">
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -422,3 +426,4 @@ export function AIChatWidget() {
     </>
   );
 }
+

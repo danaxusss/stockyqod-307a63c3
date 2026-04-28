@@ -1,8 +1,9 @@
 import React, { ReactNode, useState, useRef, useCallback } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, Bot } from 'lucide-react';
 import { useUserAuth } from '../hooks/useUserAuth';
 import { useAppContext } from '../context/AppContext';
 import { Sidebar } from './Sidebar';
+import { AIChatWidget } from './AIChatWidget';
 
 interface LayoutProps {
   children: ReactNode;
@@ -48,6 +49,8 @@ export function Layout({ children }: LayoutProps) {
     setStartY(0);
   }, [isUserAuthenticated, isPulling, pullDistance, syncData]);
 
+  const [chatOpen, setChatOpen] = useState(false);
+
   return (
     <div className="h-screen bg-background flex overflow-hidden">
       <Sidebar />
@@ -91,6 +94,23 @@ export function Layout({ children }: LayoutProps) {
           </div>
         </footer>
       </div>
+
+      {/* AI Chat side panel — pushes main content, no overlay */}
+      <div className={`flex flex-col border-l border-border/40 bg-card shrink-0 overflow-hidden transition-[width] duration-200 ease-in-out ${chatOpen ? 'w-80' : 'w-0'}`}>
+        {chatOpen && <AIChatWidget embedded onClose={() => setChatOpen(false)} />}
+      </div>
+
+      {/* Tab button — visible only when chat is closed */}
+      {!chatOpen && (
+        <button
+          onClick={() => setChatOpen(true)}
+          title="Assistant IA"
+          className="fixed right-0 top-1/2 -translate-y-1/2 z-30 flex flex-col items-center gap-1 py-3 px-1.5 bg-primary text-primary-foreground rounded-l-lg shadow-lg hover:bg-primary/90 transition-colors"
+        >
+          <Bot className="h-4 w-4" />
+          <span className="text-[9px] font-semibold tracking-wide [writing-mode:vertical-lr] rotate-180">IA</span>
+        </button>
+      )}
     </div>
   );
 }
