@@ -3,6 +3,7 @@ import {
   Search, RefreshCw, Package, Upload, Bug, Trash2, BarChart3, FileText,
   ShoppingCart, LucideIcon, Users, Settings, FolderOpen, ChevronDown,
   ChevronUp, Receipt, Calculator, Truck, Database, Activity, ArrowRight,
+  RotateCcw, FileX, ClipboardList, Images,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
@@ -129,7 +130,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 /* ── Main Component ── */
 export function Home() {
-  const { isAdmin, isSuperAdmin, isCompta, canAccessStockLocation, authVersion, canCreateQuote } = useAuth();
+  const { isAdmin, isSuperAdmin, isCompta, isFacturation, canAccessStockLocation, authVersion, canCreateQuote } = useAuth();
   const { state, syncData, syncInfo } = useAppContext();
   const { showToast } = useToast();
   const [isSyncing, setIsSyncing] = useState(false);
@@ -317,72 +318,32 @@ export function Home() {
       <section>
         <SectionLabel>Navigation</SectionLabel>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5">
-          <ActionCard
-            to="/search"
-            icon={Search}
-            accent="bg-primary"
-            title="Rechercher"
-            desc="Nom, marque ou barcode"
-            size="large"
-          />
-          <ActionCard
-            to="/products"
-            icon={FolderOpen}
-            accent="bg-indigo-600"
-            title="Catalogue"
-            desc="Parcourir et modifier"
-            size="large"
-          />
-          <ActionCard
-            to="/sheets"
-            icon={FileText}
-            accent="bg-teal-600"
-            title="Fiches Techniques"
-            desc="Documents et partage"
-            size="large"
-          />
-          <ActionCard
-            to="/clients"
-            icon={Users}
-            accent="bg-sky-600"
-            title="Clients"
-            desc="Gestion des clients"
-            size="large"
-          />
+          <ActionCard to="/search"   icon={Search}    accent="bg-primary"      title="Rechercher"       desc="Nom, marque ou barcode"  size="large" />
+          <ActionCard to="/products" icon={FolderOpen} accent="bg-indigo-600"  title="Catalogue"        desc="Parcourir et modifier"   size="large" />
+          <ActionCard to="/clients"  icon={Users}      accent="bg-sky-600"     title="Clients"          desc="Gestion des clients"     size="large" />
+          <ActionCard to="/sheets"   icon={FileText}   accent="bg-teal-600"    title="Fiches Techniques" desc="Documents et partage"   size="large" />
+          <ActionCard to="/photos"   icon={Images}     accent="bg-pink-600"    title="Galerie Photos"   desc="Photos produits"         size="large" />
           {canCreateQuote() && (
             <>
-              <ActionCard
-                to="/quotes-history"
-                icon={FileText}
-                accent="bg-emerald-600"
-                title="Devis"
-                desc="Historique et gestion"
-                size="large"
-              />
-              <ActionCard
-                to="/quote-cart"
-                icon={ShoppingCart}
-                accent="bg-violet-600"
-                title="Nouveau Devis"
-                desc="Créer un devis"
-                size="large"
-              />
+              <ActionCard to="/quote-cart"      icon={ShoppingCart} accent="bg-violet-600"  title="Nouveau Devis" desc="Créer un devis"          size="large" />
+              <ActionCard to="/quotes-history"  icon={FileText}     accent="bg-emerald-600" title="Devis"         desc="Historique et gestion"   size="large" />
             </>
           )}
         </div>
       </section>
 
-      {/* ── Facturation ── */}
-      {(isCompta || isSuperAdmin) && (
+      {/* ── Documents ── */}
+      {(isFacturation || isCompta || isSuperAdmin) && (
         <section>
-          <SectionLabel>Facturation</SectionLabel>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
-            <ActionCard to="/compta/bls"      icon={Truck}      accent="bg-teal-600"   title="BL"              desc="Livraisons"      size="small" />
-            <ActionCard to="/compta/proformas" icon={FileText}   accent="bg-emerald-600" title="Proformas"      desc="Gestion"         size="small" />
-            <ActionCard to="/compta/invoices"  icon={Receipt}    accent="bg-blue-600"   title="Factures"        desc="Liste"           size="small" />
-            <ActionCard to="/compta/clients"   icon={Calculator} accent="bg-violet-600" title="Clients"         desc="Financier"       size="small" />
-            <ActionCard to="/compta/returns"   icon={RefreshCw}  accent="bg-amber-600"  title="Retours"         desc="Gestion"         size="small" />
-            <ActionCard to="/compta/avoirs"    icon={Receipt}    accent="bg-rose-600"   title="Avoirs"          desc="Crédits"         size="small" />
+          <SectionLabel>Documents</SectionLabel>
+          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2">
+            <ActionCard to="/compta/bons-commande" icon={ClipboardList} accent="bg-primary"     title="BC"       desc="Bons de commande" size="small" />
+            <ActionCard to="/compta/bls"           icon={Truck}         accent="bg-teal-600"    title="BL"       desc="Livraisons"       size="small" />
+            <ActionCard to="/compta/proformas"     icon={FileText}      accent="bg-emerald-600" title="Proformas" desc="Gestion"          size="small" />
+            <ActionCard to="/compta/invoices"      icon={Receipt}       accent="bg-blue-600"    title="Factures" desc="Liste"            size="small" />
+            <ActionCard to="/compta/avoirs"        icon={FileX}         accent="bg-rose-600"    title="Avoirs"   desc="Crédits"          size="small" />
+            <ActionCard to="/compta/returns"       icon={RotateCcw}     accent="bg-amber-600"   title="Retours"  desc="Gestion"          size="small" />
+            <ActionCard to="/compta/clients"       icon={Calculator}    accent="bg-violet-600"  title="Clients"  desc="Financier"        size="small" />
           </div>
         </section>
       )}
