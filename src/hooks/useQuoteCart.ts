@@ -19,11 +19,12 @@ export function useQuoteCart() {
   }, []);
 
   const addToCart = (
-    product: Product, 
-    priceType: 'normal' | 'reseller', 
-    marginPercentage: number
+    product: Product,
+    priceType: 'normal' | 'reseller',
+    marginPercentage: number,
+    initialQty = 1
   ) => {
-    quoteManager.addToCart(product, priceType, marginPercentage);
+    quoteManager.addToCart(product, priceType, marginPercentage, initialQty);
   };
 
   const removeFromCart = (itemId: string) => {

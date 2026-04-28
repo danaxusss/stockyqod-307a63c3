@@ -7,6 +7,7 @@ import { useToast } from '../context/ToastContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 import UserManagementPage from './UserManagementPage';
+import { StockLocationsTab } from '../components/StockLocationsTab';
 import { supabase } from '@/integrations/supabase/client';
 
 const FIELD_LABELS: Record<keyof QuoteVisibleFields, string> = {
@@ -540,7 +541,7 @@ function CompanySettingsTab() {
 }
 
 export default function CompanySettingsPage() {
-  const { isSuperAdmin, authReady } = useAuth();
+  const { isSuperAdmin, authReady, companyId } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const defaultTab = searchParams.get('tab') || 'company';
@@ -583,6 +584,9 @@ export default function CompanySettingsPage() {
           <TabsTrigger value="ai" className="flex-1">
             <Bot className="h-3.5 w-3.5 mr-1.5" />IA
           </TabsTrigger>
+          <TabsTrigger value="locations" className="flex-1">
+            <Truck className="h-3.5 w-3.5 mr-1.5" />Emplacements
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="company">
@@ -599,6 +603,11 @@ export default function CompanySettingsPage() {
 
         <TabsContent value="ai">
           <AISettingsTab />
+        </TabsContent>
+        <TabsContent value="locations">
+          <div className="glass rounded-xl shadow-lg p-4 mt-4">
+            <StockLocationsTab companyId={companyId} />
+          </div>
         </TabsContent>
       </Tabs>
     </div>

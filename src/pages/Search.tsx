@@ -20,6 +20,7 @@ export function SearchPage() {
   const [showScanner, setShowScanner] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [addedProductIds, setAddedProductIds] = useState<Set<string>>(new Set());
+  const [qtyMap, setQtyMap] = useState<Record<string, number>>({});
   const [productSheetCounts, setProductSheetCounts] = useState<Record<string, number>>({});
   const [productPhotoCounts, setProductPhotoCounts] = useState<Record<string, number>>({});
   
@@ -121,7 +122,8 @@ export function SearchPage() {
     }
     const savedMargin = localStorage.getItem('inventory_margin_percentage');
     const marginPercentage = savedMargin ? parseInt(savedMargin) : 20;
-    addToCart(product, 'normal', marginPercentage);
+    const qty = qtyMap[product.barcode] ?? 1;
+    addToCart(product, 'normal', marginPercentage, qty);
     showToast({ type: 'success', message: `${product.name} ajouté au panier de devis` });
     setAddedProductIds(prev => new Set(prev).add(product.barcode));
     setTimeout(() => {
@@ -392,12 +394,22 @@ export function SearchPage() {
                     </Link>
                     <div className="flex items-center gap-1.5 shrink-0">
                       {canCreateQuote() && (
-                        <button onClick={(e) => handleAddToCart(product, e)}
-                          className={`p-1.5 rounded-lg transition-all duration-200 ${
-                            isAdded ? 'bg-emerald-600 text-white' : 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm'
-                          }`}>
-                          {isAdded ? <span className="text-xs px-0.5">✓</span> : <Plus className="h-4 w-4" />}
-                        </button>
+                        <>
+                          <input
+                            type="number"
+                            min={1}
+                            value={qtyMap[product.barcode] ?? 1}
+                            onChange={e => setQtyMap(m => ({ ...m, [product.barcode]: Math.max(1, parseInt(e.target.value) || 1) }))}
+                            onClick={e => e.preventDefault()}
+                            className="w-12 h-7 text-xs text-center border border-border rounded bg-background px-1"
+                          />
+                          <button onClick={(e) => handleAddToCart(product, e)}
+                            className={`p-1.5 rounded-lg transition-all duration-200 ${
+                              isAdded ? 'bg-emerald-600 text-white' : 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm'
+                            }`}>
+                            {isAdded ? <span className="text-xs px-0.5">✓</span> : <Plus className="h-4 w-4" />}
+                          </button>
+                        </>
                       )}
                       <Link to={`/product/${encodeURIComponent(product.barcode)}`} className="p-1.5 text-muted-foreground hover:text-primary transition-colors">
                         <ArrowRight className="h-3.5 w-3.5" />

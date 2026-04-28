@@ -4,7 +4,7 @@ import {
   Settings, UserCheck, ShoppingBag, BookOpen, Building2,
   ChevronLeft, ChevronRight, Truck, Receipt, Calculator,
   BarChart3, Users, ShoppingCart, LucideIcon,
-  RotateCcw, Sun, Moon, Upload, FileX, BookMarked, Home, Images,
+  RotateCcw, Sun, Moon, Upload, FileX, BookMarked, Home, Images, ClipboardList,
 } from 'lucide-react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useTheme } from '../hooks/useTheme';
@@ -118,6 +118,7 @@ export function Sidebar() {
         { to: '/compta/clients', icon: Calculator, label: 'Clients (financier)' },
         { to: '/compta/returns', icon: RotateCcw, label: 'Retours' },
         { to: '/compta/avoirs', icon: FileX, label: 'Avoirs' },
+        { to: '/compta/bons-commande', icon: ClipboardList, label: 'Bons de Commande' },
       ],
     }] : []),
     ...(isSuperAdmin ? [{

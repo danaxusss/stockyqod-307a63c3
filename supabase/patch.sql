@@ -550,10 +550,10 @@ ALTER TABLE public.quotes DROP CONSTRAINT IF EXISTS quotes_status_check;
 ALTER TABLE public.quotes ADD CONSTRAINT quotes_status_check
   CHECK (status = ANY (ARRAY['draft'::text, 'pending'::text, 'final'::text, 'solde'::text]));
 
--- Add document_type constraint
+-- Add document_type constraint (kept at final superset so re-runs on populated DBs don't fail)
 ALTER TABLE public.quotes DROP CONSTRAINT IF EXISTS quotes_document_type_check;
 ALTER TABLE public.quotes ADD CONSTRAINT quotes_document_type_check
-  CHECK (document_type = ANY (ARRAY['quote'::text, 'bl'::text, 'proforma'::text, 'invoice'::text]));
+  CHECK (document_type = ANY (ARRAY['quote'::text, 'bl'::text, 'proforma'::text, 'invoice'::text, 'avoir'::text, 'bon_commande'::text]));
 
 -- ── document_counters: atomic sequential numbering per company ─
 CREATE TABLE IF NOT EXISTS public.document_counters (
@@ -842,3 +842,50 @@ DROP POLICY IF EXISTS "photos_delete" ON storage.objects;
 CREATE POLICY "photos_upload" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'product-photos');
 CREATE POLICY "photos_read"   ON storage.objects FOR SELECT USING (bucket_id = 'product-photos');
 CREATE POLICY "photos_delete" ON storage.objects FOR DELETE USING (bucket_id = 'product-photos');
+
+-- ══════════════════════════════════════════════════════════════
+-- V2.5 — Bon de Commande + Stock Locations + Providers
+-- ══════════════════════════════════════════════════════════════
+
+-- ── quotes: add 'bon_commande' document type ─────────────────
+ALTER TABLE public.quotes DROP CONSTRAINT IF EXISTS quotes_document_type_check;
+ALTER TABLE public.quotes ADD CONSTRAINT quotes_document_type_check
+  CHECK (document_type = ANY (ARRAY['quote','bl','proforma','invoice','avoir','bon_commande']));
+
+-- ── providers ────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.providers (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id uuid REFERENCES public.companies(id) ON DELETE CASCADE,
+  name text NOT NULL,
+  abbreviation text NOT NULL DEFAULT '',
+  is_custom boolean NOT NULL DEFAULT false,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.providers ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "providers_all" ON public.providers;
+CREATE POLICY "providers_all" ON public.providers FOR ALL USING (true) WITH CHECK (true);
+
+-- ── stock_locations ───────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.stock_locations (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id uuid REFERENCES public.companies(id) ON DELETE CASCADE,
+  name text NOT NULL,
+  abbreviation text NOT NULL DEFAULT '',
+  provider_id uuid REFERENCES public.providers(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.stock_locations ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "stock_locations_all" ON public.stock_locations;
+CREATE POLICY "stock_locations_all" ON public.stock_locations FOR ALL USING (true) WITH CHECK (true);
+
+-- ── sub_stock_locations ───────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.sub_stock_locations (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  stock_location_id uuid NOT NULL REFERENCES public.stock_locations(id) ON DELETE CASCADE,
+  name text NOT NULL,
+  code text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.sub_stock_locations ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "sub_stock_locations_all" ON public.sub_stock_locations;
+CREATE POLICY "sub_stock_locations_all" ON public.sub_stock_locations FOR ALL USING (true) WITH CHECK (true);

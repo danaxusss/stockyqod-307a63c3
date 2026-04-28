@@ -2,8 +2,9 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Package, Search, Edit, Check, X, Loader, SortAsc, SortDesc, ChevronLeft, ChevronRight, Filter, Paperclip, ShoppingCart, Images } from 'lucide-react';
-import { Product } from '../types';
+import { Product, StockLocation } from '../types';
 import { useAppContext } from '../context/AppContext';
+import { StockLocationsService } from '../utils/supabaseStockLocations';
 import { supabase } from '../integrations/supabase/client';
 import { useToast } from '../context/ToastContext';
 import { useQuoteCart } from '../hooks/useQuoteCart';
@@ -32,6 +33,8 @@ export default function ProductsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [sheetCounts, setSheetCounts] = useState<Record<string, number>>({});
   const [photoCounts, setPhotoCounts] = useState<Record<string, number>>({});
+  const [qtyMap, setQtyMap] = useState<Record<string, number>>({});
+  const [stockLocations, setStockLocations] = useState<StockLocation[]>([]);
 
   const products = state.products || [];
 
@@ -56,6 +59,10 @@ export default function ProductsPage() {
       } catch { /* ignore */ }
     };
     fetchCounts();
+  }, []);
+
+  useEffect(() => {
+    StockLocationsService.getStockLocations().then(setStockLocations).catch(() => {});
   }, []);
 
   const brands = useMemo(() => [...new Set(products.map(p => p.brand).filter(Boolean))].sort(), [products]);
@@ -124,9 +131,10 @@ export default function ProductsPage() {
     }
   };
 
-  const handleAddToCart = (product: Product) => {
+  const handleAddToCart = (product: Product, qty?: number) => {
     const priceType = getPriceDisplayType();
-    addToCart(product, priceType === 'reseller' ? 'reseller' : 'normal', 20);
+    const quantity = qty ?? qtyMap[product.barcode] ?? 1;
+    addToCart(product, priceType === 'reseller' ? 'reseller' : 'normal', 20, quantity);
     showToast({ type: 'success', message: `${product.name} ajouté au devis` });
   };
 
@@ -277,9 +285,22 @@ export default function ProductsPage() {
                           )}
                         </td>
                         <td className="px-3 py-2">
-                          <span className={`text-xs font-medium ${totalStock > 0 ? 'text-emerald-500' : 'text-destructive'}`}>
-                            {totalStock}
-                          </span>
+                          <div className="flex flex-wrap gap-1">
+                            {Object.entries(product.stock_levels || {})
+                              .filter(([, qty]) => (Number(qty) || 0) > 0)
+                              .map(([locName, qty]) => {
+                                const loc = stockLocations.find(l => l.name === locName);
+                                const label = loc?.abbreviation || locName;
+                                return (
+                                  <span key={locName} className="text-[10px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 px-1.5 py-0.5 rounded font-mono whitespace-nowrap">
+                                    {label} {Number(qty)}
+                                  </span>
+                                );
+                              })}
+                            {totalStock === 0 && (
+                              <span className="text-xs text-destructive">0</span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-3 py-2">
                           {isEditing ? (
@@ -298,9 +319,19 @@ export default function ProductsPage() {
                                 <Edit className="h-3.5 w-3.5" />
                               </button>
                               {canCreateQuote() && (
-                                <button onClick={() => handleAddToCart(product)} className="p-1 text-emerald-500 hover:bg-emerald-500/10 rounded" title="Ajouter au devis">
-                                  <ShoppingCart className="h-3.5 w-3.5" />
-                                </button>
+                                <div className="flex items-center gap-1">
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    value={qtyMap[product.barcode] ?? 1}
+                                    onChange={e => setQtyMap(m => ({ ...m, [product.barcode]: Math.max(1, parseInt(e.target.value) || 1) }))}
+                                    className="w-12 h-6 text-xs text-center border border-border rounded bg-background px-1"
+                                    onClick={e => e.stopPropagation()}
+                                  />
+                                  <button onClick={() => handleAddToCart(product)} className="p-1 text-emerald-500 hover:bg-emerald-500/10 rounded" title="Ajouter au devis">
+                                    <ShoppingCart className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
                               )}
                             </div>
                           )}

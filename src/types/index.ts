@@ -63,6 +63,14 @@ export interface QuoteItem {
   quoteBarcode?: string;
   is_billed?: boolean; // used in proforma items for invoice tracking
   billed_by_company_id?: string; // issuing company that generated the invoice for this item
+  dispatch?: Array<{
+    stock_location_id: string;
+    stock_location_name?: string;
+    sub_location_code: string;
+    quantity: number;
+  }>;
+  provider_id?: string;
+  provider_name?: string;
 }
 
 export interface QuoteCart {
@@ -105,7 +113,7 @@ export interface Quote {
   avance_amount?: number;
   payment_methods_json?: PaymentEntry[];
   // Financial document pipeline fields
-  document_type?: 'quote' | 'bl' | 'proforma' | 'invoice' | 'avoir';
+  document_type?: 'quote' | 'bl' | 'proforma' | 'invoice' | 'avoir' | 'bon_commande';
   avoir_reason?: string;
   parent_document_id?: string;
   source_bl_ids?: string[];
@@ -295,6 +303,33 @@ export interface SheetShareLink {
   sheet_ids: string[];
   expires_at: string | null;
   view_count: number;
+  created_at: string;
+}
+
+export interface Provider {
+  id: string;
+  company_id: string;
+  name: string;
+  abbreviation: string;
+  is_custom: boolean;
+  created_at: string;
+}
+
+export interface SubStockLocation {
+  id: string;
+  stock_location_id: string;
+  name: string;
+  code: string;
+  created_at: string;
+}
+
+export interface StockLocation {
+  id: string;
+  company_id: string;
+  name: string;
+  abbreviation: string;
+  provider_id?: string;
+  sub_locations?: SubStockLocation[];
   created_at: string;
 }
 

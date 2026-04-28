@@ -131,7 +131,7 @@ export class PdfExportService {
     return `${intPart},${parts[1]}`;
   }
 
-  static async exportQuoteToPdf(quote: Quote, settings?: CompanySettings | null, techSheetsUrl?: string, techSheetsExpiryLabel?: string, useStampOverride?: boolean, documentType: 'quote' | 'bl' | 'proforma' | 'invoice' | 'avoir' = 'quote', blShowPrices?: boolean, returnBlob?: boolean): Promise<void | Blob> {
+  static async exportQuoteToPdf(quote: Quote, settings?: CompanySettings | null, techSheetsUrl?: string, techSheetsExpiryLabel?: string, useStampOverride?: boolean, documentType: 'quote' | 'bl' | 'proforma' | 'invoice' | 'avoir' | 'bon_commande' = 'quote', blShowPrices?: boolean, returnBlob?: boolean): Promise<void | Blob> {
     const style: QuoteStyle = settings?.quote_style || {
       accentColor: '#3B82F6', fontFamily: 'helvetica', showBorders: true,
       borderRadius: 1, headerSize: 'large', totalsStyle: 'highlighted',
@@ -285,18 +285,19 @@ export class PdfExportService {
 
     // Document type title (right side)
     const docTypeLabel = documentType === 'bl' ? 'BON DE LIVRAISON'
+      : documentType === 'bon_commande' ? 'BON DE COMMANDE'
       : documentType === 'proforma' ? 'PROFORMA'
       : documentType === 'invoice' ? 'FACTURE'
       : documentType === 'avoir' ? 'AVOIR'
       : 'DEVIS';
-    const devisBoxW = documentType === 'bl' ? 58 : 45;
+    const devisBoxW = (documentType === 'bl' || documentType === 'bon_commande') ? 58 : 45;
     const devisBoxH = 11;
     const devisBoxX = pageWidth - margin - devisBoxW;
     const devisBoxY = y;
 
     doc.setFillColor(...ACCENT);
     doc.roundedRect(devisBoxX, devisBoxY, devisBoxW, devisBoxH, 2, 2, 'F');
-    doc.setFontSize(documentType === 'bl' ? 14 : 22);
+    doc.setFontSize((documentType === 'bl' || documentType === 'bon_commande') ? 14 : 22);
     doc.setFont(font, 'bold');
     doc.setTextColor(...WHITE);
     doc.text(docTypeLabel, devisBoxX + devisBoxW / 2, devisBoxY + devisBoxH / 2 + (documentType === 'bl' ? 2 : 3), { align: 'center' });
@@ -451,6 +452,7 @@ export class PdfExportService {
 
     // === ITEMS TABLE ===
     const isBL = documentType === 'bl';
+    const isBC = documentType === 'bon_commande';
     const tvaDivisor = 1 + tvaRate / 100;
 
     let tableHeaders: string[][];
@@ -458,7 +460,43 @@ export class PdfExportService {
     let itemColumnStyles: Record<number, any>;
 
     const showBLPrices = blShowPrices ?? settings?.bl_show_prices ?? true;
-    if (isBL && !showBLPrices) {
+    if (isBC) {
+      // Bon de Commande: items sorted by provider, with dispatch columns
+      const sortedItems = [...quote.items].sort((a, b) => {
+        const pa = (a.provider_name || a.product?.provider || '').toLowerCase();
+        const pb = (b.provider_name || b.product?.provider || '').toLowerCase();
+        return pa.localeCompare(pb);
+      });
+      tableHeaders = [['Marque', 'REF', 'DESCRIPTION', 'QTE', 'Lieu de collecte', 'Sous-stock']];
+      tableBody = sortedItems.flatMap(item => {
+        if (item.dispatch && item.dispatch.length > 0) {
+          return item.dispatch.map(d => [
+            getQuoteItemBrand(item) || '',
+            getQuoteItemBarcode(item) || '',
+            getQuoteItemName(item),
+            String(d.quantity),
+            d.stock_location_name || '',
+            d.sub_location_code || '',
+          ]);
+        }
+        return [[
+          getQuoteItemBrand(item) || '',
+          getQuoteItemBarcode(item) || '',
+          getQuoteItemName(item),
+          String(item.quantity),
+          '',
+          '',
+        ]];
+      });
+      itemColumnStyles = {
+        0: { cellWidth: 18, halign: 'center' },
+        1: { cellWidth: 24, halign: 'center' },
+        2: { cellWidth: 'auto' },
+        3: { cellWidth: 12, halign: 'center', fontStyle: 'bold' },
+        4: { cellWidth: 30, halign: 'left' },
+        5: { cellWidth: 20, halign: 'center' },
+      };
+    } else if (isBL && !showBLPrices) {
       // BL: no price columns
       tableHeaders = [['Marque', 'REF', 'DESCRIPTION', 'QUANTITÉ']];
       tableBody = quote.items.map(item => [
@@ -594,8 +632,8 @@ export class PdfExportService {
       y += 10;
     }
 
-    // Non-BL: full totals section
-    if (!isBL) {
+    // Non-BL, non-BC: full totals section
+    if (!isBL && !isBC) {
 
     // Check if totals fit on current page
     const totalsHeight = (fields.showTVA ? 20 : 8) + 16;
@@ -738,7 +776,7 @@ export class PdfExportService {
     }
 
     // === PAYMENT TERMS ===
-    if (!isBL && fields.showPaymentTerms) {
+    if (!isBL && !isBC && fields.showPaymentTerms) {
       doc.setFontSize(7);
       doc.setFont(font, 'italic');
       doc.setTextColor(...GRAY);
@@ -888,10 +926,11 @@ export class PdfExportService {
     techSheetsUrl?: string,
     techSheetsExpiryLabel?: string,
     useStampOverride?: boolean,
-    documentType: 'quote' | 'bl' | 'proforma' | 'invoice' | 'avoir' = 'quote',
+    documentType: 'quote' | 'bl' | 'proforma' | 'invoice' | 'avoir' | 'bon_commande' = 'quote',
     blShowPrices?: boolean,
   ): Promise<{ blob: Blob; filename: string }> {
     const docPrefix = documentType === 'bl' ? 'BL'
+      : documentType === 'bon_commande' ? 'BC'
       : documentType === 'proforma' ? 'Proforma'
       : documentType === 'invoice' ? 'Facture'
       : documentType === 'avoir' ? 'Avoir'
@@ -899,5 +938,108 @@ export class PdfExportService {
     const filename = `${docPrefix}_${quote.quoteNumber}.pdf`;
     const blob = await this.exportQuoteToPdf(quote, settings, techSheetsUrl, techSheetsExpiryLabel, useStampOverride, documentType, blShowPrices, true) as unknown as Blob;
     return { blob, filename };
+  }
+
+  static async exportClientFinancialPdf(
+    clientName: string,
+    invoices: Quote[],
+    tvaRate = 20,
+    settings?: CompanySettings | null,
+  ): Promise<void> {
+    const style: QuoteStyle = settings?.quote_style || { accentColor: '#3B82F6', fontFamily: 'helvetica' };
+    const ACCENT = hexToRgb(style.accentColor);
+    const font = style.fontFamily || 'helvetica';
+    const doc = new jsPDF('p', 'mm', 'a4');
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 12;
+    let y = margin;
+
+    // Header
+    doc.setFillColor(...ACCENT);
+    doc.rect(0, 0, pageWidth, 18, 'F');
+    doc.setFont(font, 'bold');
+    doc.setFontSize(13);
+    doc.setTextColor(255, 255, 255);
+    doc.text('SITUATION FINANCIÈRE CLIENT', margin, 12);
+    doc.setFontSize(10);
+    doc.text(clientName, pageWidth - margin, 12, { align: 'right' });
+    y = 24;
+
+    const tvaDivisor = 1 + tvaRate / 100;
+
+    const getStatus = (inv: Quote): string => {
+      const total = inv.totalAmount;
+      const paid = inv.paid_amount || 0;
+      if (paid >= total) return 'Payé';
+      if (paid > 0) return 'Part. payé';
+      return 'En attente';
+    };
+
+    const headers = [['N° Facture', 'Date', 'HT', 'TVA', 'TTC', 'Payé', 'Reste', 'Statut']];
+    const body = invoices.map(inv => {
+      const ttc = inv.totalAmount;
+      const ht = ttc / tvaDivisor;
+      const tva = ttc - ht;
+      const paid = inv.paid_amount || 0;
+      const reste = Math.max(0, ttc - paid);
+      const dateStr = inv.quote_date
+        ? inv.quote_date
+        : inv.createdAt.toLocaleDateString('fr-FR');
+      return [
+        inv.quoteNumber || '-',
+        dateStr,
+        this.formatCurrency(ht),
+        this.formatCurrency(tva),
+        this.formatCurrency(ttc),
+        this.formatCurrency(paid),
+        this.formatCurrency(reste),
+        getStatus(inv),
+      ];
+    });
+
+    const totalTTC = invoices.reduce((s, i) => s + i.totalAmount, 0);
+    const totalPaid = invoices.reduce((s, i) => s + (i.paid_amount || 0), 0);
+    const totalReste = Math.max(0, totalTTC - totalPaid);
+    const totalHT = totalTTC / tvaDivisor;
+    const totalTVA = totalTTC - totalHT;
+
+    body.push([
+      'TOTAL', '',
+      this.formatCurrency(totalHT),
+      this.formatCurrency(totalTVA),
+      this.formatCurrency(totalTTC),
+      this.formatCurrency(totalPaid),
+      this.formatCurrency(totalReste),
+      '',
+    ] as string[]);
+
+    const accentFill = ACCENT;
+    autoTable(doc, {
+      startY: y,
+      head: headers,
+      body,
+      styles: { font, fontSize: 8, cellPadding: 2.5 },
+      headStyles: { fillColor: accentFill, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+      willDrawCell: (data: any) => {
+        if (data.section === 'body' && data.row.index === body.length - 1) {
+          data.cell.styles.fontStyle = 'bold';
+          data.cell.styles.fillColor = [240, 240, 240];
+        }
+      },
+      columnStyles: {
+        0: { cellWidth: 28 },
+        1: { cellWidth: 20 },
+        2: { cellWidth: 22, halign: 'right' },
+        3: { cellWidth: 22, halign: 'right' },
+        4: { cellWidth: 24, halign: 'right', fontStyle: 'bold' },
+        5: { cellWidth: 22, halign: 'right' },
+        6: { cellWidth: 22, halign: 'right' },
+        7: { cellWidth: 20, halign: 'center' },
+      },
+      margin: { left: margin, right: margin },
+    });
+
+    const safeClientName = clientName.replace(/[^a-zA-Z0-9_\-]/g, '_').slice(0, 40);
+    doc.save(`Situation_${safeClientName}.pdf`);
   }
 }

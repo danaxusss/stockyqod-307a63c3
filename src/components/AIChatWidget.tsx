@@ -289,7 +289,7 @@ export function AIChatWidget() {
     <>
       {/* Floating button */}
       {!isOpen && (
-        <div className="fixed bottom-6 left-6 z-40">
+        <div className="fixed bottom-6 right-6 z-40">
           <button onClick={() => setIsOpen(true)}
             className="relative flex items-center justify-center w-12 h-12 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
             title="Assistant IA">
@@ -300,7 +300,7 @@ export function AIChatWidget() {
 
       {/* Chat panel */}
       {isOpen && (
-        <div className="fixed bottom-0 left-0 right-0 sm:bottom-6 sm:left-6 sm:right-auto z-50 w-full sm:w-[420px] max-h-[85vh] sm:max-h-[600px] bg-background border border-border sm:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col overflow-hidden">
+        <div className="fixed bottom-0 left-0 right-0 sm:bottom-6 sm:right-6 sm:left-auto z-50 w-full sm:w-[420px] max-h-[85vh] sm:max-h-[600px] bg-background border border-border sm:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 bg-primary text-primary-foreground shrink-0">
             <div className="flex items-center gap-2">

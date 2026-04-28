@@ -85,7 +85,7 @@ export class SupabaseDocumentsService {
   // BL/Proforma: "BL-0001", "PRO-0042"
   // Invoice: "{prefix}{YYMM}-{n}" e.g. "CM2601-7" (monthly reset, no zero-padding)
   static formatDocNumber(
-    type: 'bl' | 'proforma' | 'invoice',
+    type: 'bl' | 'proforma' | 'invoice' | 'bon_commande',
     n: number,
     companyPrefix?: string,
     yearMonth?: string
@@ -95,8 +95,8 @@ export class SupabaseDocumentsService {
       const ym = yearMonth || this.currentYearMonth();
       return `${pfx}${ym}-${n}`;
     }
-    const prefix = { bl: 'BL', proforma: 'PRO' }[type];
-    return `${prefix}-${String(n).padStart(4, '0')}`;
+    const prefix: Record<string, string> = { bl: 'BL', proforma: 'PRO', bon_commande: 'BC' };
+    return `${prefix[type]}-${String(n).padStart(4, '0')}`;
   }
 
   static currentYearMonth(): string {
@@ -108,7 +108,7 @@ export class SupabaseDocumentsService {
 
   // Atomically increment the per-company counter and return the formatted string.
   // For invoices: uses monthly doc_type key (e.g. "invoice_2601") and fetches company doc_prefix.
-  static async nextNumber(companyId: string, type: 'bl' | 'proforma' | 'invoice'): Promise<string> {
+  static async nextNumber(companyId: string, type: 'bl' | 'proforma' | 'invoice' | 'bon_commande'): Promise<string> {
     if (type === 'invoice') {
       const ym = this.currentYearMonth();
       const docTypeKey = `invoice_${ym}`;
@@ -132,7 +132,7 @@ export class SupabaseDocumentsService {
       p_doc_type: type,
     });
     if (error) throw new Error(`Erreur numérotation: ${error.message}`);
-    return this.formatDocNumber(type, data as number);
+    return this.formatDocNumber(type as 'bl' | 'proforma' | 'bon_commande', data as number);
   }
 
   // Create a BL copy from an existing quote.
@@ -355,7 +355,7 @@ export class SupabaseDocumentsService {
     return mapDocRow(newInvoice as DocRow);
   }
 
-  static async getAllByType(type: 'bl' | 'proforma' | 'invoice' | 'avoir'): Promise<Quote[]> {
+  static async getAllByType(type: 'bl' | 'proforma' | 'invoice' | 'avoir' | 'bon_commande'): Promise<Quote[]> {
     const { companyId, bypassFilter } = getCompanyContext();
     let q = (supabase.from('quotes') as any)
       .select('*')
@@ -576,15 +576,86 @@ export class SupabaseDocumentsService {
     return this.getAllByType('bl');
   }
 
+  // All Bons de Commande (for BC directory)
+  static async getAllBCs(): Promise<Quote[]> {
+    return this.getAllByType('bon_commande');
+  }
+
   // Create a Proforma from a single BL (convenience wrapper)
   static async createProformaFromBL(blId: string, targetCompanyId: string): Promise<Quote> {
     return this.createProformaFromBLs([blId], targetCompanyId);
   }
 
+  // Create a BC pre-filled from a Quote
+  static async createBCFromQuote(quoteId: string): Promise<Quote> {
+    const { data: srcData, error: srcErr } = await (supabase.from('quotes') as any)
+      .select('*').eq('id', quoteId).single();
+    if (srcErr || !srcData) throw new Error('Devis introuvable');
+    const src = mapDocRow(srcData as DocRow);
+    const companyId = (srcData as DocRow).company_id || getCompanyContext().companyId;
+    if (!companyId) throw new Error('Le devis ne possède pas de société associée');
+    const bcNumber = await this.nextNumber(companyId, 'bon_commande');
+    const now = new Date().toISOString();
+    const newId = crypto.randomUUID();
+    const row: Record<string, unknown> = {
+      id: newId,
+      quote_number: bcNumber,
+      created_at: now,
+      updated_at: now,
+      status: 'draft',
+      customer_info: src.customer,
+      items: src.items,
+      total_amount: src.totalAmount,
+      notes: src.notes || null,
+      created_by: src.createdBy || null,
+      document_type: 'bon_commande',
+      parent_document_id: quoteId,
+      source_bl_ids: [],
+      paid_amount: 0,
+      company_id: companyId,
+    };
+    const { data, error } = await (supabase.from('quotes') as any).insert(row).select('*').single();
+    if (error) throw new Error(`Erreur création BC: ${error.message}`);
+    return mapDocRow(data as DocRow);
+  }
+
+  // Create a BC pre-filled from a BL
+  static async createBCFromBL(blId: string): Promise<Quote> {
+    const { data: srcData, error: srcErr } = await (supabase.from('quotes') as any)
+      .select('*').eq('id', blId).single();
+    if (srcErr || !srcData) throw new Error('BL introuvable');
+    const src = mapDocRow(srcData as DocRow);
+    const companyId = (srcData as DocRow).company_id || getCompanyContext().companyId;
+    if (!companyId) throw new Error('Le BL ne possède pas de société associée');
+    const bcNumber = await this.nextNumber(companyId, 'bon_commande');
+    const now = new Date().toISOString();
+    const newId = crypto.randomUUID();
+    const row: Record<string, unknown> = {
+      id: newId,
+      quote_number: bcNumber,
+      created_at: now,
+      updated_at: now,
+      status: 'draft',
+      customer_info: src.customer,
+      items: src.items,
+      total_amount: src.totalAmount,
+      notes: src.notes || null,
+      created_by: src.createdBy || null,
+      document_type: 'bon_commande',
+      parent_document_id: blId,
+      source_bl_ids: [blId],
+      paid_amount: 0,
+      company_id: companyId,
+    };
+    const { data, error } = await (supabase.from('quotes') as any).insert(row).select('*').single();
+    if (error) throw new Error(`Erreur création BC: ${error.message}`);
+    return mapDocRow(data as DocRow);
+  }
+
   // Create a blank document of the given type directly (no source document needed).
   // Used by "Nouveau BL / Proforma / Facture" buttons in directory pages.
   static async createEmptyDocument(
-    type: 'bl' | 'proforma' | 'invoice',
+    type: 'bl' | 'proforma' | 'invoice' | 'bon_commande',
     companyId: string
   ): Promise<Quote> {
     const number = await this.nextNumber(companyId, type);
@@ -806,5 +877,27 @@ export class SupabaseDocumentsService {
       .single();
     if (insertErr) throw new Error(`Erreur création avoir: ${insertErr.message}`);
     return mapDocRow(newDoc as DocRow);
+  }
+
+  // Fetch all invoices for a given client, matched by phone or name (for F6 export)
+  static async getInvoicesForClient(phoneOrName: string): Promise<Quote[]> {
+    const { companyId, bypassFilter } = getCompanyContext();
+    const { data, error } = await (supabase.from('quotes') as any)
+      .select('*')
+      .eq('document_type', 'invoice')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    const rows = ((data || []) as DocRow[]).map(mapDocRow);
+    const needle = phoneOrName.toLowerCase().trim();
+    const filtered = rows.filter(q => {
+      const c = q.customer;
+      if (!c) return false;
+      return (
+        (c.phoneNumber || '').toLowerCase().includes(needle) ||
+        (c.fullName || '').toLowerCase().includes(needle)
+      );
+    });
+    if (bypassFilter || !companyId) return filtered;
+    return filtered.filter(q => !q.company_id || q.company_id === companyId);
   }
 }

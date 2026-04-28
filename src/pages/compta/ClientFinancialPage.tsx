@@ -1,25 +1,44 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Calculator, Search, Download, Plus, Trash2 } from 'lucide-react';
+import { Calculator, Search, Download, Plus, Trash2, FileDown, Loader } from 'lucide-react';
 import { SupabaseDocumentsService, ClientFinancialRow } from '../../utils/supabaseDocuments';
 import { SupabaseClientsService } from '../../utils/supabaseClients';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../hooks/useAuth';
 import { exportToCSV } from '../../utils/csvExport';
 import { ClientFormModal } from '../../components/ClientFormModal';
+import { PdfExportService } from '../../utils/pdfExport';
+import { CompanySettingsService } from '../../utils/companySettings';
 
 function fmt(n: number) {
   return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(n);
 }
 
 export default function ClientFinancialPage() {
-  const { isSuperAdmin, isCompta } = useAuth();
+  const { isSuperAdmin, isCompta, companyId } = useAuth();
   const { showToast } = useToast();
   const navigate = useNavigate();
   const [rows, setRows] = useState<ClientFinancialRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [showClientForm, setShowClientForm] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState<string | null>(null);
+
+  const handleExportClientPdf = async (row: ClientFinancialRow, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const key = row.clientId || row.clientName;
+    setExportingPdf(key);
+    try {
+      const identifier = row.phoneNumber || row.clientName;
+      const invoices = await SupabaseDocumentsService.getInvoicesForClient(identifier);
+      const settings = await CompanySettingsService.getSettings(companyId || undefined).catch(() => null);
+      await PdfExportService.exportClientFinancialPdf(row.clientName, invoices, settings?.tva_rate ?? 20, settings || undefined);
+    } catch (e: any) {
+      showToast({ type: 'error', message: e.message || 'Erreur export PDF' });
+    } finally {
+      setExportingPdf(null);
+    }
+  };
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -247,15 +266,27 @@ export default function ClientFinancialPage() {
                       </span>
                     </td>
                     <td className="px-3 py-2.5">
-                      {row.clientId && (isSuperAdmin || isCompta) && (
+                      <div className="flex items-center gap-1">
                         <button
-                          onClick={(e) => handleDelete(row, e)}
-                          className="p-1 text-destructive hover:bg-destructive/10 rounded transition-colors"
-                          title="Supprimer le client"
+                          onClick={(e) => handleExportClientPdf(row, e)}
+                          disabled={exportingPdf === (row.clientId || row.clientName)}
+                          className="p-1 text-muted-foreground hover:text-foreground hover:bg-accent rounded transition-colors"
+                          title="Exporter situation PDF"
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
+                          {exportingPdf === (row.clientId || row.clientName)
+                            ? <Loader className="h-3.5 w-3.5 animate-spin" />
+                            : <FileDown className="h-3.5 w-3.5" />}
                         </button>
-                      )}
+                        {row.clientId && (isSuperAdmin || isCompta) && (
+                          <button
+                            onClick={(e) => handleDelete(row, e)}
+                            className="p-1 text-destructive hover:bg-destructive/10 rounded transition-colors"
+                            title="Supprimer le client"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

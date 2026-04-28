@@ -30,7 +30,8 @@ import {
   Truck,
   AlertCircle
 } from 'lucide-react';
-import { Quote, QuoteItem, CustomerInfo, Product } from '../types';
+import { Quote, QuoteItem, CustomerInfo, Product, Provider } from '../types';
+import { StockLocationsService } from '../utils/supabaseStockLocations';
 import { ExcelExportService } from '../utils/excelExport';
 import { PdfExportService } from '../utils/pdfExport';
 import { CompanySettingsService, CompanySettings, DEFAULT_SHARE_TEMPLATES } from '../utils/companySettings';
@@ -86,7 +87,10 @@ export function QuoteCartPage() {
 
   // Custom product inline form state
   const [showCustomProductForm, setShowCustomProductForm] = useState(false);
-  const [customFormData, setCustomFormData] = useState({ barcode: '', name: '', brand: '', unitPrice: '' });
+  const [customFormData, setCustomFormData] = useState({ barcode: '', name: '', brand: '', unitPrice: '', provider_id: '', provider_name: '' });
+  const [providers, setProviders] = useState<Provider[]>([]);
+  const [showNewProviderInput, setShowNewProviderInput] = useState(false);
+  const [newProviderName, setNewProviderName] = useState('');
 
   // UI state
   const [currentPage, setCurrentPage] = useState(1);
@@ -221,6 +225,10 @@ export function QuoteCartPage() {
       if (s?.use_stamp !== undefined) setUseStamp(s.use_stamp);
     }).catch(console.error);
   }, [companyId]);
+
+  useEffect(() => {
+    StockLocationsService.getProviders().then(setProviders).catch(() => {});
+  }, []);
 
   // Check linked tech sheets when items change
   useEffect(() => {
@@ -414,6 +422,7 @@ export function QuoteCartPage() {
       showToast({ type: 'warning', title: 'Produit existant', message: 'Un produit avec ce code-barres existe déjà dans le devis' });
       return;
     }
+    const { provider_id, provider_name } = customFormData;
     const customProduct: Product = {
       barcode: barcode.trim(),
       name: name.trim(),
@@ -422,7 +431,7 @@ export function QuoteCartPage() {
       price: unitPrice,
       buyprice: unitPrice > 0 ? unitPrice * 0.8 : 0,
       reseller_price: unitPrice > 0 ? unitPrice * 0.9 : 0,
-      provider: 'Manuel',
+      provider: provider_name || 'Manuel',
       stock_levels: {}
     };
     const newItem: QuoteItem = {
@@ -434,10 +443,13 @@ export function QuoteCartPage() {
       addedAt: new Date(),
       unitPrice: unitPrice,
       quantity: 1,
-      subtotal: unitPrice
+      subtotal: unitPrice,
+      provider_id: provider_id || undefined,
+      provider_name: provider_name || undefined,
     };
     setItems(prev => [...prev, newItem]);
     setShowCustomProductForm(false);
+    setCustomFormData({ barcode: '', name: '', brand: '', unitPrice: '', provider_id: '', provider_name: '' });
     showToast({ type: 'success', title: 'Produit ajouté', message: `${name.trim()} (${brand.trim()}) ajouté au devis` });
   };
 
@@ -1780,6 +1792,60 @@ export function QuoteCartPage() {
                   className="w-full px-3 py-1.5 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-background text-foreground"
                   placeholder="Marque"
                 />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1">Fournisseur</label>
+                {showNewProviderInput ? (
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newProviderName}
+                      onChange={e => setNewProviderName(e.target.value)}
+                      className="flex-1 px-3 py-1.5 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-background text-foreground"
+                      placeholder="Nom du fournisseur"
+                    />
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!newProviderName.trim()) return;
+                        try {
+                          const created = await StockLocationsService.upsertProvider({ name: newProviderName.trim(), is_custom: true });
+                          setProviders(prev => [...prev, created]);
+                          setCustomFormData(prev => ({ ...prev, provider_id: created.id, provider_name: created.name }));
+                          setNewProviderName('');
+                          setShowNewProviderInput(false);
+                        } catch {
+                          showToast({ type: 'error', message: 'Erreur lors de la création du fournisseur' });
+                        }
+                      }}
+                      className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
+                    >
+                      Ajouter
+                    </button>
+                    <button type="button" onClick={() => setShowNewProviderInput(false)} className="p-1.5 hover:bg-accent rounded-lg">
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <select
+                      value={customFormData.provider_id}
+                      onChange={e => {
+                        const sel = providers.find(p => p.id === e.target.value);
+                        setCustomFormData(prev => ({ ...prev, provider_id: e.target.value, provider_name: sel?.name || '' }));
+                      }}
+                      className="flex-1 px-3 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground"
+                    >
+                      <option value="">— Aucun —</option>
+                      {providers.map(p => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                    <button type="button" onClick={() => setShowNewProviderInput(true)} className="px-3 py-1.5 text-sm border border-input rounded-lg hover:bg-accent text-foreground whitespace-nowrap">
+                      + Nouveau
+                    </button>
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-xs font-medium text-foreground mb-1">Prix unitaire (0 pour cadeau)</label>

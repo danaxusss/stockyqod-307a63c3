@@ -61,13 +61,15 @@ export class QuoteManager {
 
   // Add item to cart
   addToCart(
-    product: Product, 
-    priceType: 'normal' | 'reseller', 
-    marginPercentage: number
+    product: Product,
+    priceType: 'normal' | 'reseller',
+    marginPercentage: number,
+    initialQty = 1
   ): void {
     const cart = this.getCart();
     const finalPrice = this.calculateFinalPrice(product.buyprice, marginPercentage);
-    
+    const qty = Math.max(1, initialQty);
+
     const newItem: QuoteItem = {
       id: `${product.barcode}-${Date.now()}`,
       product,
@@ -77,8 +79,8 @@ export class QuoteManager {
       addedAt: new Date(),
       // Initialize quote-specific editable fields
       unitPrice: finalPrice,
-      quantity: 1,
-      subtotal: finalPrice
+      quantity: qty,
+      subtotal: finalPrice * qty
     };
 
     cart.items.push(newItem);
