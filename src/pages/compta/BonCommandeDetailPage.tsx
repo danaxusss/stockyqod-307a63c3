@@ -283,19 +283,28 @@ export default function BonCommandeDetailPage() {
   const autoAssignAll = () => {
     setDraftItems(prev => prev.map(item => {
       const tgts = buildDispatchTargets(stockLocations, providers, item.product);
-      const stockTgts = tgts.filter(t => t.stock > 0);
-      if (stockTgts.length === 0) return item;
-      const perfect = stockTgts.find(t => t.stock >= item.quantity);
-      if (perfect) {
-        return { ...item, dispatch: [{ stock_location_id: perfect.locationId, stock_location_name: perfect.locationName, sub_location_code: perfect.subCode, quantity: item.quantity }] };
+      // Sort descending by stock — highest stock location is always preferred
+      const byStock = [...tgts.filter(t => t.stock > 0)].sort((a, b) => b.stock - a.stock);
+      if (byStock.length === 0) return item;
+
+      // If the best single location covers the full quantity, use only that one
+      if (byStock[0].stock >= item.quantity) {
+        const best = byStock[0];
+        return { ...item, dispatch: [{ stock_location_id: best.locationId, stock_location_name: best.locationName, sub_location_code: best.subCode, quantity: item.quantity }] };
       }
+
+      // Otherwise greedy-fill: take as much as possible from highest-stock locations first.
+      // If total stock < needed quantity, assign what's available and leave the rest
+      // unassigned — the dispatch indicator will show partial and the user can fill the gap.
       let rem = item.quantity;
-      const nd = [...stockTgts].sort((a, b) => b.stock - a.stock).reduce<typeof item.dispatch>((acc, t) => {
-        if (rem <= 0) return acc;
-        const q = Math.min(t.stock, rem); rem -= q;
-        return [...(acc || []), { stock_location_id: t.locationId, stock_location_name: t.locationName, sub_location_code: t.subCode, quantity: q }];
-      }, []);
-      return { ...item, dispatch: nd || [] };
+      const nd: NonNullable<typeof item.dispatch> = [];
+      for (const t of byStock) {
+        if (rem <= 0) break;
+        const q = Math.min(t.stock, rem);
+        rem -= q;
+        nd.push({ stock_location_id: t.locationId, stock_location_name: t.locationName, sub_location_code: t.subCode, quantity: q });
+      }
+      return { ...item, dispatch: nd };
     }));
   };
 
