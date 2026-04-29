@@ -97,7 +97,9 @@ export default function BonCommandeDetailPage() {
 
   // Custom product form
   const [showCustomForm, setShowCustomForm] = useState(false);
-  const [customForm, setCustomForm] = useState({ barcode: '', name: '', brand: '', unitPrice: '' });
+  const [customForm, setCustomForm] = useState({ barcode: '', name: '', brand: '', unitPrice: '', provider_id: '', provider_name: '' });
+  const [showNewProviderInput, setShowNewProviderInput] = useState(false);
+  const [newProviderName, setNewProviderName] = useState('');
 
   // Client autocomplete
   const [clientSuggestions, setClientSuggestions] = useState<Client[]>([]);
@@ -214,7 +216,7 @@ export default function BonCommandeDetailPage() {
         price,
         buyprice: 0,
         reseller_price: 0,
-        provider: '',
+        provider: customForm.provider_name || '',
         stock_levels: {},
       },
       priceType: 'normal',
@@ -228,9 +230,11 @@ export default function BonCommandeDetailPage() {
       quoteBrand: customForm.brand,
       quoteBarcode: customForm.barcode,
       dispatch: [],
+      provider_id: customForm.provider_id || undefined,
+      provider_name: customForm.provider_name || undefined,
     };
     setDraftItems(prev => [...prev, newItem]);
-    setCustomForm({ barcode: '', name: '', brand: '', unitPrice: '' });
+    setCustomForm({ barcode: '', name: '', brand: '', unitPrice: '', provider_id: '', provider_name: '' });
     setShowCustomForm(false);
   };
 
@@ -483,6 +487,58 @@ export default function BonCommandeDetailPage() {
                   className="w-full mt-0.5 px-2 py-1 text-sm border border-input rounded bg-background"
                   placeholder="0.00" />
               </div>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">Fournisseur</label>
+              {showNewProviderInput ? (
+                <div className="flex gap-2 mt-0.5">
+                  <input
+                    type="text"
+                    value={newProviderName}
+                    onChange={e => setNewProviderName(e.target.value)}
+                    className="flex-1 px-2 py-1 text-sm border border-input rounded bg-background"
+                    placeholder="Nom du fournisseur"
+                  />
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!newProviderName.trim()) return;
+                      try {
+                        const created = await StockLocationsService.upsertProvider({ name: newProviderName.trim(), is_custom: true });
+                        setProviders(prev => [...prev, created]);
+                        setCustomForm(f => ({ ...f, provider_id: created.id, provider_name: created.name }));
+                        setNewProviderName('');
+                        setShowNewProviderInput(false);
+                      } catch {
+                        showToast({ type: 'error', message: 'Erreur lors de la création du fournisseur' });
+                      }
+                    }}
+                    className="px-2 py-1 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90"
+                  >
+                    OK
+                  </button>
+                  <button type="button" onClick={() => setShowNewProviderInput(false)} className="p-1 hover:bg-accent rounded">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex gap-2 mt-0.5">
+                  <select
+                    value={customForm.provider_id}
+                    onChange={e => {
+                      const sel = providers.find(p => p.id === e.target.value);
+                      setCustomForm(f => ({ ...f, provider_id: e.target.value, provider_name: sel?.name || '' }));
+                    }}
+                    className="flex-1 px-2 py-1 text-sm border border-input rounded bg-background text-foreground"
+                  >
+                    <option value="">— Aucun —</option>
+                    {providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                  <button type="button" onClick={() => setShowNewProviderInput(true)} className="px-2 py-1 text-xs border border-input rounded hover:bg-accent text-foreground whitespace-nowrap">
+                    + Nouveau
+                  </button>
+                </div>
+              )}
             </div>
             <button
               onClick={addCustomProduct}

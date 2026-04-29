@@ -28,7 +28,9 @@ import {
   MessageCircle,
   Mail,
   Truck,
-  AlertCircle
+  AlertCircle,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { Quote, QuoteItem, CustomerInfo, Product, Provider } from '../types';
 import { StockLocationsService } from '../utils/supabaseStockLocations';
@@ -391,40 +393,27 @@ export function QuoteCartPage() {
     });
   };
 
-  // Open inline custom product form
+  // Toggle inline custom product form
   const openCustomProductForm = () => {
-    setCustomFormData({ barcode: '', name: '', brand: '', unitPrice: '' });
-    setShowCustomProductForm(true);
+    if (!showCustomProductForm) {
+      setCustomFormData({ barcode: '', name: '', brand: '', unitPrice: '', provider_id: '', provider_name: '' });
+      setShowNewProviderInput(false);
+      setNewProviderName('');
+    }
+    setShowCustomProductForm(v => !v);
   };
 
   // Submit the inline custom product form
   const submitCustomProduct = () => {
     const { barcode, name, brand, unitPrice: unitPriceStr } = customFormData;
-    if (!barcode.trim()) {
-      showToast({ type: 'warning', title: 'Champ requis', message: 'Le code-barres est requis' });
-      return;
-    }
     if (!name.trim()) {
       showToast({ type: 'warning', title: 'Champ requis', message: 'Le nom du produit est requis' });
       return;
     }
-    if (!brand.trim()) {
-      showToast({ type: 'warning', title: 'Champ requis', message: 'La marque est requise' });
-      return;
-    }
-    const unitPrice = parseFloat(unitPriceStr);
-    if (isNaN(unitPrice) || unitPrice < 0) {
-      showToast({ type: 'error', title: 'Prix invalide', message: 'Le prix doit être un nombre positif ou zéro' });
-      return;
-    }
-    const existingItem = items.find(item => item.product.barcode === barcode.trim());
-    if (existingItem) {
-      showToast({ type: 'warning', title: 'Produit existant', message: 'Un produit avec ce code-barres existe déjà dans le devis' });
-      return;
-    }
+    const unitPrice = parseFloat(unitPriceStr) || 0;
     const { provider_id, provider_name } = customFormData;
     const customProduct: Product = {
-      barcode: barcode.trim(),
+      barcode: barcode.trim() || crypto.randomUUID(),
       name: name.trim(),
       brand: brand.trim(),
       techsheet: '',
@@ -1147,10 +1136,10 @@ export function QuoteCartPage() {
           </h2>
           <button
             onClick={openCustomProductForm}
-            className="flex items-center space-x-1 px-2.5 py-1.5 bg-green-600 hover:bg-green-700 text-primary-foreground rounded-lg transition-colors text-xs"
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
-            <Plus className="h-3.5 w-3.5" />
-            <span>Produit Manuel</span>
+            {showCustomProductForm ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            Produit hors catalogue
           </button>
         </div>
 
@@ -1213,6 +1202,112 @@ export function QuoteCartPage() {
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* Inline custom product form */}
+        {showCustomProductForm && (
+          <div className="mt-2 p-3 bg-muted/30 rounded-lg border border-border space-y-2">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs text-muted-foreground">Désignation *</label>
+                <input
+                  value={customFormData.name}
+                  onChange={e => setCustomFormData(prev => ({ ...prev, name: e.target.value }))}
+                  className="w-full mt-0.5 px-2 py-1 text-sm border border-input rounded bg-background text-foreground"
+                  placeholder="Nom du produit"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">Marque</label>
+                <input
+                  value={customFormData.brand}
+                  onChange={e => setCustomFormData(prev => ({ ...prev, brand: e.target.value }))}
+                  className="w-full mt-0.5 px-2 py-1 text-sm border border-input rounded bg-background text-foreground"
+                  placeholder="Marque"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">Code-barre</label>
+                <input
+                  value={customFormData.barcode}
+                  onChange={e => setCustomFormData(prev => ({ ...prev, barcode: e.target.value }))}
+                  className="w-full mt-0.5 px-2 py-1 text-sm border border-input rounded bg-background text-foreground"
+                  placeholder="Optionnel"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">Prix unitaire</label>
+                <input
+                  type="number" min={0} step="0.01"
+                  value={customFormData.unitPrice}
+                  onChange={e => setCustomFormData(prev => ({ ...prev, unitPrice: e.target.value }))}
+                  className="w-full mt-0.5 px-2 py-1 text-sm border border-input rounded bg-background text-foreground"
+                  placeholder="0.00"
+                  onKeyDown={e => e.key === 'Enter' && submitCustomProduct()}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">Fournisseur</label>
+              {showNewProviderInput ? (
+                <div className="flex gap-2 mt-0.5">
+                  <input
+                    type="text"
+                    value={newProviderName}
+                    onChange={e => setNewProviderName(e.target.value)}
+                    className="flex-1 px-2 py-1 text-sm border border-input rounded bg-background text-foreground"
+                    placeholder="Nom du fournisseur"
+                  />
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!newProviderName.trim()) return;
+                      try {
+                        const created = await StockLocationsService.upsertProvider({ name: newProviderName.trim(), is_custom: true });
+                        setProviders(prev => [...prev, created]);
+                        setCustomFormData(prev => ({ ...prev, provider_id: created.id, provider_name: created.name }));
+                        setNewProviderName('');
+                        setShowNewProviderInput(false);
+                      } catch {
+                        showToast({ type: 'error', message: 'Erreur lors de la création du fournisseur' });
+                      }
+                    }}
+                    className="px-2 py-1 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90"
+                  >
+                    OK
+                  </button>
+                  <button type="button" onClick={() => setShowNewProviderInput(false)} className="p-1 hover:bg-accent rounded">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex gap-2 mt-0.5">
+                  <select
+                    value={customFormData.provider_id}
+                    onChange={e => {
+                      const sel = providers.find(p => p.id === e.target.value);
+                      setCustomFormData(prev => ({ ...prev, provider_id: e.target.value, provider_name: sel?.name || '' }));
+                    }}
+                    className="flex-1 px-2 py-1 text-sm border border-input rounded bg-background text-foreground"
+                  >
+                    <option value="">— Aucun —</option>
+                    {providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                  <button type="button" onClick={() => setShowNewProviderInput(true)} className="px-2 py-1 text-xs border border-input rounded hover:bg-accent text-foreground whitespace-nowrap">
+                    + Nouveau
+                  </button>
+                </div>
+              )}
+            </div>
+            <button
+              onClick={submitCustomProduct}
+              disabled={!customFormData.name.trim()}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-40"
+            >
+              <Plus className="h-3.5 w-3.5" /> Ajouter
+            </button>
           </div>
         )}
       </div>
@@ -1744,138 +1839,6 @@ export function QuoteCartPage() {
             <button onClick={() => setShowWaRecipientModal(false)} className="w-full px-3 py-1.5 text-sm border border-input rounded-lg hover:bg-accent text-foreground">
               Annuler
             </button>
-          </div>
-        </div>
-      )}
-
-      {/* Custom Product Inline Form Modal */}
-      {showCustomProductForm && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 bg-black/50 backdrop-blur-sm p-4">
-          <div className="glass rounded-xl shadow-2xl w-full max-w-md p-5 space-y-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between">
-              <h2 className="text-base font-bold text-foreground flex items-center space-x-2">
-                <Package className="h-4 w-4" />
-                <span>Produit Personnalisé</span>
-              </h2>
-              <button onClick={() => setShowCustomProductForm(false)} className="p-1 hover:bg-accent rounded-lg">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-medium text-foreground mb-1">Code-barres *</label>
-                <input
-                  type="text"
-                  value={customFormData.barcode}
-                  onChange={e => setCustomFormData(prev => ({ ...prev, barcode: e.target.value }))}
-                  className="w-full px-3 py-1.5 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-background text-foreground"
-                  placeholder="Ex: CUSTOM-001"
-                  autoFocus
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-foreground mb-1">Nom du produit *</label>
-                <input
-                  type="text"
-                  value={customFormData.name}
-                  onChange={e => setCustomFormData(prev => ({ ...prev, name: e.target.value }))}
-                  className="w-full px-3 py-1.5 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-background text-foreground"
-                  placeholder="Nom du produit"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-foreground mb-1">Marque *</label>
-                <input
-                  type="text"
-                  value={customFormData.brand}
-                  onChange={e => setCustomFormData(prev => ({ ...prev, brand: e.target.value }))}
-                  className="w-full px-3 py-1.5 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-background text-foreground"
-                  placeholder="Marque"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-foreground mb-1">Fournisseur</label>
-                {showNewProviderInput ? (
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={newProviderName}
-                      onChange={e => setNewProviderName(e.target.value)}
-                      className="flex-1 px-3 py-1.5 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-background text-foreground"
-                      placeholder="Nom du fournisseur"
-                    />
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        if (!newProviderName.trim()) return;
-                        try {
-                          const created = await StockLocationsService.upsertProvider({ name: newProviderName.trim(), is_custom: true });
-                          setProviders(prev => [...prev, created]);
-                          setCustomFormData(prev => ({ ...prev, provider_id: created.id, provider_name: created.name }));
-                          setNewProviderName('');
-                          setShowNewProviderInput(false);
-                        } catch {
-                          showToast({ type: 'error', message: 'Erreur lors de la création du fournisseur' });
-                        }
-                      }}
-                      className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
-                    >
-                      Ajouter
-                    </button>
-                    <button type="button" onClick={() => setShowNewProviderInput(false)} className="p-1.5 hover:bg-accent rounded-lg">
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex gap-2">
-                    <select
-                      value={customFormData.provider_id}
-                      onChange={e => {
-                        const sel = providers.find(p => p.id === e.target.value);
-                        setCustomFormData(prev => ({ ...prev, provider_id: e.target.value, provider_name: sel?.name || '' }));
-                      }}
-                      className="flex-1 px-3 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground"
-                    >
-                      <option value="">— Aucun —</option>
-                      {providers.map(p => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                      ))}
-                    </select>
-                    <button type="button" onClick={() => setShowNewProviderInput(true)} className="px-3 py-1.5 text-sm border border-input rounded-lg hover:bg-accent text-foreground whitespace-nowrap">
-                      + Nouveau
-                    </button>
-                  </div>
-                )}
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-foreground mb-1">Prix unitaire (0 pour cadeau)</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={customFormData.unitPrice}
-                  onChange={e => setCustomFormData(prev => ({ ...prev, unitPrice: e.target.value }))}
-                  className="w-full px-3 py-1.5 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-background text-foreground"
-                  placeholder="0.00"
-                  onKeyDown={e => e.key === 'Enter' && submitCustomProduct()}
-                />
-              </div>
-            </div>
-            <div className="flex space-x-2">
-              <button
-                onClick={() => setShowCustomProductForm(false)}
-                className="flex-1 px-3 py-1.5 text-sm border border-input rounded-lg hover:bg-accent text-foreground"
-              >
-                Annuler
-              </button>
-              <button
-                onClick={submitCustomProduct}
-                className="flex-1 flex items-center justify-center space-x-1.5 px-3 py-1.5 text-sm bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                <span>Ajouter</span>
-              </button>
-            </div>
           </div>
         </div>
       )}
