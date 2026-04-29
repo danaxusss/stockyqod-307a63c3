@@ -66,6 +66,7 @@ export interface QuoteItem {
   dispatch?: Array<{
     stock_location_id: string;
     stock_location_name?: string;
+    stock_location_abbrev?: string;
     sub_location_code: string;
     quantity: number;
   }>;

@@ -258,7 +258,7 @@ export default function BonCommandeDetailPage() {
     ));
   };
 
-  const updateDispatch = (itemId: string, locId: string, subCode: string, locName: string, qty: number) => {
+  const updateDispatch = (itemId: string, locId: string, subCode: string, locName: string, qty: number, locAbbrev?: string) => {
     setDraftItems(prev => prev.map(item => {
       if (item.id !== itemId) return item;
       const key = `${locId}::${subCode}`;
@@ -266,7 +266,7 @@ export default function BonCommandeDetailPage() {
         d => `${d.stock_location_id}::${d.sub_location_code}` !== key
       );
       const newDispatch = qty > 0
-        ? [...filtered, { stock_location_id: locId, stock_location_name: locName, sub_location_code: subCode, quantity: qty }]
+        ? [...filtered, { stock_location_id: locId, stock_location_name: locName, stock_location_abbrev: locAbbrev || locId, sub_location_code: subCode, quantity: qty }]
         : filtered;
       return { ...item, dispatch: newDispatch };
     }));
@@ -290,7 +290,7 @@ export default function BonCommandeDetailPage() {
       // If the best single location covers the full quantity, use only that one
       if (byStock[0].stock >= item.quantity) {
         const best = byStock[0];
-        return { ...item, dispatch: [{ stock_location_id: best.locationId, stock_location_name: best.locationName, sub_location_code: best.subCode, quantity: item.quantity }] };
+        return { ...item, dispatch: [{ stock_location_id: best.locationId, stock_location_name: best.locationName, stock_location_abbrev: best.locationAbbrev, sub_location_code: best.subCode, quantity: item.quantity }] };
       }
 
       // Otherwise greedy-fill: take as much as possible from highest-stock locations first.
@@ -302,7 +302,7 @@ export default function BonCommandeDetailPage() {
         if (rem <= 0) break;
         const q = Math.min(t.stock, rem);
         rem -= q;
-        nd.push({ stock_location_id: t.locationId, stock_location_name: t.locationName, sub_location_code: t.subCode, quantity: q });
+        nd.push({ stock_location_id: t.locationId, stock_location_name: t.locationName, stock_location_abbrev: t.locationAbbrev, sub_location_code: t.subCode, quantity: q });
       }
       return { ...item, dispatch: nd };
     }));
@@ -685,7 +685,7 @@ export default function BonCommandeDetailPage() {
                       </button>
                       {quickTarget && (
                         <button
-                          onClick={() => updateDispatch(item.id, quickTarget.locationId, quickTarget.subCode, quickTarget.locationName, item.quantity)}
+                          onClick={() => updateDispatch(item.id, quickTarget.locationId, quickTarget.subCode, quickTarget.locationName, item.quantity, quickTarget.locationAbbrev)}
                           className="text-[10px] px-2 py-1 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 rounded-full font-semibold hover:bg-emerald-500/25 transition-colors whitespace-nowrap"
                           title={`Affecter ${item.quantity} → ${quickTarget.locationAbbrev}`}
                         >
@@ -748,7 +748,7 @@ export default function BonCommandeDetailPage() {
                                             type="number" min={0} max={item.quantity}
                                             value={qty || ''}
                                             placeholder="0"
-                                            onChange={e => updateDispatch(item.id, t.locationId, t.subCode, t.locationName, parseInt(e.target.value) || 0)}
+                                            onChange={e => updateDispatch(item.id, t.locationId, t.subCode, t.locationName, parseInt(e.target.value) || 0, t.locationAbbrev)}
                                             className="w-14 h-6 text-xs text-center border border-input rounded bg-background shrink-0"
                                           />
                                         </div>
@@ -783,7 +783,7 @@ export default function BonCommandeDetailPage() {
                                 onChange={e => {
                                   const abbrev = customLocInputs[item.id]?.abbrev?.trim();
                                   if (!abbrev) return;
-                                  updateDispatch(item.id, 'custom', abbrev, customLocInputs[item.id]?.name || abbrev, parseInt(e.target.value) || 0);
+                                  updateDispatch(item.id, 'custom', abbrev, customLocInputs[item.id]?.name || abbrev, parseInt(e.target.value) || 0, abbrev);
                                 }}
                                 className="w-14 h-6 text-xs text-center border border-input rounded bg-background shrink-0"
                               />

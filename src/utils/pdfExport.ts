@@ -467,17 +467,18 @@ export class PdfExportService {
         const pb = (b.provider_name || b.product?.provider || '').toLowerCase();
         return pa.localeCompare(pb);
       });
-      tableHeaders = [['Marque', 'REF', 'DESCRIPTION', 'QTE', 'Lieu de collecte', 'Sous-stock']];
+      tableHeaders = [['Marque', 'REF', 'DESCRIPTION', 'QTE', 'Collecte']];
       tableBody = sortedItems.flatMap(item => {
         if (item.dispatch && item.dispatch.length > 0) {
-          return item.dispatch.map(d => [
-            getQuoteItemBrand(item) || '',
-            getQuoteItemBarcode(item) || '',
-            getQuoteItemName(item),
-            String(d.quantity),
-            d.stock_location_name || '',
-            d.sub_location_code || '',
-          ]);
+          return item.dispatch
+            .filter(d => d.quantity > 0)
+            .map(d => [
+              getQuoteItemBrand(item) || '',
+              getQuoteItemBarcode(item) || '',
+              getQuoteItemName(item),
+              String(d.quantity),
+              d.stock_location_abbrev || d.stock_location_name || '',
+            ]);
         }
         return [[
           getQuoteItemBrand(item) || '',
@@ -485,16 +486,14 @@ export class PdfExportService {
           getQuoteItemName(item),
           String(item.quantity),
           '',
-          '',
         ]];
       });
       itemColumnStyles = {
-        0: { cellWidth: 18, halign: 'center' },
-        1: { cellWidth: 24, halign: 'center' },
+        0: { cellWidth: 20, halign: 'center' },
+        1: { cellWidth: 26, halign: 'center' },
         2: { cellWidth: 'auto' },
-        3: { cellWidth: 12, halign: 'center', fontStyle: 'bold' },
-        4: { cellWidth: 30, halign: 'left' },
-        5: { cellWidth: 20, halign: 'center' },
+        3: { cellWidth: 14, halign: 'center', fontStyle: 'bold' },
+        4: { cellWidth: 22, halign: 'center', fontStyle: 'bold' },
       };
     } else if (isBL && !showBLPrices) {
       // BL: no price columns
