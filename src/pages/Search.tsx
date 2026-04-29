@@ -385,12 +385,18 @@ export function SearchPage() {
                         <span>#{product.barcode}</span>
                         <span className="font-semibold text-emerald-500">{displayPrice.toFixed(2)} Dh</span>
                         <span>Stock: {totalStock}</span>
-                        {accessibleStockLevels.map(([location, level]) => (
-                          <span key={location} className="px-1.5 py-0.5 bg-secondary text-secondary-foreground rounded capitalize hidden md:inline">
-                            {location.replace(/_/g, ' ')}: {level}
-                          </span>
-                        ))}
                       </div>
+                      {accessibleStockLevels.filter(([, qty]) => qty > 0).length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {accessibleStockLevels
+                            .filter(([, qty]) => qty > 0)
+                            .map(([location, level]) => (
+                              <span key={location} className="inline-flex items-center px-1.5 py-0.5 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-[10px] font-medium rounded-full border border-emerald-500/20 capitalize">
+                                {location.replace(/_/g, ' ')}: {level}
+                              </span>
+                            ))}
+                        </div>
+                      )}
                     </Link>
                     <div className="flex items-center gap-1.5 shrink-0">
                       {canCreateQuote() && (

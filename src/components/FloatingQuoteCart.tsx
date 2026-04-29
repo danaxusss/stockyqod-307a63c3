@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShoppingCart, X, Copy, Trash2, Package, FileText, ChevronRight } from 'lucide-react';
+import { ShoppingCart, X, Copy, Trash2, Package, FileText, ChevronRight, Minus, Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useQuoteCart } from '../hooks/useQuoteCart';
 import { useToast } from '../context/ToastContext';
@@ -131,6 +131,25 @@ export function FloatingQuoteCart() {
                   </div>
 
                   <div className="border-t border-border/40 px-2.5 py-2 space-y-1.5">
+                    {/* Quantity stepper */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-muted-foreground">Quantité</span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => updateCartItem(item.id, { quantity: Math.max(1, (item.quantity || 1) - 1) })}
+                          className="w-5 h-5 flex items-center justify-center rounded border border-border hover:bg-accent text-foreground transition-colors"
+                        >
+                          <Minus className="h-2.5 w-2.5" />
+                        </button>
+                        <span className="text-[11px] font-semibold text-foreground w-5 text-center">{item.quantity || 1}</span>
+                        <button
+                          onClick={() => updateCartItem(item.id, { quantity: (item.quantity || 1) + 1 })}
+                          className="w-5 h-5 flex items-center justify-center rounded border border-border hover:bg-accent text-foreground transition-colors"
+                        >
+                          <Plus className="h-2.5 w-2.5" />
+                        </button>
+                      </div>
+                    </div>
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] text-muted-foreground">Achat (TTC)</span>
                       <span className="text-[10px] font-medium text-muted-foreground">{fmt(item.product.buyprice)} Dh</span>
