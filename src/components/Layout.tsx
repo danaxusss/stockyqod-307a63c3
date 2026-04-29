@@ -1,5 +1,5 @@
 import React, { ReactNode, useState, useRef, useCallback } from 'react';
-import { RefreshCw, Bot } from 'lucide-react';
+import { RefreshCw, Bot, Menu, Package } from 'lucide-react';
 import { useUserAuth } from '../hooks/useUserAuth';
 import { useAppContext } from '../context/AppContext';
 import { Sidebar } from './Sidebar';
@@ -18,6 +18,7 @@ export function Layout({ children }: LayoutProps) {
   const [isPulling, setIsPulling] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const mainRef = useRef<HTMLElement>(null);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   const PULL_THRESHOLD = 80;
   const MAX_PULL_DISTANCE = 120;
@@ -53,9 +54,34 @@ export function Layout({ children }: LayoutProps) {
 
   return (
     <div className="h-screen bg-background flex overflow-hidden">
-      <Sidebar />
+      {/* Mobile sidebar backdrop */}
+      {mobileSidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          onClick={() => setMobileSidebarOpen(false)}
+        />
+      )}
+
+      <Sidebar mobileOpen={mobileSidebarOpen} onMobileClose={() => setMobileSidebarOpen(false)} />
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Mobile top bar */}
+        <div className="md:hidden flex items-center h-12 px-3 border-b border-border/40 bg-card shrink-0 gap-2.5">
+          <button
+            onClick={() => setMobileSidebarOpen(true)}
+            className="p-1.5 -ml-0.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+            title="Menu"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+          <div className="flex items-center gap-1.5">
+            <div className="w-6 h-6 rounded-md bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center">
+              <Package className="h-3.5 w-3.5 text-white" />
+            </div>
+            <span className="text-sm font-bold text-foreground">Stocky</span>
+          </div>
+        </div>
+
         {/* Pull-to-refresh indicator */}
         {isUserAuthenticated && (isPulling || isSyncing) && (
           <div
@@ -95,17 +121,17 @@ export function Layout({ children }: LayoutProps) {
         </footer>
       </div>
 
-      {/* AI Chat side panel — pushes main content, no overlay */}
-      <div className={`flex flex-col border-l border-border/40 bg-card shrink-0 overflow-hidden transition-[width] duration-200 ease-in-out ${chatOpen ? 'w-80' : 'w-0'}`}>
+      {/* AI Chat side panel — desktop only */}
+      <div className={`hidden md:flex flex-col border-l border-border/40 bg-card shrink-0 overflow-hidden transition-[width] duration-200 ease-in-out ${chatOpen ? 'w-80' : 'w-0'}`}>
         {chatOpen && <AIChatWidget embedded onClose={() => setChatOpen(false)} />}
       </div>
 
-      {/* Tab button — visible only when chat is closed */}
+      {/* AI Chat tab button — desktop only */}
       {!chatOpen && (
         <button
           onClick={() => setChatOpen(true)}
           title="Assistant IA"
-          className="fixed right-0 top-1/2 -translate-y-1/2 z-30 flex flex-col items-center gap-1 py-3 px-1.5 bg-primary text-primary-foreground rounded-l-lg shadow-lg hover:bg-primary/90 transition-colors"
+          className="hidden md:flex fixed right-0 top-1/2 -translate-y-1/2 z-30 flex-col items-center gap-1 py-3 px-1.5 bg-primary text-primary-foreground rounded-l-lg shadow-lg hover:bg-primary/90 transition-colors"
         >
           <Bot className="h-4 w-4" />
           <span className="text-[9px] font-semibold tracking-wide [writing-mode:vertical-lr] rotate-180">IA</span>

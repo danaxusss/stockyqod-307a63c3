@@ -388,7 +388,7 @@ export function Home() {
 
   /* ── Data ── */
   const navItems: NavItem[] = [
-    { to: '/products',  icon: FolderOpen,   label: 'Catalogue',       sub: 'Parcourir',  accent: 'bg-indigo-500',  color: '#6366f1' },
+    { to: '/products',  icon: FolderOpen,   label: 'Produits',        sub: 'Parcourir',  accent: 'bg-indigo-500',  color: '#6366f1' },
     { to: '/clients',   icon: Users,         label: 'Clients',        sub: 'Gestion',    accent: 'bg-sky-500',     color: '#0ea5e9' },
     { to: '/sheets',    icon: FileText,      label: 'Fiches',         sub: 'Documents',  accent: 'bg-teal-500',    color: '#14b8a6' },
     { to: '/photos',    icon: Images,        label: 'Galerie',        sub: 'Photos',     accent: 'bg-pink-500',    color: '#ec4899' },
