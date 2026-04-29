@@ -44,7 +44,7 @@ function buildDispatchTargets(
         subCode: '',
         subName: '',
         providerName: provName,
-        stock: product?.stock_levels?.[loc.name] ?? 0,
+        stock: product?.stock_levels?.[loc.abbreviation] ?? product?.stock_levels?.[loc.name] ?? 0,
       });
     } else {
       for (const sub of subs) {
@@ -55,7 +55,7 @@ function buildDispatchTargets(
           subCode: sub.code,
           subName: sub.name,
           providerName: provName,
-          stock: product?.stock_levels?.[loc.name] ?? 0,
+          stock: product?.stock_levels?.[loc.abbreviation] ?? product?.stock_levels?.[loc.name] ?? 0,
         });
       }
     }

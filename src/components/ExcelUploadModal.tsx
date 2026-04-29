@@ -140,7 +140,7 @@ export function ExcelUploadModal({ onClose, onSuccess }: ExcelUploadModalProps) 
             const barcode = String(row[columnMapping.barcode] || '').trim();
             const productName = String(row[columnMapping.productName] || '').trim();
             const brand = columnMapping.brand !== undefined ? String(row[columnMapping.brand] || '').trim() : '';
-            const stockLocation = String(row[columnMapping.stockLocation] || '').toLowerCase().trim();
+            const stockLocation = String(row[columnMapping.stockLocation] || '').trim();
             const stockLevel = parseNumericValue(row[columnMapping.stockLevel]);
             const buyPrice = parseNumericValue(row[columnMapping.buyPrice]);
             const provider = columnMapping.provider !== undefined ? String(row[columnMapping.provider] || '').trim() : '';
@@ -198,7 +198,7 @@ export function ExcelUploadModal({ onClose, onSuccess }: ExcelUploadModalProps) 
             if (provider && !product.provider) product.provider = provider;
 
             // Aggregate stock by location
-            const normalizedLocation = stockLocation.replace(/\s+/g, '_') || 'default';
+            const normalizedLocation = stockLocation || 'default';
             if (product.stock_levels[normalizedLocation]) {
               product.stock_levels[normalizedLocation] += stockLevel;
             } else {

@@ -71,7 +71,7 @@ export function searchProductsLocally(
   const queryLower = query.toLowerCase().trim();
   const queryTokens = queryLower.length > 0 ? queryLower.split(/\s+/).filter(t => t.length > 0) : [];
   const brandLower = brand.toLowerCase().trim();
-  const stockLocationLower = stockLocation.toLowerCase().trim();
+  const stockLocationFilter = stockLocation.trim();
   const overrideLookup = buildOverrideLookup(overrides);
 
   return products.filter(product => {
@@ -82,10 +82,10 @@ export function searchProductsLocally(
     if (brandLower && !brandNames.includes(brandLower)) return false;
 
     // Stock location filter
-    if (stockLocationLower) {
+    if (stockLocationFilter) {
       if (!product.stock_levels) return false;
       const hasStock = Object.keys(product.stock_levels).some(loc =>
-        loc.toLowerCase() === stockLocationLower && (product.stock_levels[loc] || 0) > 0
+        loc === stockLocationFilter && (product.stock_levels[loc] || 0) > 0
       );
       if (!hasStock) return false;
     }
