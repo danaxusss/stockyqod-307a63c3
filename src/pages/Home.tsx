@@ -20,7 +20,14 @@ interface ActivityLog {
 }
 
 /* ─── Circle Nav ─────────────────────────────────────────────────────────────*/
-interface NavItem { to: string; icon: React.ElementType; label: string; sub?: string; accent: string; }
+interface NavItem { to: string; icon: React.ElementType; label: string; sub?: string; accent: string; color: string; }
+
+const hexAlpha = (hex: string, a: number) => {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${a})`;
+};
 
 function CircleNav({ items }: { items: NavItem[] }) {
   const [hovered, setHovered] = useState<number | null>(null);
@@ -69,7 +76,7 @@ function CircleNav({ items }: { items: NavItem[] }) {
                 <path
                   key={i}
                   d={segPath(cDeg)}
-                  fill={isHov ? 'hsl(var(--primary))' : 'hsl(var(--card))'}
+                  fill={isHov ? item.color : hexAlpha(item.color, 0.09)}
                   stroke="hsl(var(--background))"
                   strokeWidth={5}
                   style={{ cursor: 'pointer', transition: 'fill 0.15s ease' }}
@@ -111,7 +118,7 @@ function CircleNav({ items }: { items: NavItem[] }) {
               >
                 <Icon
                   className="shrink-0 transition-colors duration-150"
-                  style={{ width: 22, height: 22, color: isHov ? 'white' : 'hsl(var(--primary))' }}
+                  style={{ width: 22, height: 22, color: isHov ? 'white' : item.color }}
                 />
                 <span
                   className="text-[10px] font-semibold text-center leading-tight transition-colors duration-150"
@@ -381,13 +388,13 @@ export function Home() {
 
   /* ── Data ── */
   const navItems: NavItem[] = [
-    { to: '/products',  icon: FolderOpen,   label: 'Catalogue',       sub: 'Parcourir',       accent: 'bg-indigo-500' },
-    { to: '/clients',   icon: Users,         label: 'Clients',         sub: 'Gestion',         accent: 'bg-sky-500' },
-    { to: '/sheets',    icon: FileText,      label: 'Fiches',          sub: 'Documents',       accent: 'bg-teal-500' },
-    { to: '/photos',    icon: Images,        label: 'Galerie',         sub: 'Photos',          accent: 'bg-pink-500' },
+    { to: '/products',  icon: FolderOpen,   label: 'Catalogue',       sub: 'Parcourir',  accent: 'bg-indigo-500',  color: '#6366f1' },
+    { to: '/clients',   icon: Users,         label: 'Clients',        sub: 'Gestion',    accent: 'bg-sky-500',     color: '#0ea5e9' },
+    { to: '/sheets',    icon: FileText,      label: 'Fiches',         sub: 'Documents',  accent: 'bg-teal-500',    color: '#14b8a6' },
+    { to: '/photos',    icon: Images,        label: 'Galerie',        sub: 'Photos',     accent: 'bg-pink-500',    color: '#ec4899' },
     ...(canCreateQuote() ? [
-      { to: '/quote-cart',     icon: ShoppingCart, label: 'Nouveau Devis', sub: 'Créer',      accent: 'bg-violet-500' },
-      { to: '/quotes-history', icon: FileText,     label: 'Devis',         sub: 'Historique', accent: 'bg-emerald-500' },
+      { to: '/quote-cart',     icon: ShoppingCart, label: 'Nouveau Devis', sub: 'Créer',      accent: 'bg-violet-500',  color: '#8b5cf6' },
+      { to: '/quotes-history', icon: FileText,     label: 'Devis',         sub: 'Historique', accent: 'bg-emerald-500', color: '#10b981' },
     ] : []),
   ];
 
