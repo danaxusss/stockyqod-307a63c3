@@ -34,12 +34,12 @@ function CircleNav({ items }: { items: NavItem[] }) {
   const navigate = useNavigate();
 
   const n = items.length;
-  const W = 380;
-  const cx = W / 2;  // 190
-  const cy = W / 2;  // 190
-  const r1 = 76;     // inner radius (donut hole edge)
-  const r2 = 172;    // outer radius
-  const rm = (r1 + r2) / 2;  // 124 — mid-ring, icon anchor
+  const W = 430;
+  const cx = W / 2;  // 215
+  const cy = W / 2;  // 215
+  const r1 = 86;     // inner radius (donut hole edge)
+  const r2 = 194;    // outer radius
+  const rm = (r1 + r2) / 2;  // 140 — mid-ring, icon anchor
   const gap = 3.5;   // degrees gap between segments
   const span = 360 / n - gap;
 
