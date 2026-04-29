@@ -109,6 +109,7 @@ export default function BonCommandeDetailPage() {
   // Dispatch UI
   const [expandedDispatch, setExpandedDispatch] = useState<Set<string>>(new Set());
   const [dispatchShowAll, setDispatchShowAll] = useState<Set<string>>(new Set());
+  const [customLocInputs, setCustomLocInputs] = useState<Record<string, { abbrev: string; name: string }>>({});
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -267,6 +268,25 @@ export default function BonCommandeDetailPage() {
     (item.dispatch || []).length > 0 && totalDispatched(item) === item.quantity;
 
   const allDispatched = draftItems.length > 0 && draftItems.every(isItemDispatched);
+
+  const autoAssignAll = () => {
+    setDraftItems(prev => prev.map(item => {
+      const tgts = buildDispatchTargets(stockLocations, providers, item.product);
+      const stockTgts = tgts.filter(t => t.stock > 0);
+      if (stockTgts.length === 0) return item;
+      const perfect = stockTgts.find(t => t.stock >= item.quantity);
+      if (perfect) {
+        return { ...item, dispatch: [{ stock_location_id: perfect.locationId, stock_location_name: perfect.locationName, sub_location_code: perfect.subCode, quantity: item.quantity }] };
+      }
+      let rem = item.quantity;
+      const nd = [...stockTgts].sort((a, b) => b.stock - a.stock).reduce<typeof item.dispatch>((acc, t) => {
+        if (rem <= 0) return acc;
+        const q = Math.min(t.stock, rem); rem -= q;
+        return [...(acc || []), { stock_location_id: t.locationId, stock_location_name: t.locationName, sub_location_code: t.subCode, quantity: q }];
+      }, []);
+      return { ...item, dispatch: nd || [] };
+    }));
+  };
 
   const handleSave = async () => {
     if (!id || !bc) return;
@@ -554,10 +574,21 @@ export default function BonCommandeDetailPage() {
       {/* Dispatch summary */}
       {draftItems.length > 0 && (
         <div className={`rounded-xl p-3 flex items-center gap-2 text-sm ${allDispatched ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400' : 'bg-amber-500/10 text-amber-700 dark:text-amber-400'}`}>
-          {allDispatched
-            ? <><Check className="h-4 w-4 shrink-0" /> Tous les articles sont affectés aux emplacements de collecte.</>
-            : <><AlertCircle className="h-4 w-4 shrink-0" /> {draftItems.filter(i => !isItemDispatched(i)).length} article(s) sans affectation complète.</>
-          }
+          <span className="flex-1 flex items-center gap-2">
+            {allDispatched
+              ? <><Check className="h-4 w-4 shrink-0" /> Tous les articles sont affectés aux emplacements de collecte.</>
+              : <><AlertCircle className="h-4 w-4 shrink-0" /> {draftItems.filter(i => !isItemDispatched(i)).length} article(s) sans affectation complète.</>
+            }
+          </span>
+          {!allDispatched && stockLocations.length > 0 && (
+            <button
+              onClick={autoAssignAll}
+              className="flex items-center gap-1.5 text-xs px-2.5 py-1 bg-background border border-border rounded-lg hover:bg-accent transition-colors whitespace-nowrap font-medium shrink-0"
+              title="Affecter chaque article au meilleur emplacement disponible"
+            >
+              ⚡ Auto-affecter
+            </button>
+          )}
         </div>
       )}
 
@@ -578,7 +609,10 @@ export default function BonCommandeDetailPage() {
               const expanded = expandedDispatch.has(item.id);
               const showAll = dispatchShowAll.has(item.id);
               const targets = buildDispatchTargets(stockLocations, providers, item.product);
-              const visibleTargets = showAll ? targets : targets.filter(t => t.stock > 0);
+              const hasAnyStock = targets.some(t => t.stock > 0);
+              const stockTargets = targets.filter(t => t.stock > 0);
+              const quickTarget = !isDone ? stockTargets.find(t => t.stock >= item.quantity) : undefined;
+              const visibleTargets = (showAll || !hasAnyStock) ? targets : stockTargets;
 
               // Group by provider
               const grouped = visibleTargets.reduce<Record<string, DispatchTarget[]>>((acc, t) => {
@@ -595,6 +629,14 @@ export default function BonCommandeDetailPage() {
                         <span className="text-xs font-medium">{item.quoteName || item.product?.name}</span>
                         {item.quoteBrand && <span className="text-[10px] text-muted-foreground">{item.quoteBrand}</span>}
                         {item.quoteBarcode && <span className="text-[10px] font-mono text-muted-foreground">{item.quoteBarcode}</span>}
+                        {hasAnyStock
+                          ? stockTargets.slice(0, 5).map(t => (
+                              <span key={t.locationId + t.subCode} className="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded-full font-mono whitespace-nowrap">
+                                {t.locationAbbrev}:{t.stock}
+                              </span>
+                            ))
+                          : <span className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded-full">hors stock</span>
+                        }
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
@@ -621,6 +663,15 @@ export default function BonCommandeDetailPage() {
                         {isDone ? 'OK' : `${dispatched}/${item.quantity}`}
                         {expanded ? <ChevronUp className="h-3 w-3 ml-0.5" /> : <ChevronDown className="h-3 w-3 ml-0.5" />}
                       </button>
+                      {quickTarget && (
+                        <button
+                          onClick={() => updateDispatch(item.id, quickTarget.locationId, quickTarget.subCode, quickTarget.locationName, item.quantity)}
+                          className="text-[10px] px-2 py-1 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 rounded-full font-semibold hover:bg-emerald-500/25 transition-colors whitespace-nowrap"
+                          title={`Affecter ${item.quantity} → ${quickTarget.locationAbbrev}`}
+                        >
+                          ⚡{quickTarget.locationAbbrev}
+                        </button>
+                      )}
                       <button onClick={() => removeItem(item.id)} className="p-1 hover:bg-destructive/10 text-destructive rounded">
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
@@ -648,56 +699,85 @@ export default function BonCommandeDetailPage() {
 
                       {stockLocations.length === 0 ? (
                         <p className="text-xs text-muted-foreground">Aucun emplacement configuré. Allez dans Paramètres → Emplacements.</p>
-                      ) : Object.keys(grouped).length === 0 ? (
-                        <p className="text-xs text-muted-foreground">
-                          Aucun emplacement avec stock disponible.{' '}
-                          <button onClick={() => setDispatchShowAll(prev => new Set([...prev, item.id]))}
-                            className="text-primary hover:underline">Tout afficher</button>
-                        </p>
                       ) : (
-                        <div className="space-y-3">
-                          {Object.entries(grouped).map(([provName, locs]) => (
-                            <div key={provName}>
-                              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 mb-1.5">
-                                {provName}
-                              </p>
-                              <div className="space-y-1">
-                                {locs.map(t => {
-                                  const qty = getDispatchQty(item, t.locationId, t.subCode);
-                                  const label = t.subCode
-                                    ? `${t.locationAbbrev} › ${t.subName} (${t.subCode})`
-                                    : t.locationAbbrev;
-                                  return (
-                                    <div key={`${t.locationId}::${t.subCode}`}
-                                      className="flex items-center gap-3 text-xs">
-                                      <span className="w-40 truncate text-foreground" title={label}>{label}</span>
-                                      <span className={`w-16 tabular-nums ${t.stock === 0 ? 'text-muted-foreground/40' : 'text-muted-foreground'}`}>
-                                        stk: {t.stock}
-                                      </span>
-                                      <input
-                                        type="number" min={0} max={item.quantity}
-                                        value={qty}
-                                        onChange={e => updateDispatch(
-                                          item.id, t.locationId, t.subCode, t.locationName,
-                                          parseInt(e.target.value) || 0
-                                        )}
-                                        className="w-14 h-6 text-xs text-center border border-input rounded bg-background"
-                                      />
-                                    </div>
-                                  );
-                                })}
-                              </div>
+                        <>
+                          {!hasAnyStock && (
+                            <div className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 bg-amber-500/10 rounded px-2 py-1.5 mb-2">
+                              <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                              Produit hors stock — choisissez l'emplacement de collecte manuellement.
                             </div>
-                          ))}
-                        </div>
-                      )}
+                          )}
+                          {Object.keys(grouped).length > 0 && (
+                            <div className="space-y-3">
+                              {Object.entries(grouped).map(([provName, locs]) => (
+                                <div key={provName}>
+                                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 mb-1.5">{provName}</p>
+                                  <div className="space-y-1">
+                                    {locs.map(t => {
+                                      const qty = getDispatchQty(item, t.locationId, t.subCode);
+                                      return (
+                                        <div key={`${t.locationId}::${t.subCode}`} className="flex items-center gap-2 text-xs">
+                                          <span className={`w-10 text-center font-mono font-semibold text-[10px] px-1 py-0.5 rounded shrink-0 ${t.stock > 0 ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-muted text-muted-foreground/50'}`}>
+                                            {t.locationAbbrev}
+                                          </span>
+                                          <span className="flex-1 text-foreground truncate" title={t.locationName}>{t.locationName}</span>
+                                          <span className={`w-12 text-right tabular-nums text-[10px] shrink-0 ${t.stock === 0 ? 'text-muted-foreground/40' : 'text-muted-foreground'}`}>
+                                            stk:{t.stock}
+                                          </span>
+                                          <input
+                                            type="number" min={0} max={item.quantity}
+                                            value={qty || ''}
+                                            placeholder="0"
+                                            onChange={e => updateDispatch(item.id, t.locationId, t.subCode, t.locationName, parseInt(e.target.value) || 0)}
+                                            className="w-14 h-6 text-xs text-center border border-input rounded bg-background shrink-0"
+                                          />
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
 
-                      {dispatched > 0 && dispatched !== item.quantity && (
-                        <p className="mt-2 text-xs text-amber-600">
-                          {dispatched < item.quantity
-                            ? `Reste ${item.quantity - dispatched} unité(s) à affecter`
-                            : `Surplus de ${dispatched - item.quantity} unité(s)`}
-                        </p>
+                          {/* Custom / free-text location */}
+                          <div className="mt-3 pt-2.5 border-t border-border/40">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 mb-1.5">Emplacement personnalisé</p>
+                            <div className="flex items-center gap-2">
+                              <input
+                                value={customLocInputs[item.id]?.abbrev || ''}
+                                onChange={e => setCustomLocInputs(prev => ({ ...prev, [item.id]: { ...(prev[item.id] || { name: '' }), abbrev: e.target.value } }))}
+                                className="w-16 h-6 text-xs text-center border border-input rounded bg-background font-mono shrink-0"
+                                placeholder="Abrév."
+                              />
+                              <input
+                                value={customLocInputs[item.id]?.name || ''}
+                                onChange={e => setCustomLocInputs(prev => ({ ...prev, [item.id]: { ...(prev[item.id] || { abbrev: '' }), name: e.target.value } }))}
+                                className="flex-1 h-6 text-xs px-2 border border-input rounded bg-background"
+                                placeholder="Fournisseur..."
+                              />
+                              <input
+                                type="number" min={0} max={item.quantity}
+                                value={getDispatchQty(item, 'custom', customLocInputs[item.id]?.abbrev || '') || ''}
+                                placeholder="0"
+                                onChange={e => {
+                                  const abbrev = customLocInputs[item.id]?.abbrev?.trim();
+                                  if (!abbrev) return;
+                                  updateDispatch(item.id, 'custom', abbrev, customLocInputs[item.id]?.name || abbrev, parseInt(e.target.value) || 0);
+                                }}
+                                className="w-14 h-6 text-xs text-center border border-input rounded bg-background shrink-0"
+                              />
+                            </div>
+                          </div>
+
+                          {dispatched > 0 && dispatched !== item.quantity && (
+                            <p className="mt-2 text-xs text-amber-600">
+                              {dispatched < item.quantity
+                                ? `Reste ${item.quantity - dispatched} unité(s) à affecter`
+                                : `Surplus de ${dispatched - item.quantity} unité(s)`}
+                            </p>
+                          )}
+                        </>
                       )}
                     </div>
                   )}

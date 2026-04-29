@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Truck, Search, Download, Trash2, CheckSquare, Square, FileText, Building2, Plus } from 'lucide-react';
+import { Truck, Search, Download, Trash2, CheckSquare, Square, FileText, Building2, Plus, ClipboardList } from 'lucide-react';
 import { Quote, Company } from '../../types';
 import { SupabaseDocumentsService } from '../../utils/supabaseDocuments';
 import { SupabaseCompaniesService } from '../../utils/supabaseCompanies';
@@ -29,6 +29,7 @@ export default function BLDirectoryPage() {
   const [targetCompanyId, setTargetCompanyId] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
+  const [creatingBcFor, setCreatingBcFor] = useState<string | null>(null);
   const [pageSize, setPageSize] = useState(20);
   const [page, setPage] = useState(1);
 
@@ -49,6 +50,18 @@ export default function BLDirectoryPage() {
   }, [showToast]);
 
   useEffect(() => { load(); }, [load]);
+
+  const handleCreateBC = async (blId: string) => {
+    setCreatingBcFor(blId);
+    try {
+      const bc = await SupabaseDocumentsService.createBCFromBL(blId);
+      navigate(`/compta/bons-commande/${bc.id}`);
+    } catch (e) {
+      showToast({ type: 'error', title: 'Erreur', message: String(e) });
+    } finally {
+      setCreatingBcFor(null);
+    }
+  };
 
   const handleNewBL = async () => {
     const compId = companies[0]?.id;
@@ -288,6 +301,17 @@ export default function BLDirectoryPage() {
                               <FileText className="h-3.5 w-3.5" />
                             </button>
                           )}
+                          <button
+                            onClick={() => handleCreateBC(bl.id)}
+                            disabled={creatingBcFor === bl.id}
+                            className="p-1 text-orange-500 hover:bg-orange-500/10 rounded disabled:opacity-50"
+                            title="Créer Bon de Commande"
+                          >
+                            {creatingBcFor === bl.id
+                              ? <div className="h-3.5 w-3.5 border-2 border-orange-500/30 border-t-orange-500 rounded-full animate-spin" />
+                              : <ClipboardList className="h-3.5 w-3.5" />
+                            }
+                          </button>
                           {isSuperAdmin && (
                             <button onClick={() => handleDelete(bl.id, bl.quoteNumber)} className="p-1 text-destructive hover:bg-destructive/10 rounded" title="Supprimer">
                               <Trash2 className="h-3.5 w-3.5" />
