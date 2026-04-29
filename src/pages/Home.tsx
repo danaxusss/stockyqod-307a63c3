@@ -5,7 +5,7 @@ import {
   Receipt, Calculator, Truck, Database, Activity, ArrowRight,
   RotateCcw, FileX, ClipboardList, Images, Wifi, WifiOff, Boxes, ChevronRight,
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useAppContext } from '../context/AppContext';
 import { useToast } from '../context/ToastContext';
@@ -23,78 +23,100 @@ interface ActivityLog {
 interface NavItem { to: string; icon: React.ElementType; label: string; sub?: string; accent: string; }
 
 function CircleNav({ items }: { items: NavItem[] }) {
+  const [hovered, setHovered] = useState<number | null>(null);
+  const navigate = useNavigate();
+
   const n = items.length;
-  const W = 400;
-  const cx = W / 2;  // 200
-  const cy = W / 2;  // 200
-  const rp = 112;    // petal center distance from container center
-  const ri = 143;    // icon+label center distance (near outer rounded end of petal)
-  const ph = 116;    // petal height  → inner tip at rp-ph/2=54px, outer edge at rp+ph/2=170px
-  const pw = 102;    // petal width
+  const W = 380;
+  const cx = W / 2;  // 190
+  const cy = W / 2;  // 190
+  const r1 = 76;     // inner radius (donut hole edge)
+  const r2 = 172;    // outer radius
+  const rm = (r1 + r2) / 2;  // 124 — mid-ring, icon anchor
+  const gap = 3.5;   // degrees gap between segments
+  const span = 360 / n - gap;
+
+  const toRad = (d: number) => d * Math.PI / 180;
+
+  /* annular sector path centred at cDeg (0 = top, clockwise) */
+  const segPath = (cDeg: number) => {
+    const s = toRad(cDeg - span / 2);
+    const e = toRad(cDeg + span / 2);
+    const la = span > 180 ? 1 : 0;
+    const x1 = cx + r2 * Math.sin(s), y1 = cy - r2 * Math.cos(s);
+    const x2 = cx + r2 * Math.sin(e), y2 = cy - r2 * Math.cos(e);
+    const x3 = cx + r1 * Math.sin(e), y3 = cy - r1 * Math.cos(e);
+    const x4 = cx + r1 * Math.sin(s), y4 = cy - r1 * Math.cos(s);
+    return `M ${x1} ${y1} A ${r2} ${r2} 0 ${la} 1 ${x2} ${y2} L ${x3} ${y3} A ${r1} ${r1} 0 ${la} 0 ${x4} ${y4} Z`;
+  };
 
   return (
     <>
-      {/* Desktop: flower */}
+      {/* Desktop: donut ring */}
       <div className="hidden md:flex justify-center">
         <div className="relative" style={{ width: W, height: W }}>
 
-          {/* Petal blobs — rotated, decorative only */}
-          {items.map((_, i) => {
-            const a = i * 2 * Math.PI / n;
-            const px = cx + rp * Math.sin(a);
-            const py = cy - rp * Math.cos(a);
-            const deg = i * (360 / n);
-            return (
-              <div
-                key={`petal-${i}`}
-                className="absolute pointer-events-none"
-                style={{
-                  left: px,
-                  top: py,
-                  width: pw,
-                  height: ph,
-                  transform: `translate(-50%, -50%) rotate(${deg}deg)`,
-                  borderRadius: '50% 50% 44% 44% / 60% 60% 40% 40%',
-                  background: 'hsl(var(--card))',
-                  boxShadow: '0 6px 24px rgba(0,0,0,0.07), 0 1px 6px rgba(0,0,0,0.06)',
-                  border: '1px solid hsl(var(--border) / 0.5)',
-                }}
-              />
-            );
-          })}
+          {/* SVG ring — segments */}
+          <svg
+            width={W} height={W}
+            className="absolute inset-0"
+            style={{ filter: 'drop-shadow(0 4px 20px rgba(0,0,0,0.10))' }}
+          >
+            {items.map((item, i) => {
+              const cDeg = i * (360 / n);
+              const isHov = hovered === i;
+              return (
+                <path
+                  key={i}
+                  d={segPath(cDeg)}
+                  fill={isHov ? 'hsl(var(--primary))' : 'hsl(var(--card))'}
+                  stroke="hsl(var(--background))"
+                  strokeWidth={5}
+                  style={{ cursor: 'pointer', transition: 'fill 0.15s ease' }}
+                  onMouseEnter={() => setHovered(i)}
+                  onMouseLeave={() => setHovered(null)}
+                  onClick={() => navigate(item.to)}
+                />
+              );
+            })}
+          </svg>
 
           {/* Center — Search */}
           <Link
             to="/search"
             className="absolute z-20 flex flex-col items-center justify-center gap-1.5 rounded-full
               bg-gradient-to-br from-primary to-primary/80 text-white
-              shadow-[0_4px_24px_rgba(52,121,240,0.40)] hover:shadow-[0_6px_32px_rgba(52,121,240,0.50)]
-              hover:scale-105 transition-all duration-200"
-            style={{ width: 96, height: 96, left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}
+              shadow-[0_4px_24px_rgba(52,121,240,0.40)] hover:scale-105 transition-transform duration-200"
+            style={{ width: r1 * 2 - 8, height: r1 * 2 - 8, left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}
           >
             <Search className="h-5 w-5" />
-            <span className="text-[11px] font-semibold tracking-wide">Rechercher</span>
+            <span className="text-[10px] font-semibold tracking-wide">Rechercher</span>
           </Link>
 
-          {/* Nav item links — upright, at outer portion of each petal */}
+          {/* Icon + label — synced with SVG hover */}
           {items.map((item, i) => {
-            const a = i * 2 * Math.PI / n;
-            const ix = cx + ri * Math.sin(a);
-            const iy = cy - ri * Math.cos(a);
+            const rad = toRad(i * (360 / n));
+            const ix = cx + rm * Math.sin(rad);
+            const iy = cy - rm * Math.cos(rad);
             const Icon = item.icon;
+            const isHov = hovered === i;
             return (
               <Link
                 key={item.to}
                 to={item.to}
-                className="absolute z-10 flex flex-col items-center gap-1.5 group"
-                style={{ left: ix, top: iy, transform: 'translate(-50%, -50%)', width: 76 }}
+                className="absolute z-10 flex flex-col items-center gap-1 pointer-events-auto"
+                style={{ left: ix, top: iy, transform: 'translate(-50%, -50%)', width: 70 }}
+                onMouseEnter={() => setHovered(i)}
+                onMouseLeave={() => setHovered(null)}
               >
-                <div className={`w-11 h-11 rounded-2xl ${item.accent} flex items-center justify-center
-                  shadow-md group-hover:scale-110 group-hover:shadow-lg transition-all duration-200`}>
-                  <Icon className="h-5 w-5 text-white" />
-                </div>
-                <span className="text-[11px] font-semibold text-foreground text-center leading-tight
-                  group-hover:text-primary transition-colors">
+                <Icon
+                  className="shrink-0 transition-colors duration-150"
+                  style={{ width: 22, height: 22, color: isHov ? 'white' : 'hsl(var(--primary))' }}
+                />
+                <span
+                  className="text-[10px] font-semibold text-center leading-tight transition-colors duration-150"
+                  style={{ color: isHov ? 'white' : 'hsl(var(--foreground))' }}
+                >
                   {item.label}
                 </span>
               </Link>
