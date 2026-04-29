@@ -24,46 +24,77 @@ interface NavItem { to: string; icon: React.ElementType; label: string; sub?: st
 
 function CircleNav({ items }: { items: NavItem[] }) {
   const n = items.length;
+  const W = 400;
+  const cx = W / 2;  // 200
+  const cy = W / 2;  // 200
+  const rp = 112;    // petal center distance from container center
+  const ri = 143;    // icon+label center distance (near outer rounded end of petal)
+  const ph = 116;    // petal height  → inner tip at rp-ph/2=54px, outer edge at rp+ph/2=170px
+  const pw = 102;    // petal width
+
   return (
     <>
-      {/* Desktop: circle */}
+      {/* Desktop: flower */}
       <div className="hidden md:flex justify-center">
-        <div className="relative" style={{ width: 380, height: 380 }}>
-          {/* Decorative rings */}
-          <div className="absolute inset-[18%] rounded-full border border-dashed border-border/25 pointer-events-none" />
-          <div className="absolute inset-[8%] rounded-full border border-border/10 pointer-events-none" />
+        <div className="relative" style={{ width: W, height: W }}>
+
+          {/* Petal blobs — rotated, decorative only */}
+          {items.map((_, i) => {
+            const a = i * 2 * Math.PI / n;
+            const px = cx + rp * Math.sin(a);
+            const py = cy - rp * Math.cos(a);
+            const deg = i * (360 / n);
+            return (
+              <div
+                key={`petal-${i}`}
+                className="absolute pointer-events-none"
+                style={{
+                  left: px,
+                  top: py,
+                  width: pw,
+                  height: ph,
+                  transform: `translate(-50%, -50%) rotate(${deg}deg)`,
+                  borderRadius: '50% 50% 44% 44% / 60% 60% 40% 40%',
+                  background: 'hsl(var(--card))',
+                  boxShadow: '0 6px 24px rgba(0,0,0,0.07), 0 1px 6px rgba(0,0,0,0.06)',
+                  border: '1px solid hsl(var(--border) / 0.5)',
+                }}
+              />
+            );
+          })}
 
           {/* Center — Search */}
           <Link
             to="/search"
-            className="absolute z-10 flex flex-col items-center justify-center gap-1.5 rounded-full
-              bg-gradient-to-br from-primary to-primary/80 text-white shadow-xl
-              hover:shadow-primary/30 hover:scale-105 transition-all duration-200"
-            style={{ width: 110, height: 110, top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}
+            className="absolute z-20 flex flex-col items-center justify-center gap-1.5 rounded-full
+              bg-gradient-to-br from-primary to-primary/80 text-white
+              shadow-[0_4px_24px_rgba(52,121,240,0.40)] hover:shadow-[0_6px_32px_rgba(52,121,240,0.50)]
+              hover:scale-105 transition-all duration-200"
+            style={{ width: 96, height: 96, left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}
           >
-            <Search className="h-6 w-6" />
-            <span className="text-xs font-semibold tracking-wide">Rechercher</span>
+            <Search className="h-5 w-5" />
+            <span className="text-[11px] font-semibold tracking-wide">Rechercher</span>
           </Link>
 
-          {/* Outer items */}
+          {/* Nav item links — upright, at outer portion of each petal */}
           {items.map((item, i) => {
-            const angle = (i * (360 / n) - 90) * (Math.PI / 180);
-            const r = 40; // % of container
-            const x = 50 + r * Math.cos(angle);
-            const y = 50 + r * Math.sin(angle);
+            const a = i * 2 * Math.PI / n;
+            const ix = cx + ri * Math.sin(a);
+            const iy = cy - ri * Math.cos(a);
             const Icon = item.icon;
             return (
               <Link
                 key={item.to}
                 to={item.to}
-                className="absolute flex flex-col items-center gap-1.5 group"
-                style={{ left: `${x}%`, top: `${y}%`, transform: 'translate(-50%, -50%)', width: 86 }}
+                className="absolute z-10 flex flex-col items-center gap-1.5 group"
+                style={{ left: ix, top: iy, transform: 'translate(-50%, -50%)', width: 76 }}
               >
-                <div className={`w-12 h-12 rounded-2xl ${item.accent} flex items-center justify-center
-                  shadow-lg group-hover:scale-110 group-hover:shadow-xl transition-all duration-200`}>
+                <div className={`w-11 h-11 rounded-2xl ${item.accent} flex items-center justify-center
+                  shadow-md group-hover:scale-110 group-hover:shadow-lg transition-all duration-200`}>
                   <Icon className="h-5 w-5 text-white" />
                 </div>
-                <span className="text-[11px] font-semibold text-foreground text-center leading-tight group-hover:text-primary transition-colors">
+                <span className="text-[11px] font-semibold text-foreground text-center leading-tight
+                  group-hover:text-primary transition-colors">
                   {item.label}
                 </span>
               </Link>
