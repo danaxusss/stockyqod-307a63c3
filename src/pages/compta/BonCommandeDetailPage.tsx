@@ -27,6 +27,17 @@ interface DispatchTarget {
   stock: number;
 }
 
+function resolveStock(stockLevels: Record<string, number> | undefined, loc: StockLocation): number {
+  if (!stockLevels) return 0;
+  // 1. Abbreviation key (new format: "CM1")
+  if (loc.abbreviation && stockLevels[loc.abbreviation] !== undefined) return stockLevels[loc.abbreviation] || 0;
+  // 2. Full name key (e.g. "Cuisimat 1")
+  if (stockLevels[loc.name] !== undefined) return stockLevels[loc.name] || 0;
+  // 3. Legacy key from old Excel import: lowercase + underscores (e.g. "cuisimat_1")
+  const legacyKey = loc.name.toLowerCase().replace(/\s+/g, '_');
+  return stockLevels[legacyKey] || 0;
+}
+
 function buildDispatchTargets(
   locations: StockLocation[],
   providers: Provider[],
@@ -44,7 +55,7 @@ function buildDispatchTargets(
         subCode: '',
         subName: '',
         providerName: provName,
-        stock: product?.stock_levels?.[loc.abbreviation] ?? product?.stock_levels?.[loc.name] ?? 0,
+        stock: resolveStock(product?.stock_levels, loc),
       });
     } else {
       for (const sub of subs) {
@@ -55,7 +66,7 @@ function buildDispatchTargets(
           subCode: sub.code,
           subName: sub.name,
           providerName: provName,
-          stock: product?.stock_levels?.[loc.abbreviation] ?? product?.stock_levels?.[loc.name] ?? 0,
+          stock: resolveStock(product?.stock_levels, loc),
         });
       }
     }

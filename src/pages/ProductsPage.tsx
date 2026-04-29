@@ -289,8 +289,13 @@ export default function ProductsPage() {
                             {Object.entries(product.stock_levels || {})
                               .filter(([, qty]) => (Number(qty) || 0) > 0)
                               .map(([locName, qty]) => {
-                                const loc = stockLocations.find(l => l.abbreviation === locName || l.name === locName);
-                                const label = loc?.name || locName;
+                                const loc = stockLocations.find(l =>
+                                  l.abbreviation === locName ||
+                                  l.name === locName ||
+                                  l.name.toLowerCase().replace(/\s+/g, '_') === locName
+                                );
+                                const legacyLabel = locName.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                                const label = loc?.name || legacyLabel;
                                 return (
                                   <span key={locName} className="text-[10px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 px-1.5 py-0.5 rounded font-mono whitespace-nowrap">
                                     {label} {Number(qty)}
