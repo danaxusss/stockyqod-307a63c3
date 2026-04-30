@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Package, Search, Edit, Check, X, Loader, SortAsc, SortDesc, ChevronLeft, ChevronRight, Filter, Paperclip, ShoppingCart, Images } from 'lucide-react';
+import { useNavigate, Link } from 'react-router-dom';
+import { Package, Search, Edit, Check, X, Loader, SortAsc, SortDesc, ChevronLeft, ChevronRight, Filter, Paperclip, ShoppingCart, Images, Info } from 'lucide-react';
 import { Product, StockLocation } from '../types';
 import { useAppContext } from '../context/AppContext';
 import { StockLocationsService } from '../utils/supabaseStockLocations';
@@ -233,7 +233,13 @@ export default function ProductsPage() {
                               className="w-full px-2 py-0.5 text-xs border border-input rounded bg-background text-foreground" />
                           ) : (
                             <div className="flex items-center gap-1.5">
-                              <span className="text-xs font-medium text-foreground">{product.name}</span>
+                              <Link
+                                to={`/product/${encodeURIComponent(product.barcode)}`}
+                                className="text-xs font-medium text-foreground hover:text-primary hover:underline transition-colors"
+                                title="Voir la fiche produit"
+                              >
+                                {product.name}
+                              </Link>
                               {hasSheets && (
                                 <button onClick={() => navigate('/sheets')} title={`${sheetCounts[product.barcode]} fiche(s) technique(s)`}
                                   className="p-0.5 hover:bg-primary/10 rounded transition-colors">
@@ -320,6 +326,9 @@ export default function ProductsPage() {
                             </div>
                           ) : (
                             <div className="flex items-center space-x-1">
+                              <Link to={`/product/${encodeURIComponent(product.barcode)}`} className="p-1 text-muted-foreground hover:bg-accent rounded" title="Fiche produit">
+                                <Info className="h-3.5 w-3.5" />
+                              </Link>
                               <button onClick={() => startEdit(product)} className="p-1 text-primary hover:bg-primary/10 rounded" title="Modifier">
                                 <Edit className="h-3.5 w-3.5" />
                               </button>

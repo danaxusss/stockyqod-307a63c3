@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Package, ArrowLeft, Copy, MapPin, DollarSign, ShoppingCart, Home, AlertCircle, Users, Building, TrendingUp, Search, Calculator, Plus, Paperclip, Upload, Download, Trash2, Loader, FileText, X, Images } from 'lucide-react';
-import { Product, TechnicalSheet } from '../types';
+import { Product, TechnicalSheet, StockLocation } from '../types';
 import { useAppContext } from '../context/AppContext';
 import { searchStateManager } from '../utils/searchStateManager';
+import { StockLocationsService } from '../utils/supabaseStockLocations';
 import { useQuoteCart } from '../hooks/useQuoteCart';
 import { useToast } from '../context/ToastContext';
 import { QuoteManager } from '../utils/quoteManager';
@@ -39,10 +40,12 @@ export function ProductDetail() {
   const quoteManager = QuoteManager.getInstance();
   const userPriceDisplayType = getPriceDisplayType();
   const [cameFromSearch, setCameFromSearch] = useState(false);
+  const [stockLocations, setStockLocations] = useState<StockLocation[]>([]);
 
   useEffect(() => {
     const searchState = searchStateManager.getState();
     setCameFromSearch(!!searchState);
+    StockLocationsService.getStockLocations().then(setStockLocations).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -368,12 +371,22 @@ export function ProductDetail() {
             <div className="mb-5">
               <h3 className="text-sm font-semibold text-foreground mb-2">Stock par Emplacement</h3>
               <div className="flex flex-wrap gap-2">
-                {accessibleStockLocations.map(([location, level], index) => {
+                {accessibleStockLocations.map(([locKey, level], index) => {
+                  const loc = stockLocations.find(l =>
+                    l.abbreviation === locKey ||
+                    l.name === locKey ||
+                    l.name.toLowerCase().replace(/\s+/g, '_') === locKey
+                  );
+                  const label = loc?.name || locKey.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                  const abbrev = loc?.abbreviation || locKey;
                   const cs = colorSchemes[index % colorSchemes.length];
                   return (
-                    <div key={location} className={`flex items-center gap-2 px-3 py-2 ${cs.bg} rounded-lg`}>
+                    <div key={locKey} className={`flex items-center gap-2 px-3 py-2 ${cs.bg} rounded-lg`}>
                       <MapPin className={`h-4 w-4 ${cs.text}`} />
-                      <span className={`text-sm ${cs.text} capitalize font-medium`}>{location.replace(/_/g, ' ')}</span>
+                      <div>
+                        <span className={`text-sm ${cs.text} font-medium`}>{label}</span>
+                        {abbrev !== label && <span className={`text-[10px] ${cs.text} opacity-70 ml-1 font-mono`}>({abbrev})</span>}
+                      </div>
                       <span className={`text-lg font-bold ${cs.textDark}`}>{level}</span>
                     </div>
                   );
@@ -518,6 +531,9 @@ export function ProductDetail() {
           <div className="border-t border-border pt-4 flex flex-wrap gap-2">
             <button onClick={() => navigate('/')} className="flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm transition-colors">
               <Home className="h-3.5 w-3.5" /><span>Accueil</span>
+            </button>
+            <button onClick={() => navigate('/products')} className="flex items-center gap-1.5 px-4 py-2 bg-secondary hover:bg-accent text-foreground rounded-lg text-sm transition-colors border border-border">
+              <Package className="h-3.5 w-3.5" /><span>Catalogue</span>
             </button>
             <button onClick={handleBackToSearch} className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm transition-colors">
               <Search className="h-3.5 w-3.5" /><span>Recherche</span>
