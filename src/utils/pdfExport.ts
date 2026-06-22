@@ -134,12 +134,13 @@ export class PdfExportService {
   static async exportQuoteToPdf(quote: Quote, settings?: CompanySettings | null, techSheetsUrl?: string, techSheetsExpiryLabel?: string, useStampOverride?: boolean, documentType: 'quote' | 'bl' | 'proforma' | 'invoice' | 'avoir' | 'bon_commande' = 'quote', blShowPrices?: boolean, returnBlob?: boolean): Promise<void | Blob> {
     const style: QuoteStyle = settings?.quote_style || {
       accentColor: '#3B82F6', fontFamily: 'helvetica', showBorders: true,
-      borderRadius: 1, headerSize: 'large', totalsStyle: 'highlighted',
+      borderRadius: 1, headerSize: 'large', totalsStyle: 'highlighted', template: 'classic',
     };
     const ACCENT = hexToRgb(style.accentColor);
     const ACCENT_LIGHT = lightenColor(ACCENT, 0.92);
     const ACCENT_DARK = darkenColor(ACCENT, 0.15);
     const font = style.fontFamily || 'helvetica';
+    const template = style.template || 'classic';
 
     const doc = new jsPDF('p', 'mm', 'a4');
     const pageWidth = doc.internal.pageSize.getWidth();
@@ -152,8 +153,12 @@ export class PdfExportService {
       showLogo: true, showCompanyAddress: true, showCompanyPhone: true,
       showCompanyEmail: true, showCompanyWebsite: false, showCompanyICE: true,
       showClientICE: true, showTVA: true, showTVABreakdown: true, showNotes: true,
-      showPaymentTerms: true, showValidityDate: true,
+      showPaymentTerms: true, showValidityDate: true, printTTCOnly: false,
+      printColumns: { showBrand: true, showBarcode: true, showUnitPrice: true, showDiscount: true },
     };
+
+    const printTTCOnly = fields.printTTCOnly ?? false;
+    const printCols = fields.printColumns || { showBrand: true, showBarcode: true, showUnitPrice: true, showDiscount: true };
 
     const tvaRate = settings?.tva_rate ?? 20;
     const companyName = settings?.company_name || 'Mon Entreprise';
@@ -163,12 +168,10 @@ export class PdfExportService {
     // === Build footer legal lines ===
     const buildFooterLines = (): string[] => {
       const lines: string[] = [];
-      // Line 1: Company name + address
       const line1Parts: string[] = [companyName];
       if (settings?.address) line1Parts.push(settings.address);
       lines.push(line1Parts.join(' - '));
 
-      // Line 2: Legal identifiers
       const legalParts: string[] = [];
       if (settings?.rc) legalParts.push(`RC N° ${settings.rc}`);
       if (settings?.if_number) legalParts.push(`IF N° ${settings.if_number}`);
@@ -177,7 +180,6 @@ export class PdfExportService {
       if (settings?.ice && fields.showCompanyICE) legalParts.push(`ICE N° ${settings.ice}`);
       if (legalParts.length > 0) lines.push(legalParts.join(' - '));
 
-      // Line 3: Phones
       const phoneParts: string[] = [];
       if (settings?.phone) phoneParts.push(`Tél: ${settings.phone}`);
       if (settings?.phone2) phoneParts.push(settings.phone2);
@@ -185,7 +187,6 @@ export class PdfExportService {
       if (settings?.phone_gsm) phoneParts.push(`GSM: ${settings.phone_gsm}`);
       if (phoneParts.length > 0) lines.push(phoneParts.join(' / '));
 
-      // Line 4: Email + website
       const contactParts: string[] = [];
       if (settings?.email) contactParts.push(`Email: ${settings.email}`);
       if (settings?.website && fields.showCompanyWebsite) contactParts.push(`Site web: ${settings.website}`);
@@ -195,37 +196,501 @@ export class PdfExportService {
     };
 
     const footerLines = buildFooterLines();
+    const footerLineHeight = 3;
+    const footerTotalHeight = footerLines.length * footerLineHeight + 8;
 
-    // === Draw header and footer on every page ===
-    const drawPageDecorations = () => {
+    // === Document type label ===
+    const docTypeLabel = documentType === 'bl' ? 'BON DE LIVRAISON'
+      : documentType === 'bon_commande' ? 'BON DE COMMANDE'
+      : documentType === 'proforma' ? 'PROFORMA'
+      : documentType === 'invoice' ? 'FACTURE'
+      : documentType === 'avoir' ? 'AVOIR'
+      : 'DEVIS';
+
+    // === Load logo ===
+    let logoBase64: string | null = null;
+    let logoW = 0, logoH = 0;
+    const logoSizeConfig = { small: { maxW: 35, maxH: 20 }, medium: { maxW: 50, maxH: 28 }, large: { maxW: 70, maxH: 38 } };
+    const logoSize = settings?.logo_size || 'medium';
+    const { maxW: maxLogoW, maxH: maxLogoH } = logoSizeConfig[logoSize] || logoSizeConfig.medium;
+
+    if (fields.showLogo && settings?.logo_url) {
+      logoBase64 = await loadImageAsBase64(settings.logo_url);
+      if (logoBase64) {
+        const img = new Image();
+        img.src = logoBase64;
+        await new Promise<void>((resolve) => { img.onload = () => resolve(); img.onerror = () => resolve(); });
+        logoW = maxLogoW;
+        logoH = (img.height / img.width) * logoW;
+        if (logoH > maxLogoH) { logoH = maxLogoH; logoW = (img.width / img.height) * logoH; }
+      }
+    }
+
+    // === Quote meta rows ===
+    const quoteDate = quote.quote_date ? new Date(quote.quote_date) : quote.createdAt;
+    const buildMetaRows = (): [string, string][] => {
+      const rows: [string, string][] = [
+        ['Date', this.formatDate(quoteDate)],
+        ['N° de piece', quote.quoteNumber],
+      ];
+      if (quote.commandNumber) rows.push(['N° de cmd', quote.commandNumber]);
+      if (fields.showValidityDate && documentType === 'quote') {
+        const validityDays = settings?.quote_validity_days ?? 30;
+        const validityDate = new Date(quote.createdAt);
+        validityDate.setDate(validityDate.getDate() + validityDays);
+        rows.push(['Validite', `${validityDays} j (${this.formatDate(validityDate)})`]);
+      }
+      if (documentType === 'invoice') {
+        if (quote.payment_date) rows.push(['Date paiement', this.formatDate(new Date(quote.payment_date))]);
+        if (quote.payment_method) rows.push(['Mode paiement', quote.payment_method]);
+        if (quote.payment_reference) rows.push(['N° référence', quote.payment_reference]);
+        if (quote.payment_bank) rows.push(['Banque', quote.payment_bank]);
+      }
+      return rows;
+    };
+
+    const buildClientRows = (): [string, string][] => {
+      const rows: [string, string][] = [];
+      rows.push(['Client', quote.customer.fullName || '']);
+      if (quote.customer.address || quote.customer.phoneNumber) {
+        const addrParts: string[] = [];
+        if (quote.customer.phoneNumber) {
+          let phone = quote.customer.phoneNumber.trim();
+          if (phone.startsWith('*')) phone = phone.substring(1).trim();
+          if (phone.endsWith(',')) phone = phone.slice(0, -1).trim();
+          addrParts.push(phone);
+        }
+        if (quote.customer.address) addrParts.push(quote.customer.address);
+        rows.push(['Adresse / Tel', addrParts.join(' / ')]);
+      }
+      if (quote.customer.city) rows.push(['Ville', quote.customer.city]);
+      if (quote.customer.salesPerson) rows.push(['Commercial', quote.customer.salesPerson]);
+      if (fields.showClientICE && quote.customer.ice) rows.push(['ICE Client', quote.customer.ice]);
+      return rows;
+    };
+
+    // ============================================================
+    //  TEMPLATE: CLASSIC (default)
+    // ============================================================
+    const drawClassicHeader = async (): Promise<number> => {
+      let yy = 7;
+
       // Top accent bar
       doc.setFillColor(...ACCENT);
       doc.rect(0, 0, pageWidth, 2, 'F');
-      // Bottom accent bar
-      doc.setFillColor(...ACCENT);
-      doc.rect(0, pageHeight - 2, pageWidth, 2, 'F');
 
-      // Footer
-      const footerLineHeight = 3;
-      const footerTotalHeight = footerLines.length * footerLineHeight + 4;
+      // Doc type label (right)
+      const devisBoxW = (documentType === 'bl' || documentType === 'bon_commande') ? 58 : 45;
+      const devisBoxH = 11;
+      const devisBoxX = pageWidth - margin - devisBoxW;
+      doc.setFillColor(...ACCENT);
+      doc.roundedRect(devisBoxX, yy, devisBoxW, devisBoxH, 2, 2, 'F');
+      doc.setFontSize((documentType === 'bl' || documentType === 'bon_commande') ? 14 : 22);
+      doc.setFont(font, 'bold');
+      doc.setTextColor(...WHITE);
+      doc.text(docTypeLabel, devisBoxX + devisBoxW / 2, yy + devisBoxH / 2 + (documentType === 'bl' ? 2 : 3), { align: 'center' });
+
+      // Logo or company name (left)
+      if (logoBase64) {
+        doc.addImage(logoBase64, 'AUTO', margin, yy, logoW, logoH);
+        yy = Math.max(yy + logoH, yy + 14) + 5;
+      } else {
+        const nameX = margin;
+        const nameY = yy + 4;
+        const maxNameWidth = devisBoxX - nameX - 5;
+        let nameFontSize = style.headerSize === 'small' ? 14 : style.headerSize === 'medium' ? 17 : 19;
+        doc.setFont(font, 'bold');
+        while (nameFontSize > 9) {
+          doc.setFontSize(nameFontSize);
+          if (doc.getTextWidth(companyName) <= maxNameWidth) break;
+          nameFontSize -= 1;
+        }
+        doc.setFontSize(nameFontSize);
+        doc.setTextColor(...ACCENT);
+        doc.text(companyName, nameX, nameY + 4, { maxWidth: maxNameWidth });
+        doc.setFontSize(6.5);
+        doc.setFont(font, 'normal');
+        doc.setTextColor(...GRAY);
+        doc.text('MATERIEL DE CUISINE PROFESSIONNEL', nameX, nameY + 9);
+        yy = Math.max(yy + logoH, yy + 14) + 5;
+      }
+
+      // Separator
+      doc.setDrawColor(...ACCENT);
+      doc.setLineWidth(0.4);
+      doc.line(margin, yy, pageWidth - margin, yy);
+      yy += 4;
+
+      // Client info (left) + quote meta (right)
+      const leftColWidth = contentWidth * 0.55;
+      const rightColWidth = contentWidth * 0.38;
+      const rightColX = pageWidth - margin - rightColWidth;
+      const sectionStartY = yy;
+
+      autoTable(doc, {
+        startY: sectionStartY,
+        body: buildClientRows().map(([l, v]) => [l, v]),
+        margin: { left: margin, right: pageWidth - margin - leftColWidth },
+        theme: 'plain',
+        styles: { fontSize: 7.5, cellPadding: { top: 2, bottom: 2, left: 3, right: 3 }, lineColor: [230, 230, 230], lineWidth: 0.2, textColor: DARK },
+        columnStyles: {
+          0: { cellWidth: 28, fillColor: ACCENT, textColor: WHITE, fontStyle: 'bold', fontSize: 6.5 },
+          1: { cellWidth: leftColWidth - 28, fontSize: 7.5, fillColor: [252, 252, 252] },
+        },
+        tableLineColor: [230, 230, 230], tableLineWidth: 0.2,
+      });
+      const leftFinalY = (doc as any).lastAutoTable?.finalY || sectionStartY + 30;
+
+      autoTable(doc, {
+        startY: sectionStartY,
+        body: buildMetaRows(),
+        margin: { left: rightColX, right: margin },
+        theme: 'plain',
+        styles: { fontSize: 7.5, cellPadding: { top: 2, bottom: 2, left: 3, right: 3 }, lineColor: [230, 230, 230], lineWidth: 0.2, textColor: DARK },
+        columnStyles: {
+          0: { cellWidth: 24, fontStyle: 'bold', textColor: ACCENT, fontSize: 6.5, fillColor: ACCENT_LIGHT },
+          1: { cellWidth: rightColWidth - 24, halign: 'right', fillColor: [252, 252, 252] },
+        },
+        tableLineColor: [230, 230, 230], tableLineWidth: 0.2,
+      });
+      const rightFinalY = (doc as any).lastAutoTable?.finalY || sectionStartY + 25;
+
+      return Math.max(leftFinalY, rightFinalY) + 5;
+    };
+
+    // ============================================================
+    //  TEMPLATE: MODERN
+    //  Full-width colored header band; meta in a horizontal strip
+    // ============================================================
+    const drawModernHeader = async (): Promise<number> => {
+      const headerH = logoBase64 ? Math.max(logoH + 10, 28) : 28;
+
+      // Full-width header band
+      doc.setFillColor(...ACCENT);
+      doc.rect(0, 0, pageWidth, headerH, 'F');
+
+      // Logo or company name in header
+      if (logoBase64) {
+        doc.addImage(logoBase64, 'AUTO', margin, (headerH - logoH) / 2, logoW, logoH);
+      } else {
+        doc.setFont(font, 'bold');
+        doc.setFontSize(16);
+        doc.setTextColor(...WHITE);
+        doc.text(companyName, margin, headerH / 2 + 3);
+        doc.setFontSize(7);
+        doc.setFont(font, 'normal');
+        doc.setTextColor(255, 255, 255);
+        doc.setGState(doc.GState({ opacity: 0.7 }));
+        doc.text('MATERIEL DE CUISINE PROFESSIONNEL', margin, headerH / 2 + 8);
+        doc.setGState(doc.GState({ opacity: 1 }));
+      }
+
+      // Document type label (right side of header)
+      const devisBoxW = (documentType === 'bl' || documentType === 'bon_commande') ? 62 : 50;
+      const devisBoxH = headerH - 6;
+      const devisBoxX = pageWidth - margin - devisBoxW;
+      doc.setFillColor(...darkenColor(ACCENT, 0.25));
+      doc.roundedRect(devisBoxX, 3, devisBoxW, devisBoxH, 2, 2, 'F');
+      doc.setFontSize((documentType === 'bl' || documentType === 'bon_commande') ? 13 : 19);
+      doc.setFont(font, 'bold');
+      doc.setTextColor(...WHITE);
+      doc.text(docTypeLabel, devisBoxX + devisBoxW / 2, 3 + devisBoxH / 2 + ((documentType === 'bl') ? 2 : 3), { align: 'center' });
+
+      let yy = headerH + 4;
+
+      // Info strip: client left, meta right
+      const clientRows = buildClientRows();
+      const metaRows = buildMetaRows();
+      const stripH = Math.max(clientRows.length, metaRows.length) * 6 + 6;
+
+      doc.setFillColor(247, 249, 253);
+      doc.setDrawColor(...ACCENT);
+      doc.setLineWidth(0.3);
+      doc.rect(margin, yy, contentWidth, stripH, 'FD');
+
+      // Client info (left half)
+      const halfW = contentWidth / 2 - 6;
+      let cy = yy + 4;
+      clientRows.forEach(([label, value], i) => {
+        doc.setFont(font, 'bold');
+        doc.setFontSize(6.5);
+        doc.setTextColor(...ACCENT);
+        doc.text(label.toUpperCase() + ':', margin + 4, cy);
+        doc.setFont(font, 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(...DARK);
+        doc.text(value, margin + 4 + doc.getTextWidth(label.toUpperCase() + ':') + 2, cy, { maxWidth: halfW - 30 });
+        cy += 5.5;
+      });
+
+      // Meta info (right half)
+      const metaX = margin + contentWidth / 2 + 2;
+      let my = yy + 4;
+      metaRows.forEach(([label, value]) => {
+        doc.setFont(font, 'bold');
+        doc.setFontSize(6.5);
+        doc.setTextColor(...GRAY);
+        doc.text(label + ':', metaX, my);
+        doc.setFont(font, 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(...DARK);
+        doc.text(value, pageWidth - margin - 4, my, { align: 'right', maxWidth: halfW - 10 });
+        my += 5.5;
+      });
+
+      // Accent bottom border on strip
+      doc.setFillColor(...ACCENT);
+      doc.rect(margin, yy + stripH - 1.5, contentWidth, 1.5, 'F');
+
+      return yy + stripH + 5;
+    };
+
+    // ============================================================
+    //  TEMPLATE: EXECUTIVE
+    //  Split left panel (accent) for company info + right for document
+    // ============================================================
+    const drawExecutiveHeader = async (): Promise<number> => {
+      const panelW = contentWidth * 0.42;
+      const rightW = contentWidth - panelW - 4;
+      const leftX = margin;
+      const rightX = margin + panelW + 4;
+
+      const clientRows = buildClientRows();
+      const metaRows = buildMetaRows();
+      const panelH = Math.max(logoH + 22, clientRows.length * 5.5 + 20, 50);
+
+      // Left panel (accent color)
+      doc.setFillColor(...ACCENT);
+      doc.roundedRect(leftX, 5, panelW, panelH, 3, 3, 'F');
+
+      // Logo in left panel
+      let innerY = 10;
+      if (logoBase64) {
+        const lw = Math.min(logoW, panelW - 10);
+        const lh = (logoH / logoW) * lw;
+        doc.addImage(logoBase64, 'AUTO', leftX + (panelW - lw) / 2, innerY, lw, lh);
+        innerY += lh + 4;
+      } else {
+        doc.setFont(font, 'bold');
+        doc.setFontSize(12);
+        doc.setTextColor(...WHITE);
+        const nameLines = doc.splitTextToSize(companyName, panelW - 10);
+        doc.text(nameLines, leftX + panelW / 2, innerY + 5, { align: 'center' });
+        innerY += nameLines.length * 6 + 4;
+        doc.setFontSize(6);
+        doc.setFont(font, 'normal');
+        doc.setTextColor(255, 255, 255);
+        doc.setGState(doc.GState({ opacity: 0.75 }));
+        doc.text('MATERIEL DE CUISINE PROFESSIONNEL', leftX + panelW / 2, innerY, { align: 'center' });
+        doc.setGState(doc.GState({ opacity: 1 }));
+        innerY += 6;
+      }
+
+      // Thin divider in left panel
+      doc.setDrawColor(255, 255, 255);
+      doc.setGState(doc.GState({ opacity: 0.3 }));
+      doc.setLineWidth(0.3);
+      doc.line(leftX + 5, innerY, leftX + panelW - 5, innerY);
+      doc.setGState(doc.GState({ opacity: 1 }));
+      innerY += 4;
+
+      // Company contact info in left panel
+      const contactLines: string[] = [];
+      if (settings?.phone) contactLines.push(`Tel: ${settings.phone}`);
+      if (settings?.phone2) contactLines.push(settings.phone2);
+      if (settings?.email) contactLines.push(settings.email);
+      if (settings?.address) contactLines.push(settings.address);
+      doc.setFont(font, 'normal');
+      doc.setFontSize(6);
+      doc.setTextColor(...WHITE);
+      contactLines.forEach(line => {
+        doc.text(line, leftX + panelW / 2, innerY, { align: 'center', maxWidth: panelW - 8 });
+        innerY += 4;
+      });
+
+      // Right side: document title + meta
+      let ry = 7;
+      // Document title
+      const docBoxH = 12;
+      doc.setFillColor(...DARK);
+      doc.roundedRect(rightX, ry, rightW, docBoxH, 2, 2, 'F');
+      doc.setFontSize((documentType === 'bl' || documentType === 'bon_commande') ? 12 : 17);
+      doc.setFont(font, 'bold');
+      doc.setTextColor(...WHITE);
+      doc.text(docTypeLabel, rightX + rightW / 2, ry + docBoxH / 2 + ((documentType === 'bl') ? 2 : 3), { align: 'center' });
+      ry += docBoxH + 4;
+
+      // Meta rows (right panel)
+      metaRows.forEach(([label, value]) => {
+        doc.setFont(font, 'bold');
+        doc.setFontSize(6.5);
+        doc.setTextColor(...GRAY);
+        doc.text(label + ':', rightX, ry);
+        doc.setFont(font, 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(...DARK);
+        doc.text(value, rightX + rightW, ry, { align: 'right', maxWidth: rightW - 28 });
+        ry += 5.5;
+      });
+
+      // Thin accent divider right
+      ry += 2;
+      doc.setDrawColor(...ACCENT);
+      doc.setLineWidth(0.5);
+      doc.line(rightX, ry, rightX + rightW, ry);
+      ry += 3;
+
+      // Client block (right panel, below divider)
+      clientRows.forEach(([label, value]) => {
+        doc.setFont(font, 'bold');
+        doc.setFontSize(6.5);
+        doc.setTextColor(...ACCENT);
+        doc.text(label.toUpperCase() + ':', rightX, ry);
+        doc.setFont(font, 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(...DARK);
+        doc.text(value, rightX + rightW, ry, { align: 'right', maxWidth: rightW - 28 });
+        ry += 5.5;
+      });
+
+      const finalY = Math.max(5 + panelH, ry) + 6;
+
+      // Bottom accent strip
+      doc.setFillColor(...ACCENT);
+      doc.rect(margin, finalY - 2, contentWidth, 1, 'F');
+
+      return finalY + 3;
+    };
+
+    // ============================================================
+    //  TEMPLATE: MINIMAL
+    //  Clean lines, no color fills, professional minimalism
+    // ============================================================
+    const drawMinimalHeader = async (): Promise<number> => {
+      let yy = 8;
+
+      // Very thin top accent line
+      doc.setFillColor(...ACCENT);
+      doc.rect(0, 0, pageWidth, 1.5, 'F');
+
+      // Logo or company name (left)
+      if (logoBase64) {
+        doc.addImage(logoBase64, 'AUTO', margin, yy, logoW, logoH);
+        yy = Math.max(yy + logoH, yy + 10);
+      } else {
+        doc.setFont(font, 'bold');
+        const nameFontSize = style.headerSize === 'small' ? 16 : style.headerSize === 'medium' ? 19 : 22;
+        doc.setFontSize(nameFontSize);
+        doc.setTextColor(...DARK);
+        doc.text(companyName, margin, yy + 8);
+        yy += 12;
+      }
+
+      // Document type (right, same line as company)
+      const docLabelX = pageWidth - margin;
+      doc.setFont(font, 'bold');
+      doc.setFontSize((documentType === 'bl' || documentType === 'bon_commande') ? 11 : 16);
+      doc.setTextColor(...ACCENT);
+      doc.text(docTypeLabel, docLabelX, 14, { align: 'right' });
+
+      yy += 3;
+
+      // Full-width thin separator
+      doc.setDrawColor(...DARK);
+      doc.setLineWidth(0.6);
+      doc.line(margin, yy, pageWidth - margin, yy);
+      yy += 4;
+
+      // Client + meta on same line, separated by a thin vertical line
+      const clientRows = buildClientRows();
+      const metaRows = buildMetaRows();
+      const halfW = contentWidth / 2 - 6;
+
+      let ly = yy, ry = yy;
+      clientRows.forEach(([label, value]) => {
+        doc.setFont(font, 'normal');
+        doc.setFontSize(6.5);
+        doc.setTextColor(...GRAY);
+        doc.text(label + ':', margin, ly);
+        doc.setFont(font, 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(...DARK);
+        doc.text(value, margin + 22, ly, { maxWidth: halfW - 22 });
+        ly += 5;
+      });
+
+      const midX = margin + contentWidth / 2;
+      metaRows.forEach(([label, value]) => {
+        doc.setFont(font, 'normal');
+        doc.setFontSize(6.5);
+        doc.setTextColor(...GRAY);
+        doc.text(label + ':', midX + 4, ry);
+        doc.setFont(font, 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(...DARK);
+        doc.text(value, pageWidth - margin, ry, { align: 'right', maxWidth: halfW - 10 });
+        ry += 5;
+      });
+
+      // Thin vertical separator between columns
+      const maxY = Math.max(ly, ry);
+      doc.setDrawColor(200, 200, 200);
+      doc.setLineWidth(0.3);
+      doc.line(midX, yy - 2, midX, maxY + 1);
+
+      yy = maxY + 4;
+
+      // Bottom thin line
+      doc.setDrawColor(180, 180, 180);
+      doc.setLineWidth(0.3);
+      doc.line(margin, yy, pageWidth - margin, yy);
+
+      return yy + 4;
+    };
+
+    // ============================================================
+    //  DRAW PAGE DECORATIONS (called on each page)
+    // ============================================================
+    const drawPageDecorations = () => {
+      if (template === 'minimal') {
+        // Top accent line only
+        doc.setFillColor(...ACCENT);
+        doc.rect(0, 0, pageWidth, 1.5, 'F');
+        // Bottom thin line
+        doc.setDrawColor(180, 180, 180);
+        doc.setLineWidth(0.3);
+        doc.line(margin, pageHeight - footerTotalHeight - 1, pageWidth - margin, pageHeight - footerTotalHeight - 1);
+      } else {
+        doc.setFillColor(...ACCENT);
+        doc.rect(0, 0, pageWidth, 2, 'F');
+        doc.setFillColor(...ACCENT);
+        doc.rect(0, pageHeight - 2, pageWidth, 2, 'F');
+      }
+
       const footerBaseY = pageHeight - footerTotalHeight - 2;
 
-      // Disclaimer line above footer separator
-      const disclaimer = '* Les produits et prix de ce devis peuvent légèrement évoluer lors de la confirmation selon les disponibilités en stock et les variations de prix à l\'arrivage. Des produits similaires ou de qualité supérieure pourront être proposés en substitution.';
+      // Disclaimer
+      const disclaimer = '* Les produits et prix de ce devis peuvent légèrement évoluer lors de la confirmation selon les disponibilités en stock et les variations de prix à l\'arrivage.';
       doc.setFont(font, 'italic');
       doc.setFontSize(4.5);
       doc.setTextColor(160, 160, 160);
       doc.text(disclaimer, pageWidth / 2, footerBaseY - 3.5, { align: 'center', maxWidth: contentWidth });
 
-      doc.setDrawColor(...ACCENT);
-      doc.setLineWidth(0.5);
-      doc.line(margin, footerBaseY, pageWidth - margin, footerBaseY);
+      if (template !== 'minimal') {
+        doc.setDrawColor(...ACCENT);
+        doc.setLineWidth(0.5);
+        doc.line(margin, footerBaseY, pageWidth - margin, footerBaseY);
+      } else {
+        doc.setDrawColor(180, 180, 180);
+        doc.setLineWidth(0.3);
+        doc.line(margin, footerBaseY, pageWidth - margin, footerBaseY);
+      }
 
       let fy = footerBaseY + 3;
       for (let i = 0; i < footerLines.length; i++) {
         if (i === 0) {
           doc.setFont(font, 'bold');
-          doc.setTextColor(...ACCENT);
+          if (template === 'minimal') { doc.setTextColor(...DARK); } else { doc.setTextColor(...ACCENT); }
           doc.setFontSize(5.5);
         } else {
           doc.setFont(font, 'normal');
@@ -241,216 +706,20 @@ export class PdfExportService {
     // Draw first page decorations
     drawPageDecorations();
 
-    y = 7;
-
-    // === HEADER: Logo OR Company Name (left) | DEVIS (right) ===
-    let logoLoaded = false;
-    let logoHeight = 0;
-
-    // Logo size settings
-    const logoSizeConfig = {
-      small: { maxW: 35, maxH: 20 },
-      medium: { maxW: 50, maxH: 28 },
-      large: { maxW: 70, maxH: 38 },
-    };
-    const logoSize = settings?.logo_size || 'medium';
-    const { maxW: maxLogoW, maxH: maxLogoH } = logoSizeConfig[logoSize] || logoSizeConfig.medium;
-
-    if (fields.showLogo && settings?.logo_url) {
-      const logoBase64 = await loadImageAsBase64(settings.logo_url);
-      if (logoBase64) {
-        try {
-          const img = new Image();
-          img.src = logoBase64;
-          await new Promise<void>((resolve) => {
-            img.onload = () => resolve();
-            img.onerror = () => resolve();
-          });
-          
-          let logoW = maxLogoW;
-          let logoH = (img.height / img.width) * logoW;
-          if (logoH > maxLogoH) {
-            logoH = maxLogoH;
-            logoW = (img.width / img.height) * logoH;
-          }
-
-          doc.addImage(logoBase64, 'AUTO', margin, y, logoW, logoH);
-          logoHeight = logoH;
-          logoLoaded = true;
-        } catch {
-          logoLoaded = false;
-        }
-      }
+    // Draw template header
+    if (template === 'modern') {
+      y = await drawModernHeader();
+    } else if (template === 'executive') {
+      y = await drawExecutiveHeader();
+    } else if (template === 'minimal') {
+      y = await drawMinimalHeader();
+    } else {
+      y = await drawClassicHeader();
     }
 
-    // Document type title (right side)
-    const docTypeLabel = documentType === 'bl' ? 'BON DE LIVRAISON'
-      : documentType === 'bon_commande' ? 'BON DE COMMANDE'
-      : documentType === 'proforma' ? 'PROFORMA'
-      : documentType === 'invoice' ? 'FACTURE'
-      : documentType === 'avoir' ? 'AVOIR'
-      : 'DEVIS';
-    const devisBoxW = (documentType === 'bl' || documentType === 'bon_commande') ? 58 : 45;
-    const devisBoxH = 11;
-    const devisBoxX = pageWidth - margin - devisBoxW;
-    const devisBoxY = y;
-
-    doc.setFillColor(...ACCENT);
-    doc.roundedRect(devisBoxX, devisBoxY, devisBoxW, devisBoxH, 2, 2, 'F');
-    doc.setFontSize((documentType === 'bl' || documentType === 'bon_commande') ? 14 : 22);
-    doc.setFont(font, 'bold');
-    doc.setTextColor(...WHITE);
-    doc.text(docTypeLabel, devisBoxX + devisBoxW / 2, devisBoxY + devisBoxH / 2 + (documentType === 'bl' ? 2 : 3), { align: 'center' });
-
-    // If logo is loaded, skip company name & tagline. Otherwise show them.
-    if (!logoLoaded) {
-      const nameX = margin;
-      const nameY = y + 4;
-      const maxNameWidth = devisBoxX - nameX - 5;
-
-      let nameFontSize = style.headerSize === 'small' ? 14 : style.headerSize === 'medium' ? 17 : 19;
-      doc.setFont(font, 'bold');
-      while (nameFontSize > 9) {
-        doc.setFontSize(nameFontSize);
-        if (doc.getTextWidth(companyName) <= maxNameWidth) break;
-        nameFontSize -= 1;
-      }
-      doc.setFontSize(nameFontSize);
-      doc.setTextColor(...ACCENT);
-      doc.text(companyName, nameX, nameY + 4, { maxWidth: maxNameWidth });
-
-      doc.setFontSize(6.5);
-      doc.setFont(font, 'normal');
-      doc.setTextColor(...GRAY);
-      doc.text('MATERIEL DE CUISINE PROFESSIONNEL', nameX, nameY + 9);
-    }
-
-    y = Math.max(y + logoHeight, y + 14) + 5;
-
-    // === THIN SEPARATOR LINE ===
-    doc.setDrawColor(...ACCENT);
-    doc.setLineWidth(0.4);
-    doc.line(margin, y, pageWidth - margin, y);
-    y += 4;
-
-    // === TWO COLUMN LAYOUT: Client info (left) + Quote meta (right) ===
-    const leftColWidth = contentWidth * 0.55;
-    const rightColWidth = contentWidth * 0.38;
-    const rightColX = pageWidth - margin - rightColWidth;
-    const sectionStartY = y;
-
-    // --- LEFT: Client Information ---
-    const clientRows: [string, string][] = [];
-    clientRows.push(['Nom du Client', quote.customer.fullName || '']);
-    if (quote.customer.address || quote.customer.phoneNumber) {
-      const addrParts: string[] = [];
-      if (quote.customer.phoneNumber) {
-        let phone = quote.customer.phoneNumber.trim();
-        if (phone.startsWith('*')) phone = phone.substring(1).trim();
-        if (phone.endsWith(',')) phone = phone.slice(0, -1).trim();
-        addrParts.push(phone);
-      }
-      if (quote.customer.address) addrParts.push(quote.customer.address);
-      clientRows.push(['Adresse / Tel', addrParts.join(' / ')]);
-    }
-    if (quote.customer.city) {
-      clientRows.push(['Ville', quote.customer.city]);
-    }
-    if (quote.customer.salesPerson) {
-      clientRows.push(['Commercial', quote.customer.salesPerson]);
-    }
-    if (fields.showClientICE && quote.customer.ice) {
-      clientRows.push(['ICE Client', quote.customer.ice]);
-    }
-
-    autoTable(doc, {
-      startY: sectionStartY,
-      body: clientRows.map(([label, value]) => [label, value]),
-      margin: { left: margin, right: pageWidth - margin - leftColWidth },
-      theme: 'plain',
-      styles: {
-        fontSize: 7.5,
-        cellPadding: { top: 2, bottom: 2, left: 3, right: 3 },
-        lineColor: [230, 230, 230],
-        lineWidth: 0.2,
-        textColor: DARK,
-        font: 'helvetica',
-        charSpace: 0,
-      },
-      columnStyles: {
-        0: {
-          cellWidth: 28,
-          fillColor: ACCENT,
-          textColor: WHITE,
-          fontStyle: 'bold',
-          fontSize: 6.5,
-        },
-        1: {
-          cellWidth: leftColWidth - 28,
-          fontSize: 7.5,
-          fillColor: [252, 252, 252],
-        },
-      },
-      tableLineColor: [230, 230, 230],
-      tableLineWidth: 0.2,
-    });
-
-    const leftFinalY = (doc as any).lastAutoTable?.finalY || sectionStartY + 30;
-
-    // --- RIGHT: Quote details ---
-    const quoteDate = quote.quote_date ? new Date(quote.quote_date) : quote.createdAt;
-    const quoteInfoRows: [string, string][] = [
-      ['Date', this.formatDate(quoteDate)],
-      ['N° de piece', quote.quoteNumber],
-    ];
-    if (quote.commandNumber) {
-      quoteInfoRows.push(['N° de cmd', quote.commandNumber]);
-    }
-    if (fields.showValidityDate && documentType === 'quote') {
-      const validityDays = settings?.quote_validity_days ?? 30;
-      const validityDate = new Date(quote.createdAt);
-      validityDate.setDate(validityDate.getDate() + validityDays);
-      quoteInfoRows.push(['Validite', `${validityDays} jours (${this.formatDate(validityDate)})`]);
-    }
-    if (documentType === 'invoice') {
-      if (quote.payment_date) {
-        quoteInfoRows.push(['Date paiement', this.formatDate(new Date(quote.payment_date))]);
-      }
-      if (quote.payment_method) {
-        quoteInfoRows.push(['Mode paiement', quote.payment_method]);
-      }
-      if (quote.payment_reference) {
-        quoteInfoRows.push(['N° référence', quote.payment_reference]);
-      }
-      if (quote.payment_bank) {
-        quoteInfoRows.push(['Banque', quote.payment_bank]);
-      }
-    }
-
-    autoTable(doc, {
-      startY: sectionStartY,
-      body: quoteInfoRows,
-      margin: { left: rightColX, right: margin },
-      theme: 'plain',
-      styles: {
-        fontSize: 7.5,
-        cellPadding: { top: 2, bottom: 2, left: 3, right: 3 },
-        lineColor: [230, 230, 230],
-        lineWidth: 0.2,
-        textColor: DARK,
-      },
-      columnStyles: {
-        0: { cellWidth: 24, fontStyle: 'bold', textColor: ACCENT, fontSize: 6.5, fillColor: ACCENT_LIGHT },
-        1: { cellWidth: rightColWidth - 24, halign: 'right', fillColor: [252, 252, 252] },
-      },
-      tableLineColor: [230, 230, 230],
-      tableLineWidth: 0.2,
-    });
-
-    const rightFinalY = (doc as any).lastAutoTable?.finalY || sectionStartY + 25;
-    y = Math.max(leftFinalY, rightFinalY) + 5;
-
-    // === ITEMS TABLE ===
+    // ============================================================
+    //  ITEMS TABLE
+    // ============================================================
     const isBL = documentType === 'bl';
     const isBC = documentType === 'bon_commande';
     const tvaDivisor = 1 + tvaRate / 100;
@@ -460,8 +729,8 @@ export class PdfExportService {
     let itemColumnStyles: Record<number, any>;
 
     const showBLPrices = blShowPrices ?? settings?.bl_show_prices ?? true;
+
     if (isBC) {
-      // Bon de Commande: items sorted by provider, with dispatch columns
       const sortedItems = [...quote.items].sort((a, b) => {
         const pa = (a.provider_name || a.product?.provider || '').toLowerCase();
         const pb = (b.provider_name || b.product?.provider || '').toLowerCase();
@@ -496,7 +765,6 @@ export class PdfExportService {
         4: { cellWidth: 22, halign: 'center', fontStyle: 'bold' },
       };
     } else if (isBL && !showBLPrices) {
-      // BL: no price columns
       tableHeaders = [['Marque', 'REF', 'DESCRIPTION', 'QUANTITÉ']];
       tableBody = quote.items.map(item => [
         getQuoteItemBrand(item) || '',
@@ -511,7 +779,6 @@ export class PdfExportService {
         3: { cellWidth: 18, halign: 'center', fontStyle: 'bold' },
       };
     } else if (isBL && showBLPrices) {
-      // BL with prices
       tableHeaders = [['Marque', 'REF', 'DESCRIPTION', 'QTE', 'PU HT', 'TOTAL HT']];
       tableBody = quote.items.map(item => {
         const unitPriceHT = item.unitPrice / (1 + tvaRate / 100);
@@ -534,50 +801,55 @@ export class PdfExportService {
         5: { cellWidth: 26, halign: 'right', fontStyle: 'bold' },
       };
     } else {
-      tableHeaders = hasDiscount
-        ? [['Marque', 'REF', 'DESCRIPTION', 'QTE', 'PU HT', 'Remise', 'TOTAL HT']]
-        : [['Marque', 'REF', 'DESCRIPTION', 'QTE', 'PU HT', 'TOTAL HT']];
+      // Standard quote/invoice/proforma/avoir — apply column visibility
+      const showBrand = printCols.showBrand !== false;
+      const showBarcode = printCols.showBarcode !== false;
+      const showUnitPrice = printCols.showUnitPrice !== false;
+      const showDiscountCol = (printCols.showDiscount !== false) && hasDiscount;
+
+      const headerCols: string[] = [];
+      if (showBrand) headerCols.push('Marque');
+      if (showBarcode) headerCols.push('REF');
+      headerCols.push('DESCRIPTION');
+      headerCols.push('QTE');
+      if (showUnitPrice) headerCols.push('PU HT');
+      if (showDiscountCol) headerCols.push('Remise');
+      headerCols.push('TOTAL HT');
+      tableHeaders = [headerCols];
 
       tableBody = quote.items.map(item => {
         const discount = item.discount ?? 0;
         const unitPriceHT = item.unitPrice / tvaDivisor;
         const discountedPriceHT = unitPriceHT * (1 - discount / 100);
         const totalHTItem = discountedPriceHT * item.quantity;
-        const row = [
-          getQuoteItemBrand(item) || '',
-          getQuoteItemBarcode(item) || '',
-          getQuoteItemName(item),
-          String(item.quantity),
-          this.formatCurrency(unitPriceHT),
-        ];
-        if (hasDiscount) row.push(discount > 0 ? `${discount}%` : '-');
+        const row: string[] = [];
+        if (showBrand) row.push(getQuoteItemBrand(item) || '');
+        if (showBarcode) row.push(getQuoteItemBarcode(item) || '');
+        row.push(getQuoteItemName(item));
+        row.push(String(item.quantity));
+        if (showUnitPrice) row.push(this.formatCurrency(unitPriceHT));
+        if (showDiscountCol) row.push(discount > 0 ? `${discount}%` : '-');
         row.push(this.formatCurrency(totalHTItem));
         return row;
       });
 
-      itemColumnStyles = hasDiscount
-        ? {
-            0: { cellWidth: 18, halign: 'center' },
-            1: { cellWidth: 24, halign: 'center' },
-            2: { cellWidth: 'auto' },
-            3: { cellWidth: 12, halign: 'center' },
-            4: { cellWidth: 24, halign: 'right' },
-            5: { cellWidth: 16, halign: 'center' },
-            6: { cellWidth: 26, halign: 'right', fontStyle: 'bold' },
-          }
-        : {
-            0: { cellWidth: 18, halign: 'center' },
-            1: { cellWidth: 24, halign: 'center' },
-            2: { cellWidth: 'auto' },
-            3: { cellWidth: 12, halign: 'center' },
-            4: { cellWidth: 24, halign: 'right' },
-            5: { cellWidth: 26, halign: 'right', fontStyle: 'bold' },
-          };
+      // Build column styles dynamically
+      const colStyles: Record<number, any> = {};
+      let ci = 0;
+      if (showBrand) { colStyles[ci] = { cellWidth: 18, halign: 'center' }; ci++; }
+      if (showBarcode) { colStyles[ci] = { cellWidth: 24, halign: 'center' }; ci++; }
+      colStyles[ci] = { cellWidth: 'auto' }; ci++;
+      colStyles[ci] = { cellWidth: 12, halign: 'center' }; ci++;
+      if (showUnitPrice) { colStyles[ci] = { cellWidth: 24, halign: 'right' }; ci++; }
+      if (showDiscountCol) { colStyles[ci] = { cellWidth: 16, halign: 'center' }; ci++; }
+      colStyles[ci] = { cellWidth: 26, halign: 'right', fontStyle: 'bold' };
+      itemColumnStyles = colStyles;
     }
 
-    // Calculate footer height to set bottom margin for items table
-    const footerLineHeight = 3;
-    const footerTotalHeight = footerLines.length * footerLineHeight + 8;
+    // Template-specific table styles
+    const tableHeadFill = template === 'minimal' ? DARK : ACCENT;
+    const tableAltRow = template === 'minimal' ? [245, 245, 245] : [248, 249, 252];
+    const tableLineW = template === 'minimal' ? 0 : 0.2;
 
     autoTable(doc, {
       startY: y,
@@ -588,21 +860,19 @@ export class PdfExportService {
         fontSize: 7,
         cellPadding: { top: 2, bottom: 2, left: 2.5, right: 2.5 },
         lineColor: [230, 230, 230],
-        lineWidth: 0.2,
+        lineWidth: tableLineW,
         textColor: DARK,
         overflow: 'linebreak',
       },
       headStyles: {
-        fillColor: ACCENT,
+        fillColor: tableHeadFill,
         textColor: WHITE,
         fontStyle: 'bold',
         fontSize: 7,
         halign: 'center',
         cellPadding: { top: 2.5, bottom: 2.5, left: 2.5, right: 2.5 },
       },
-      alternateRowStyles: {
-        fillColor: [248, 249, 252],
-      },
+      alternateRowStyles: { fillColor: tableAltRow },
       columnStyles: itemColumnStyles,
       didDrawPage: (data) => {
         drawPageDecorations();
@@ -616,7 +886,7 @@ export class PdfExportService {
 
     y = (doc as any).lastAutoTable.finalY + 4;
 
-    // BL with prices: show a simple HT total block
+    // BL with prices: simple HT total
     if (isBL && showBLPrices) {
       const blTotalHT = quote.items.reduce((s, i) => s + (i.unitPrice / (1 + tvaRate / 100)) * i.quantity, 0);
       const totalsWidth = 75;
@@ -631,118 +901,141 @@ export class PdfExportService {
       y += 10;
     }
 
-    // Non-BL, non-BC: full totals section
+    // ============================================================
+    //  TOTALS SECTION (non-BL, non-BC)
+    // ============================================================
     if (!isBL && !isBC) {
+      const totalsHeight = (fields.showTVA && !printTTCOnly ? 20 : 0) + 16;
+      if (y + totalsHeight > pageHeight - footerTotalHeight - 8) {
+        doc.addPage();
+        drawPageDecorations();
+        y = 12;
+      }
 
-    // Check if totals fit on current page
-    const totalsHeight = (fields.showTVA ? 20 : 8) + 16;
-    if (y + totalsHeight > pageHeight - footerTotalHeight - 8) {
-      doc.addPage();
-      drawPageDecorations();
-      y = 12;
-    }
+      const totalTTC = quote.totalAmount;
+      const totalHT = totalTTC / (1 + tvaRate / 100);
+      const totalTVA = totalTTC - totalHT;
 
-    // === TOTALS SECTION ===
-    const totalTTC = quote.totalAmount;
-    const totalHT = totalTTC / (1 + tvaRate / 100);
-    const totalTVA = totalTTC - totalHT;
+      const totalHTBrut = quote.items.reduce((s, i) => {
+        const unitHT = i.unitPrice / (1 + tvaRate / 100);
+        return s + unitHT * i.quantity;
+      }, 0);
+      const totalRemise = totalHTBrut - totalHT;
+      const hasRemise = totalRemise > 0.005;
 
-    // Remise calculation
-    const totalHTBrut = quote.items.reduce((s, i) => {
-      const unitHT = i.unitPrice / (1 + tvaRate / 100);
-      return s + unitHT * i.quantity;
-    }, 0);
-    const totalRemise = totalHTBrut - totalHT;
-    const hasRemise = totalRemise > 0.005;
+      const totalsWidth = 75;
+      const totalsX = pageWidth - margin - totalsWidth;
 
-    const totalsWidth = 75;
-    const totalsX = pageWidth - margin - totalsWidth;
-
-    const drawTotalsRow = (label: string, value: string, highlight = false) => {
-      if (highlight) {
-        if (style.totalsStyle === 'highlighted') {
-          doc.setFillColor(...ACCENT);
-          doc.rect(totalsX, y, totalsWidth, 8, 'F');
-          doc.setFontSize(9);
-          doc.setFont(font, 'bold');
-          doc.setTextColor(...WHITE);
-        } else if (style.totalsStyle === 'boxed') {
-          doc.setDrawColor(...ACCENT);
-          doc.setLineWidth(0.6);
-          doc.rect(totalsX, y, totalsWidth, 8, 'S');
-          doc.setFontSize(9);
-          doc.setFont(font, 'bold');
-          doc.setTextColor(...ACCENT);
+      const drawTotalsRow = (label: string, value: string, highlight = false) => {
+        if (highlight) {
+          if (template === 'minimal') {
+            // Minimal: just bold text with a top line
+            doc.setDrawColor(...DARK);
+            doc.setLineWidth(0.5);
+            doc.line(totalsX, y, totalsX + totalsWidth, y);
+            y += 2;
+            doc.setFontSize(10);
+            doc.setFont(font, 'bold');
+            doc.setTextColor(...DARK);
+            doc.text(label, totalsX + 3, y + 5);
+            doc.text(value, totalsX + totalsWidth - 3, y + 5, { align: 'right' });
+            y += 9;
+          } else if (style.totalsStyle === 'highlighted') {
+            doc.setFillColor(...ACCENT);
+            doc.rect(totalsX, y, totalsWidth, 8, 'F');
+            doc.setFontSize(9);
+            doc.setFont(font, 'bold');
+            doc.setTextColor(...WHITE);
+            doc.text(label, totalsX + 3, y + 5.5);
+            doc.text(value, totalsX + totalsWidth - 3, y + 5.5, { align: 'right' });
+            y += 10;
+          } else if (style.totalsStyle === 'boxed') {
+            doc.setDrawColor(...ACCENT);
+            doc.setLineWidth(0.6);
+            doc.rect(totalsX, y, totalsWidth, 8, 'S');
+            doc.setFontSize(9);
+            doc.setFont(font, 'bold');
+            doc.setTextColor(...ACCENT);
+            doc.text(label, totalsX + 3, y + 5.5);
+            doc.text(value, totalsX + totalsWidth - 3, y + 5.5, { align: 'right' });
+            y += 10;
+          } else {
+            doc.setFontSize(9);
+            doc.setFont(font, 'bold');
+            doc.setTextColor(...ACCENT);
+            doc.text(label, totalsX + 3, y + 5.5);
+            doc.text(value, totalsX + totalsWidth - 3, y + 5.5, { align: 'right' });
+            y += 10;
+          }
         } else {
-          doc.setFontSize(9);
-          doc.setFont(font, 'bold');
-          doc.setTextColor(...ACCENT);
+          if (template === 'minimal') {
+            doc.setFontSize(7.5);
+            doc.setFont(font, 'normal');
+            doc.setTextColor(...GRAY);
+            doc.text(label, totalsX + 3, y + 4.5);
+            doc.setTextColor(...DARK);
+            doc.text(value, totalsX + totalsWidth - 3, y + 4.5, { align: 'right' });
+            y += 5.5;
+          } else {
+            doc.setFillColor(248, 249, 252);
+            doc.rect(totalsX, y, totalsWidth, 6.5, 'F');
+            doc.setDrawColor(230, 230, 230);
+            doc.rect(totalsX, y, totalsWidth, 6.5, 'S');
+            doc.setFontSize(7.5);
+            doc.setFont(font, 'bold');
+            doc.setTextColor(...DARK);
+            doc.text(label, totalsX + 3, y + 4.5);
+            doc.text(value, totalsX + totalsWidth - 3, y + 4.5, { align: 'right' });
+            y += 6.5;
+          }
         }
-        doc.text(label, totalsX + 3, y + 5.5);
-        doc.text(value, totalsX + totalsWidth - 3, y + 5.5, { align: 'right' });
-        y += 10;
+      };
+
+      if (printTTCOnly) {
+        // Only show final TTC, hide all HT/TVA rows
+        drawTotalsRow('TOTAL TTC', this.formatCurrency(totalTTC) + ' Dh', true);
       } else {
-        doc.setFillColor(248, 249, 252);
-        doc.rect(totalsX, y, totalsWidth, 6.5, 'F');
-        doc.setDrawColor(230, 230, 230);
-        doc.rect(totalsX, y, totalsWidth, 6.5, 'S');
-        doc.setFontSize(7.5);
-        doc.setFont(font, 'bold');
-        doc.setTextColor(...DARK);
-        doc.text(label, totalsX + 3, y + 4.5);
-        doc.text(value, totalsX + totalsWidth - 3, y + 4.5, { align: 'right' });
-        y += 6.5;
-      }
-    };
-
-    if (fields.showTVA) {
-      const showBreakdown = fields.showTVABreakdown !== false;
-      if (showBreakdown) {
-        if (hasRemise) {
-          drawTotalsRow('TOTAL HT BRUT', this.formatCurrency(totalHTBrut) + ' Dh');
-          drawTotalsRow(`REMISE (-${((totalRemise / totalHTBrut) * 100).toFixed(1)}%)`, '-' + this.formatCurrency(totalRemise) + ' Dh');
-          drawTotalsRow('HT NET', this.formatCurrency(totalHT) + ' Dh');
-        } else {
-          drawTotalsRow('TOTAL HT', this.formatCurrency(totalHT) + ' Dh');
+        if (fields.showTVA) {
+          const showBreakdown = fields.showTVABreakdown !== false;
+          if (showBreakdown) {
+            if (hasRemise) {
+              drawTotalsRow('TOTAL HT BRUT', this.formatCurrency(totalHTBrut) + ' Dh');
+              drawTotalsRow(`REMISE (-${((totalRemise / totalHTBrut) * 100).toFixed(1)}%)`, '-' + this.formatCurrency(totalRemise) + ' Dh');
+              drawTotalsRow('HT NET', this.formatCurrency(totalHT) + ' Dh');
+            } else {
+              drawTotalsRow('TOTAL HT', this.formatCurrency(totalHT) + ' Dh');
+            }
+            drawTotalsRow(`TVA ${tvaRate}%`, this.formatCurrency(totalTVA) + ' Dh');
+          }
         }
-        drawTotalsRow(`TVA ${tvaRate}%`, this.formatCurrency(totalTVA) + ' Dh');
+        drawTotalsRow('TOTAL TTC', this.formatCurrency(totalTTC) + ' Dh', true);
       }
-    }
 
-    drawTotalsRow('TOTAL TTC', this.formatCurrency(totalTTC) + ' Dh', true);
-
-    // === PAYMENT SUMMARY block (invoice) ===
-    if (documentType === 'invoice') {
-      const avance = quote.avance_amount ?? 0;
-      const paymentsTotal = (quote.payment_methods_json || []).reduce((s: number, e: any) => s + (e.amount || 0), 0);
-      const totalPaid = avance + paymentsTotal;
-      const reste = Math.max(0, totalTTC - totalPaid);
-      if (avance > 0) {
-        drawTotalsRow('AVANCE REÇUE', '-' + this.formatCurrency(avance) + ' Dh');
-      }
-      if (paymentsTotal > 0) {
-        drawTotalsRow('PAIEMENTS REÇUS', '-' + this.formatCurrency(paymentsTotal) + ' Dh');
-      }
-      if (totalPaid > 0) {
-        if (reste <= 0) {
-          drawTotalsRow('FACTURE SOLDÉE ✓', this.formatCurrency(totalTTC) + ' Dh', true);
-        } else {
-          drawTotalsRow('TOTAL PAYÉ', this.formatCurrency(totalPaid) + ' Dh');
-          drawTotalsRow('RESTE À PAYER', this.formatCurrency(reste) + ' Dh', true);
+      // Payment summary (invoice)
+      if (documentType === 'invoice') {
+        const avance = quote.avance_amount ?? 0;
+        const paymentsTotal = (quote.payment_methods_json || []).reduce((s: number, e: any) => s + (e.amount || 0), 0);
+        const totalPaid = avance + paymentsTotal;
+        const reste = Math.max(0, totalTTC - totalPaid);
+        if (avance > 0) drawTotalsRow('AVANCE REÇUE', '-' + this.formatCurrency(avance) + ' Dh');
+        if (paymentsTotal > 0) drawTotalsRow('PAIEMENTS REÇUS', '-' + this.formatCurrency(paymentsTotal) + ' Dh');
+        if (totalPaid > 0) {
+          if (reste <= 0) {
+            drawTotalsRow('FACTURE SOLDÉE ✓', this.formatCurrency(totalTTC) + ' Dh', true);
+          } else {
+            drawTotalsRow('TOTAL PAYÉ', this.formatCurrency(totalPaid) + ' Dh');
+            drawTotalsRow('RESTE À PAYER', this.formatCurrency(reste) + ' Dh', true);
+          }
         }
       }
     }
 
-    } // end !isBL
-
-    // === INVOICE: "Arrêté" block with amount in letters ===
+    // === INVOICE: "Arrêté" block ===
     if (documentType === 'invoice') {
       const amountInLetters = numberToWordsFr(quote.totalAmount);
       const blockPadX = 4;
       const blockPadY = 3.5;
       const labelText = 'Arrêté la présente facture à la somme de :';
-
-      // Measure required height
       doc.setFontSize(7);
       const lettersLines = doc.splitTextToSize(amountInLetters, contentWidth - blockPadX * 2 - 2);
       const blockH = blockPadY * 2 + 5 + lettersLines.length * 4.5;
@@ -753,24 +1046,18 @@ export class PdfExportService {
         y = 12;
       }
 
-      // Background box
       doc.setFillColor(...ACCENT_LIGHT);
       doc.setDrawColor(...ACCENT);
       doc.setLineWidth(0.4);
       doc.roundedRect(margin, y, contentWidth, blockH, 1.5, 1.5, 'FD');
-
-      // Label line
       doc.setFont(font, 'italic');
       doc.setFontSize(7);
       doc.setTextColor(...GRAY);
       doc.text(labelText, margin + blockPadX, y + blockPadY + 3.5);
-
-      // Amount in letters
       doc.setFont(font, 'bold');
       doc.setFontSize(8);
       doc.setTextColor(...DARK);
       doc.text(lettersLines, margin + blockPadX, y + blockPadY + 3.5 + 5, { maxWidth: contentWidth - blockPadX * 2 - 2 });
-
       y += blockH + 4;
     }
 
@@ -779,11 +1066,7 @@ export class PdfExportService {
       doc.setFontSize(7);
       doc.setFont(font, 'italic');
       doc.setTextColor(...GRAY);
-      doc.text(
-        `Conditions de reglement : ${settings?.payment_terms || '30 jours'}`,
-        margin,
-        y
-      );
+      doc.text(`Conditions de reglement : ${settings?.payment_terms || '30 jours'}`, margin, y);
       y += 5;
     }
 
@@ -809,34 +1092,23 @@ export class PdfExportService {
       const ctaPaddingX = 5;
       const ctaBoxHeight = 8;
       const iconSize = 4;
-      
       doc.setFontSize(9);
       doc.setFont(font, 'bold');
       const ctaTextWidth = doc.getTextWidth(ctaLabel);
       const ctaBoxWidth = ctaTextWidth + ctaPaddingX * 2 + iconSize + 3;
       const ctaY = y;
-
-      // Draw rounded button background
       doc.setFillColor(200, 30, 30);
       doc.roundedRect(margin, ctaY, ctaBoxWidth, ctaBoxHeight, 1.5, 1.5, 'F');
-
-      // Draw document icon (simple rectangle with fold)
       const iconX = margin + ctaPaddingX;
       const iconY = ctaY + (ctaBoxHeight - iconSize) / 2;
       doc.setFillColor(255, 255, 255);
       doc.rect(iconX, iconY, 3, iconSize, 'F');
       doc.setFillColor(200, 30, 30);
       doc.triangle(iconX + 1.5, iconY, iconX + 3, iconY, iconX + 3, iconY + 1.5, 'F');
-
-      // Draw white text as clickable link
       doc.setTextColor(255, 255, 255);
       const textY = ctaY + ctaBoxHeight / 2 + 1.2;
       doc.textWithLink(ctaLabel, iconX + iconSize + 2, textY, { url: techSheetsUrl });
-
-      // Make the whole button area clickable
       doc.link(margin, ctaY, ctaBoxWidth, ctaBoxHeight, { url: techSheetsUrl });
-
-      // Subtitle with expiry + digital notice
       y = ctaY + ctaBoxHeight + 2;
       doc.setFontSize(6);
       doc.setFont(font, 'italic');
@@ -855,7 +1127,6 @@ export class PdfExportService {
       if (qrDataUrl) {
         const qrSize = 14;
         const qrX = pageWidth - margin - qrSize;
-        // Place QR below the footer separator (footerBaseY = pageHeight - (footerLines.length * 3 + 4) - 2)
         const qrY = pageHeight - (footerLines.length * 3 + 4);
         const totalPages2 = doc.getNumberOfPages();
         for (let pi = 1; pi <= totalPages2; pi++) {
@@ -871,29 +1142,19 @@ export class PdfExportService {
       const stampBase64 = await loadImageAsBase64(settings.stamp_url);
       if (stampBase64) {
         try {
-          const stampSizeConfig = {
-            small: { maxW: 25, maxH: 25 },
-            medium: { maxW: 35, maxH: 35 },
-            large: { maxW: 50, maxH: 50 },
-          };
+          const stampSizeConfig = { small: { maxW: 25, maxH: 25 }, medium: { maxW: 35, maxH: 35 }, large: { maxW: 50, maxH: 50 } };
           const stampSize = settings.stamp_size || 'medium';
           const { maxW: maxStampW, maxH: maxStampH } = stampSizeConfig[stampSize] || stampSizeConfig.medium;
           const stampImg = new Image();
           stampImg.src = stampBase64;
-          await new Promise<void>((resolve) => {
-            stampImg.onload = () => resolve();
-            stampImg.onerror = () => resolve();
-          });
+          await new Promise<void>((resolve) => { stampImg.onload = () => resolve(); stampImg.onerror = () => resolve(); });
           let stampW = maxStampW;
           let stampH = (stampImg.height / stampImg.width) * stampW;
-          if (stampH > maxStampH) {
-            stampH = maxStampH;
-            stampW = (stampImg.width / stampImg.height) * stampH;
-          }
+          if (stampH > maxStampH) { stampH = maxStampH; stampW = (stampImg.width / stampImg.height) * stampH; }
           const stampX = pageWidth - margin - stampW;
           const stampY = pageHeight - footerTotalHeight - stampH - 4;
           doc.addImage(stampBase64, 'PNG', stampX, stampY, stampW, stampH);
-        } catch { /* ignore stamp rendering errors */ }
+        } catch { /* ignore */ }
       }
     }
 
@@ -953,7 +1214,6 @@ export class PdfExportService {
     const margin = 12;
     let y = margin;
 
-    // Header
     doc.setFillColor(...ACCENT);
     doc.rect(0, 0, pageWidth, 18, 'F');
     doc.setFont(font, 'bold');
@@ -981,9 +1241,7 @@ export class PdfExportService {
       const tva = ttc - ht;
       const paid = inv.paid_amount || 0;
       const reste = Math.max(0, ttc - paid);
-      const dateStr = inv.quote_date
-        ? inv.quote_date
-        : inv.createdAt.toLocaleDateString('fr-FR');
+      const dateStr = inv.quote_date ? inv.quote_date : inv.createdAt.toLocaleDateString('fr-FR');
       return [
         inv.quoteNumber || '-',
         dateStr,
@@ -1002,23 +1260,14 @@ export class PdfExportService {
     const totalHT = totalTTC / tvaDivisor;
     const totalTVA = totalTTC - totalHT;
 
-    body.push([
-      'TOTAL', '',
-      this.formatCurrency(totalHT),
-      this.formatCurrency(totalTVA),
-      this.formatCurrency(totalTTC),
-      this.formatCurrency(totalPaid),
-      this.formatCurrency(totalReste),
-      '',
-    ] as string[]);
+    body.push(['TOTAL', '', this.formatCurrency(totalHT), this.formatCurrency(totalTVA), this.formatCurrency(totalTTC), this.formatCurrency(totalPaid), this.formatCurrency(totalReste), ''] as string[]);
 
-    const accentFill = ACCENT;
     autoTable(doc, {
       startY: y,
       head: headers,
       body,
       styles: { font, fontSize: 8, cellPadding: 2.5 },
-      headStyles: { fillColor: accentFill, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+      headStyles: { fillColor: ACCENT, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
       willDrawCell: (data: any) => {
         if (data.section === 'body' && data.row.index === body.length - 1) {
           data.cell.styles.fontStyle = 'bold';

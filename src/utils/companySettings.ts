@@ -1,6 +1,13 @@
 import { supabase } from '@/integrations/supabase/client';
 import { getCompanyContext } from './supabaseCompanyFilter';
 
+export interface PrintColumns {
+  showBrand: boolean;
+  showBarcode: boolean;
+  showUnitPrice: boolean;
+  showDiscount: boolean;
+}
+
 export interface QuoteVisibleFields {
   showLogo: boolean;
   showCompanyAddress: boolean;
@@ -14,6 +21,8 @@ export interface QuoteVisibleFields {
   showNotes: boolean;
   showPaymentTerms: boolean;
   showValidityDate: boolean;
+  printTTCOnly: boolean;
+  printColumns: PrintColumns;
 }
 
 export interface QuoteStyle {
@@ -23,7 +32,15 @@ export interface QuoteStyle {
   borderRadius: number;
   headerSize: 'small' | 'medium' | 'large';
   totalsStyle: 'highlighted' | 'simple' | 'boxed';
+  template: 'classic' | 'modern' | 'executive' | 'minimal';
 }
+
+const DEFAULT_PRINT_COLUMNS: PrintColumns = {
+  showBrand: true,
+  showBarcode: true,
+  showUnitPrice: true,
+  showDiscount: true,
+};
 
 const DEFAULT_QUOTE_STYLE: QuoteStyle = {
   accentColor: '#3B82F6',
@@ -32,6 +49,7 @@ const DEFAULT_QUOTE_STYLE: QuoteStyle = {
   borderRadius: 1,
   headerSize: 'large',
   totalsStyle: 'highlighted',
+  template: 'classic',
 };
 
 export interface ShareTemplates {
@@ -133,6 +151,8 @@ const DEFAULT_VISIBLE_FIELDS: QuoteVisibleFields = {
   showNotes: true,
   showPaymentTerms: true,
   showValidityDate: true,
+  printTTCOnly: false,
+  printColumns: DEFAULT_PRINT_COLUMNS,
 };
 
 export class CompanySettingsService {
@@ -175,7 +195,11 @@ export class CompanySettingsService {
       phone_gsm: (data as any).phone_gsm || '',
       quote_visible_fields: {
         ...DEFAULT_VISIBLE_FIELDS,
-        ...(data.quote_visible_fields as Record<string, boolean>),
+        ...(data.quote_visible_fields as Record<string, unknown>),
+        printColumns: {
+          ...DEFAULT_PRINT_COLUMNS,
+          ...((data.quote_visible_fields as any)?.printColumns || {}),
+        },
       },
       quote_style: {
         ...DEFAULT_QUOTE_STYLE,
@@ -224,7 +248,11 @@ export class CompanySettingsService {
       updated_at: data.updated_at || '',
       quote_visible_fields: {
         ...DEFAULT_VISIBLE_FIELDS,
-        ...(data.quote_visible_fields as Record<string, boolean>),
+        ...(data.quote_visible_fields as Record<string, unknown>),
+        printColumns: {
+          ...DEFAULT_PRINT_COLUMNS,
+          ...((data.quote_visible_fields as any)?.printColumns || {}),
+        },
       },
       quote_style: {
         ...DEFAULT_QUOTE_STYLE,

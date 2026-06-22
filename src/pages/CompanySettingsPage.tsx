@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
 import { Settings, Upload, Trash2, Save, Loader, Image, Building, Phone, Mail, Globe, Hash, FileText, Eye, Palette, Users, Package, Edit3, Check, X, MessageCircle, Send, Stamp, Bot, Zap, ToggleLeft, ToggleRight, Lock, QrCode, Truck } from 'lucide-react';
-import { CompanySettingsService, CompanySettings, QuoteVisibleFields, QuoteStyle, DEFAULT_SHARE_TEMPLATES } from '../utils/companySettings';
+import { CompanySettingsService, CompanySettings, QuoteVisibleFields, QuoteStyle, PrintColumns, DEFAULT_SHARE_TEMPLATES } from '../utils/companySettings';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../context/ToastContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -10,7 +10,7 @@ import UserManagementPage from './UserManagementPage';
 import { StockLocationsTab } from '../components/StockLocationsTab';
 import { supabase } from '@/integrations/supabase/client';
 
-const FIELD_LABELS: Record<keyof QuoteVisibleFields, string> = {
+const FIELD_LABELS: Partial<Record<keyof QuoteVisibleFields, string>> = {
   showLogo: 'Logo de l\'entreprise',
   showCompanyAddress: 'Adresse de l\'entreprise',
   showCompanyPhone: 'Téléphone de l\'entreprise',
@@ -24,6 +24,124 @@ const FIELD_LABELS: Record<keyof QuoteVisibleFields, string> = {
   showPaymentTerms: 'Modalités de paiement',
   showValidityDate: 'Date de validité',
 };
+
+const TEMPLATE_DEFINITIONS = [
+  {
+    id: 'classic' as const,
+    name: 'Classique',
+    desc: 'En-tête épuré, tableaux avec couleur d\'accent, totaux surlignés',
+    preview: (color: string) => (
+      <svg viewBox="0 0 120 160" className="w-full h-full">
+        <rect width="120" height="160" fill="#f8f9fc" rx="3"/>
+        <rect x="0" y="0" width="120" height="3" fill={color}/>
+        <rect x="0" y="157" width="120" height="3" fill={color}/>
+        <rect x="75" y="7" width="38" height="10" rx="2" fill={color}/>
+        <text x="94" y="14" textAnchor="middle" fill="white" fontSize="6" fontWeight="bold">DEVIS</text>
+        <rect x="8" y="8" width="55" height="4" rx="1" fill={color} opacity="0.15"/>
+        <rect x="8" y="8" width="14" height="4" rx="1" fill={color}/>
+        <rect x="8" y="13" width="55" height="4" rx="1" fill="#f0f0f0"/>
+        <rect x="8" y="13" width="14" height="4" rx="1" fill={color}/>
+        <rect x="8" y="24" width="104" height="1" fill={color} opacity="0.5"/>
+        <rect x="8" y="27" width="104" height="5" rx="0" fill={color}/>
+        <rect x="8" y="32" width="104" height="4" fill="#f8f9fc"/>
+        <rect x="8" y="36" width="104" height="4" fill="#f0f4ff"/>
+        <rect x="8" y="40" width="104" height="4" fill="#f8f9fc"/>
+        <rect x="8" y="44" width="104" height="4" fill="#f0f4ff"/>
+        <rect x="8" y="48" width="104" height="4" fill="#f8f9fc"/>
+        <rect x="67" y="56" width="45" height="6" rx="0" fill={color}/>
+        <text x="89" y="60.5" textAnchor="middle" fill="white" fontSize="4.5" fontWeight="bold">TOTAL TTC: xxx Dh</text>
+        <rect x="67" y="50" width="45" height="3" fill="#f0f0f0"/>
+        <rect x="67" y="53" width="45" height="3" fill="#f0f0f0"/>
+      </svg>
+    ),
+  },
+  {
+    id: 'modern' as const,
+    name: 'Moderne',
+    desc: 'Bandeau pleine largeur coloré, informations en bande horizontale',
+    preview: (color: string) => (
+      <svg viewBox="0 0 120 160" className="w-full h-full">
+        <rect width="120" height="160" fill="#f8f9fc" rx="3"/>
+        <rect x="0" y="0" width="120" height="22" fill={color}/>
+        <text x="8" y="14" fill="white" fontSize="8" fontWeight="bold">ENTREPRISE</text>
+        <rect x="75" y="4" width="38" height="14" rx="2" fill="white" opacity="0.2"/>
+        <text x="94" y="13" textAnchor="middle" fill="white" fontSize="6" fontWeight="bold">DEVIS</text>
+        <rect x="8" y="24" width="104" height="12" fill="#f0f4ff" stroke={color} strokeWidth="0.5"/>
+        <rect x="75" y="26" width="2" height="8" fill={color} opacity="0.4"/>
+        <rect x="8" y="27" width="60" height="2" fill={color} opacity="0.3"/>
+        <rect x="8" y="30" width="50" height="2" fill={color} opacity="0.2"/>
+        <rect x="8" y="33" width="55" height="2" fill={color} opacity="0.2"/>
+        <rect x="80" y="27" width="30" height="2" fill={color} opacity="0.2"/>
+        <rect x="80" y="30" width="25" height="2" fill={color} opacity="0.2"/>
+        <rect x="8" y="37" width="104" height="5" rx="0" fill={color}/>
+        <rect x="8" y="42" width="104" height="4" fill="#f8f9fc"/>
+        <rect x="8" y="46" width="104" height="4" fill="#f0f4ff"/>
+        <rect x="8" y="50" width="104" height="4" fill="#f8f9fc"/>
+        <rect x="8" y="54" width="104" height="4" fill="#f0f4ff"/>
+        <rect x="67" y="62" width="45" height="6" rx="0" fill={color}/>
+        <text x="89" y="66.5" textAnchor="middle" fill="white" fontSize="4.5" fontWeight="bold">TOTAL TTC: xxx Dh</text>
+      </svg>
+    ),
+  },
+  {
+    id: 'executive' as const,
+    name: 'Élégant',
+    desc: 'Panneau latéral coloré, présentation bi-colonne sophistiquée',
+    preview: (color: string) => (
+      <svg viewBox="0 0 120 160" className="w-full h-full">
+        <rect width="120" height="160" fill="#f8f9fc" rx="3"/>
+        <rect x="8" y="5" width="42" height="48" rx="3" fill={color}/>
+        <text x="29" y="22" textAnchor="middle" fill="white" fontSize="7" fontWeight="bold">ENT.</text>
+        <line x1="14" y1="28" x2="44" y2="28" stroke="white" strokeWidth="0.4" opacity="0.4"/>
+        <rect x="14" y="31" width="30" height="2" fill="white" opacity="0.5"/>
+        <rect x="14" y="35" width="25" height="2" fill="white" opacity="0.4"/>
+        <rect x="14" y="39" width="28" height="2" fill="white" opacity="0.4"/>
+        <rect x="55" y="5" width="57" height="10" rx="2" fill="#1e1e1e"/>
+        <text x="83" y="12" textAnchor="middle" fill="white" fontSize="6" fontWeight="bold">DEVIS</text>
+        <rect x="55" y="17" width="57" height="2" fill={color} opacity="0.3"/>
+        <rect x="55" y="20" width="57" height="2" fill={color} opacity="0.2"/>
+        <line x1="55" y1="24" x2="112" y2="24" stroke={color} strokeWidth="0.5"/>
+        <rect x="55" y="26" width="57" height="2" fill={color} opacity="0.2"/>
+        <rect x="55" y="29" width="57" height="2" fill={color} opacity="0.2"/>
+        <rect x="8" y="56" width="104" height="5" rx="0" fill={color}/>
+        <rect x="8" y="61" width="104" height="4" fill="#f8f9fc"/>
+        <rect x="8" y="65" width="104" height="4" fill="#f0f4ff"/>
+        <rect x="8" y="69" width="104" height="4" fill="#f8f9fc"/>
+        <rect x="67" y="77" width="45" height="6" rx="0" fill={color}/>
+        <text x="89" y="81.5" textAnchor="middle" fill="white" fontSize="4.5" fontWeight="bold">TOTAL TTC: xxx Dh</text>
+      </svg>
+    ),
+  },
+  {
+    id: 'minimal' as const,
+    name: 'Minimaliste',
+    desc: 'Design épuré sans remplissage, lignes fines, look professionnel',
+    preview: (color: string) => (
+      <svg viewBox="0 0 120 160" className="w-full h-full">
+        <rect width="120" height="160" fill="white" rx="3"/>
+        <rect x="0" y="0" width="120" height="2" fill={color}/>
+        <text x="8" y="14" fill="#1e1e1e" fontSize="9" fontWeight="bold">ENTREPRISE</text>
+        <text x="112" y="14" textAnchor="end" fill={color} fontSize="7" fontWeight="bold">DEVIS</text>
+        <line x1="8" y1="18" x2="112" y2="18" stroke="#1e1e1e" strokeWidth="0.6"/>
+        <rect x="8" y="21" width="50" height="2" fill="#888" opacity="0.5"/>
+        <rect x="8" y="24" width="45" height="2" fill="#888" opacity="0.4"/>
+        <rect x="8" y="27" width="48" height="2" fill="#888" opacity="0.4"/>
+        <rect x="65" y="21" width="47" height="2" fill="#888" opacity="0.3"/>
+        <rect x="65" y="24" width="40" height="2" fill="#888" opacity="0.3"/>
+        <line x1="62" y1="20" x2="62" y2="30" stroke="#ccc" strokeWidth="0.3"/>
+        <line x1="8" y1="32" x2="112" y2="32" stroke="#ccc" strokeWidth="0.3"/>
+        <rect x="8" y="34" width="104" height="5" rx="0" fill="#1e1e1e"/>
+        <rect x="8" y="39" width="104" height="4" fill="white"/>
+        <rect x="8" y="43" width="104" height="4" fill="#f5f5f5"/>
+        <rect x="8" y="47" width="104" height="4" fill="white"/>
+        <rect x="8" y="51" width="104" height="4" fill="#f5f5f5"/>
+        <line x1="67" y1="58" x2="112" y2="58" stroke="#1e1e1e" strokeWidth="0.5"/>
+        <text x="112" y="63" textAnchor="end" fill="#1e1e1e" fontSize="5" fontWeight="bold">TOTAL TTC: xxx Dh</text>
+        <rect x="67" y="65" width="45" height="2" fill="#ccc" opacity="0.5"/>
+      </svg>
+    ),
+  },
+];
 
 function CompanySettingsTab() {
   const { showToast } = useToast();
@@ -100,13 +218,25 @@ function CompanySettingsTab() {
     }
   };
 
-  const handleFieldToggle = (field: keyof QuoteVisibleFields) => {
+  const handleFieldToggle = (field: keyof typeof FIELD_LABELS) => {
     if (!settings) return;
     setSettings({
       ...settings,
       quote_visible_fields: {
         ...settings.quote_visible_fields,
         [field]: !settings.quote_visible_fields[field],
+      },
+    });
+  };
+
+  const handlePrintColumnToggle = (col: keyof PrintColumns) => {
+    if (!settings) return;
+    const current = settings.quote_visible_fields.printColumns || { showBrand: true, showBarcode: true, showUnitPrice: true, showDiscount: true };
+    setSettings({
+      ...settings,
+      quote_visible_fields: {
+        ...settings.quote_visible_fields,
+        printColumns: { ...current, [col]: !current[col] },
       },
     });
   };
@@ -412,6 +542,36 @@ function CompanySettingsTab() {
         </div>
       </div>
 
+      {/* Template Picker */}
+      <div className="glass rounded-xl shadow-lg p-4">
+        <h2 className="text-sm font-semibold text-foreground mb-1 flex items-center space-x-2">
+          <Eye className="h-4 w-4" /><span>Modèle de Document</span>
+        </h2>
+        <p className="text-xs text-muted-foreground mb-3">Choisissez l'apparence de vos devis, factures, BL, proformas, etc.</p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {TEMPLATE_DEFINITIONS.map(tpl => {
+            const isSelected = (settings.quote_style?.template || 'classic') === tpl.id;
+            const color = settings.quote_style?.accentColor || '#3B82F6';
+            return (
+              <button
+                key={tpl.id}
+                onClick={() => setSettings({ ...settings, quote_style: { ...settings.quote_style, template: tpl.id } })}
+                className={`rounded-xl border-2 p-2 text-left transition-all ${isSelected ? 'border-primary shadow-md' : 'border-border hover:border-primary/40'}`}
+              >
+                <div className="w-full aspect-[3/4] rounded overflow-hidden mb-2 border border-border bg-white">
+                  {tpl.preview(color)}
+                </div>
+                <div className="flex items-center space-x-1.5 mb-0.5">
+                  {isSelected && <div className="h-2 w-2 rounded-full bg-primary flex-shrink-0" />}
+                  <span className={`text-xs font-semibold ${isSelected ? 'text-primary' : 'text-foreground'}`}>{tpl.name}</span>
+                </div>
+                <p className="text-[10px] text-muted-foreground leading-tight">{tpl.desc}</p>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Quote Styling */}
       <div className="glass rounded-xl shadow-lg p-4">
         <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center space-x-2">
@@ -464,15 +624,62 @@ function CompanySettingsTab() {
         </div>
       </div>
 
+      {/* Print Columns & TTC Toggle */}
+      <div className="glass rounded-xl shadow-lg p-4">
+        <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center space-x-2">
+          <FileText className="h-4 w-4" /><span>Colonnes & Prix d'impression</span>
+        </h2>
+        <div className="mb-4">
+          <p className="text-xs font-medium text-foreground mb-2">Colonnes du tableau produits (devis, facture, proforma...)</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            {([
+              { key: 'showBrand', label: 'Marque' },
+              { key: 'showBarcode', label: 'REF / Code-barres' },
+              { key: 'showUnitPrice', label: 'Prix unitaire HT' },
+              { key: 'showDiscount', label: 'Remise (si applicable)' },
+            ] as { key: keyof PrintColumns; label: string }[]).map(({ key, label }) => (
+              <label key={key} className="flex items-center space-x-2 p-2.5 bg-secondary rounded-lg cursor-pointer hover:bg-accent transition-colors">
+                <input
+                  type="checkbox"
+                  checked={settings.quote_visible_fields.printColumns?.[key] !== false}
+                  onChange={() => handlePrintColumnToggle(key)}
+                  className="h-4 w-4 rounded border-primary text-primary focus:ring-ring"
+                />
+                <span className="text-xs text-foreground">{label}</span>
+              </label>
+            ))}
+          </div>
+          <p className="text-[11px] text-muted-foreground mt-1.5">La colonne Description et Quantité sont toujours affichées</p>
+        </div>
+        <div className="border-t border-border pt-3">
+          <p className="text-xs font-medium text-foreground mb-2">Affichage des prix dans les totaux</p>
+          <label className="flex items-start space-x-3 p-3 bg-secondary rounded-lg cursor-pointer hover:bg-accent transition-colors max-w-md">
+            <input
+              type="checkbox"
+              checked={settings.quote_visible_fields.printTTCOnly === true}
+              onChange={e => setSettings({
+                ...settings,
+                quote_visible_fields: { ...settings.quote_visible_fields, printTTCOnly: e.target.checked },
+              })}
+              className="h-4 w-4 rounded border-primary text-primary focus:ring-ring mt-0.5"
+            />
+            <div>
+              <span className="text-sm text-foreground font-medium">Afficher uniquement le prix TTC</span>
+              <p className="text-[11px] text-muted-foreground mt-0.5">Masque la TVA, le taux de TVA et le HT — affiche seulement le TOTAL TTC dans le récapitulatif</p>
+            </div>
+          </label>
+        </div>
+      </div>
+
       {/* Visible Fields */}
       <div className="glass rounded-xl shadow-lg p-4">
         <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center space-x-2">
           <Eye className="h-5 w-5" /><span>Éléments Visibles sur le Devis</span>
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {(Object.keys(FIELD_LABELS) as Array<keyof QuoteVisibleFields>).map(field => (
+          {(Object.keys(FIELD_LABELS) as Array<keyof typeof FIELD_LABELS>).map(field => (
             <label key={field} className="flex items-center space-x-3 p-3 bg-secondary rounded-lg cursor-pointer hover:bg-accent transition-colors">
-              <input type="checkbox" checked={settings.quote_visible_fields[field]} onChange={() => handleFieldToggle(field)} className="h-4 w-4 rounded border-primary text-primary focus:ring-ring" />
+              <input type="checkbox" checked={!!settings.quote_visible_fields[field]} onChange={() => handleFieldToggle(field)} className="h-4 w-4 rounded border-primary text-primary focus:ring-ring" />
               <span className="text-sm text-foreground">{FIELD_LABELS[field]}</span>
             </label>
           ))}
