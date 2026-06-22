@@ -48,7 +48,7 @@ const emptyForm: CompanyFormData = {
   website: '', ice: '', rc: '', if_number: '', payment_terms: ''
 };
 
-const FIELD_LABELS: Record<keyof QuoteVisibleFields, string> = {
+const FIELD_LABELS: Partial<Record<keyof QuoteVisibleFields, string>> = {
   showLogo: "Logo de l'entreprise",
   showCompanyAddress: "Adresse de l'entreprise",
   showCompanyPhone: "Téléphone de l'entreprise",
@@ -61,6 +61,105 @@ const FIELD_LABELS: Record<keyof QuoteVisibleFields, string> = {
   showPaymentTerms: 'Conditions de paiement',
   showValidityDate: 'Date de validité du devis',
 };
+
+const TEMPLATE_DEFINITIONS = [
+  {
+    id: 'classic' as const,
+    name: 'Classique',
+    desc: 'En-tête épuré, tableaux avec couleur d\'accent, totaux surlignés',
+    preview: (color: string) => (
+      <svg viewBox="0 0 120 160" className="w-full h-full">
+        <rect width="120" height="160" fill="#f8f9fc" rx="3"/>
+        <rect x="0" y="0" width="120" height="3" fill={color}/>
+        <rect x="0" y="157" width="120" height="3" fill={color}/>
+        <rect x="75" y="7" width="38" height="10" rx="2" fill={color}/>
+        <text x="94" y="14" textAnchor="middle" fill="white" fontSize="6" fontWeight="bold">DEVIS</text>
+        <rect x="8" y="8" width="55" height="4" rx="1" fill={color} opacity="0.15"/>
+        <rect x="8" y="8" width="14" height="4" rx="1" fill={color}/>
+        <rect x="8" y="13" width="55" height="4" rx="1" fill="#f0f0f0"/>
+        <rect x="8" y="13" width="14" height="4" rx="1" fill={color}/>
+        <rect x="8" y="24" width="104" height="1" fill={color} opacity="0.5"/>
+        <rect x="8" y="27" width="104" height="5" rx="0" fill={color}/>
+        <rect x="8" y="32" width="104" height="4" fill="#f8f9fc"/>
+        <rect x="8" y="36" width="104" height="4" fill="#f0f4ff"/>
+        <rect x="8" y="40" width="104" height="4" fill="#f8f9fc"/>
+        <rect x="8" y="44" width="104" height="4" fill="#f0f4ff"/>
+        <rect x="76" y="130" width="36" height="8" rx="1" fill={color} opacity="0.15"/>
+        <rect x="76" y="130" width="36" height="8" rx="1" fill={color} opacity="0.3"/>
+        <text x="94" y="136" textAnchor="middle" fill={color} fontSize="4" fontWeight="bold">TOTAL TTC</text>
+      </svg>
+    ),
+  },
+  {
+    id: 'modern' as const,
+    name: 'Moderne',
+    desc: 'Bandeau plein en haut, logo blanc, fond sombre pour l\'en-tête',
+    preview: (color: string) => (
+      <svg viewBox="0 0 120 160" className="w-full h-full">
+        <rect width="120" height="160" fill="#f8f9fc" rx="3"/>
+        <rect x="0" y="0" width="120" height="30" fill={color}/>
+        <text x="60" y="12" textAnchor="middle" fill="white" fontSize="7" fontWeight="bold">ENTREPRISE</text>
+        <text x="60" y="22" textAnchor="middle" fill="white" fontSize="5" opacity="0.8">DEVIS N° 2025-001</text>
+        <rect x="8" y="36" width="104" height="5" fill={color} opacity="0.12" rx="1"/>
+        <rect x="8" y="36" width="104" height="5" fill={color} rx="1"/>
+        <rect x="8" y="41" width="104" height="4" fill="#f8f9fc"/>
+        <rect x="8" y="45" width="104" height="4" fill="#f0f4ff"/>
+        <rect x="8" y="49" width="104" height="4" fill="#f8f9fc"/>
+        <rect x="8" y="53" width="104" height="4" fill="#f0f4ff"/>
+        <rect x="76" y="130" width="36" height="8" rx="1" fill={color}/>
+        <text x="94" y="136" textAnchor="middle" fill="white" fontSize="4" fontWeight="bold">TOTAL TTC</text>
+      </svg>
+    ),
+  },
+  {
+    id: 'executive' as const,
+    name: 'Exécutif',
+    desc: 'Double colonne info client/entreprise, ligne accent sobre',
+    preview: (color: string) => (
+      <svg viewBox="0 0 120 160" className="w-full h-full">
+        <rect width="120" height="160" fill="#f8f9fc" rx="3"/>
+        <rect x="0" y="0" width="4" height="160" fill={color}/>
+        <text x="14" y="12" fill={color} fontSize="7" fontWeight="bold">FACTURE</text>
+        <rect x="14" y="15" width="80" height="1" fill={color} opacity="0.4"/>
+        <rect x="14" y="19" width="45" height="3" fill="#e8e8e8" rx="1"/>
+        <rect x="14" y="24" width="35" height="3" fill="#e8e8e8" rx="1"/>
+        <rect x="70" y="19" width="42" height="3" fill="#e8e8e8" rx="1"/>
+        <rect x="70" y="24" width="32" height="3" fill="#e8e8e8" rx="1"/>
+        <rect x="8" y="33" width="104" height="5" fill={color} rx="1"/>
+        <rect x="8" y="38" width="104" height="4" fill="#f8f9fc"/>
+        <rect x="8" y="42" width="104" height="4" fill="#f5f5f5"/>
+        <rect x="8" y="46" width="104" height="4" fill="#f8f9fc"/>
+        <rect x="76" y="130" width="36" height="8" rx="1" fill={color} opacity="0.15"/>
+        <text x="94" y="136" textAnchor="middle" fill={color} fontSize="4" fontWeight="bold">TOTAL TTC</text>
+      </svg>
+    ),
+  },
+  {
+    id: 'minimal' as const,
+    name: 'Minimaliste',
+    desc: 'Noir & blanc strict, pas de couleur dans le tableau, typographie seule',
+    preview: (_color: string) => (
+      <svg viewBox="0 0 120 160" className="w-full h-full">
+        <rect width="120" height="160" fill="white" rx="3"/>
+        <rect x="0" y="0" width="120" height="1" fill="#222"/>
+        <rect x="0" y="159" width="120" height="1" fill="#222"/>
+        <text x="60" y="13" textAnchor="middle" fill="#111" fontSize="8" fontWeight="bold" letterSpacing="3">DEVIS</text>
+        <rect x="8" y="17" width="104" height="0.8" fill="#111"/>
+        <rect x="8" y="22" width="35" height="3" fill="#eee" rx="1"/>
+        <rect x="8" y="27" width="25" height="3" fill="#eee" rx="1"/>
+        <rect x="75" y="22" width="37" height="3" fill="#eee" rx="1"/>
+        <rect x="75" y="27" width="27" height="3" fill="#eee" rx="1"/>
+        <rect x="8" y="34" width="104" height="0.8" fill="#333"/>
+        <rect x="8" y="38" width="104" height="4" fill="#f5f5f5"/>
+        <rect x="8" y="42" width="104" height="4" fill="white"/>
+        <rect x="8" y="46" width="104" height="4" fill="#f5f5f5"/>
+        <rect x="8" y="50" width="104" height="0.8" fill="#333"/>
+        <rect x="76" y="130" width="36" height="8" rx="1" fill="#111"/>
+        <text x="94" y="136" textAnchor="middle" fill="white" fontSize="4" fontWeight="bold">TOTAL TTC</text>
+      </svg>
+    ),
+  },
+];
 
 export default function CompaniesPage() {
   const { isSuperAdmin, authReady } = useAuth();
@@ -469,6 +568,29 @@ export default function CompaniesPage() {
                   className="rounded" />
                 <span className="text-xs text-foreground">Afficher les bordures</span>
               </label>
+              <div className="border-t border-border pt-3 mt-1">
+                <p className="text-xs font-medium text-foreground mb-1">Modèle de document</p>
+                <p className="text-[11px] text-muted-foreground mb-3">Mise en page pour tous les documents (devis, factures, BL, proformas...)</p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {TEMPLATE_DEFINITIONS.map(tpl => {
+                    const isSelected = (s.quote_style?.template || 'classic') === tpl.id;
+                    const color = s.quote_style?.accentColor || '#3B82F6';
+                    return (
+                      <button
+                        key={tpl.id}
+                        onClick={() => setStyle({ template: tpl.id })}
+                        className={`rounded-xl border-2 p-2 text-left transition-all ${isSelected ? 'border-primary shadow-md' : 'border-border hover:border-primary/40'}`}
+                      >
+                        <div className="w-full aspect-[3/4] rounded overflow-hidden mb-2 border border-border bg-white">
+                          {tpl.preview(color)}
+                        </div>
+                        <p className="text-xs font-semibold text-foreground">{tpl.name}</p>
+                        <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">{tpl.desc}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
 
             {/* Champs visibles */}
