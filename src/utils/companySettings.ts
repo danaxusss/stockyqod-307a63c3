@@ -31,7 +31,7 @@ export interface QuoteStyle {
   borderRadius: number;
   headerSize: 'small' | 'medium' | 'large';
   totalsStyle: 'highlighted' | 'simple' | 'boxed';
-  template: 'classic' | 'modern' | 'executive' | 'minimal';
+  template: 'classic' | 'modern' | 'executive' | 'minimal' | 'sidebar' | 'banner' | 'bold' | 'split';
 }
 
 const DEFAULT_PRINT_COLUMNS: PrintColumns = {

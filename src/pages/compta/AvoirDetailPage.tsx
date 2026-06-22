@@ -24,7 +24,7 @@ export default function AvoirDetailPage() {
   const [avoir, setAvoir] = useState<Quote | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [avoirDate, setAvoirDate] = useState('');
-  const [printTTCOnly, setPrintTTCOnly] = useState(true);
+  const [printTTCOnly, setPrintTTCOnly] = useState(false);
   const [showPrintPreview, setShowPrintPreview] = useState(false);
   const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
   const [previewFilename, setPreviewFilename] = useState('');

@@ -159,6 +159,114 @@ const TEMPLATE_DEFINITIONS = [
       </svg>
     ),
   },
+  {
+    id: 'sidebar' as const,
+    name: 'Signet',
+    desc: 'Bande verticale couleur à gauche, mise en page aérée à droite',
+    preview: (color: string) => (
+      <svg viewBox="0 0 120 160" className="w-full h-full">
+        <rect width="120" height="160" fill="#f8f9fc" rx="3"/>
+        <rect x="0" y="0" width="7" height="160" fill={color}/>
+        <text x="16" y="13" fill={color} fontSize="8" fontWeight="bold">ENTREPRISE</text>
+        <text x="112" y="13" textAnchor="end" fill="#1e1e1e" fontSize="7" fontWeight="bold">DEVIS</text>
+        <line x1="16" y1="17" x2="112" y2="17" stroke={color} strokeWidth="0.5"/>
+        <rect x="16" y="20" width="45" height="2" fill="#888" opacity="0.4"/>
+        <rect x="16" y="23" width="40" height="2" fill="#888" opacity="0.3"/>
+        <rect x="68" y="20" width="44" height="2" fill="#888" opacity="0.3"/>
+        <rect x="68" y="23" width="36" height="2" fill="#888" opacity="0.3"/>
+        <line x1="16" y1="28" x2="112" y2="28" stroke="#ccc" strokeWidth="0.3"/>
+        <rect x="16" y="30" width="96" height="5" fill={color}/>
+        <rect x="16" y="35" width="96" height="4" fill="white"/>
+        <rect x="16" y="39" width="96" height="4" fill="#f0f4ff"/>
+        <rect x="16" y="43" width="96" height="4" fill="white"/>
+        <rect x="70" y="130" width="38" height="8" rx="1" fill={color} opacity="0.2"/>
+        <text x="89" y="136" textAnchor="middle" fill={color} fontSize="4" fontWeight="bold">TOTAL TTC</text>
+      </svg>
+    ),
+  },
+  {
+    id: 'banner' as const,
+    name: 'Bandeau',
+    desc: 'Titre centré en haut, client dans un encadré coloré',
+    preview: (color: string) => (
+      <svg viewBox="0 0 120 160" className="w-full h-full">
+        <rect width="120" height="160" fill="#f8f9fc" rx="3"/>
+        <rect x="0" y="0" width="120" height="2" fill={color}/>
+        <text x="60" y="13" textAnchor="middle" fill={color} fontSize="10" fontWeight="bold">DEVIS</text>
+        <line x1="42" y1="15" x2="78" y2="15" stroke={color} strokeWidth="0.5"/>
+        <rect x="8" y="19" width="55" height="3" fill="#e8e8e8" rx="1"/>
+        <rect x="8" y="23" width="45" height="3" fill="#e8e8e8" rx="1"/>
+        <rect x="70" y="19" width="42" height="3" fill="#e8e8e8" rx="1"/>
+        <rect x="70" y="23" width="35" height="3" fill="#e8e8e8" rx="1"/>
+        <rect x="8" y="29" width="104" height="16" rx="2" fill={color} opacity="0.1"/>
+        <rect x="8" y="29" width="104" height="16" rx="2" stroke={color} strokeWidth="0.4" fill="none"/>
+        <rect x="12" y="32" width="40" height="2" fill="#888" opacity="0.5"/>
+        <rect x="12" y="36" width="30" height="2" fill="#888" opacity="0.4"/>
+        <rect x="12" y="40" width="35" height="2" fill="#888" opacity="0.3"/>
+        <rect x="8" y="48" width="104" height="5" fill={color}/>
+        <rect x="8" y="53" width="104" height="4" fill="white"/>
+        <rect x="8" y="57" width="104" height="4" fill="#f0f4ff"/>
+        <rect x="70" y="130" width="38" height="8" rx="1" fill={color}/>
+        <text x="89" y="136" textAnchor="middle" fill="white" fontSize="4" fontWeight="bold">TOTAL TTC</text>
+      </svg>
+    ),
+  },
+  {
+    id: 'bold' as const,
+    name: 'Impact',
+    desc: 'En-tête sombre et contrasté, encadrés client/infos distincts',
+    preview: (color: string) => (
+      <svg viewBox="0 0 120 160" className="w-full h-full">
+        <rect width="120" height="160" fill="#f8f9fc" rx="3"/>
+        <rect x="0" y="0" width="120" height="28" fill="#1e1e1e"/>
+        <rect x="116" y="0" width="4" height="28" fill={color}/>
+        <text x="8" y="13" fill="white" fontSize="8" fontWeight="bold">ENTREPRISE</text>
+        <text x="8" y="21" fill="#aaa" fontSize="5">Cuisine Pro</text>
+        <rect x="68" y="4" width="42" height="20" rx="2" fill={color}/>
+        <text x="89" y="17" textAnchor="middle" fill="white" fontSize="8" fontWeight="bold">DEVIS</text>
+        <rect x="8" y="32" width="50" height="18" fill="#f5f5f5"/>
+        <rect x="8" y="32" width="3" height="18" fill={color}/>
+        <rect x="14" y="35" width="30" height="2" fill="#888" opacity="0.5"/>
+        <rect x="14" y="39" width="25" height="2" fill="#888" opacity="0.4"/>
+        <rect x="62" y="32" width="50" height="18" fill="#f5f5f5"/>
+        <rect x="62" y="32" width="3" height="18" fill="#1e1e1e"/>
+        <rect x="68" y="35" width="30" height="2" fill="#888" opacity="0.5"/>
+        <rect x="68" y="39" width="25" height="2" fill="#888" opacity="0.4"/>
+        <rect x="8" y="54" width="104" height="5" fill={color}/>
+        <rect x="8" y="59" width="104" height="4" fill="white"/>
+        <rect x="8" y="63" width="104" height="4" fill="#f5f5f5"/>
+        <rect x="70" y="130" width="38" height="8" rx="1" fill={color}/>
+        <text x="89" y="136" textAnchor="middle" fill="white" fontSize="4" fontWeight="bold">TOTAL TTC</text>
+      </svg>
+    ),
+  },
+  {
+    id: 'split' as const,
+    name: 'Bicolore',
+    desc: 'En-tête partagé couleur / sombre, typographie grande et créative',
+    preview: (color: string) => (
+      <svg viewBox="0 0 120 160" className="w-full h-full">
+        <rect width="120" height="160" fill="#f8f9fc" rx="3"/>
+        <rect x="0" y="0" width="60" height="26" fill={color}/>
+        <rect x="60" y="0" width="60" height="26" fill="#1e1e1e"/>
+        <text x="8" y="11" fill="white" fontSize="7" fontWeight="bold">ENTREPRISE</text>
+        <text x="8" y="19" fill="white" fontSize="5" opacity="0.75">Cuisine Pro</text>
+        <text x="112" y="16" textAnchor="end" fill={color} fontSize="9" fontWeight="bold">DEVIS</text>
+        <line x1="8" y1="29" x2="58" y2="29" stroke={color} strokeWidth="0.5"/>
+        <line x1="62" y1="29" x2="112" y2="29" stroke="#1e1e1e" strokeWidth="0.5"/>
+        <rect x="8" y="32" width="48" height="2" fill="#888" opacity="0.4"/>
+        <rect x="8" y="36" width="40" height="2" fill="#888" opacity="0.3"/>
+        <rect x="62" y="32" width="50" height="2" fill="#888" opacity="0.4"/>
+        <rect x="62" y="36" width="42" height="2" fill="#888" opacity="0.3"/>
+        <line x1="8" y1="41" x2="112" y2="41" stroke="#ccc" strokeWidth="0.3"/>
+        <rect x="8" y="43" width="104" height="5" fill={color}/>
+        <rect x="8" y="48" width="104" height="4" fill="white"/>
+        <rect x="8" y="52" width="104" height="4" fill="#f5f5f5"/>
+        <rect x="70" y="130" width="38" height="8" rx="1" fill={color}/>
+        <text x="89" y="136" textAnchor="middle" fill="white" fontSize="4" fontWeight="bold">TOTAL TTC</text>
+      </svg>
+    ),
+  },
 ];
 
 export default function CompaniesPage() {
@@ -541,33 +649,7 @@ export default function CompaniesPage() {
                     <option value="courier">Courier</option>
                   </select>
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">Taille en-tête</label>
-                  <select value={s.quote_style?.headerSize || 'large'}
-                    onChange={e => setStyle({ headerSize: e.target.value as any })}
-                    className="w-full px-2 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground">
-                    <option value="small">Petit</option>
-                    <option value="medium">Moyen</option>
-                    <option value="large">Grand</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">Style des totaux</label>
-                  <select value={s.quote_style?.totalsStyle || 'highlighted'}
-                    onChange={e => setStyle({ totalsStyle: e.target.value as any })}
-                    className="w-full px-2 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground">
-                    <option value="highlighted">Surligné</option>
-                    <option value="simple">Simple</option>
-                    <option value="boxed">Encadré</option>
-                  </select>
-                </div>
               </div>
-              <label className="flex items-center space-x-2 cursor-pointer">
-                <input type="checkbox" checked={s.quote_style?.showBorders ?? true}
-                  onChange={e => setStyle({ showBorders: e.target.checked })}
-                  className="rounded" />
-                <span className="text-xs text-foreground">Afficher les bordures</span>
-              </label>
               <div className="border-t border-border pt-3 mt-1">
                 <p className="text-xs font-medium text-foreground mb-1">Modèle de document</p>
                 <p className="text-[11px] text-muted-foreground mb-3">Mise en page pour tous les documents (devis, factures, BL, proformas...)</p>
