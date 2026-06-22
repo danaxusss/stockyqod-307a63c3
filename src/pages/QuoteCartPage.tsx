@@ -106,6 +106,7 @@ export function QuoteCartPage() {
   // Company settings for PDF export
   const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null);
   const [useStamp, setUseStamp] = useState(false);
+  const [printTTCOnly, setPrintTTCOnly] = useState(true);
 
   // Product search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -808,7 +809,7 @@ export function QuoteCartPage() {
         techSheetsExpiryLabel = techSheetsExpiry === 'never' ? 'permanent' : `${techSheetsExpiry} jours`;
       }
 
-      await PdfExportService.exportQuoteToPdf(quoteData, freshSettings || companySettings, techSheetsUrl, techSheetsExpiryLabel, useStamp);
+      await PdfExportService.exportQuoteToPdf(quoteData, freshSettings || companySettings, techSheetsUrl, techSheetsExpiryLabel, useStamp, 'quote', undefined, printTTCOnly);
       showToast({
         type: 'success',
         title: 'Export réussi',
@@ -886,7 +887,7 @@ export function QuoteCartPage() {
     const freshSettings = await CompanySettingsService.getSettings(quoteCompanyId || undefined).catch(() => companySettings);
     try {
       const quoteData: Quote = { id: quote?.id || crypto.randomUUID(), quoteNumber, commandNumber: commandNumber || undefined, createdAt: quote?.createdAt || new Date(), updatedAt: new Date(), status, customer, items, totalAmount, notes, notes2: notes2 || undefined, quote_date: quoteDate || undefined };
-      await PdfExportService.exportQuoteToPdf(quoteData, freshSettings || companySettings, undefined, undefined, useStamp);
+      await PdfExportService.exportQuoteToPdf(quoteData, freshSettings || companySettings, undefined, undefined, useStamp, 'quote', undefined, printTTCOnly);
     } catch { /* continue */ }
     setIsExporting(false);
 
@@ -1682,6 +1683,19 @@ export function QuoteCartPage() {
         </div>
       )}
 
+      {/* TTC-only Toggle */}
+      <div className="glass rounded-xl shadow-lg p-3">
+        <label className="flex items-center space-x-2 text-sm text-foreground cursor-pointer">
+          <input
+            type="checkbox"
+            checked={printTTCOnly}
+            onChange={(e) => setPrintTTCOnly(e.target.checked)}
+            className="rounded border-input"
+          />
+          <span>Afficher uniquement le prix TTC (masquer HT et TVA)</span>
+        </label>
+      </div>
+
       {/* Action Buttons */}
       <div className="flex flex-col sm:flex-row gap-2">
         <button onClick={() => navigate('/quotes-history')}
@@ -1749,7 +1763,7 @@ export function QuoteCartPage() {
                 try {
                   const freshSettings = await CompanySettingsService.getSettings(companyId || undefined).catch(() => companySettings);
                   const quoteData: Quote = { id: quote?.id || crypto.randomUUID(), quoteNumber, commandNumber: commandNumber || undefined, createdAt: quote?.createdAt || new Date(), updatedAt: new Date(), status, customer, items, totalAmount, notes, notes2: notes2 || undefined, quote_date: quoteDate || undefined };
-                  await PdfExportService.exportQuoteToPdf(quoteData, freshSettings || companySettings, undefined, undefined, useStamp);
+                  await PdfExportService.exportQuoteToPdf(quoteData, freshSettings || companySettings, undefined, undefined, useStamp, 'quote', undefined, printTTCOnly);
                 } catch { /* continue */ }
                 setIsExporting(false);
 

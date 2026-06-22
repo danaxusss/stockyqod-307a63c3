@@ -31,6 +31,7 @@ export default function InvoiceDetailPage() {
   const [invoice, setInvoice] = useState<Quote | null>(null);
   const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null);
   const [useStamp, setUseStamp] = useState(false);
+  const [printTTCOnly, setPrintTTCOnly] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
 
   // Edit state
@@ -263,7 +264,7 @@ export default function InvoiceDetailPage() {
       const freshSettings = compId
         ? await CompanySettingsService.getSettings(compId).catch(() => companySettings)
         : companySettings;
-      await PdfExportService.exportQuoteToPdf(invoice, freshSettings, undefined, undefined, useStamp, 'invoice');
+      await PdfExportService.exportQuoteToPdf(invoice, freshSettings, undefined, undefined, useStamp, 'invoice', undefined, printTTCOnly);
     } catch (e) {
       showToast({ type: 'error', title: 'Erreur PDF', message: String(e) });
     }
@@ -277,7 +278,7 @@ export default function InvoiceDetailPage() {
       const freshSettings = compId
         ? await CompanySettingsService.getSettings(compId).catch(() => companySettings)
         : companySettings;
-      await PdfExportService.exportQuoteToPdf(invoice, freshSettings, undefined, undefined, useStamp, 'invoice');
+      await PdfExportService.exportQuoteToPdf(invoice, freshSettings, undefined, undefined, useStamp, 'invoice', undefined, printTTCOnly);
     } catch { /* continue even if PDF fails */ }
 
     const company = companySettings?.company_name?.trim() || '';
@@ -386,6 +387,13 @@ export default function InvoiceDetailPage() {
                 ✍🏻
               </button>
             )}
+            <button
+              onClick={() => setPrintTTCOnly(v => !v)}
+              title={printTTCOnly ? 'Affichage TTC seul — cliquer pour afficher HT+TVA+TTC' : 'Affichage HT+TVA+TTC — cliquer pour TTC seul'}
+              className={`px-2 py-1.5 rounded-lg transition-colors text-xs font-medium ${printTTCOnly ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400 ring-1 ring-blue-500/40' : 'hover:bg-accent text-muted-foreground border border-border'}`}
+            >
+              TTC
+            </button>
             <button onClick={handleExportPdf} className="flex items-center space-x-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
               <Download className="h-3.5 w-3.5" /><span>PDF</span>
             </button>
@@ -393,7 +401,7 @@ export default function InvoiceDetailPage() {
               onClick={async () => {
                 if (!invoice) return;
                 const freshSettings = await CompanySettingsService.getSettings(invoice.company_id!);
-                const { blob, filename } = await PdfExportService.generatePdfBlob(invoice, freshSettings, undefined, undefined, useStamp, 'invoice');
+                const { blob, filename } = await PdfExportService.generatePdfBlob(invoice, freshSettings, undefined, undefined, useStamp, 'invoice', undefined, printTTCOnly);
                 setPreviewBlob(blob);
                 setPreviewFilename(filename);
                 setShowPrintPreview(true);

@@ -24,6 +24,7 @@ export default function AvoirDetailPage() {
   const [avoir, setAvoir] = useState<Quote | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [avoirDate, setAvoirDate] = useState('');
+  const [printTTCOnly, setPrintTTCOnly] = useState(true);
   const [showPrintPreview, setShowPrintPreview] = useState(false);
   const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
   const [previewFilename, setPreviewFilename] = useState('');
@@ -62,7 +63,7 @@ export default function AvoirDetailPage() {
     if (!avoir) return;
     try {
       const settings = await getSettings(avoir);
-      await PdfExportService.exportQuoteToPdf(avoir, settings, undefined, undefined, undefined, 'avoir');
+      await PdfExportService.exportQuoteToPdf(avoir, settings, undefined, undefined, undefined, 'avoir', undefined, printTTCOnly);
     } catch (e) {
       showToast({ type: 'error', title: 'Erreur PDF', message: String(e) });
     }
@@ -72,7 +73,7 @@ export default function AvoirDetailPage() {
     if (!avoir) return;
     try {
       const settings = await getSettings(avoir);
-      const { blob, filename } = await PdfExportService.generatePdfBlob(avoir, settings, undefined, undefined, undefined, 'avoir');
+      const { blob, filename } = await PdfExportService.generatePdfBlob(avoir, settings, undefined, undefined, undefined, 'avoir', undefined, printTTCOnly);
       setPreviewBlob(blob);
       setPreviewFilename(filename);
       setShowPrintPreview(true);
@@ -108,6 +109,13 @@ export default function AvoirDetailPage() {
             />
           </div>
         </div>
+        <button
+          onClick={() => setPrintTTCOnly(v => !v)}
+          title={printTTCOnly ? 'Affichage TTC seul — cliquer pour afficher HT+TVA+TTC' : 'Affichage HT+TVA+TTC — cliquer pour TTC seul'}
+          className={`px-2 py-1.5 rounded-lg transition-colors text-xs font-medium ${printTTCOnly ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400 ring-1 ring-blue-500/40' : 'hover:bg-accent text-muted-foreground border border-border'}`}
+        >
+          TTC
+        </button>
         <button onClick={handleExportPdf} className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
           <Download className="h-3.5 w-3.5" /><span>PDF</span>
         </button>

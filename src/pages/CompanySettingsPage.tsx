@@ -542,42 +542,12 @@ function CompanySettingsTab() {
         </div>
       </div>
 
-      {/* Template Picker */}
-      <div className="glass rounded-xl shadow-lg p-4">
-        <h2 className="text-sm font-semibold text-foreground mb-1 flex items-center space-x-2">
-          <Eye className="h-4 w-4" /><span>Modèle de Document</span>
-        </h2>
-        <p className="text-xs text-muted-foreground mb-3">Choisissez l'apparence de vos devis, factures, BL, proformas, etc.</p>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {TEMPLATE_DEFINITIONS.map(tpl => {
-            const isSelected = (settings.quote_style?.template || 'classic') === tpl.id;
-            const color = settings.quote_style?.accentColor || '#3B82F6';
-            return (
-              <button
-                key={tpl.id}
-                onClick={() => setSettings({ ...settings, quote_style: { ...settings.quote_style, template: tpl.id } })}
-                className={`rounded-xl border-2 p-2 text-left transition-all ${isSelected ? 'border-primary shadow-md' : 'border-border hover:border-primary/40'}`}
-              >
-                <div className="w-full aspect-[3/4] rounded overflow-hidden mb-2 border border-border bg-white">
-                  {tpl.preview(color)}
-                </div>
-                <div className="flex items-center space-x-1.5 mb-0.5">
-                  {isSelected && <div className="h-2 w-2 rounded-full bg-primary flex-shrink-0" />}
-                  <span className={`text-xs font-semibold ${isSelected ? 'text-primary' : 'text-foreground'}`}>{tpl.name}</span>
-                </div>
-                <p className="text-[10px] text-muted-foreground leading-tight">{tpl.desc}</p>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Quote Styling */}
+      {/* Quote Styling + Template */}
       <div className="glass rounded-xl shadow-lg p-4">
         <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center space-x-2">
           <Palette className="h-5 w-5" /><span>Style du Devis</span>
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
           <div>
             <label className="block text-xs font-medium text-foreground mb-1">Couleur d'accent</label>
             <div className="flex items-center space-x-3">
@@ -616,11 +586,37 @@ function CompanySettingsTab() {
             </label>
           </div>
         </div>
-        <div className="mt-4 flex items-center space-x-3">
+        <div className="flex items-center space-x-3 mb-4">
           <span className="text-sm text-muted-foreground">Aperçu :</span>
           <div className="h-8 w-8 rounded-md" style={{ backgroundColor: settings.quote_style?.accentColor || '#3B82F6' }} />
           <div className="h-6 px-3 rounded text-white text-xs flex items-center font-bold" style={{ backgroundColor: settings.quote_style?.accentColor || '#3B82F6' }}>TOTAL TTC</div>
           <div className="h-6 px-3 rounded text-xs flex items-center font-bold" style={{ color: settings.quote_style?.accentColor || '#3B82F6' }}>DEVIS</div>
+        </div>
+        <div className="border-t border-border pt-4">
+          <p className="text-xs font-medium text-foreground mb-2">Modèle de document (superadmin)</p>
+          <p className="text-[11px] text-muted-foreground mb-3">Choisissez la mise en page pour tous vos documents (devis, factures, BL, proformas...)</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {TEMPLATE_DEFINITIONS.map(tpl => {
+              const isSelected = (settings.quote_style?.template || 'classic') === tpl.id;
+              const color = settings.quote_style?.accentColor || '#3B82F6';
+              return (
+                <button
+                  key={tpl.id}
+                  onClick={() => setSettings({ ...settings, quote_style: { ...settings.quote_style, template: tpl.id } })}
+                  className={`rounded-xl border-2 p-2 text-left transition-all ${isSelected ? 'border-primary shadow-md' : 'border-border hover:border-primary/40'}`}
+                >
+                  <div className="w-full aspect-[3/4] rounded overflow-hidden mb-2 border border-border bg-white">
+                    {tpl.preview(color)}
+                  </div>
+                  <div className="flex items-center space-x-1.5 mb-0.5">
+                    {isSelected && <div className="h-2 w-2 rounded-full bg-primary flex-shrink-0" />}
+                    <span className={`text-xs font-semibold ${isSelected ? 'text-primary' : 'text-foreground'}`}>{tpl.name}</span>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground leading-tight">{tpl.desc}</p>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
@@ -650,24 +646,6 @@ function CompanySettingsTab() {
             ))}
           </div>
           <p className="text-[11px] text-muted-foreground mt-1.5">La colonne Description et Quantité sont toujours affichées</p>
-        </div>
-        <div className="border-t border-border pt-3">
-          <p className="text-xs font-medium text-foreground mb-2">Affichage des prix dans les totaux</p>
-          <label className="flex items-start space-x-3 p-3 bg-secondary rounded-lg cursor-pointer hover:bg-accent transition-colors max-w-md">
-            <input
-              type="checkbox"
-              checked={settings.quote_visible_fields.printTTCOnly === true}
-              onChange={e => setSettings({
-                ...settings,
-                quote_visible_fields: { ...settings.quote_visible_fields, printTTCOnly: e.target.checked },
-              })}
-              className="h-4 w-4 rounded border-primary text-primary focus:ring-ring mt-0.5"
-            />
-            <div>
-              <span className="text-sm text-foreground font-medium">Afficher uniquement le prix TTC</span>
-              <p className="text-[11px] text-muted-foreground mt-0.5">Masque la TVA, le taux de TVA et le HT — affiche seulement le TOTAL TTC dans le récapitulatif</p>
-            </div>
-          </label>
         </div>
       </div>
 

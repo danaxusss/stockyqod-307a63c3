@@ -131,7 +131,7 @@ export class PdfExportService {
     return `${intPart},${parts[1]}`;
   }
 
-  static async exportQuoteToPdf(quote: Quote, settings?: CompanySettings | null, techSheetsUrl?: string, techSheetsExpiryLabel?: string, useStampOverride?: boolean, documentType: 'quote' | 'bl' | 'proforma' | 'invoice' | 'avoir' | 'bon_commande' = 'quote', blShowPrices?: boolean, returnBlob?: boolean): Promise<void | Blob> {
+  static async exportQuoteToPdf(quote: Quote, settings?: CompanySettings | null, techSheetsUrl?: string, techSheetsExpiryLabel?: string, useStampOverride?: boolean, documentType: 'quote' | 'bl' | 'proforma' | 'invoice' | 'avoir' | 'bon_commande' = 'quote', blShowPrices?: boolean, printTTCOnly = true, returnBlob?: boolean): Promise<void | Blob> {
     const style: QuoteStyle = settings?.quote_style || {
       accentColor: '#3B82F6', fontFamily: 'helvetica', showBorders: true,
       borderRadius: 1, headerSize: 'large', totalsStyle: 'highlighted', template: 'classic',
@@ -157,7 +157,6 @@ export class PdfExportService {
       printColumns: { showBrand: true, showBarcode: true, showUnitPrice: true, showDiscount: true },
     };
 
-    const printTTCOnly = fields.printTTCOnly ?? false;
     const printCols = fields.printColumns || { showBrand: true, showBarcode: true, showUnitPrice: true, showDiscount: true };
 
     const tvaRate = settings?.tva_rate ?? 20;
@@ -1188,6 +1187,7 @@ export class PdfExportService {
     useStampOverride?: boolean,
     documentType: 'quote' | 'bl' | 'proforma' | 'invoice' | 'avoir' | 'bon_commande' = 'quote',
     blShowPrices?: boolean,
+    printTTCOnly = true,
   ): Promise<{ blob: Blob; filename: string }> {
     const docPrefix = documentType === 'bl' ? 'BL'
       : documentType === 'bon_commande' ? 'BC'
@@ -1196,7 +1196,7 @@ export class PdfExportService {
       : documentType === 'avoir' ? 'Avoir'
       : 'Devis';
     const filename = `${docPrefix}_${quote.quoteNumber}.pdf`;
-    const blob = await this.exportQuoteToPdf(quote, settings, techSheetsUrl, techSheetsExpiryLabel, useStampOverride, documentType, blShowPrices, true) as unknown as Blob;
+    const blob = await this.exportQuoteToPdf(quote, settings, techSheetsUrl, techSheetsExpiryLabel, useStampOverride, documentType, blShowPrices, printTTCOnly, true) as unknown as Blob;
     return { blob, filename };
   }
 

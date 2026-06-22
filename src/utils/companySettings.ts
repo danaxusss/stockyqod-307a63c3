@@ -21,7 +21,6 @@ export interface QuoteVisibleFields {
   showNotes: boolean;
   showPaymentTerms: boolean;
   showValidityDate: boolean;
-  printTTCOnly: boolean;
   printColumns: PrintColumns;
 }
 
@@ -151,7 +150,6 @@ const DEFAULT_VISIBLE_FIELDS: QuoteVisibleFields = {
   showNotes: true,
   showPaymentTerms: true,
   showValidityDate: true,
-  printTTCOnly: false,
   printColumns: DEFAULT_PRINT_COLUMNS,
 };
 
