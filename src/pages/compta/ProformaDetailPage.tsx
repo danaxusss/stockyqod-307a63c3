@@ -56,6 +56,7 @@ export default function ProformaDetailPage() {
   const [showPrintPreview, setShowPrintPreview] = useState(false);
   const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
   const [previewFilename, setPreviewFilename] = useState('');
+  const [printTTCOnly, setPrintTTCOnly] = useState(true);
   const [showClientForm, setShowClientForm] = useState(false);
   const [clientFormInitialName, setClientFormInitialName] = useState('');
 
@@ -209,7 +210,7 @@ export default function ProformaDetailPage() {
         payment_terms: company.payment_terms, quote_visible_fields: company.quote_visible_fields,
         quote_style: { accentColor: company.accent_color, fontFamily: company.font_family, showBorders: true, borderRadius: 1, headerSize: 'large', totalsStyle: 'highlighted' },
       } as any : null;
-      await PdfExportService.exportQuoteToPdf(proforma, settings, undefined, undefined, undefined, 'proforma');
+      await PdfExportService.exportQuoteToPdf(proforma, settings, undefined, undefined, undefined, 'proforma', undefined, printTTCOnly);
     } catch (e) {
       showToast({ type: 'error', title: 'Erreur PDF', message: String(e) });
     }
@@ -269,6 +270,13 @@ export default function ProformaDetailPage() {
             <button onClick={startEdit} className="p-1.5 hover:bg-accent rounded-lg text-muted-foreground" title="Modifier">
               <Pencil className="h-4 w-4" />
             </button>
+            <button
+              onClick={() => setPrintTTCOnly(v => !v)}
+              title={printTTCOnly ? 'Affichage TTC seul — cliquer pour afficher HT+TVA+TTC' : 'Affichage HT+TVA+TTC — cliquer pour TTC seul'}
+              className={`px-2 py-1.5 rounded-lg transition-colors text-xs font-medium ${printTTCOnly ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400 ring-1 ring-blue-500/40' : 'hover:bg-accent text-muted-foreground border border-border'}`}
+            >
+              TTC
+            </button>
             <button onClick={handleExportPdf} className="flex items-center space-x-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
               <Download className="h-3.5 w-3.5" /><span>PDF</span>
             </button>
@@ -286,7 +294,7 @@ export default function ProformaDetailPage() {
                     payment_terms: company.payment_terms, quote_visible_fields: company.quote_visible_fields,
                     quote_style: { accentColor: company.accent_color, fontFamily: company.font_family, showBorders: true, borderRadius: 1, headerSize: 'large', totalsStyle: 'highlighted' },
                   } as any : null;
-                  const { blob, filename } = await PdfExportService.generatePdfBlob(proforma, settings, undefined, undefined, undefined, 'proforma');
+                  const { blob, filename } = await PdfExportService.generatePdfBlob(proforma, settings, undefined, undefined, undefined, 'proforma', undefined, printTTCOnly);
                   setPreviewBlob(blob);
                   setPreviewFilename(filename);
                   setShowPrintPreview(true);
