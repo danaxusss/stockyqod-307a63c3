@@ -31,7 +31,7 @@ export default function InvoiceDetailPage() {
   const [invoice, setInvoice] = useState<Quote | null>(null);
   const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null);
   const [useStamp, setUseStamp] = useState(false);
-  const [printTTCOnly, setPrintTTCOnly] = useState(true);
+  const [printTTCOnly, setPrintTTCOnly] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   // Edit state

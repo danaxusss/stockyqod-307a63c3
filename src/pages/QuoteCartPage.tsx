@@ -106,7 +106,7 @@ export function QuoteCartPage() {
   // Company settings for PDF export
   const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null);
   const [useStamp, setUseStamp] = useState(false);
-  const [printTTCOnly, setPrintTTCOnly] = useState(true);
+  const [printTTCOnly, setPrintTTCOnly] = useState(false);
 
   // Product search state
   const [searchQuery, setSearchQuery] = useState('');

@@ -39,7 +39,8 @@ function darkenColor(rgb: [number, number, number], factor: number): [number, nu
 
 async function loadImageAsBase64(url: string): Promise<string | null> {
   try {
-    const response = await fetch(url);
+    const cacheBustedUrl = `${url}${url.includes('?') ? '&' : '?'}_cb=${Date.now()}`;
+    const response = await fetch(cacheBustedUrl, { cache: 'no-cache' });
     if (!response.ok) return null;
     const blob = await response.blob();
     return new Promise((resolve) => {
@@ -648,17 +649,304 @@ export class PdfExportService {
     };
 
     // ============================================================
+    //  TEMPLATE: SIDEBAR
+    //  Accent bookmark stripe on left; clean two-column info layout
+    // ============================================================
+    const drawSidebarHeader = async (): Promise<number> => {
+      const stripeW = 6;
+      doc.setFillColor(...ACCENT);
+      doc.rect(0, 0, stripeW, 80, 'F');
+
+      const cx = margin + stripeW - margin + 5; // content left X (relative to margin)
+      const cxAbs = margin + (stripeW > margin ? stripeW - margin + 2 : 0) + 2;
+      let yy = 8;
+
+      if (logoBase64) {
+        doc.addImage(logoBase64, 'AUTO', cxAbs, yy, logoW, logoH);
+        yy += logoH + 4;
+      } else {
+        doc.setFont(font, 'bold');
+        doc.setFontSize(16);
+        doc.setTextColor(...ACCENT);
+        doc.text(companyName, cxAbs, yy + 8, { maxWidth: contentWidth * 0.55 });
+        yy += 14;
+      }
+
+      // Document type right-aligned at same level as company
+      doc.setFont(font, 'bold');
+      doc.setFontSize((documentType === 'bl' || documentType === 'bon_commande') ? 12 : 18);
+      doc.setTextColor(...DARK);
+      doc.text(docTypeLabel, pageWidth - margin, 14, { align: 'right' });
+
+      yy = Math.max(yy, 22) + 2;
+
+      doc.setDrawColor(...ACCENT);
+      doc.setLineWidth(0.5);
+      doc.line(cxAbs, yy, pageWidth - margin, yy);
+      yy += 5;
+
+      const clientRows = buildClientRows();
+      const metaRows = buildMetaRows();
+      const halfW = (pageWidth - margin - cxAbs) / 2 - 4;
+      const midX = cxAbs + (pageWidth - margin - cxAbs) / 2 + 2;
+
+      let ly = yy, ry = yy;
+      clientRows.forEach(([label, value]) => {
+        doc.setFont(font, 'bold'); doc.setFontSize(6.5); doc.setTextColor(...ACCENT);
+        doc.text(label.toUpperCase() + ':', cxAbs, ly);
+        doc.setFont(font, 'normal'); doc.setFontSize(7.5); doc.setTextColor(...DARK);
+        doc.text(value, cxAbs + doc.getTextWidth(label.toUpperCase() + ':') + 1.5, ly, { maxWidth: halfW - 22 });
+        ly += 5.5;
+      });
+      metaRows.forEach(([label, value]) => {
+        doc.setFont(font, 'bold'); doc.setFontSize(6.5); doc.setTextColor(...GRAY);
+        doc.text(label + ':', midX, ry);
+        doc.setFont(font, 'normal'); doc.setFontSize(7.5); doc.setTextColor(...DARK);
+        doc.text(value, pageWidth - margin, ry, { align: 'right', maxWidth: halfW });
+        ry += 5.5;
+      });
+
+      const maxY = Math.max(ly, ry) + 2;
+      doc.setDrawColor(210, 210, 210); doc.setLineWidth(0.3);
+      doc.line(cxAbs, maxY, pageWidth - margin, maxY);
+      return maxY + 5;
+    };
+
+    // ============================================================
+    //  TEMPLATE: BANNER
+    //  Centered bold document type; company & client in clean strips
+    // ============================================================
+    const drawBannerHeader = async (): Promise<number> => {
+      // Top accent bar
+      doc.setFillColor(...ACCENT);
+      doc.rect(0, 0, pageWidth, 2, 'F');
+
+      let yy = 7;
+
+      // Centered doc type
+      doc.setFont(font, 'bold');
+      doc.setFontSize((documentType === 'bl' || documentType === 'bon_commande') ? 14 : 22);
+      doc.setTextColor(...ACCENT);
+      doc.text(docTypeLabel, pageWidth / 2, yy + 8, { align: 'center' });
+
+      // Thin underline beneath title
+      const titleW = doc.getTextWidth(docTypeLabel);
+      doc.setDrawColor(...ACCENT);
+      doc.setLineWidth(0.4);
+      doc.line(pageWidth / 2 - titleW / 2, yy + 10, pageWidth / 2 + titleW / 2, yy + 10);
+      yy += 16;
+
+      // Company / logo row
+      if (logoBase64) {
+        const lx = margin;
+        doc.addImage(logoBase64, 'AUTO', lx, yy, logoW, logoH);
+        yy += logoH + 3;
+      } else {
+        doc.setFont(font, 'bold'); doc.setFontSize(12); doc.setTextColor(...DARK);
+        doc.text(companyName, margin, yy + 6, { maxWidth: contentWidth * 0.55 });
+        doc.setFont(font, 'normal'); doc.setFontSize(6); doc.setTextColor(...GRAY);
+        if (settings?.phone) doc.text(settings.phone, margin, yy + 11);
+        yy += 15;
+      }
+
+      const metaRows = buildMetaRows();
+      const metaBaseY = yy - 12;
+      metaRows.forEach(([label, value], mi) => {
+        const my = metaBaseY + mi * 5.5;
+        doc.setFont(font, 'bold'); doc.setFontSize(6.5); doc.setTextColor(...GRAY);
+        doc.text(label + ':', pageWidth - margin - 50, my);
+        doc.setFont(font, 'normal'); doc.setFontSize(7); doc.setTextColor(...DARK);
+        doc.text(value, pageWidth - margin, my, { align: 'right' });
+      });
+
+      // Client shaded box
+      const clientRows = buildClientRows();
+      const boxH = clientRows.length * 6 + 6;
+      doc.setFillColor(...ACCENT_LIGHT);
+      doc.setDrawColor(...ACCENT);
+      doc.setLineWidth(0.3);
+      doc.roundedRect(margin, yy, contentWidth, boxH, 2, 2, 'FD');
+      let cy = yy + 5;
+      clientRows.forEach(([label, value]) => {
+        doc.setFont(font, 'bold'); doc.setFontSize(6.5); doc.setTextColor(...ACCENT);
+        doc.text(label.toUpperCase() + ':', margin + 4, cy);
+        doc.setFont(font, 'normal'); doc.setFontSize(7.5); doc.setTextColor(...DARK);
+        doc.text(value, margin + 38, cy, { maxWidth: contentWidth - 42 });
+        cy += 6;
+      });
+      return yy + boxH + 6;
+    };
+
+    // ============================================================
+    //  TEMPLATE: BOLD
+    //  High-contrast dark header; strong accent accents; clean grid
+    // ============================================================
+    const drawBoldHeader = async (): Promise<number> => {
+      const headerH = logoBase64 ? Math.max(logoH + 12, 32) : 32;
+
+      // Dark header band
+      doc.setFillColor(...DARK);
+      doc.rect(0, 0, pageWidth, headerH, 'F');
+
+      // Accent side accent on header
+      doc.setFillColor(...ACCENT);
+      doc.rect(pageWidth - 4, 0, 4, headerH, 'F');
+
+      if (logoBase64) {
+        doc.addImage(logoBase64, 'AUTO', margin, (headerH - logoH) / 2, logoW, logoH);
+      } else {
+        doc.setFont(font, 'bold'); doc.setFontSize(15); doc.setTextColor(...WHITE);
+        doc.text(companyName, margin, headerH / 2 + 2);
+        doc.setFontSize(6); doc.setFont(font, 'normal');
+        doc.setTextColor(180, 180, 180);
+        doc.text('MATERIEL DE CUISINE PROFESSIONNEL', margin, headerH / 2 + 7);
+      }
+
+      // Doc type in accent box on header (left of right stripe)
+      const dtW = (documentType === 'bl' || documentType === 'bon_commande') ? 60 : 46;
+      const dtX = pageWidth - 4 - dtW - 4;
+      doc.setFillColor(...ACCENT);
+      doc.roundedRect(dtX, 4, dtW, headerH - 8, 2, 2, 'F');
+      doc.setFont(font, 'bold');
+      doc.setFontSize((documentType === 'bl' || documentType === 'bon_commande') ? 12 : 18);
+      doc.setTextColor(...WHITE);
+      doc.text(docTypeLabel, dtX + dtW / 2, headerH / 2 + ((documentType === 'bl') ? 2 : 3), { align: 'center' });
+
+      let yy = headerH + 4;
+
+      // Client + meta in two column boxes
+      const clientRows = buildClientRows();
+      const metaRows = buildMetaRows();
+      const colW = contentWidth / 2 - 2;
+
+      // Client box (left)
+      const rowCount = Math.max(clientRows.length, metaRows.length);
+      const boxH = rowCount * 5.5 + 8;
+
+      doc.setFillColor(248, 248, 248);
+      doc.setDrawColor(220, 220, 220); doc.setLineWidth(0.2);
+      doc.rect(margin, yy, colW, boxH, 'FD');
+      doc.setFillColor(...ACCENT);
+      doc.rect(margin, yy, 3, boxH, 'F');
+      let cy = yy + 5;
+      clientRows.forEach(([label, value]) => {
+        doc.setFont(font, 'bold'); doc.setFontSize(6.5); doc.setTextColor(...ACCENT);
+        doc.text(label.toUpperCase() + ':', margin + 6, cy);
+        doc.setFont(font, 'normal'); doc.setFontSize(7); doc.setTextColor(...DARK);
+        doc.text(value, margin + colW - 3, cy, { align: 'right', maxWidth: colW - 32 });
+        cy += 5.5;
+      });
+
+      // Meta box (right)
+      const metaX = margin + colW + 4;
+      doc.setFillColor(248, 248, 248);
+      doc.rect(metaX, yy, colW, boxH, 'FD');
+      doc.setFillColor(...DARK);
+      doc.rect(metaX, yy, 3, boxH, 'F');
+      let my = yy + 5;
+      metaRows.forEach(([label, value]) => {
+        doc.setFont(font, 'bold'); doc.setFontSize(6.5); doc.setTextColor(...GRAY);
+        doc.text(label + ':', metaX + 6, my);
+        doc.setFont(font, 'normal'); doc.setFontSize(7); doc.setTextColor(...DARK);
+        doc.text(value, metaX + colW - 3, my, { align: 'right', maxWidth: colW - 32 });
+        my += 5.5;
+      });
+
+      return yy + boxH + 5;
+    };
+
+    // ============================================================
+    //  TEMPLATE: SPLIT
+    //  Left accent panel (company) + right dark panel (doc type)
+    // ============================================================
+    const drawSplitHeader = async (): Promise<number> => {
+      const panelH = logoBase64 ? Math.max(logoH + 14, 30) : 30;
+      const halfW = pageWidth / 2;
+
+      // Left panel (accent)
+      doc.setFillColor(...ACCENT);
+      doc.rect(0, 0, halfW, panelH, 'F');
+
+      // Right panel (dark)
+      doc.setFillColor(...DARK);
+      doc.rect(halfW, 0, halfW, panelH, 'F');
+
+      // Company / logo in left panel
+      if (logoBase64) {
+        const lx = margin;
+        const ly = (panelH - logoH) / 2;
+        doc.addImage(logoBase64, 'AUTO', lx, ly > 0 ? ly : 2, logoW, logoH);
+      } else {
+        doc.setFont(font, 'bold'); doc.setFontSize(13); doc.setTextColor(...WHITE);
+        const lines = doc.splitTextToSize(companyName, halfW - margin * 2);
+        doc.text(lines, margin + 2, panelH / 2 + 2);
+      }
+
+      // Doc type in right panel
+      doc.setFont(font, 'bold');
+      doc.setFontSize((documentType === 'bl' || documentType === 'bon_commande') ? 13 : 20);
+      doc.setTextColor(...ACCENT);
+      doc.text(docTypeLabel, halfW + (halfW - margin) / 2, panelH / 2 + 3, { align: 'center' });
+
+      let yy = panelH + 5;
+
+      // Two-column client + meta below panels
+      const clientRows = buildClientRows();
+      const metaRows = buildMetaRows();
+      const colW = contentWidth / 2 - 3;
+
+      // Thin accent underline
+      doc.setDrawColor(...ACCENT); doc.setLineWidth(0.5);
+      doc.line(margin, yy, margin + colW, yy);
+      doc.setDrawColor(...DARK); doc.setLineWidth(0.5);
+      doc.line(margin + colW + 6, yy, pageWidth - margin, yy);
+      yy += 4;
+
+      let ly = yy, ry = yy;
+      clientRows.forEach(([label, value]) => {
+        doc.setFont(font, 'bold'); doc.setFontSize(6.5); doc.setTextColor(...ACCENT);
+        doc.text(label.toUpperCase() + ':', margin, ly);
+        doc.setFont(font, 'normal'); doc.setFontSize(7.5); doc.setTextColor(...DARK);
+        doc.text(value, margin + doc.getTextWidth(label.toUpperCase() + ':') + 2, ly, { maxWidth: colW - 28 });
+        ly += 5.5;
+      });
+      const metaX = margin + colW + 6;
+      metaRows.forEach(([label, value]) => {
+        doc.setFont(font, 'bold'); doc.setFontSize(6.5); doc.setTextColor(...GRAY);
+        doc.text(label + ':', metaX, ry);
+        doc.setFont(font, 'normal'); doc.setFontSize(7.5); doc.setTextColor(...DARK);
+        doc.text(value, pageWidth - margin, ry, { align: 'right', maxWidth: colW - 10 });
+        ry += 5.5;
+      });
+
+      const maxY = Math.max(ly, ry);
+      doc.setDrawColor(200, 200, 200); doc.setLineWidth(0.3);
+      doc.line(margin, maxY + 2, pageWidth - margin, maxY + 2);
+      return maxY + 7;
+    };
+
+    // ============================================================
     //  DRAW PAGE DECORATIONS (called on each page)
     // ============================================================
     const drawPageDecorations = () => {
       if (template === 'minimal') {
-        // Top accent line only
         doc.setFillColor(...ACCENT);
         doc.rect(0, 0, pageWidth, 1.5, 'F');
-        // Bottom thin line
         doc.setDrawColor(180, 180, 180);
         doc.setLineWidth(0.3);
         doc.line(margin, pageHeight - footerTotalHeight - 1, pageWidth - margin, pageHeight - footerTotalHeight - 1);
+      } else if (template === 'bold') {
+        doc.setFillColor(...DARK);
+        doc.rect(0, 0, pageWidth, 2, 'F');
+        doc.setFillColor(...ACCENT);
+        doc.rect(0, pageHeight - 2, pageWidth, 2, 'F');
+      } else if (template === 'split') {
+        doc.setFillColor(...ACCENT);
+        doc.rect(0, 0, pageWidth / 2, 2, 'F');
+        doc.setFillColor(...DARK);
+        doc.rect(pageWidth / 2, 0, pageWidth / 2, 2, 'F');
+        doc.setFillColor(...ACCENT);
+        doc.rect(0, pageHeight - 2, pageWidth, 2, 'F');
       } else {
         doc.setFillColor(...ACCENT);
         doc.rect(0, 0, pageWidth, 2, 'F');
@@ -712,6 +1000,14 @@ export class PdfExportService {
       y = await drawExecutiveHeader();
     } else if (template === 'minimal') {
       y = await drawMinimalHeader();
+    } else if (template === 'sidebar') {
+      y = await drawSidebarHeader();
+    } else if (template === 'banner') {
+      y = await drawBannerHeader();
+    } else if (template === 'bold') {
+      y = await drawBoldHeader();
+    } else if (template === 'split') {
+      y = await drawSplitHeader();
     } else {
       y = await drawClassicHeader();
     }
@@ -811,24 +1107,31 @@ export class PdfExportService {
       if (showBarcode) headerCols.push('REF');
       headerCols.push('DESCRIPTION');
       headerCols.push('QTE');
-      if (showUnitPrice) headerCols.push('PU HT');
+      if (showUnitPrice) headerCols.push(printTTCOnly ? 'PU TTC' : 'PU HT');
       if (showDiscountCol) headerCols.push('Remise');
-      headerCols.push('TOTAL HT');
+      headerCols.push(printTTCOnly ? 'TOTAL TTC' : 'TOTAL HT');
       tableHeaders = [headerCols];
 
       tableBody = quote.items.map(item => {
         const discount = item.discount ?? 0;
-        const unitPriceHT = item.unitPrice / tvaDivisor;
-        const discountedPriceHT = unitPriceHT * (1 - discount / 100);
-        const totalHTItem = discountedPriceHT * item.quantity;
         const row: string[] = [];
         if (showBrand) row.push(getQuoteItemBrand(item) || '');
         if (showBarcode) row.push(getQuoteItemBarcode(item) || '');
         row.push(getQuoteItemName(item));
         row.push(String(item.quantity));
-        if (showUnitPrice) row.push(this.formatCurrency(unitPriceHT));
-        if (showDiscountCol) row.push(discount > 0 ? `${discount}%` : '-');
-        row.push(this.formatCurrency(totalHTItem));
+        if (printTTCOnly) {
+          // Show TTC prices — item.unitPrice is already TTC
+          const discountedTTC = item.unitPrice * (1 - discount / 100);
+          if (showUnitPrice) row.push(this.formatCurrency(item.unitPrice));
+          if (showDiscountCol) row.push(discount > 0 ? `${discount}%` : '-');
+          row.push(this.formatCurrency(discountedTTC * item.quantity));
+        } else {
+          const unitPriceHT = item.unitPrice / tvaDivisor;
+          const discountedPriceHT = unitPriceHT * (1 - discount / 100);
+          if (showUnitPrice) row.push(this.formatCurrency(unitPriceHT));
+          if (showDiscountCol) row.push(discount > 0 ? `${discount}%` : '-');
+          row.push(this.formatCurrency(discountedPriceHT * item.quantity));
+        }
         return row;
       });
 

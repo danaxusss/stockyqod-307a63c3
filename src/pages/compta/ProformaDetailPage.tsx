@@ -56,7 +56,7 @@ export default function ProformaDetailPage() {
   const [showPrintPreview, setShowPrintPreview] = useState(false);
   const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
   const [previewFilename, setPreviewFilename] = useState('');
-  const [printTTCOnly, setPrintTTCOnly] = useState(true);
+  const [printTTCOnly, setPrintTTCOnly] = useState(false);
   const [showClientForm, setShowClientForm] = useState(false);
   const [clientFormInitialName, setClientFormInitialName] = useState('');
 
