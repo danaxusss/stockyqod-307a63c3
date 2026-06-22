@@ -547,7 +547,7 @@ function CompanySettingsTab() {
         <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center space-x-2">
           <Palette className="h-5 w-5" /><span>Style du Devis</span>
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
           <div>
             <label className="block text-xs font-medium text-foreground mb-1">Couleur d'accent</label>
             <div className="flex items-center space-x-3">
@@ -562,28 +562,6 @@ function CompanySettingsTab() {
               <option value="times">Times (Classique)</option>
               <option value="courier">Courier (Monospace)</option>
             </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-foreground mb-1">Taille de l'en-tête</label>
-            <select value={settings.quote_style?.headerSize || 'large'} onChange={e => setSettings({ ...settings, quote_style: { ...settings.quote_style, headerSize: e.target.value as QuoteStyle['headerSize'] } })} className={inputClass}>
-              <option value="small">Petit</option>
-              <option value="medium">Moyen</option>
-              <option value="large">Grand</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-foreground mb-1">Style des totaux</label>
-            <select value={settings.quote_style?.totalsStyle || 'highlighted'} onChange={e => setSettings({ ...settings, quote_style: { ...settings.quote_style, totalsStyle: e.target.value as QuoteStyle['totalsStyle'] } })} className={inputClass}>
-              <option value="highlighted">Surligné (couleur)</option>
-              <option value="boxed">Encadré</option>
-              <option value="simple">Simple</option>
-            </select>
-          </div>
-          <div className="flex items-center space-x-3">
-            <label className="flex items-center space-x-3 p-3 bg-secondary rounded-lg cursor-pointer hover:bg-accent transition-colors flex-1">
-              <input type="checkbox" checked={settings.quote_style?.showBorders !== false} onChange={e => setSettings({ ...settings, quote_style: { ...settings.quote_style, showBorders: e.target.checked } })} className="h-4 w-4 rounded border-primary text-primary focus:ring-ring" />
-              <span className="text-sm text-foreground">Afficher les bordures du tableau</span>
-            </label>
           </div>
         </div>
         <div className="flex items-center space-x-3 mb-4">

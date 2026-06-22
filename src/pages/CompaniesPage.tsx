@@ -541,33 +541,7 @@ export default function CompaniesPage() {
                     <option value="courier">Courier</option>
                   </select>
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">Taille en-tête</label>
-                  <select value={s.quote_style?.headerSize || 'large'}
-                    onChange={e => setStyle({ headerSize: e.target.value as any })}
-                    className="w-full px-2 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground">
-                    <option value="small">Petit</option>
-                    <option value="medium">Moyen</option>
-                    <option value="large">Grand</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">Style des totaux</label>
-                  <select value={s.quote_style?.totalsStyle || 'highlighted'}
-                    onChange={e => setStyle({ totalsStyle: e.target.value as any })}
-                    className="w-full px-2 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground">
-                    <option value="highlighted">Surligné</option>
-                    <option value="simple">Simple</option>
-                    <option value="boxed">Encadré</option>
-                  </select>
-                </div>
               </div>
-              <label className="flex items-center space-x-2 cursor-pointer">
-                <input type="checkbox" checked={s.quote_style?.showBorders ?? true}
-                  onChange={e => setStyle({ showBorders: e.target.checked })}
-                  className="rounded" />
-                <span className="text-xs text-foreground">Afficher les bordures</span>
-              </label>
               <div className="border-t border-border pt-3 mt-1">
                 <p className="text-xs font-medium text-foreground mb-1">Modèle de document</p>
                 <p className="text-[11px] text-muted-foreground mb-3">Mise en page pour tous les documents (devis, factures, BL, proformas...)</p>
