@@ -413,7 +413,7 @@ export function QuoteCartPage() {
     const unitPrice = parseFloat(unitPriceStr) || 0;
     const { provider_id, provider_name } = customFormData;
     const customProduct: Product = {
-      barcode: barcode.trim() || crypto.randomUUID(),
+      barcode: barcode.trim(),
       name: name.trim(),
       brand: brand.trim(),
       techsheet: '',
@@ -1482,6 +1482,7 @@ export function QuoteCartPage() {
                               const ttcValue = htValue * (1 + (companySettings?.tva_rate ?? 20) / 100);
                               updateItemUnitPrice(item.id, ttcValue);
                             }}
+                            onFocus={(e) => e.target.select()}
                             className="w-20 px-2 py-1 text-sm border border-input rounded focus:ring-2 focus:ring-ring bg-secondary text-foreground"
                             step="0.01"
                             min="0"
@@ -1505,6 +1506,7 @@ export function QuoteCartPage() {
                             type="number"
                             value={item.quantity}
                             onChange={(e) => updateItemQuantity(item.id, parseInt(e.target.value) || 1)}
+                            onFocus={(e) => e.target.select()}
                             className="w-14 px-2 py-1 text-sm text-center border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
                             min="1"
                           />
@@ -1522,6 +1524,7 @@ export function QuoteCartPage() {
                             type="number"
                             value={item.discount ?? 0}
                             onChange={(e) => updateItemDiscount(item.id, parseFloat(e.target.value) || 0)}
+                            onFocus={(e) => e.target.select()}
                             className="w-16 px-2 py-1 text-sm border border-input rounded focus:ring-2 focus:ring-ring bg-secondary text-foreground"
                             step="1"
                             min="0"
