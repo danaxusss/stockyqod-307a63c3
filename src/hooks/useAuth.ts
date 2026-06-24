@@ -99,6 +99,7 @@ export function useAuth() {
           isManager:     false,
           isSeniorSales: false,
           isJuniorSales: false,
+          isPaie:        user.is_superadmin || user.is_admin || user.is_compta || false,
         };
 
     const permissions: UserPermissions = {
@@ -112,6 +113,7 @@ export function useAuth() {
       isManager: flags.isManager,
       isSeniorSales: flags.isSeniorSales,
       isJuniorSales: flags.isJuniorSales,
+      isPaie: flags.isPaie,
       crossBranchRead,
       newRole: appRole,
       companyId,
@@ -330,6 +332,7 @@ export function useAuth() {
   const isManager = userPermissions?.isManager ?? false;
   const isSeniorSales = userPermissions?.isSeniorSales ?? false;
   const isJuniorSales = userPermissions?.isJuniorSales ?? false;
+  const isPaie = userPermissions?.isPaie ?? false;
   const crossBranchRead = userPermissions?.crossBranchRead ?? false;
   const newRole = userPermissions?.newRole ?? null;
   const companyId = userPermissions?.companyId ?? null;
@@ -345,6 +348,7 @@ export function useAuth() {
     isManager,
     isSeniorSales,
     isJuniorSales,
+    isPaie,
     crossBranchRead,
     newRole,
     companyId,

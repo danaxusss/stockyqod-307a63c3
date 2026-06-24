@@ -38,5 +38,6 @@ export function deriveRoleFlags(newRole: AppUserRole | null | undefined) {
     isManager:      role === 'manager',
     isSeniorSales:  role === 'senior_sales',
     isJuniorSales:  role === 'junior_sales',
+    isPaie:         role === 'super_admin' || role === 'admin' || role === 'compta',
   };
 }

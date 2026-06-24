@@ -40,6 +40,9 @@ const BonCommandeDetailPage = React.lazy(() => import('./pages/compta/BonCommand
 const BackupPage = React.lazy(() => import('./pages/BackupPage'));
 const ImportPage = React.lazy(() => import('./pages/ImportPage'));
 const ComptabiliteComingSoon = React.lazy(() => import('./pages/ComptabiliteComingSoon'));
+const EmployeesPage = React.lazy(() => import('./pages/paie/EmployeesPage'));
+const PayslipsPage = React.lazy(() => import('./pages/paie/PayslipsPage'));
+const PayslipDetailPage = React.lazy(() => import('./pages/paie/PayslipDetailPage'));
 
 function PageLoader() {
   return (
@@ -51,7 +54,7 @@ function PageLoader() {
 
 function AppContent() {
   const { activeLoginModalRole, openLoginModal } = useAppContext();
-  const { canCreateQuote, isSuperAdmin, isFacturation } = useAuth();
+  const { canCreateQuote, isSuperAdmin, isFacturation, isPaie } = useAuth();
   const { isAuthenticated: isUserAuthenticated } = useUserAuth();
 
   const handleUserLoginSuccess = () => {};
@@ -131,6 +134,13 @@ function AppContent() {
                 <Route path="/compta/avoirs/:id" element={<AvoirDetailPage />} />
                 <Route path="/compta/bons-commande" element={<BonCommandeDirectoryPage />} />
                 <Route path="/compta/bons-commande/:id" element={<BonCommandeDetailPage />} />
+              </>
+            )}
+            {(isPaie || isSuperAdmin) && (
+              <>
+                <Route path="/paie/employes" element={<EmployeesPage />} />
+                <Route path="/paie/bulletins" element={<PayslipsPage />} />
+                <Route path="/paie/bulletins/:id" element={<PayslipDetailPage />} />
               </>
             )}
           </Routes>
