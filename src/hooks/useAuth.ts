@@ -168,7 +168,16 @@ export function useAuth() {
         const user = JSON.parse(storedUser);
         const permissions = JSON.parse(storedPermissions);
         setCurrentUser(user);
-        setUserPermissions(permissions);
+
+        // Recompute flags that may be missing from older cached permissions
+        const appRole = user.new_role ?? null;
+        const freshFlags = appRole ? deriveRoleFlags(appRole) : null;
+        const recomputedPermissions: UserPermissions = {
+          ...permissions,
+          isPaie: permissions.isPaie ??
+            (freshFlags?.isPaie ?? (user.is_superadmin || user.is_admin || user.is_compta || false)),
+        };
+        setUserPermissions(recomputedPermissions);
 
         // Restore company context singleton from persisted data
         const restoredCompanyId = user.company_id || null;
@@ -181,8 +190,11 @@ export function useAuth() {
             .catch(() => {});
         }
 
+        // Persist the recomputed permissions so future restores are up to date
+        localStorage.setItem('inventory_user_permissions', JSON.stringify(recomputedPermissions));
+
         // Ensure role state is correctly set based on loaded permissions
-        const restoredLegacyRole: UserRole = (permissions.isAdmin) ? 'admin' : 'sales';
+        const restoredLegacyRole: UserRole = (recomputedPermissions.isAdmin) ? 'admin' : 'sales';
         setRole(restoredLegacyRole);
         StorageManager.setRole(restoredLegacyRole);
       } catch (error) {
