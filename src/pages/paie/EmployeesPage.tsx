@@ -163,7 +163,7 @@ export default function EmployeesPage() {
       const data = await SupabaseEmployeesService.list();
       setEmployees(data);
     } catch (e) {
-      showToast({ type: 'error', title: 'Erreur', message: String(e) });
+      showToast({ type: 'error', title: 'Erreur', message: (e as any)?.message || String(e) });
     } finally {
       setIsLoading(false);
     }
@@ -189,7 +189,7 @@ export default function EmployeesPage() {
       setEditingEmployee(null);
       await load();
     } catch (e) {
-      showToast({ type: 'error', title: 'Erreur', message: String(e) });
+      showToast({ type: 'error', title: 'Erreur', message: (e as any)?.message || String(e) });
     } finally {
       setSaving(false);
     }
@@ -202,7 +202,7 @@ export default function EmployeesPage() {
       showToast({ type: 'success', title: 'Désactivé', message: emp.full_name });
       await load();
     } catch (e) {
-      showToast({ type: 'error', title: 'Erreur', message: String(e) });
+      showToast({ type: 'error', title: 'Erreur', message: (e as any)?.message || String(e) });
     }
   };
 
@@ -212,7 +212,7 @@ export default function EmployeesPage() {
       showToast({ type: 'success', title: 'Réactivé', message: emp.full_name });
       await load();
     } catch (e) {
-      showToast({ type: 'error', title: 'Erreur', message: String(e) });
+      showToast({ type: 'error', title: 'Erreur', message: (e as any)?.message || String(e) });
     }
   };
 

@@ -54,7 +54,7 @@ export default function PayslipDetailPage() {
         sort_order: i.sort_order,
       })));
     } catch (e) {
-      showToast({ type: 'error', title: 'Erreur', message: String(e) });
+      showToast({ type: 'error', title: 'Erreur', message: (e as any)?.message || String(e) });
     } finally {
       setIsLoading(false);
     }
@@ -82,7 +82,7 @@ export default function PayslipDetailPage() {
       ]);
       setDirty(false);
     } catch (e) {
-      showToast({ type: 'error', title: 'Erreur sauvegarde', message: String(e) });
+      showToast({ type: 'error', title: 'Erreur sauvegarde', message: (e as any)?.message || String(e) });
     }
   }, [payslip, computed, items, showToast]);
 
@@ -119,7 +119,7 @@ export default function PayslipDetailPage() {
       const mergedPayslip = { ...payslip, ...computed, items };
       await exportPayslipToPdf(mergedPayslip, settings);
     } catch (e) {
-      showToast({ type: 'error', title: 'Erreur PDF', message: String(e) });
+      showToast({ type: 'error', title: 'Erreur PDF', message: (e as any)?.message || String(e) });
     }
   };
 
@@ -134,7 +134,7 @@ export default function PayslipDetailPage() {
       setPreviewFilename(filename);
       setShowPrintPreview(true);
     } catch (e) {
-      showToast({ type: 'error', title: 'Erreur aperçu', message: String(e) });
+      showToast({ type: 'error', title: 'Erreur aperçu', message: (e as any)?.message || String(e) });
     }
   };
 
