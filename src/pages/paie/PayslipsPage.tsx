@@ -36,10 +36,6 @@ export default function PayslipsPage() {
   const [newYear, setNewYear] = useState(currentYear);
   const [showNewForm, setShowNewForm] = useState(false);
 
-  if (!isPaie && !isSuperAdmin) {
-    return <div className="text-center py-12 text-muted-foreground">Accès réservé au rôle Paie.</div>;
-  }
-
   const companyId = ctxCompanyId || '';
 
   const load = useCallback(async () => {
@@ -63,6 +59,10 @@ export default function PayslipsPage() {
   }, [filterEmployee, filterYear, filterMonth, showToast]);
 
   useEffect(() => { load(); }, [load]);
+
+  if (!isPaie && !isSuperAdmin) {
+    return <div className="text-center py-12 text-muted-foreground">Accès réservé au rôle Paie.</div>;
+  }
 
   const handleCreate = async () => {
     if (!newEmployeeId) {

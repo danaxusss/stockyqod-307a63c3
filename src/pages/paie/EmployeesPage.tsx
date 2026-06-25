@@ -155,10 +155,6 @@ export default function EmployeesPage() {
   const [saving, setSaving] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
 
-  if (!isPaie && !isSuperAdmin) {
-    return <div className="text-center py-12 text-muted-foreground">Accès réservé au rôle Paie.</div>;
-  }
-
   const companyId = ctxCompanyId || '';
 
   const load = useCallback(async () => {
@@ -174,6 +170,10 @@ export default function EmployeesPage() {
   }, [showToast]);
 
   useEffect(() => { load(); }, [load]);
+
+  if (!isPaie && !isSuperAdmin) {
+    return <div className="text-center py-12 text-muted-foreground">Accès réservé au rôle Paie.</div>;
+  }
 
   const handleSave = async (data: Omit<Employee, 'id' | 'created_at' | 'updated_at'>) => {
     setSaving(true);
