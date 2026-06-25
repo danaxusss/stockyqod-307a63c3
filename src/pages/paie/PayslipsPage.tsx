@@ -52,7 +52,7 @@ export default function PayslipsPage() {
       setPayslips(ps);
       setEmployees(emps.filter(e => e.is_active));
     } catch (e) {
-      showToast({ type: 'error', title: 'Erreur', message: String(e) });
+      showToast({ type: 'error', title: 'Erreur', message: (e as any)?.message || String(e) });
     } finally {
       setIsLoading(false);
     }
@@ -99,7 +99,7 @@ export default function PayslipsPage() {
       });
       navigate(`/paie/bulletins/${payslip.id}`);
     } catch (e) {
-      showToast({ type: 'error', title: 'Erreur', message: String(e) });
+      showToast({ type: 'error', title: 'Erreur', message: (e as any)?.message || String(e) });
     } finally {
       setCreating(false);
     }
