@@ -5,6 +5,7 @@ import {
   ChevronLeft, ChevronRight, Truck, Receipt, Calculator,
   BarChart3, Users, ShoppingCart, LucideIcon, X,
   RotateCcw, Sun, Moon, Upload, FileX, BookMarked, Home, Images, ClipboardList,
+  Wallet,
 } from 'lucide-react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useTheme } from '../hooks/useTheme';
@@ -64,7 +65,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps = {}
   const [isSyncing, setIsSyncing] = useState(false);
 
   const { theme, toggle: toggleTheme } = useTheme();
-  const { isAdmin, isSuperAdmin, isFacturation, companyName, currentUser, canCreateQuote, logout: adminLogout } = useAuth();
+  const { isAdmin, isSuperAdmin, isFacturation, isPaie, companyName, currentUser, canCreateQuote, logout: adminLogout } = useAuth();
   const { isAuthenticated: isUserAuthenticated, authenticatedUser, logout: userLogout } = useUserAuth();
   const { syncInfo, syncData } = useAppContext();
   const { showToast } = useToast();
@@ -128,6 +129,14 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps = {}
         { to: '/compta/avoirs', icon: FileX, label: 'Avoirs' },
         { to: '/compta/returns', icon: RotateCcw, label: 'Retours' },
         { to: '/compta/clients', icon: Calculator, label: 'Clients (financier)' },
+      ],
+    }] : []),
+    ...((isPaie || isSuperAdmin) ? [{
+      id: 'paie',
+      label: 'Paie',
+      items: [
+        { to: '/paie/employes', icon: Users, label: 'Employés' },
+        { to: '/paie/bulletins', icon: Wallet, label: 'Bulletins de paie' },
       ],
     }] : []),
     ...(isSuperAdmin ? [{

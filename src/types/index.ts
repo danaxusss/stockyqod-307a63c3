@@ -270,6 +270,7 @@ export interface UserPermissions {
   isManager: boolean;
   isSeniorSales: boolean;
   isJuniorSales: boolean;
+  isPaie: boolean;
   crossBranchRead: boolean;
   newRole: AppUserRole | null;
   companyId: string | null;
@@ -344,4 +345,69 @@ export interface ProductPhoto {
   created_at: string;
   created_by?: string;
   product_photo_products?: { barcode: string; product_name: string }[];
+}
+
+// PAIE types
+export interface Employee {
+  id: string;
+  company_id: string;
+  full_name: string;
+  cin?: string;
+  gender?: 'M' | 'F';
+  birth_date?: string;
+  marital_status?: 'celibataire' | 'marie' | 'divorce' | 'veuf';
+  dependents_count: number;
+  position?: string;
+  department?: string;
+  contract_type: 'CDI' | 'CDD' | 'Interim';
+  cnss_number?: string;
+  cimr_number?: string;
+  cimr_rate?: number;
+  bank_iban?: string;
+  hire_date?: string;
+  base_salary: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PayslipItem {
+  id: string;
+  payslip_id?: string;
+  label: string;
+  item_type: 'earning' | 'deduction';
+  amount: number;
+  included_in_anciennete_base: boolean;
+  sort_order: number;
+}
+
+export interface Payslip {
+  id: string;
+  company_id: string;
+  employee_id: string;
+  employee?: Employee;
+  period_month: number;
+  period_year: number;
+  payslip_number: string;
+  hours_worked: number;
+  base_salary: number;
+  anciennete_rate: number;
+  anciennete_amount: number;
+  other_earnings: number;
+  total_gross: number;
+  cnss_employee: number;
+  amo_employee: number;
+  cimr_employee: number;
+  frais_pro: number;
+  ir_amount: number;
+  other_deductions: number;
+  total_deductions: number;
+  net_salary: number;
+  cnss_employer: number;
+  amo_employer: number;
+  alloc_familiales: number;
+  notes?: string;
+  items: PayslipItem[];
+  created_at: string;
+  updated_at: string;
 }

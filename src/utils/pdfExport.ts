@@ -1594,3 +1594,241 @@ export class PdfExportService {
     doc.save(`Situation_${safeClientName}.pdf`);
   }
 }
+
+// ─── PAIE: Payslip PDF ───────────────────────────────────────────────────────
+
+const MONTHS_FR = [
+  'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+  'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre',
+];
+
+async function buildPayslipPdf(payslip: any, settings: any): Promise<{ doc: any; filename: string }> {
+  const doc = new jsPDF('p', 'mm', 'a4');
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const margin = 12;
+  const contentWidth = pageWidth - margin * 2;
+
+  const accentHex = settings?.quote_style?.accentColor || '#3B82F6';
+  const ACCENT: [number, number, number] = hexToRgb(accentHex);
+  const ACCENT_LIGHT = lightenColor(ACCENT, 0.92);
+  const font = settings?.quote_style?.fontFamily || 'helvetica';
+
+  doc.setFont(font);
+
+  const companyName = settings?.company_name || 'Mon Entreprise';
+  const emp = payslip.employee || {};
+  const periodLabel = `${MONTHS_FR[(payslip.period_month || 1) - 1]} ${payslip.period_year}`;
+
+  let y = margin;
+
+  // ── Header band ──
+  doc.setFillColor(...ACCENT);
+  doc.rect(0, 0, pageWidth, 28, 'F');
+
+  // Logo
+  const logoUrl = settings?.logo_url;
+  if (logoUrl) {
+    const logoData = await loadImageAsBase64(logoUrl);
+    if (logoData) {
+      try { doc.addImage(logoData, 'JPEG', margin, 4, 20, 20); } catch {}
+    }
+  }
+
+  // Company name in header
+  doc.setTextColor(...WHITE);
+  doc.setFontSize(13);
+  doc.setFont(font, 'bold');
+  doc.text(companyName, margin + (logoUrl ? 24 : 0), 13);
+  if (settings?.address) {
+    doc.setFontSize(7.5);
+    doc.setFont(font, 'normal');
+    doc.text(settings.address, margin + (logoUrl ? 24 : 0), 19);
+  }
+
+  // Payslip title (right side)
+  doc.setFontSize(11);
+  doc.setFont(font, 'bold');
+  doc.text('BULLETIN DE PAIE', pageWidth - margin, 12, { align: 'right' });
+  doc.setFontSize(8);
+  doc.setFont(font, 'normal');
+  doc.text(periodLabel, pageWidth - margin, 18, { align: 'right' });
+  doc.text(payslip.payslip_number || '', pageWidth - margin, 23, { align: 'right' });
+
+  y = 34;
+  doc.setTextColor(...DARK);
+
+  // ── Employee info block ──
+  doc.setFillColor(...ACCENT_LIGHT);
+  doc.rect(margin, y, contentWidth, 30, 'F');
+  doc.setDrawColor(...ACCENT);
+  doc.setLineWidth(0.4);
+  doc.rect(margin, y, contentWidth, 30, 'S');
+
+  const col1x = margin + 3;
+  const col2x = margin + contentWidth / 2 + 3;
+  let iy = y + 6;
+
+  const infoField = (label: string, value: string, x: number, yPos: number) => {
+    doc.setFontSize(7);
+    doc.setTextColor(...GRAY);
+    doc.setFont(font, 'normal');
+    doc.text(label, x, yPos);
+    doc.setFontSize(8.5);
+    doc.setTextColor(...DARK);
+    doc.setFont(font, 'bold');
+    doc.text(value || '—', x, yPos + 4.5);
+  };
+
+  infoField('Nom & Prénom', emp.full_name || '—', col1x, iy);
+  infoField('Poste', emp.position || '—', col2x, iy);
+  iy += 11;
+  infoField('N° CNSS', emp.cnss_number || '—', col1x, iy);
+
+  // Ancienneté years
+  let ancienLabel = '—';
+  if (emp.hire_date) {
+    const years = Math.floor((Date.now() - new Date(emp.hire_date).getTime()) / (365.25 * 24 * 3600 * 1000));
+    ancienLabel = `${years} an${years > 1 ? 's' : ''} (${Math.round(payslip.anciennete_rate * 100)}%)`;
+  }
+  infoField('Ancienneté', ancienLabel, col2x, iy);
+  iy += 11;
+  infoField('Heures travaillées', `${payslip.hours_worked || 191} h`, col1x, iy);
+  infoField('Contrat', emp.contract_type || 'CDI', col2x, iy);
+
+  y += 34;
+  doc.setTextColor(...DARK);
+
+  // ── Earnings table ──
+  y += 4;
+  const earningItems = (payslip.items || []).filter((i: any) => i.item_type === 'earning');
+
+  const earningsBody: any[] = [
+    ['Salaire de base', '', PdfExportService.formatCurrency(payslip.base_salary)],
+  ];
+  if (payslip.anciennete_amount > 0) {
+    earningsBody.push([
+      `Prime d'ancienneté (${Math.round(payslip.anciennete_rate * 100)}%)`,
+      '',
+      PdfExportService.formatCurrency(payslip.anciennete_amount),
+    ]);
+  }
+  earningItems.forEach((item: any) => {
+    earningsBody.push([item.label, '', PdfExportService.formatCurrency(item.amount)]);
+  });
+  earningsBody.push([{ content: 'SALAIRE BRUT', styles: { fontStyle: 'bold' } }, '', { content: PdfExportService.formatCurrency(payslip.total_gross), styles: { fontStyle: 'bold' } }]);
+
+  autoTable(doc, {
+    startY: y,
+    head: [['Éléments de rémunération', 'Base', 'Montant (MAD)']],
+    body: earningsBody,
+    styles: { font, fontSize: 8, cellPadding: 2 },
+    headStyles: { fillColor: ACCENT, textColor: WHITE, fontStyle: 'bold', fontSize: 8 },
+    columnStyles: { 0: { cellWidth: contentWidth * 0.6 }, 1: { cellWidth: contentWidth * 0.2 }, 2: { cellWidth: contentWidth * 0.2, halign: 'right' } },
+    margin: { left: margin, right: margin },
+    willDrawCell: (data: any) => {
+      if (data.section === 'body' && data.row.index === earningsBody.length - 1) {
+        data.cell.styles.fillColor = ACCENT_LIGHT;
+      }
+    },
+  });
+
+  y = (doc as any).lastAutoTable.finalY + 4;
+
+  // ── Deductions table ──
+  const deductionItems = (payslip.items || []).filter((i: any) => i.item_type === 'deduction');
+
+  const deductionsBody: any[] = [
+    ['CNSS (4,48% plafonné)', '', PdfExportService.formatCurrency(payslip.cnss_employee)],
+    ['AMO (2,26%)', '', PdfExportService.formatCurrency(payslip.amo_employee)],
+    ['Frais professionnels (20%)', '', PdfExportService.formatCurrency(payslip.frais_pro)],
+    ['IR (barème progressif)', '', PdfExportService.formatCurrency(payslip.ir_amount)],
+  ];
+  if (payslip.cimr_employee > 0) {
+    deductionsBody.push(['CIMR', '', PdfExportService.formatCurrency(payslip.cimr_employee)]);
+  }
+  deductionItems.forEach((item: any) => {
+    deductionsBody.push([item.label, '', PdfExportService.formatCurrency(item.amount)]);
+  });
+  deductionsBody.push([{ content: 'TOTAL RETENUES', styles: { fontStyle: 'bold' } }, '', { content: PdfExportService.formatCurrency(payslip.total_deductions), styles: { fontStyle: 'bold' } }]);
+
+  autoTable(doc, {
+    startY: y,
+    head: [['Retenues et cotisations', '', 'Montant (MAD)']],
+    body: deductionsBody,
+    styles: { font, fontSize: 8, cellPadding: 2 },
+    headStyles: { fillColor: [180, 50, 50], textColor: WHITE, fontStyle: 'bold', fontSize: 8 },
+    columnStyles: { 0: { cellWidth: contentWidth * 0.6 }, 1: { cellWidth: contentWidth * 0.2 }, 2: { cellWidth: contentWidth * 0.2, halign: 'right' } },
+    margin: { left: margin, right: margin },
+    willDrawCell: (data: any) => {
+      if (data.section === 'body' && data.row.index === deductionsBody.length - 1) {
+        data.cell.styles.fillColor = [255, 230, 230];
+      }
+    },
+  });
+
+  y = (doc as any).lastAutoTable.finalY + 6;
+
+  // ── Net salary box ──
+  doc.setFillColor(...ACCENT);
+  doc.roundedRect(margin, y, contentWidth, 16, 2, 2, 'F');
+  doc.setTextColor(...WHITE);
+  doc.setFont(font, 'bold');
+  doc.setFontSize(10);
+  doc.text('SALAIRE NET À PAYER :', margin + 4, y + 7);
+  doc.setFontSize(13);
+  doc.text(`${PdfExportService.formatCurrency(payslip.net_salary)} MAD`, pageWidth - margin - 4, y + 7, { align: 'right' });
+
+  y += 20;
+  doc.setTextColor(...DARK);
+  doc.setFont(font, 'italic');
+  doc.setFontSize(7.5);
+  const netWords = numberToWordsFr(Math.round(payslip.net_salary));
+  doc.text(`Arrêté à la somme de : ${netWords} Dirhams`, margin, y);
+
+  y += 8;
+
+  // ── Employer cost note ──
+  if (payslip.cnss_employer > 0 || payslip.amo_employer > 0 || payslip.alloc_familiales > 0) {
+    doc.setFont(font, 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(150, 150, 150);
+    const total_employer = (payslip.cnss_employer || 0) + (payslip.amo_employer || 0) + (payslip.alloc_familiales || 0);
+    doc.text(
+      `Charges patronales (informatif) — CNSS: ${PdfExportService.formatCurrency(payslip.cnss_employer)} | AMO: ${PdfExportService.formatCurrency(payslip.amo_employer)} | Alloc. fam.: ${PdfExportService.formatCurrency(payslip.alloc_familiales)} | Total: ${PdfExportService.formatCurrency(total_employer)} MAD`,
+      margin, y, { maxWidth: contentWidth }
+    );
+    y += 8;
+  }
+
+  // ── Signature line ──
+  y = Math.max(y, 240);
+  doc.setTextColor(...DARK);
+  doc.setFont(font, 'normal');
+  doc.setFontSize(8);
+  doc.text(`Lu et approuvé — ${PdfExportService.formatDate(new Date())}`, margin, y);
+  doc.text('Signature employé :', pageWidth - margin - 50, y);
+  doc.setDrawColor(...GRAY);
+  doc.setLineWidth(0.3);
+  doc.line(pageWidth - margin - 50, y + 10, pageWidth - margin, y + 10);
+
+  // Footer
+  const pageHeight = doc.internal.pageSize.getHeight();
+  doc.setFontSize(7);
+  doc.setTextColor(180, 180, 180);
+  doc.text(companyName, margin, pageHeight - 5);
+  doc.text(payslip.payslip_number || '', pageWidth - margin, pageHeight - 5, { align: 'right' });
+
+  const filename = `PAIE-${(payslip.payslip_number || 'bulletin').replace(/[^a-zA-Z0-9_\-]/g, '_')}.pdf`;
+  return { doc, filename };
+}
+
+export async function exportPayslipToPdf(payslip: any, settings: any): Promise<void> {
+  const { doc, filename } = await buildPayslipPdf(payslip, settings);
+  doc.save(filename);
+}
+
+export async function generatePayslipPdfBlob(payslip: any, settings: any): Promise<{ blob: Blob; filename: string }> {
+  const { doc, filename } = await buildPayslipPdf(payslip, settings);
+  const blob = doc.output('blob');
+  return { blob, filename };
+}
