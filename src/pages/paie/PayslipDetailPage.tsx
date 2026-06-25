@@ -39,10 +39,6 @@ export default function PayslipDetailPage() {
   const [showEmployerCost, setShowEmployerCost] = useState(false);
   const [dirty, setDirty] = useState(false);
 
-  if (!isPaie && !isSuperAdmin) {
-    return <div className="text-center py-12 text-muted-foreground">Accès réservé au rôle Paie.</div>;
-  }
-
   const load = useCallback(async () => {
     if (!id) return;
     setIsLoading(true);
@@ -142,6 +138,7 @@ export default function PayslipDetailPage() {
     }
   };
 
+  if (!isPaie && !isSuperAdmin) return <div className="text-center py-12 text-muted-foreground">Accès réservé au rôle Paie.</div>;
   if (isLoading) return <div className="flex items-center justify-center min-h-[40vh]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>;
   if (!payslip) return <div className="text-center py-12 text-muted-foreground">Bulletin introuvable.</div>;
 
