@@ -19,6 +19,8 @@ const ROLE_OPTIONS: { value: AppUserRole; label: string; description: string }[]
   { value: 'compta',       label: 'Comptabilité',       description: 'Futur rôle comptable — accès limité pour l\'instant (coming soon)' },
   { value: 'senior_sales', label: 'Senior Commercial',  description: 'Crée et modifie tous les devis de sa société' },
   { value: 'junior_sales', label: 'Junior Commercial',  description: 'Crée des devis, ne peut modifier que les siens' },
+  { value: 'tasks_technician', label: 'Technicien (Tâches)', description: 'Accès uniquement à l\'app Tâches — voit et exécute ses interventions' },
+  { value: 'tasks_driver',     label: 'Livreur (Tâches)',    description: 'Accès uniquement à l\'app Tâches — livraisons + partage du suivi GPS' },
 ];
 
 function roleToLegacyFlags(role: AppUserRole) {
@@ -126,9 +128,12 @@ export default function UserManagementPage() {
       if (field === 'new_role') {
         Object.assign(next, roleToLegacyFlags(value as AppUserRole));
         // Roles that cannot create quotes
-        if (['super_admin', 'compta'].includes(value)) next.can_create_quote = false;
+        if (['super_admin', 'compta', 'tasks_technician', 'tasks_driver'].includes(value)) next.can_create_quote = false;
         // Non-manager: clear cross_branch_read
         if (value !== 'manager') next.cross_branch_read = false;
+        // Standalone Tasks-only roles imply their tasks_role.
+        if (value === 'tasks_technician') next.tasks_role = 'technician';
+        else if (value === 'tasks_driver') next.tasks_role = 'driver';
       }
       return next;
     });
@@ -300,6 +305,8 @@ export default function UserManagementPage() {
       case 'compta':       return { label: 'Compta',          icon: Calculator, cls: 'bg-teal-100 dark:bg-teal-900/30 text-teal-800 dark:text-teal-300' };
       case 'senior_sales': return { label: 'Sr. Commercial',  icon: UserCheck,  cls: 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300' };
       case 'junior_sales': return { label: 'Jr. Commercial',  icon: User,       cls: 'bg-sky-100 dark:bg-sky-900/30 text-sky-800 dark:text-sky-300' };
+      case 'tasks_technician': return { label: 'Technicien',  icon: User,       cls: 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-800 dark:text-indigo-300' };
+      case 'tasks_driver':     return { label: 'Livreur',     icon: User,       cls: 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300' };
       default:            return { label: 'Commercial', icon: User, cls: 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300' };
     }
   };
@@ -388,6 +395,8 @@ export default function UserManagementPage() {
             <option value="compta">Compta</option>
             <option value="senior_sales">Sr. Commercial</option>
             <option value="junior_sales">Jr. Commercial</option>
+            <option value="tasks_technician">Technicien (Tâches)</option>
+            <option value="tasks_driver">Livreur (Tâches)</option>
           </select>
         </div>
       </div>
@@ -579,7 +588,9 @@ export default function UserManagementPage() {
                 <p className="text-[10px] text-muted-foreground mt-1">Utilisé pour le partage WhatsApp vers le commercial.</p>
               </div>
 
-              {/* Tasks / Delivery module access */}
+              {/* Tasks / Delivery module access — add-on for main-app users.
+                  Hidden for standalone Tasks-only roles (access is implied). */}
+              {formData.new_role !== 'tasks_technician' && formData.new_role !== 'tasks_driver' && (
               <div>
                 <label className="block text-xs font-medium text-foreground mb-1">Accès Tâches / Livraison</label>
                 <select
@@ -597,6 +608,7 @@ export default function UserManagementPage() {
                   ? <p className="text-[10px] text-muted-foreground mt-1">Le super admin a automatiquement un accès complet (tableau de bord inclus).</p>
                   : <p className="text-[10px] text-muted-foreground mt-1">« Aucun accès » masque entièrement la section Tâches / Livraison pour cet utilisateur.</p>}
               </div>
+              )}
 
               {/* Price type */}
               <div>
