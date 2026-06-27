@@ -420,7 +420,7 @@ export default function LiveTrackingMap({ drivers }: Props) {
 
   if (loading) {
     return (
-      <div className="bg-card rounded-xl border border-border shadow-sm p-6">
+      <div className="glass rounded-xl p-6">
         <div className="flex items-center gap-2 mb-4">
           <MapPin className="h-5 w-5 text-primary animate-pulse" />
           <h2 className="font-semibold text-foreground">{t('map.liveTracking')}</h2>
@@ -433,7 +433,7 @@ export default function LiveTrackingMap({ drivers }: Props) {
   }
 
   return (
-    <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
+    <div className="glass rounded-xl overflow-hidden">
       <div className="p-4 border-b border-border flex items-center justify-between">
         <div className="flex items-center gap-2">
           <MapPin className="h-5 w-5 text-primary" />

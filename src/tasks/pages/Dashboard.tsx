@@ -93,7 +93,7 @@ export default function Dashboard() {
           <motion.div
             key={stat.label}
             variants={item}
-            className="bg-card rounded-xl border border-border p-4 shadow-sm hover:shadow-md transition-shadow"
+            className="glass rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow"
           >
             <div className="flex items-center gap-2 mb-2">
               <span className="text-lg">{stat.emoji}</span>
@@ -109,7 +109,7 @@ export default function Dashboard() {
       {user?.role === 'super_admin' && <LiveTrackingMap drivers={drivers} />}
 
       {/* Task tabs */}
-      <div className="bg-card rounded-xl border border-border shadow-sm">
+      <div className="glass rounded-xl">
         <div className="flex border-b border-border">
           <button
             onClick={() => setActiveTab('interventions')}
@@ -221,7 +221,7 @@ export default function Dashboard() {
       </div>
 
       {/* Users section */}
-      <div className="bg-card rounded-xl border border-border shadow-sm p-4">
+      <div className="glass rounded-xl p-4">
         <h2 className="font-semibold text-foreground mb-3 flex items-center gap-2">
           <Users className="h-5 w-5 text-primary" />
           {t('dashboard.users')}

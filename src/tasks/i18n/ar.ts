@@ -72,6 +72,10 @@ const ar: Record<string, string> = {
 
   // MyTasks
   'myTasks.title': 'مهامي',
+  'myTasks.todo': 'للتنفيذ',
+  'myTasks.doneSection': 'منجزة',
+  'myTasks.navigate': 'الذهاب',
+  'myTasks.shareTracking': 'مشاركة التتبع',
   'myTasks.checkinGreeting': 'مرحبا {name}! 👋',
   'myTasks.checkinPrompt': 'سجّل حضورك لبدء يومك',
   'myTasks.checkinButton': 'تسجيل الحضور',
