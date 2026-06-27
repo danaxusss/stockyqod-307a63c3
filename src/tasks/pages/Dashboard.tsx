@@ -10,6 +10,7 @@ import {
   Users, Activity, TrendingUp, ChevronDown, ChevronUp, Edit, MapPin, Phone
 } from 'lucide-react';
 import LiveTrackingMap from '@/tasks/components/LiveTrackingMap';
+import FieldAppShare from '@/tasks/components/FieldAppShare';
 import { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -86,6 +87,9 @@ export default function Dashboard() {
           {new Date().toLocaleDateString(dateLocale, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
         </p>
       </motion.div>
+
+      {/* Field-app onboarding: shareable link + QR */}
+      <FieldAppShare />
 
       {/* Stats */}
       <motion.div variants={container} initial="hidden" animate="show" className="grid grid-cols-2 md:grid-cols-5 gap-3">

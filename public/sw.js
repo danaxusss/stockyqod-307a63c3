@@ -3,7 +3,7 @@
 // We do NOT cache JS/CSS chunks — Vite already does content-addressing with hashes,
 // and caching them causes stale module errors after deploys.
 
-const CACHE_NAME = 'stocky-shell-v2';
+const CACHE_NAME = 'stocky-shell-v3';
 const SHELL_URL = '/';
 
 self.addEventListener('install', (event) => {
