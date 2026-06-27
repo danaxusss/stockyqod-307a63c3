@@ -78,7 +78,7 @@ export default function ContactsPage() {
 
       <motion.div variants={container} initial="hidden" animate="show" className="space-y-2">
         {filtered.map(contact => (
-          <motion.div key={contact.id} variants={item} className="bg-card rounded-xl border border-border p-4 shadow-sm flex items-center gap-3">
+          <motion.div key={contact.id} variants={item} className="glass rounded-xl p-4 shadow-sm flex items-center gap-3">
             <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-sm font-bold text-primary flex-shrink-0">
               {contact.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
             </div>

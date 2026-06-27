@@ -19,8 +19,6 @@ const ROLE_OPTIONS: { value: AppUserRole; label: string; description: string }[]
   { value: 'compta',       label: 'Comptabilité',       description: 'Futur rôle comptable — accès limité pour l\'instant (coming soon)' },
   { value: 'senior_sales', label: 'Senior Commercial',  description: 'Crée et modifie tous les devis de sa société' },
   { value: 'junior_sales', label: 'Junior Commercial',  description: 'Crée des devis, ne peut modifier que les siens' },
-  { value: 'tasks_technician', label: 'Technicien (Tâches)', description: 'Accès uniquement à l\'app Tâches — voit et exécute ses interventions' },
-  { value: 'tasks_driver',     label: 'Livreur (Tâches)',    description: 'Accès uniquement à l\'app Tâches — livraisons + partage du suivi GPS' },
 ];
 
 function roleToLegacyFlags(role: AppUserRole) {
@@ -47,6 +45,7 @@ interface UserFormData {
   custom_seller_name: string;
   phone: string;
   tasks_role: '' | 'sales' | 'technician' | 'driver';
+  tasks_only: boolean;
 }
 
 const initialFormData: UserFormData = {
@@ -64,7 +63,8 @@ const initialFormData: UserFormData = {
   price_display_type: 'normal',
   custom_seller_name: '',
   phone: '',
-  tasks_role: ''
+  tasks_role: '',
+  tasks_only: false
 };
 
 export default function UserManagementPage() {
@@ -128,12 +128,16 @@ export default function UserManagementPage() {
       if (field === 'new_role') {
         Object.assign(next, roleToLegacyFlags(value as AppUserRole));
         // Roles that cannot create quotes
-        if (['super_admin', 'compta', 'tasks_technician', 'tasks_driver'].includes(value)) next.can_create_quote = false;
+        if (['super_admin', 'compta'].includes(value)) next.can_create_quote = false;
         // Non-manager: clear cross_branch_read
         if (value !== 'manager') next.cross_branch_read = false;
-        // Standalone Tasks-only roles imply their tasks_role.
-        if (value === 'tasks_technician') next.tasks_role = 'technician';
-        else if (value === 'tasks_driver') next.tasks_role = 'driver';
+      }
+      // Tasks-only account: no main-app access; force a field tasks_role.
+      if (field === 'tasks_only') {
+        if (value === true) {
+          next.can_create_quote = false;
+          if (next.tasks_role !== 'technician' && next.tasks_role !== 'driver') next.tasks_role = 'technician';
+        }
       }
       return next;
     });
@@ -175,19 +179,21 @@ export default function UserManagementPage() {
       const userData: CreateAppUserRequest = {
         username: formData.username.trim(),
         pin: formData.pin,
-        new_role: formData.new_role,
-        cross_branch_read: formData.cross_branch_read,
-        is_admin: formData.is_superadmin ? true : formData.is_admin,
-        is_superadmin: formData.is_superadmin,
-        is_compta: formData.is_compta,
+        // Tasks-only accounts carry no main-app role (avoids the new_role enum).
+        new_role: formData.tasks_only ? null : formData.new_role,
+        cross_branch_read: formData.tasks_only ? false : formData.cross_branch_read,
+        is_admin: formData.tasks_only ? false : (formData.is_superadmin ? true : formData.is_admin),
+        is_superadmin: formData.tasks_only ? false : formData.is_superadmin,
+        is_compta: formData.tasks_only ? false : formData.is_compta,
         company_id: formData.company_id || undefined,
-        can_create_quote: formData.can_create_quote,
+        can_create_quote: formData.tasks_only ? false : formData.can_create_quote,
         allowed_stock_locations: formData.allowed_stock_locations,
         allowed_brands: formData.allowed_brands,
         price_display_type: formData.price_display_type,
         custom_seller_name: formData.custom_seller_name.trim(),
         phone: formData.phone.trim(),
-        tasks_role: formData.tasks_role || null
+        tasks_role: formData.tasks_only ? (formData.tasks_role || 'technician') : (formData.tasks_role || null),
+        tasks_only: formData.tasks_only
       };
 
       await SupabaseUsersService.createUser(userData);
@@ -221,7 +227,8 @@ export default function UserManagementPage() {
       price_display_type: user.price_display_type,
       custom_seller_name: user.custom_seller_name || '',
       phone: user.phone || '',
-      tasks_role: (user.tasks_role as '' | 'sales' | 'technician' | 'driver') || ''
+      tasks_role: (user.tasks_role as '' | 'sales' | 'technician' | 'driver') || '',
+      tasks_only: user.tasks_only || false
     });
   };
 
@@ -242,19 +249,20 @@ export default function UserManagementPage() {
 
       const updates: UpdateAppUserRequest = {
         username: formData.username.trim(),
-        new_role: formData.new_role,
-        cross_branch_read: formData.cross_branch_read,
-        is_admin: formData.is_superadmin ? true : formData.is_admin,
-        is_superadmin: formData.is_superadmin,
-        is_compta: formData.is_compta,
+        new_role: formData.tasks_only ? null : formData.new_role,
+        cross_branch_read: formData.tasks_only ? false : formData.cross_branch_read,
+        is_admin: formData.tasks_only ? false : (formData.is_superadmin ? true : formData.is_admin),
+        is_superadmin: formData.tasks_only ? false : formData.is_superadmin,
+        is_compta: formData.tasks_only ? false : formData.is_compta,
         company_id: formData.company_id || undefined,
-        can_create_quote: formData.can_create_quote,
+        can_create_quote: formData.tasks_only ? false : formData.can_create_quote,
         allowed_stock_locations: formData.allowed_stock_locations,
         allowed_brands: formData.allowed_brands,
         price_display_type: formData.price_display_type,
         custom_seller_name: formData.custom_seller_name.trim(),
         phone: formData.phone.trim(),
-        tasks_role: formData.tasks_role || null
+        tasks_role: formData.tasks_only ? (formData.tasks_role || 'technician') : (formData.tasks_role || null),
+        tasks_only: formData.tasks_only
       };
       if (formData.pin) updates.pin = formData.pin;
 
@@ -295,6 +303,11 @@ export default function UserManagementPage() {
   };
 
   const getRoleBadge = (user: AppUser) => {
+    if (user.tasks_only) {
+      return user.tasks_role === 'driver'
+        ? { label: 'Livreur',    icon: User, cls: 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300' }
+        : { label: 'Technicien', icon: User, cls: 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-800 dark:text-indigo-300' };
+    }
     const role = user.new_role ||
       (user.is_superadmin ? 'super_admin' : user.is_admin ? 'admin' : user.is_compta ? 'compta' : null);
     switch (role) {
@@ -305,14 +318,13 @@ export default function UserManagementPage() {
       case 'compta':       return { label: 'Compta',          icon: Calculator, cls: 'bg-teal-100 dark:bg-teal-900/30 text-teal-800 dark:text-teal-300' };
       case 'senior_sales': return { label: 'Sr. Commercial',  icon: UserCheck,  cls: 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300' };
       case 'junior_sales': return { label: 'Jr. Commercial',  icon: User,       cls: 'bg-sky-100 dark:bg-sky-900/30 text-sky-800 dark:text-sky-300' };
-      case 'tasks_technician': return { label: 'Technicien',  icon: User,       cls: 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-800 dark:text-indigo-300' };
-      case 'tasks_driver':     return { label: 'Livreur',     icon: User,       cls: 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300' };
       default:            return { label: 'Commercial', icon: User, cls: 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300' };
     }
   };
 
-  const getUserRole = (user: AppUser): AppUserRole =>
-    user.new_role || (user.is_superadmin ? 'super_admin' : user.is_admin ? 'admin' : user.is_compta ? 'compta' : 'senior_sales');
+  const getUserRole = (user: AppUser): AppUserRole | 'tasks' =>
+    user.tasks_only ? 'tasks' :
+    (user.new_role || (user.is_superadmin ? 'super_admin' : user.is_admin ? 'admin' : user.is_compta ? 'compta' : 'senior_sales'));
 
   const filteredUsers = users.filter(user => {
     const matchesSearch = user.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -395,8 +407,6 @@ export default function UserManagementPage() {
             <option value="compta">Compta</option>
             <option value="senior_sales">Sr. Commercial</option>
             <option value="junior_sales">Jr. Commercial</option>
-            <option value="tasks_technician">Technicien (Tâches)</option>
-            <option value="tasks_driver">Livreur (Tâches)</option>
           </select>
         </div>
       </div>
@@ -520,7 +530,32 @@ export default function UserManagementPage() {
               <div>
                 <h3 className="text-xs font-semibold text-foreground uppercase tracking-wider mb-3">Rôle et accès</h3>
                 <div className="space-y-3">
-                  {/* Role selector */}
+                  {/* Tasks-only account toggle */}
+                  <label className="flex items-start gap-2 p-2.5 rounded-lg border border-border bg-secondary/40 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.tasks_only}
+                      onChange={e => handleInputChange('tasks_only', e.target.checked)}
+                      className="mt-0.5 h-4 w-4 accent-primary"
+                    />
+                    <span>
+                      <span className="block text-xs font-medium text-foreground">Compte Tâches uniquement (terrain)</span>
+                      <span className="block text-[10px] text-muted-foreground">Technicien ou livreur — accès limité à l'app Tâches, aucun accès au catalogue/devis/compta.</span>
+                    </span>
+                  </label>
+
+                  {formData.tasks_only ? (
+                    /* Field-staff type picker */
+                    <div>
+                      <label className="block text-xs font-medium text-foreground mb-1">Type de compte terrain</label>
+                      <select value={formData.tasks_role || 'technician'} onChange={e => handleInputChange('tasks_role', e.target.value)}
+                        className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground">
+                        <option value="technician">Technicien — exécute ses interventions</option>
+                        <option value="driver">Livreur — livraisons + partage du suivi GPS</option>
+                      </select>
+                    </div>
+                  ) : (
+                  /* Role selector */
                   <div>
                     <label className="block text-xs font-medium text-foreground mb-1">Rôle</label>
                     <select value={formData.new_role} onChange={e => handleInputChange('new_role', e.target.value as AppUserRole)}
@@ -533,6 +568,7 @@ export default function UserManagementPage() {
                       {ROLE_OPTIONS.find(o => o.value === formData.new_role)?.description}
                     </p>
                   </div>
+                  )}
 
                   {/* cross_branch_read — only for manager */}
                   {formData.new_role === 'manager' && (
@@ -589,8 +625,8 @@ export default function UserManagementPage() {
               </div>
 
               {/* Tasks / Delivery module access — add-on for main-app users.
-                  Hidden for standalone Tasks-only roles (access is implied). */}
-              {formData.new_role !== 'tasks_technician' && formData.new_role !== 'tasks_driver' && (
+                  Hidden for standalone Tasks-only accounts (the type picker sets it). */}
+              {!formData.tasks_only && (
               <div>
                 <label className="block text-xs font-medium text-foreground mb-1">Accès Tâches / Livraison</label>
                 <select

@@ -145,7 +145,7 @@ export default function SalesTasks() {
                 variants={item}
                 layout
                 exit={{ opacity: 0, x: -100 }}
-                className="bg-card rounded-xl border border-border p-4 shadow-sm hover:shadow-md transition-shadow"
+                className="glass rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow"
               >
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex-1 min-w-0">

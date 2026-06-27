@@ -61,7 +61,7 @@ export default function ArchivePage() {
           const creator = getUserById(task.created_by);
           const assignee = getUserById(task.assigned_to);
           return (
-            <motion.div key={task.id} variants={item} className="bg-card rounded-xl border border-border p-4 shadow-sm">
+            <motion.div key={task.id} variants={item} className="glass rounded-xl p-4 shadow-sm">
               <div className="flex items-start justify-between mb-2">
                 <div>
                   <p className="font-semibold text-foreground">{task.client_name}</p>

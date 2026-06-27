@@ -72,6 +72,10 @@ const fr: Record<string, string> = {
 
   // MyTasks
   'myTasks.title': 'Mes Tâches',
+  'myTasks.todo': 'À faire',
+  'myTasks.doneSection': 'Terminées',
+  'myTasks.navigate': 'Y aller',
+  'myTasks.shareTracking': 'Partager le suivi',
   'myTasks.checkinGreeting': 'Bonjour {name}! 👋',
   'myTasks.checkinPrompt': 'Pointez votre arrivée pour commencer votre journée',
   'myTasks.checkinButton': 'Pointer mon arrivée',
