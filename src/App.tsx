@@ -1,5 +1,5 @@
 import React, { Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider, useAppContext } from './context/AppContext';
 import { ToastProvider } from './context/ToastContext';
 import { Layout } from './components/Layout';
@@ -65,7 +65,7 @@ function PageLoader() {
 
 function AppContent() {
   const { activeLoginModalRole, openLoginModal } = useAppContext();
-  const { canCreateQuote, isSuperAdmin, isFacturation, isPaie, isTasks } = useAuth();
+  const { canCreateQuote, isSuperAdmin, isFacturation, isPaie, isTasks, isTasksOnly } = useAuth();
   const { isAuthenticated: isUserAuthenticated } = useUserAuth();
 
   const handleUserLoginSuccess = () => {};
@@ -106,7 +106,9 @@ function AppContent() {
         <ErrorBoundary>
         <Suspense fallback={<PageLoader />}>
           <Routes>
-            <Route path="/" element={<Home />} />
+            <Route path="/" element={isTasksOnly ? <Navigate to="/tasks/mine" replace /> : <Home />} />
+            {!isTasksOnly && (
+            <>
             <Route path="/search" element={<SearchPage />} />
             <Route path="/product/:id" element={<ProductDetail />} />
             {canCreateQuote() && (
@@ -123,7 +125,9 @@ function AppContent() {
             <Route path="/share/:token" element={<PublicSharePage />} />
             <Route path="/admin/statistics" element={<StatisticsPage />} />
             <Route path="/admin/settings" element={<CompanySettingsPage />} />
-            {isSuperAdmin && (
+            </>
+            )}
+            {!isTasksOnly && isSuperAdmin && (
               <>
                 <Route path="/companies" element={<CompaniesPage />} />
                 <Route path="/admin/users" element={<UserManagementPage />} />
@@ -165,6 +169,7 @@ function AppContent() {
               </Route>
             )}
             <Route path="/track/:token" element={<TasksLanguageProvider><TrackDelivery /></TasksLanguageProvider>} />
+            {isTasksOnly && <Route path="*" element={<Navigate to="/tasks/mine" replace />} />}
           </Routes>
         </Suspense>
         </ErrorBoundary>

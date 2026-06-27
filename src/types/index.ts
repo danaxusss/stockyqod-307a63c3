@@ -24,7 +24,7 @@ export interface SyncData {
 
 export type UserRole = 'sales' | 'admin';
 
-export type AppUserRole = 'super_admin' | 'admin' | 'manager' | 'facturation' | 'compta' | 'senior_sales' | 'junior_sales';
+export type AppUserRole = 'super_admin' | 'admin' | 'manager' | 'facturation' | 'compta' | 'senior_sales' | 'junior_sales' | 'tasks_technician' | 'tasks_driver';
 
 export interface AppState {
   role: UserRole;
@@ -275,6 +275,7 @@ export interface UserPermissions {
   isJuniorSales: boolean;
   isPaie: boolean;
   isTasks: boolean;
+  isTasksOnly: boolean;
   tasksRole: TasksRole | null;
   crossBranchRead: boolean;
   newRole: AppUserRole | null;

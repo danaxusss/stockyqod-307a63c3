@@ -65,7 +65,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps = {}
   const [isSyncing, setIsSyncing] = useState(false);
 
   const { theme, toggle: toggleTheme } = useTheme();
-  const { isAdmin, isSuperAdmin, isFacturation, isPaie, isTasks, tasksRole, companyName, currentUser, canCreateQuote, logout: adminLogout } = useAuth();
+  const { isAdmin, isSuperAdmin, isFacturation, isPaie, isTasks, isTasksOnly, tasksRole, companyName, currentUser, canCreateQuote, logout: adminLogout } = useAuth();
   const { isAuthenticated: isUserAuthenticated, authenticatedUser, logout: userLogout } = useUserAuth();
   const { syncInfo, syncData } = useAppContext();
   const { showToast } = useToast();
@@ -166,6 +166,9 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps = {}
     }] : []),
   ];
 
+  // Tasks-only staff (technician/driver) see nothing but the Tasks section.
+  const visibleSections = isTasksOnly ? sections.filter(s => s.id === 'tasks') : sections;
+
   return (
     <aside className={`
       flex flex-col h-full overflow-hidden
@@ -252,7 +255,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps = {}
           {showExpanded && <span className="text-xs">Accueil</span>}
         </NavLink>
 
-        {sections.map(section => (
+        {visibleSections.map(section => (
           <SidebarSection key={section.id} section={section} collapsed={!showExpanded} onNavigate={onMobileClose} />
         ))}
 

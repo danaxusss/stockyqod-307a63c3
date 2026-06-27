@@ -25,7 +25,13 @@ const DataContext = createContext<DataContextType | undefined>(undefined);
 // Only users with tasks access (super_admin or a tasks_role) participate.
 function mapAppUserToTaskUser(data: any): User | null {
   const isSuper = data.is_superadmin === true;
-  const role: UserRole | null = isSuper ? 'super_admin' : (data.tasks_role ?? null);
+  const role: UserRole | null = isSuper
+    ? 'super_admin'
+    : data.new_role === 'tasks_technician'
+      ? 'technician'
+      : data.new_role === 'tasks_driver'
+        ? 'driver'
+        : (data.tasks_role ?? null);
   if (!role) return null;
   return {
     id: data.id,
