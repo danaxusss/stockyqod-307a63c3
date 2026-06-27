@@ -220,6 +220,7 @@ export interface AppUser {
   price_display_type: 'normal' | 'reseller' | 'buy' | 'calculated';
   custom_seller_name?: string;
   phone?: string;
+  tasks_role?: TasksRole | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -239,6 +240,7 @@ export interface CreateAppUserRequest {
   price_display_type?: 'normal' | 'reseller' | 'buy' | 'calculated';
   custom_seller_name?: string;
   phone?: string;
+  tasks_role?: TasksRole | null;
 }
 
 export interface UpdateAppUserRequest {
@@ -256,6 +258,7 @@ export interface UpdateAppUserRequest {
   price_display_type?: 'normal' | 'reseller' | 'buy' | 'calculated';
   custom_seller_name?: string;
   phone?: string;
+  tasks_role?: TasksRole | null;
 }
 
 export interface UserPermissions {
@@ -271,6 +274,8 @@ export interface UserPermissions {
   isSeniorSales: boolean;
   isJuniorSales: boolean;
   isPaie: boolean;
+  isTasks: boolean;
+  tasksRole: TasksRole | null;
   crossBranchRead: boolean;
   newRole: AppUserRole | null;
   companyId: string | null;
@@ -410,4 +415,99 @@ export interface Payslip {
   items: PayslipItem[];
   created_at: string;
   updated_at: string;
+}
+
+// ===== Tasks / Delivery module (ported from CuisiTask) =====
+
+// In-module role. The DB column app_users.tasks_role stores only
+// 'sales' | 'technician' | 'driver'; super_admin gets full access implicitly.
+export type TasksRole = 'super_admin' | 'sales' | 'technician' | 'driver';
+
+export type TaskType = 'technical_intervention' | 'delivery';
+export type TaskStatus = 'pending' | 'doing' | 'done' | 'refused';
+export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
+export type TaskActivityAction =
+  | 'created' | 'updated' | 'status_changed' | 'reassigned' | 'commented' | 'archived';
+
+export interface Task {
+  id: string;
+  company_id?: string | null;
+  type: TaskType;
+  status: TaskStatus;
+  client_name: string;
+  client_phone: string;
+  address: string;
+  problem_details?: string;
+  invoice_number?: string;
+  payment_details?: string;
+  comment?: string;
+  priority: TaskPriority;
+  created_by: string;
+  assigned_to: string;
+  due_date?: string;
+  archived_at?: string;
+  edited?: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TaskActivity {
+  id: string;
+  task_id: string;
+  user_id: string;
+  action: TaskActivityAction;
+  old_value?: string;
+  new_value?: string;
+  note?: string;
+  created_at: string;
+}
+
+export interface TaskContact {
+  id: string;
+  company_id?: string | null;
+  name: string;
+  phone: string;
+  role_label: string;
+  created_by: string;
+  created_at: string;
+}
+
+export type TaskNotificationType =
+  | 'task_assigned' | 'status_changed' | 'task_created'
+  | 'task_reassigned' | 'priority_changed' | 'location_request';
+
+export interface TaskNotification {
+  id: string;
+  user_id: string;
+  type: TaskNotificationType;
+  title: string;
+  message: string;
+  task_id?: string;
+  is_read: boolean;
+  created_at: string;
+}
+
+export interface TrackingSession {
+  id: string;
+  token: string;
+  task_id?: string;
+  driver_id: string;
+  client_name: string;
+  client_phone?: string;
+  destination_latitude?: number;
+  destination_longitude?: number;
+  destination_source?: string;
+  is_active: boolean;
+  expires_at: string;
+  created_at: string;
+}
+
+export interface DriverLocation {
+  id: string;
+  driver_id: string;
+  session_id?: string;
+  latitude: number;
+  longitude: number;
+  accuracy?: number;
+  created_at: string;
 }
