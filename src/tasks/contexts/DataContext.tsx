@@ -2,7 +2,6 @@ import React, { createContext, useContext, useState, useCallback, useEffect, use
 import { Task, TaskStatus, Contact, User, UserRole } from '@/tasks/types';
 import { useNotifications } from '@/tasks/contexts/NotificationContext';
 import { useAuth } from '@/tasks/contexts/AuthAdapter';
-import { sendWhatsAppNotification } from '@/tasks/lib/whatsapp';
 import { supabase } from '@/integrations/supabase/client';
 import { getCompanyContext } from '@/utils/supabaseCompanyFilter';
 
@@ -148,12 +147,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     return users.filter(u => u.role === 'super_admin').map(u => u.id);
   }, [users]);
 
-  const getPhonesForUserIds = useCallback((userIds: string[]) => {
-    return userIds
-      .map(id => users.find(u => u.id === id)?.phone)
-      .filter(Boolean) as string[];
-  }, [users]);
-
   const updateTaskStatus = useCallback(async (taskId: string, status: TaskStatus, comment?: string) => {
     const task = tasks.find(t => t.id === taskId);
     if (!task) return;
@@ -161,22 +154,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const statusLabels: Record<TaskStatus, string> = { pending: 'En attente', doing: 'En cours', done: 'Terminé', refused: 'Refusé' };
     const notifyIds = new Set([task.created_by, task.assigned_to]);
     if (currentUser) notifyIds.delete(currentUser.id);
-    const pushIds: string[] = [];
     notifyIds.forEach(uid => {
       addNotification(uid, 'status_changed', 'Statut modifié', `${task.client_name}: ${statusLabels[status]}`, taskId);
-      pushIds.push(uid);
     });
-    if (pushIds.length > 0) {
-      const phones = getPhonesForUserIds(pushIds);
-      sendWhatsAppNotification(phones, 'Statut modifié', `${task.client_name}: ${statusLabels[status]}`, taskId, 'status_changed');
-    }
 
     const updateData: any = { status, updated_at: new Date().toISOString() };
     if (comment) updateData.comment = comment;
     if (status === 'done') updateData.archived_at = new Date().toISOString();
 
     await supabase.from('tasks').update(updateData).eq('id', taskId);
-  }, [tasks, addNotification, currentUser, getPhonesForUserIds]);
+  }, [tasks, addNotification, currentUser]);
 
   const addTask = useCallback(async (task: Task) => {
     const ctx = getCompanyContext();
@@ -185,20 +172,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     if (task.assigned_to !== task.created_by) {
       addNotification(task.assigned_to, 'task_assigned', 'Nouvelle tâche assignée', `${task.client_name}: ${task.problem_details || 'Nouvelle tâche'}`, task.id);
-      const assigneePhones = getPhonesForUserIds([task.assigned_to]);
-      sendWhatsAppNotification(assigneePhones, 'Nouvelle tâche assignée', `${task.client_name}: ${task.problem_details || 'Nouvelle tâche'}`, task.id, 'task_assigned');
     }
-    const adminPushIds: string[] = [];
     getAdminIds().forEach(adminId => {
       if (adminId !== task.created_by) {
         addNotification(adminId, 'task_created', 'Tâche créée', `${task.client_name} par ${currentUser?.first_name || 'un utilisateur'}`, task.id);
-        adminPushIds.push(adminId);
       }
     });
-    if (adminPushIds.length > 0) {
-      const adminPhones = getPhonesForUserIds(adminPushIds);
-      sendWhatsAppNotification(adminPhones, 'Tâche créée', `${task.client_name} par ${currentUser?.first_name || 'un utilisateur'}`, task.id, 'task_created');
-    }
 
     const { error } = await supabase.from('tasks').insert({
       id: task.id,
@@ -222,33 +201,26 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       updated_at: task.updated_at,
     });
     if (error) console.error('Error adding task:', error);
-  }, [addNotification, currentUser, getAdminIds, getPhonesForUserIds]);
+  }, [addNotification, currentUser, getAdminIds]);
 
   const deleteTask = useCallback(async (taskId: string) => {
     const task = tasks.find(t => t.id === taskId);
     if (task) {
       const notifyIds = new Set([task.created_by, task.assigned_to]);
       if (currentUser) notifyIds.delete(currentUser.id);
-      const pushIds = Array.from(notifyIds);
-      pushIds.forEach(uid => {
+      Array.from(notifyIds).forEach(uid => {
         addNotification(uid, 'status_changed', 'Tâche supprimée', `${task.client_name} a été supprimée`, taskId);
       });
-      if (pushIds.length > 0) {
-        const phones = getPhonesForUserIds(pushIds);
-        sendWhatsAppNotification(phones, 'Tâche supprimée', `${task.client_name} a été supprimée`, taskId, 'task_deleted');
-      }
     }
     setTasks(prev => prev.filter(t => t.id !== taskId));
     await supabase.from('tasks').delete().eq('id', taskId);
-  }, [tasks, addNotification, currentUser, getPhonesForUserIds]);
+  }, [tasks, addNotification, currentUser]);
 
   const updateTask = useCallback(async (taskId: string, updates: Partial<Task>) => {
     const oldTask = tasks.find(t => t.id === taskId);
     if (oldTask) {
       if (updates.assigned_to && updates.assigned_to !== oldTask.assigned_to) {
         addNotification(updates.assigned_to, 'task_reassigned', 'Tâche réassignée', `${oldTask.client_name} vous a été assignée`, taskId);
-        const reassignPhones = getPhonesForUserIds([updates.assigned_to]);
-        sendWhatsAppNotification(reassignPhones, 'Tâche réassignée', `${oldTask.client_name} vous a été assignée`, taskId, 'task_reassigned');
       }
 
       const significantChanges: string[] = [];
@@ -261,15 +233,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         const notifyIds = new Set([oldTask.created_by, oldTask.assigned_to]);
         if (updates.assigned_to) notifyIds.add(updates.assigned_to);
         if (currentUser) notifyIds.delete(currentUser.id);
-        const pushIds = Array.from(notifyIds);
         const changeMsg = `${oldTask.client_name}: ${significantChanges.join(', ')}`;
         const notifType = updates.priority === 'urgent' && oldTask.priority !== 'urgent' ? 'priority_changed' : 'status_changed';
         const notifTitle = updates.priority === 'urgent' && oldTask.priority !== 'urgent' ? 'Priorité urgente' : 'Tâche modifiée';
-        pushIds.forEach(uid => { addNotification(uid, notifType, notifTitle, changeMsg, taskId); });
-        if (pushIds.length > 0) {
-          const phones = getPhonesForUserIds(pushIds);
-          sendWhatsAppNotification(phones, notifTitle, changeMsg, taskId, notifType);
-        }
+        Array.from(notifyIds).forEach(uid => { addNotification(uid, notifType, notifTitle, changeMsg, taskId); });
       }
     }
 
@@ -280,7 +247,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (key in dbUpdates && dbUpdates[key] === undefined) dbUpdates[key] = null;
     }
     await supabase.from('tasks').update(dbUpdates).eq('id', taskId);
-  }, [tasks, addNotification, currentUser, getPhonesForUserIds]);
+  }, [tasks, addNotification, currentUser]);
 
   const addContact = useCallback(async (contact: Contact) => {
     const ctx = getCompanyContext();

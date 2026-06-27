@@ -91,6 +91,11 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       task_id: taskId || null,
     });
     if (error) console.error('Error adding notification:', error);
+
+    // Fire a web push so the user is alerted even when the app isn't open.
+    supabase.functions.invoke('send-push', {
+      body: { user_ids: [userId], title, body: message, task_id: taskId || null },
+    }).catch(err => console.warn('send-push failed:', err));
   }, []);
 
   const markAsRead = useCallback(async (id: string) => {

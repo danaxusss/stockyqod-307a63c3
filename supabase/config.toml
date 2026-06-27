@@ -1,7 +1,7 @@
 project_id = "hraxkydlctyoflcilgnz"
 
-[functions.send-sms]
+[functions.send-push]
 verify_jwt = false
 
-[functions.daily-checkin-reminder]
+[functions.task-reminders]
 verify_jwt = false

@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { useDriverTracking, isWithinWorkingHours, hasGPSGranted, setGPSGranted } from '@/tasks/hooks/useDriverTracking';
-import { sendWhatsAppNotification } from '@/tasks/lib/whatsapp';
+import { buildWhatsAppShareUrl, openWhatsAppShare } from '@/utils/whatsappShare';
 import { GPSPermissionDialog } from '@/tasks/components/GPSPermissionDialog';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -167,11 +167,12 @@ export default function MyTasks() {
       return;
     }
     if (task.client_phone) {
-      await sendWhatsAppNotification(
-        [task.client_phone],
-        '📦 Suivi de livraison',
+      // Open WhatsApp pre-filled with the tracking link to send to the client.
+      const shareUrl = buildWhatsAppShareUrl(
+        task.client_phone,
         `Bonjour ${task.client_name}, suivez votre livraison en temps réel ici: ${result.url}`
       );
+      openWhatsAppShare(shareUrl);
       toast.success(t('myTasks.trackingLinkSent'));
     } else {
       navigator.clipboard.writeText(result.url);
