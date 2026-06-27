@@ -5,7 +5,7 @@ import {
   ChevronLeft, ChevronRight, Truck, Receipt, Calculator,
   BarChart3, Users, ShoppingCart, LucideIcon, X,
   RotateCcw, Sun, Moon, Upload, FileX, BookMarked, Home, Images, ClipboardList,
-  Wallet,
+  Wallet, ListTodo, Archive, Contact as ContactIcon, LayoutDashboard,
 } from 'lucide-react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useTheme } from '../hooks/useTheme';
@@ -65,7 +65,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps = {}
   const [isSyncing, setIsSyncing] = useState(false);
 
   const { theme, toggle: toggleTheme } = useTheme();
-  const { isAdmin, isSuperAdmin, isFacturation, isPaie, companyName, currentUser, canCreateQuote, logout: adminLogout } = useAuth();
+  const { isAdmin, isSuperAdmin, isFacturation, isPaie, isTasks, tasksRole, companyName, currentUser, canCreateQuote, logout: adminLogout } = useAuth();
   const { isAuthenticated: isUserAuthenticated, authenticatedUser, logout: userLogout } = useUserAuth();
   const { syncInfo, syncData } = useAppContext();
   const { showToast } = useToast();
@@ -137,6 +137,20 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps = {}
       items: [
         { to: '/paie/employes', icon: Users, label: 'Employés' },
         { to: '/paie/bulletins', icon: Wallet, label: 'Bulletins de paie' },
+      ],
+    }] : []),
+    ...((isTasks || isSuperAdmin) ? [{
+      id: 'tasks',
+      label: 'Tâches / Livraison',
+      items: [
+        ...((isSuperAdmin || tasksRole === 'super_admin')
+          ? [{ to: '/tasks/dashboard', icon: LayoutDashboard, label: 'Tableau de bord' }]
+          : []),
+        ...((tasksRole === 'technician' || tasksRole === 'driver')
+          ? [{ to: '/tasks/mine', icon: ClipboardList, label: 'Mes tâches' }]
+          : [{ to: '/tasks', icon: ListTodo, label: 'Tâches' }]),
+        { to: '/tasks/archive', icon: Archive, label: 'Archives' },
+        { to: '/tasks/contacts', icon: ContactIcon, label: 'Contacts' },
       ],
     }] : []),
     ...(isSuperAdmin ? [{

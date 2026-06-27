@@ -301,3 +301,29 @@ video { transition: filter 0.3s ease; }
   background: hsl(var(--primary) / 0.18);
   color: hsl(var(--foreground));
 }
+
+/* ===== Tasks / Delivery module design tokens (ported from CuisiTask) ===== */
+:root {
+  --role-sales: 239 84% 67%;
+  --role-sales-light: 239 84% 95%;
+  --role-technician: 160 84% 39%;
+  --role-technician-light: 160 84% 93%;
+  --role-driver: 38 92% 50%;
+  --role-driver-light: 38 92% 93%;
+  --role-admin: 215 25% 34%;
+  --role-admin-light: 215 25% 93%;
+
+  --status-pending: 38 92% 50%;
+  --status-pending-light: 38 92% 93%;
+  --status-doing: 217 91% 60%;
+  --status-doing-light: 217 91% 93%;
+  --status-done: 142 71% 45%;
+  --status-done-light: 142 71% 93%;
+  --status-refused: 0 84% 60%;
+  --status-refused-light: 0 84% 93%;
+
+  --priority-low: 220 9% 46%;
+  --priority-medium: 217 91% 60%;
+  --priority-high: 25 95% 53%;
+  --priority-urgent: 0 84% 60%;
+}

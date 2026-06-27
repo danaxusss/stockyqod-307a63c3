@@ -8,6 +8,7 @@ import { FloatingQuoteCart } from './components/FloatingQuoteCart';
 import { useAuth } from './hooks/useAuth';
 import { useUserAuth } from './hooks/useUserAuth';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { Toaster as SonnerToaster } from './components/ui/sonner';
 
 // Lazy-loaded pages
 const Home = React.lazy(() => import('./pages/Home').then(m => ({ default: m.Home })));
@@ -43,6 +44,16 @@ const ComptabiliteComingSoon = React.lazy(() => import('./pages/ComptabiliteComi
 const EmployeesPage = React.lazy(() => import('./pages/paie/EmployeesPage'));
 const PayslipsPage = React.lazy(() => import('./pages/paie/PayslipsPage'));
 const PayslipDetailPage = React.lazy(() => import('./pages/paie/PayslipDetailPage'));
+const TasksLayout = React.lazy(() => import('./tasks/TasksLayout'));
+const TasksDashboard = React.lazy(() => import('./tasks/pages/Dashboard'));
+const TasksList = React.lazy(() => import('./tasks/pages/SalesTasks'));
+const TasksMine = React.lazy(() => import('./tasks/pages/MyTasks'));
+const TasksArchive = React.lazy(() => import('./tasks/pages/Archive'));
+const TasksContacts = React.lazy(() => import('./tasks/pages/Contacts'));
+const TrackDelivery = React.lazy(() => import('./tasks/pages/TrackDelivery'));
+const TasksLanguageProvider = React.lazy(() =>
+  import('./tasks/contexts/LanguageContext').then(m => ({ default: m.LanguageProvider }))
+);
 
 function PageLoader() {
   return (
@@ -54,7 +65,7 @@ function PageLoader() {
 
 function AppContent() {
   const { activeLoginModalRole, openLoginModal } = useAppContext();
-  const { canCreateQuote, isSuperAdmin, isFacturation, isPaie } = useAuth();
+  const { canCreateQuote, isSuperAdmin, isFacturation, isPaie, isTasks } = useAuth();
   const { isAuthenticated: isUserAuthenticated } = useUserAuth();
 
   const handleUserLoginSuccess = () => {};
@@ -64,13 +75,14 @@ function AppContent() {
   };
 
   if (!isUserAuthenticated) {
-    // Allow public share page without auth
+    // Allow public pages without auth (shared quotes + delivery tracking)
     const path = window.location.pathname;
-    if (path.startsWith('/share/')) {
+    if (path.startsWith('/share/') || path.startsWith('/track/')) {
       return (
         <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-400" /></div>}>
           <Routes>
             <Route path="/share/:token" element={<PublicSharePage />} />
+            <Route path="/track/:token" element={<TasksLanguageProvider><TrackDelivery /></TasksLanguageProvider>} />
           </Routes>
         </Suspense>
       );
@@ -143,6 +155,16 @@ function AppContent() {
                 <Route path="/paie/bulletins/:id" element={<PayslipDetailPage />} />
               </>
             )}
+            {(isTasks || isSuperAdmin) && (
+              <Route element={<TasksLayout />}>
+                <Route path="/tasks" element={<TasksList />} />
+                <Route path="/tasks/dashboard" element={<TasksDashboard />} />
+                <Route path="/tasks/mine" element={<TasksMine />} />
+                <Route path="/tasks/archive" element={<TasksArchive />} />
+                <Route path="/tasks/contacts" element={<TasksContacts />} />
+              </Route>
+            )}
+            <Route path="/track/:token" element={<TasksLanguageProvider><TrackDelivery /></TasksLanguageProvider>} />
           </Routes>
         </Suspense>
         </ErrorBoundary>
@@ -171,6 +193,7 @@ function App() {
             <ErrorBoundary>
               <AppContent />
             </ErrorBoundary>
+            <SonnerToaster position="top-right" />
           </Router>
         </ToastProvider>
       </AppProvider>
