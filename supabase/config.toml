@@ -1,1 +1,7 @@
 project_id = "hraxkydlctyoflcilgnz"
+
+[functions.send-sms]
+verify_jwt = false
+
+[functions.daily-checkin-reminder]
+verify_jwt = false

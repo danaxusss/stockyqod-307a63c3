@@ -29,6 +29,15 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     document.documentElement.lang = language;
   }, [language]);
 
+  // Reset document direction when leaving the Tasks section so Arabic RTL
+  // doesn't leak into the rest of the (French-only) app.
+  useEffect(() => {
+    return () => {
+      document.documentElement.dir = 'ltr';
+      document.documentElement.lang = 'fr';
+    };
+  }, []);
+
   const t = useCallback((key: string, params?: Record<string, string | number>): string => {
     let value = dictionaries[language][key] || dictionaries['fr'][key] || key;
     if (params) {
