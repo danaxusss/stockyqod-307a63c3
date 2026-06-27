@@ -17,6 +17,7 @@ type SafeAppUserRow = {
   custom_seller_name: string;
   phone: string;
   tasks_role?: string | null;
+  tasks_only?: boolean | null;
   created_at: string;
   updated_at: string;
 };
@@ -60,8 +61,9 @@ export class SupabaseUsersService {
         custom_seller_name: userData.custom_seller_name || '',
         phone: userData.phone || '',
         tasks_role: userData.tasks_role || null,
+        tasks_only: userData.tasks_only || false,
       })
-      .select('id, username, is_admin, is_superadmin, is_compta, new_role, cross_branch_read, company_id, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, phone, tasks_role, created_at, updated_at')
+      .select('id, username, is_admin, is_superadmin, is_compta, new_role, cross_branch_read, company_id, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, phone, tasks_role, tasks_only, created_at, updated_at')
       .single();
 
     if (error) {
@@ -115,12 +117,13 @@ export class SupabaseUsersService {
     if (updates.custom_seller_name !== undefined) updateData.custom_seller_name = updates.custom_seller_name;
     if (updates.phone !== undefined) updateData.phone = updates.phone;
     if (updates.tasks_role !== undefined) updateData.tasks_role = updates.tasks_role || null;
+    if (updates.tasks_only !== undefined) updateData.tasks_only = updates.tasks_only || false;
 
     const { data, error } = await supabase
       .from('app_users')
       .update(updateData)
       .eq('id', id)
-      .select('id, username, is_admin, is_superadmin, is_compta, new_role, cross_branch_read, company_id, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, phone, tasks_role, created_at, updated_at')
+      .select('id, username, is_admin, is_superadmin, is_compta, new_role, cross_branch_read, company_id, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, phone, tasks_role, tasks_only, created_at, updated_at')
       .single();
 
     if (error) {
@@ -193,6 +196,7 @@ export class SupabaseUsersService {
       custom_seller_name: data.custom_seller_name || '',
       phone: data.phone || '',
       tasks_role: (data.tasks_role as AppUser['tasks_role']) || null,
+      tasks_only: data.tasks_only || false,
       created_at: new Date(data.created_at),
       updated_at: new Date(data.updated_at)
     };

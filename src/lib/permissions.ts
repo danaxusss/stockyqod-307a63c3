@@ -39,7 +39,5 @@ export function deriveRoleFlags(newRole: AppUserRole | null | undefined) {
     isSeniorSales:  role === 'senior_sales',
     isJuniorSales:  role === 'junior_sales',
     isPaie:         role === 'super_admin' || role === 'admin' || role === 'compta',
-    // Standalone Tasks-only staff (no main-app access).
-    isTasksOnly:    role === 'tasks_technician' || role === 'tasks_driver',
   };
 }

@@ -24,7 +24,7 @@ export interface SyncData {
 
 export type UserRole = 'sales' | 'admin';
 
-export type AppUserRole = 'super_admin' | 'admin' | 'manager' | 'facturation' | 'compta' | 'senior_sales' | 'junior_sales' | 'tasks_technician' | 'tasks_driver';
+export type AppUserRole = 'super_admin' | 'admin' | 'manager' | 'facturation' | 'compta' | 'senior_sales' | 'junior_sales';
 
 export interface AppState {
   role: UserRole;
@@ -221,6 +221,7 @@ export interface AppUser {
   custom_seller_name?: string;
   phone?: string;
   tasks_role?: TasksRole | null;
+  tasks_only?: boolean;
   created_at: Date;
   updated_at: Date;
 }
@@ -241,6 +242,7 @@ export interface CreateAppUserRequest {
   custom_seller_name?: string;
   phone?: string;
   tasks_role?: TasksRole | null;
+  tasks_only?: boolean;
 }
 
 export interface UpdateAppUserRequest {
@@ -259,6 +261,7 @@ export interface UpdateAppUserRequest {
   custom_seller_name?: string;
   phone?: string;
   tasks_role?: TasksRole | null;
+  tasks_only?: boolean;
 }
 
 export interface UserPermissions {

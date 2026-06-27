@@ -89,17 +89,11 @@ export function useAuth() {
     const crossBranchRead = user.cross_branch_read ?? false;
 
     // Tasks/Delivery module access: super_admin gets full access implicitly;
-    // the standalone tasks_technician/tasks_driver roles imply their tasks role;
     // everyone else needs a tasks_role assigned by the super admin.
-    const tasksRole = user.is_superadmin
-      ? 'super_admin'
-      : appRole === 'tasks_technician'
-        ? 'technician'
-        : appRole === 'tasks_driver'
-          ? 'driver'
-          : (user.tasks_role ?? null);
+    // tasks_only marks standalone field staff with no main-app access.
+    const tasksRole = user.is_superadmin ? 'super_admin' : (user.tasks_role ?? null);
     const isTasks = !!tasksRole;
-    const isTasksOnly = appRole === 'tasks_technician' || appRole === 'tasks_driver';
+    const isTasksOnly = user.tasks_only === true;
 
     // Derive backward-compat flags from new_role; fall back to legacy booleans during transition
     const flags = appRole
@@ -188,14 +182,8 @@ export function useAuth() {
         // Recompute flags that may be missing from older cached permissions
         const appRole = user.new_role ?? null;
         const freshFlags = appRole ? deriveRoleFlags(appRole) : null;
-        const restoredTasksRole = user.is_superadmin
-          ? 'super_admin'
-          : appRole === 'tasks_technician'
-            ? 'technician'
-            : appRole === 'tasks_driver'
-              ? 'driver'
-              : (user.tasks_role ?? null);
-        const restoredTasksOnly = appRole === 'tasks_technician' || appRole === 'tasks_driver';
+        const restoredTasksRole = user.is_superadmin ? 'super_admin' : (user.tasks_role ?? null);
+        const restoredTasksOnly = user.tasks_only === true;
         const recomputedPermissions: UserPermissions = {
           ...permissions,
           isPaie: permissions.isPaie ??
