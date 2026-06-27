@@ -16,6 +16,7 @@ type SafeAppUserRow = {
   price_display_type: string;
   custom_seller_name: string;
   phone: string;
+  tasks_role?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -58,8 +59,9 @@ export class SupabaseUsersService {
         price_display_type: userData.price_display_type || 'normal',
         custom_seller_name: userData.custom_seller_name || '',
         phone: userData.phone || '',
+        tasks_role: userData.tasks_role || null,
       })
-      .select('id, username, is_admin, is_superadmin, is_compta, new_role, cross_branch_read, company_id, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, phone, created_at, updated_at')
+      .select('id, username, is_admin, is_superadmin, is_compta, new_role, cross_branch_read, company_id, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, phone, tasks_role, created_at, updated_at')
       .single();
 
     if (error) {
@@ -112,12 +114,13 @@ export class SupabaseUsersService {
     if (updates.price_display_type !== undefined) updateData.price_display_type = updates.price_display_type;
     if (updates.custom_seller_name !== undefined) updateData.custom_seller_name = updates.custom_seller_name;
     if (updates.phone !== undefined) updateData.phone = updates.phone;
+    if (updates.tasks_role !== undefined) updateData.tasks_role = updates.tasks_role || null;
 
     const { data, error } = await supabase
       .from('app_users')
       .update(updateData)
       .eq('id', id)
-      .select('id, username, is_admin, is_superadmin, is_compta, new_role, cross_branch_read, company_id, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, phone, created_at, updated_at')
+      .select('id, username, is_admin, is_superadmin, is_compta, new_role, cross_branch_read, company_id, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, phone, tasks_role, created_at, updated_at')
       .single();
 
     if (error) {
@@ -189,6 +192,7 @@ export class SupabaseUsersService {
       price_display_type: (data.price_display_type || 'normal') as AppUser['price_display_type'],
       custom_seller_name: data.custom_seller_name || '',
       phone: data.phone || '',
+      tasks_role: (data.tasks_role as AppUser['tasks_role']) || null,
       created_at: new Date(data.created_at),
       updated_at: new Date(data.updated_at)
     };
