@@ -541,7 +541,7 @@ export default function LiveTrackingMap({ drivers }: Props) {
                     <button
                       onClick={async (e) => {
                         e.stopPropagation();
-                        await supabase.from('notifications').insert({
+                        await supabase.from('task_notifications').insert({
                           user_id: driver.id,
                           type: 'location_request',
                           title: t('map.locationRequestTitle'),

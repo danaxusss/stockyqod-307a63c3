@@ -94,7 +94,7 @@ export default function MyTasks() {
       .channel('location-requests')
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` },
+        { event: 'INSERT', schema: 'public', table: 'task_notifications', filter: `user_id=eq.${user.id}` },
         (payload) => {
           const notif = payload.new as any;
           if (notif.type === 'location_request' && !notif.is_read) {
@@ -110,7 +110,7 @@ export default function MyTasks() {
   const handleLocationRequestResponse = async () => {
     await sendManualLocation();
     if (locationRequestNotifId) {
-      await supabase.from('notifications').update({ is_read: true }).eq('id', locationRequestNotifId);
+      await supabase.from('task_notifications').update({ is_read: true }).eq('id', locationRequestNotifId);
     }
     setLocationRequestDialog(false);
     setLocationRequestNotifId(null);
