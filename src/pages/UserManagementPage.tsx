@@ -44,6 +44,7 @@ interface UserFormData {
   price_display_type: string;
   custom_seller_name: string;
   phone: string;
+  tasks_role: '' | 'sales' | 'technician' | 'driver';
 }
 
 const initialFormData: UserFormData = {
@@ -60,7 +61,8 @@ const initialFormData: UserFormData = {
   allowed_brands: [],
   price_display_type: 'normal',
   custom_seller_name: '',
-  phone: ''
+  phone: '',
+  tasks_role: ''
 };
 
 export default function UserManagementPage() {
@@ -179,7 +181,8 @@ export default function UserManagementPage() {
         allowed_brands: formData.allowed_brands,
         price_display_type: formData.price_display_type,
         custom_seller_name: formData.custom_seller_name.trim(),
-        phone: formData.phone.trim()
+        phone: formData.phone.trim(),
+        tasks_role: formData.tasks_role || null
       };
 
       await SupabaseUsersService.createUser(userData);
@@ -212,7 +215,8 @@ export default function UserManagementPage() {
       allowed_brands: user.allowed_brands || [],
       price_display_type: user.price_display_type,
       custom_seller_name: user.custom_seller_name || '',
-      phone: user.phone || ''
+      phone: user.phone || '',
+      tasks_role: (user.tasks_role as '' | 'sales' | 'technician' | 'driver') || ''
     });
   };
 
@@ -244,7 +248,8 @@ export default function UserManagementPage() {
         allowed_brands: formData.allowed_brands,
         price_display_type: formData.price_display_type,
         custom_seller_name: formData.custom_seller_name.trim(),
-        phone: formData.phone.trim()
+        phone: formData.phone.trim(),
+        tasks_role: formData.tasks_role || null
       };
       if (formData.pin) updates.pin = formData.pin;
 
@@ -572,6 +577,25 @@ export default function UserManagementPage() {
                 <input type="tel" value={formData.phone} onChange={e => handleInputChange('phone', e.target.value)}
                   className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground" placeholder="ex: 0661234567" />
                 <p className="text-[10px] text-muted-foreground mt-1">Utilisé pour le partage WhatsApp vers le commercial.</p>
+              </div>
+
+              {/* Tasks / Delivery module access */}
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1">Accès Tâches / Livraison</label>
+                <select
+                  value={formData.is_superadmin ? 'super_admin' : formData.tasks_role}
+                  disabled={formData.is_superadmin}
+                  onChange={e => handleInputChange('tasks_role', e.target.value)}
+                  className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground disabled:opacity-60"
+                >
+                  <option value="">Aucun accès</option>
+                  <option value="sales">Commercial — crée et assigne les tâches</option>
+                  <option value="technician">Technicien — exécute ses interventions</option>
+                  <option value="driver">Livreur — exécute et partage le suivi GPS</option>
+                </select>
+                {formData.is_superadmin
+                  ? <p className="text-[10px] text-muted-foreground mt-1">Le super admin a automatiquement un accès complet (tableau de bord inclus).</p>
+                  : <p className="text-[10px] text-muted-foreground mt-1">« Aucun accès » masque entièrement la section Tâches / Livraison pour cet utilisateur.</p>}
               </div>
 
               {/* Price type */}

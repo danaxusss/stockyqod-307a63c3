@@ -74,7 +74,7 @@ serve(async (req) => {
     }
 
     if (action === "create_user") {
-      const { username, pin: newPin, is_admin, is_superadmin, company_id, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name } = payload;
+      const { username, pin: newPin, is_admin, is_superadmin, company_id, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, tasks_role } = payload;
       if (!username || !newPin) return jsonResponse({ error: "username and pin required" }, 400);
       if (typeof username !== "string" || username.trim().length < 3 || username.trim().length > 50) {
         return jsonResponse({ error: "username must be 3-50 characters" }, 400);
@@ -100,8 +100,9 @@ serve(async (req) => {
           allowed_brands: allowed_brands || [],
           price_display_type: price_display_type || "normal",
           custom_seller_name: custom_seller_name || "",
+          tasks_role: tasks_role || null,
         })
-        .select("id, username, is_admin, is_superadmin, company_id, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, created_at, updated_at")
+        .select("id, username, is_admin, is_superadmin, company_id, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, tasks_role, created_at, updated_at")
         .single();
 
       if (error) {
@@ -112,7 +113,7 @@ serve(async (req) => {
     }
 
     if (action === "update_user") {
-      const { user_id, username, pin: newPin, is_admin, is_superadmin, company_id, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name } = payload;
+      const { user_id, username, pin: newPin, is_admin, is_superadmin, company_id, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, tasks_role } = payload;
       if (!user_id) return jsonResponse({ error: "user_id required" }, 400);
 
       const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -136,12 +137,13 @@ serve(async (req) => {
       if (allowed_brands !== undefined) updateData.allowed_brands = allowed_brands;
       if (price_display_type !== undefined) updateData.price_display_type = price_display_type;
       if (custom_seller_name !== undefined) updateData.custom_seller_name = custom_seller_name;
+      if (tasks_role !== undefined) updateData.tasks_role = tasks_role || null;
 
       const { data, error } = await supabase
         .from("app_users")
         .update(updateData)
         .eq("id", user_id)
-        .select("id, username, is_admin, is_superadmin, company_id, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, created_at, updated_at")
+        .select("id, username, is_admin, is_superadmin, company_id, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, tasks_role, created_at, updated_at")
         .single();
 
       if (error) {

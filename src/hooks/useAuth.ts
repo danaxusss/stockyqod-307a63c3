@@ -88,6 +88,11 @@ export function useAuth() {
     const appRole = user.new_role ?? null;
     const crossBranchRead = user.cross_branch_read ?? false;
 
+    // Tasks/Delivery module access: super_admin gets full access implicitly;
+    // everyone else needs a tasks_role assigned by the super admin.
+    const tasksRole = user.is_superadmin ? 'super_admin' : (user.tasks_role ?? null);
+    const isTasks = !!tasksRole;
+
     // Derive backward-compat flags from new_role; fall back to legacy booleans during transition
     const flags = appRole
       ? deriveRoleFlags(appRole)
@@ -114,6 +119,8 @@ export function useAuth() {
       isSeniorSales: flags.isSeniorSales,
       isJuniorSales: flags.isJuniorSales,
       isPaie: flags.isPaie,
+      isTasks,
+      tasksRole,
       crossBranchRead,
       newRole: appRole,
       companyId,
@@ -172,10 +179,13 @@ export function useAuth() {
         // Recompute flags that may be missing from older cached permissions
         const appRole = user.new_role ?? null;
         const freshFlags = appRole ? deriveRoleFlags(appRole) : null;
+        const restoredTasksRole = user.is_superadmin ? 'super_admin' : (user.tasks_role ?? null);
         const recomputedPermissions: UserPermissions = {
           ...permissions,
           isPaie: permissions.isPaie ??
             (freshFlags?.isPaie ?? (user.is_superadmin || user.is_admin || user.is_compta || false)),
+          tasksRole: permissions.tasksRole ?? restoredTasksRole,
+          isTasks: permissions.isTasks ?? !!restoredTasksRole,
         };
         setUserPermissions(recomputedPermissions);
 
@@ -345,6 +355,8 @@ export function useAuth() {
   const isSeniorSales = userPermissions?.isSeniorSales ?? false;
   const isJuniorSales = userPermissions?.isJuniorSales ?? false;
   const isPaie = userPermissions?.isPaie ?? false;
+  const isTasks = userPermissions?.isTasks ?? false;
+  const tasksRole = userPermissions?.tasksRole ?? null;
   const crossBranchRead = userPermissions?.crossBranchRead ?? false;
   const newRole = userPermissions?.newRole ?? null;
   const companyId = userPermissions?.companyId ?? null;
@@ -361,6 +373,8 @@ export function useAuth() {
     isSeniorSales,
     isJuniorSales,
     isPaie,
+    isTasks,
+    tasksRole,
     crossBranchRead,
     newRole,
     companyId,
