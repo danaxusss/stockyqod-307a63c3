@@ -155,6 +155,7 @@ const ar: Record<string, string> = {
   'salesTasks.next': 'التالي',
   'salesTasks.createTask': 'إنشاء المهمة ✨',
   'salesTasks.taskCreated': 'تم إنشاء المهمة بنجاح! 🎉',
+  'salesTasks.noWorker': 'لا يوجد ملف متاح — أنشئ تقنيًا / سائقًا أولًا.',
   'salesTasks.taskDeleted': 'تم حذف المهمة',
   'salesTasks.taskEdited': 'تم تعديل المهمة ✏️',
   'salesTasks.deleteTitle': 'حذف المهمة',

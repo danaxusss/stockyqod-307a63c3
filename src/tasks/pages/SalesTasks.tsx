@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { isOverdue } from '@/tasks/lib/taskUtils';
+import CreateTaskDialog from '@/tasks/components/CreateTaskDialog';
 
 const container = { hidden: {}, show: { transition: { staggerChildren: 0.05 } } };
 const item = { hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0 } };
@@ -25,12 +26,6 @@ export default function SalesTasks() {
   const { t, language } = useLanguage();
   const [activeTab, setActiveTab] = useState<'interventions' | 'deliveries'>('interventions');
   const [showCreate, setShowCreate] = useState(false);
-  const [createStep, setCreateStep] = useState(0);
-  const [createType, setCreateType] = useState<TaskType | null>(null);
-  const [formData, setFormData] = useState({
-    client_name: '', client_phone: '', address: '', priority: 'medium' as Priority,
-    problem_details: '', invoice_number: '', payment_details: '', assigned_to: '', due_date: '',
-  });
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [editTask, setEditTask] = useState<TaskT | null>(null);
   const [editData, setEditData] = useState({ client_name: '', client_phone: '', address: '', priority: 'medium' as Priority, problem_details: '', invoice_number: '', payment_details: '', due_date: '', assigned_to: '' });
@@ -45,38 +40,6 @@ export default function SalesTasks() {
 
   const technicians = users.filter(u => u.role === 'technician' && u.is_active);
   const drivers = users.filter(u => u.role === 'driver' && u.is_active);
-
-  const resetForm = () => {
-    setCreateStep(0);
-    setCreateType(null);
-    setFormData({ client_name: '', client_phone: '', address: '', priority: 'medium', problem_details: '', invoice_number: '', payment_details: '', assigned_to: '', due_date: '' });
-  };
-
-  const handleCreate = () => {
-    if (!createType || !user) return;
-    const newTask: Task = {
-      id: `t${Date.now()}`,
-      type: createType,
-      status: 'pending',
-      client_name: formData.client_name,
-      client_phone: formData.client_phone,
-      address: formData.address,
-      priority: formData.priority,
-      problem_details: createType === 'technical_intervention' ? formData.problem_details : undefined,
-      invoice_number: createType === 'delivery' ? formData.invoice_number : undefined,
-      payment_details: createType === 'delivery' ? formData.payment_details : undefined,
-      created_by: user.id,
-      assigned_to: formData.assigned_to,
-      due_date: formData.due_date || undefined,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-    addTask(newTask);
-    setShowCreate(false);
-    resetForm();
-    confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
-    toast.success(t('salesTasks.taskCreated'));
-  };
 
   const handleDelete = (id: string) => {
     deleteTask(id);
@@ -242,7 +205,7 @@ export default function SalesTasks() {
 
       {/* FAB */}
       <motion.button
-        onClick={() => { setShowCreate(true); resetForm(); }}
+        onClick={() => setShowCreate(true)}
         className="fixed bottom-24 md:bottom-8 end-4 md:end-8 h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center z-20"
         whileHover={{ scale: 1.1 }}
         whileTap={{ scale: 0.9 }}
@@ -253,149 +216,7 @@ export default function SalesTasks() {
       </motion.button>
 
       {/* Create Dialog */}
-      <Dialog open={showCreate} onOpenChange={v => { if (!v) { setShowCreate(false); resetForm(); } }}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {createStep === 0 && t('salesTasks.newTask')}
-              {createStep === 1 && (createType === 'technical_intervention' ? t('salesTasks.intervention') : t('salesTasks.delivery'))}
-              {createStep === 2 && t('salesTasks.assignTask')}
-              {createStep === 3 && t('salesTasks.summary')}
-            </DialogTitle>
-          </DialogHeader>
-
-          <AnimatePresence mode="wait">
-            {createStep === 0 && (
-              <motion.div key="step0" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="grid grid-cols-2 gap-3 py-4">
-                <button
-                  onClick={() => { setCreateType('technical_intervention'); setCreateStep(1); }}
-                  className="flex flex-col items-center gap-3 p-6 rounded-xl border-2 border-border hover:border-role-technician hover:bg-role-technician-light transition-all"
-                >
-                  <Wrench className="h-10 w-10 text-role-technician" />
-                  <span className="font-medium text-sm text-foreground">{t('salesTasks.intervention')}</span>
-                </button>
-                <button
-                  onClick={() => { setCreateType('delivery'); setCreateStep(1); }}
-                  className="flex flex-col items-center gap-3 p-6 rounded-xl border-2 border-border hover:border-role-driver hover:bg-role-driver-light transition-all"
-                >
-                  <Truck className="h-10 w-10 text-role-driver" />
-                  <span className="font-medium text-sm text-foreground">{t('salesTasks.delivery')}</span>
-                </button>
-              </motion.div>
-            )}
-
-            {createStep === 1 && (
-              <motion.div key="step1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-4 py-4">
-                <div>
-                  <label className="text-sm font-medium text-foreground">{t('form.clientName')}</label>
-                  <Input value={formData.client_name} onChange={e => setFormData(p => ({ ...p, client_name: e.target.value }))} placeholder="Ex: Mohammed Ait Brahim" />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-foreground">{t('form.clientPhone')}</label>
-                  <Input value={formData.client_phone} onChange={e => setFormData(p => ({ ...p, client_phone: e.target.value }))} placeholder="0612345678" />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-foreground">{t('form.address')}</label>
-                  <Input value={formData.address} onChange={e => setFormData(p => ({ ...p, address: e.target.value }))} placeholder="45 Rue Ibn Batouta, Casablanca" />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-foreground">{t('form.priority')}</label>
-                  <div className="flex gap-2 mt-1">
-                    {(['low', 'medium', 'high', 'urgent'] as Priority[]).map(p => (
-                      <button
-                        key={p}
-                        onClick={() => setFormData(prev => ({ ...prev, priority: p }))}
-                        className={`flex-1 py-2 text-xs font-medium rounded-lg border transition-all ${
-                          formData.priority === p ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground'
-                        }`}
-                      >
-                        {t(`priority.${p}`)}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-foreground">{t('form.dueDate')}</label>
-                  <Input type="date" value={formData.due_date} onChange={e => setFormData(p => ({ ...p, due_date: e.target.value }))} />
-                </div>
-                {createType === 'technical_intervention' && (
-                  <div>
-                    <label className="text-sm font-medium text-foreground">{t('form.problemDetails')}</label>
-                    <Textarea value={formData.problem_details} onChange={e => setFormData(p => ({ ...p, problem_details: e.target.value }))} placeholder={t('salesTasks.describeProblem')} />
-                  </div>
-                )}
-                {createType === 'delivery' && (
-                  <>
-                    <div>
-                      <label className="text-sm font-medium text-foreground">{t('form.invoiceNumber')}</label>
-                      <Input value={formData.invoice_number} onChange={e => setFormData(p => ({ ...p, invoice_number: e.target.value }))} placeholder="FAC-2024-XXXX" />
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-foreground">{t('form.paymentDetails')}</label>
-                      <Textarea value={formData.payment_details} onChange={e => setFormData(p => ({ ...p, payment_details: e.target.value }))} placeholder={t('salesTasks.paymentMode')} />
-                    </div>
-                  </>
-                )}
-                <div className="flex gap-2">
-                  <Button variant="outline" onClick={() => setCreateStep(0)} className="flex-1">{t('salesTasks.back')}</Button>
-                  <Button onClick={() => setCreateStep(2)} disabled={!formData.client_name || !formData.address} className="flex-1">
-                    {t('salesTasks.next')} <ChevronRight className="h-4 w-4 ms-1" />
-                  </Button>
-                </div>
-              </motion.div>
-            )}
-
-            {createStep === 2 && (
-              <motion.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-3 py-4">
-                <p className="text-sm text-muted-foreground mb-2">
-                  {t('salesTasks.selectWorker', { role: createType === 'technical_intervention' ? t('salesTasks.technician') : t('salesTasks.driver') })}
-                </p>
-                {(createType === 'technical_intervention' ? technicians : drivers).map(u => (
-                  <button
-                    key={u.id}
-                    onClick={() => setFormData(p => ({ ...p, assigned_to: u.id }))}
-                    className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${
-                      formData.assigned_to === u.id ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/30'
-                    }`}
-                  >
-                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-sm font-bold text-primary">
-                      {u.first_name[0]}{u.last_name[0]}
-                    </div>
-                    <div className="text-start">
-                      <p className="font-medium text-sm text-foreground">{u.first_name} {u.last_name}</p>
-                      <p className="text-xs text-muted-foreground">{u.phone}</p>
-                    </div>
-                  </button>
-                ))}
-                <div className="flex gap-2 mt-4">
-                  <Button variant="outline" onClick={() => setCreateStep(1)} className="flex-1">{t('salesTasks.back')}</Button>
-                  <Button onClick={() => setCreateStep(3)} disabled={!formData.assigned_to} className="flex-1">
-                    {t('salesTasks.next')} <ChevronRight className="h-4 w-4 ms-1" />
-                  </Button>
-                </div>
-              </motion.div>
-            )}
-
-            {createStep === 3 && (
-              <motion.div key="step3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="py-4">
-                <div className="bg-secondary rounded-xl p-4 space-y-2 text-sm">
-                  <div className="flex justify-between"><span className="text-muted-foreground">{t('salesTasks.type')}</span><span className="font-medium text-foreground">{createType === 'technical_intervention' ? t('salesTasks.intervention') : t('salesTasks.delivery')}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">{t('dashboard.client')}</span><span className="font-medium text-foreground">{formData.client_name}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">{t('form.address')}</span><span className="font-medium text-foreground text-end max-w-[200px]">{formData.address}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">{t('form.priority')}</span><PriorityBadge priority={formData.priority} /></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">{t('form.assignedTo')}</span><span className="font-medium text-foreground">{getUserById(formData.assigned_to)?.first_name} {getUserById(formData.assigned_to)?.last_name}</span></div>
-                </div>
-                <div className="flex gap-2 mt-4">
-                  <Button variant="outline" onClick={() => setCreateStep(2)} className="flex-1">{t('salesTasks.back')}</Button>
-                  <Button onClick={handleCreate} className="flex-1">
-                    {t('salesTasks.createTask')}
-                  </Button>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </DialogContent>
-      </Dialog>
+      <CreateTaskDialog open={showCreate} onOpenChange={setShowCreate} />
 
       {/* Delete Confirm Dialog */}
       <Dialog open={!!deleteConfirm} onOpenChange={() => setDeleteConfirm(null)}>
