@@ -95,7 +95,7 @@ function NotificationList({ onClose }: { onClose: () => void }) {
                   key={notif.id}
                   onClick={() => handleClick(notif)}
                   className={cn(
-                    "w-full flex items-start gap-3 px-4 py-3 text-start transition-colors hover:bg-accent/50",
+                    "w-full flex items-start gap-3 px-4 py-3 text-start transition-colors hover:bg-secondary/50",
                     !notif.is_read && "bg-primary/5"
                   )}
                 >

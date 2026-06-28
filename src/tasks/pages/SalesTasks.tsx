@@ -115,7 +115,7 @@ export default function SalesTasks() {
       </div>
 
       {/* Tabs */}
-      <div className="flex bg-accent rounded-lg p-1">
+      <div className="flex bg-secondary rounded-lg p-1">
         <button
           onClick={() => setActiveTab('interventions')}
           className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${
@@ -177,12 +177,12 @@ export default function SalesTasks() {
                   <StatusBadge status={task.status} />
                   <PriorityBadge priority={task.priority} />
                   {task.edited && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-accent text-muted-foreground border border-border">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-secondary text-muted-foreground border border-border">
                       ✏️ {t('common.modified')}
                     </span>
                   )}
                   {task.invoice_number && (
-                    <span className="text-xs bg-accent px-2 py-0.5 rounded-full text-muted-foreground">
+                    <span className="text-xs bg-secondary px-2 py-0.5 rounded-full text-muted-foreground">
                       {task.invoice_number}
                     </span>
                   )}
@@ -372,7 +372,7 @@ export default function SalesTasks() {
 
             {createStep === 3 && (
               <motion.div key="step3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="py-4">
-                <div className="bg-accent rounded-xl p-4 space-y-2 text-sm">
+                <div className="bg-secondary rounded-xl p-4 space-y-2 text-sm">
                   <div className="flex justify-between"><span className="text-muted-foreground">{t('salesTasks.type')}</span><span className="font-medium text-foreground">{createType === 'technical_intervention' ? t('salesTasks.intervention') : t('salesTasks.delivery')}</span></div>
                   <div className="flex justify-between"><span className="text-muted-foreground">{t('dashboard.client')}</span><span className="font-medium text-foreground">{formData.client_name}</span></div>
                   <div className="flex justify-between"><span className="text-muted-foreground">{t('form.address')}</span><span className="font-medium text-foreground text-end max-w-[200px]">{formData.address}</span></div>
