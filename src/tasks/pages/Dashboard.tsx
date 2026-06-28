@@ -159,7 +159,7 @@ export default function Dashboard() {
                     <motion.tr
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
-                      className="border-b border-border/50 hover:bg-accent/50 transition-colors cursor-pointer"
+                      className="border-b border-border/50 hover:bg-secondary/50 transition-colors cursor-pointer"
                       onClick={() => setExpandedTask(isExpanded ? null : task.id)}
                     >
                       <td className="p-3"><StatusBadge status={task.status} /></td>
@@ -186,7 +186,7 @@ export default function Dashboard() {
                     <AnimatePresence>
                       {isExpanded && (
                         <motion.tr key={`${task.id}-details`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                          <td colSpan={6} className="p-4 bg-accent/30">
+                          <td colSpan={6} className="p-4 bg-secondary/30">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
                               <div className="space-y-2">
                                 <p className="flex items-center gap-1.5 text-muted-foreground"><Phone className="h-3.5 w-3.5" /> {task.client_phone}</p>
@@ -199,7 +199,7 @@ export default function Dashboard() {
                                 {task.due_date && <p className="text-muted-foreground">📅 {new Date(task.due_date).toLocaleDateString(dateLocale)}</p>}
                                 {task.comment && <p className="text-destructive">💬 {task.comment}</p>}
                                 <p className="text-muted-foreground text-xs">{t('dashboard.createdOn')} {new Date(task.created_at).toLocaleDateString(dateLocale, { day: 'numeric', month: 'long', year: 'numeric' })}</p>
-                                {task.edited && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-accent text-muted-foreground border border-border">✏️ {t('common.modified')}</span>}
+                                {task.edited && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-secondary text-muted-foreground border border-border">✏️ {t('common.modified')}</span>}
                               </div>
                             </div>
                             <div className="mt-3">
@@ -234,7 +234,7 @@ export default function Dashboard() {
           {users.filter(u => u.is_active).map(u => {
             const rc = ROLE_CONFIG[u.role];
             return (
-              <div key={u.id} className="flex items-center gap-3 p-3 rounded-lg bg-accent/50">
+              <div key={u.id} className="flex items-center gap-3 p-3 rounded-lg bg-secondary/50">
                 <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-sm font-bold text-primary">
                   {u.first_name[0]}{u.last_name[0]}
                 </div>

@@ -46,7 +46,7 @@ export default function ArchivePage() {
         <h1 className="text-xl md:text-2xl font-bold text-foreground flex items-center gap-2">
           <ArchiveIcon className="h-6 w-6 text-primary" /> {t('archive.title')}
         </h1>
-        <button onClick={exportCSV} className="flex items-center gap-1.5 px-3 py-2 bg-accent rounded-lg text-sm font-medium text-foreground hover:bg-accent/80 transition-colors">
+        <button onClick={exportCSV} className="flex items-center gap-1.5 px-3 py-2 bg-secondary rounded-lg text-sm font-medium text-foreground hover:bg-secondary/80 transition-colors">
           <Download className="h-4 w-4" /> CSV
         </button>
       </div>

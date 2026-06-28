@@ -392,7 +392,7 @@ export default function MyTasks() {
                 {sendingManualLocation ? t('myTasks.sending') : t('myTasks.myPosition')}
               </Button>
             )}
-            <div className="flex gap-1 bg-accent rounded-lg p-1">
+            <div className="flex gap-1 bg-secondary rounded-lg p-1">
               <button onClick={() => setView('kanban')} className={`p-2 rounded-md ${view === 'kanban' ? 'bg-card shadow-sm' : ''}`}>
                 <LayoutGrid className="h-4 w-4" />
               </button>
@@ -412,7 +412,7 @@ export default function MyTasks() {
                 <div key={status} className="space-y-3">
                   <div className="flex items-center gap-2 px-1">
                     <span className="text-sm font-semibold text-foreground">{config.emoji} {t(`status.${status}`)}</span>
-                    <span className="text-xs bg-accent rounded-full px-2 py-0.5 text-muted-foreground">{statusTasks.length}</span>
+                    <span className="text-xs bg-secondary rounded-full px-2 py-0.5 text-muted-foreground">{statusTasks.length}</span>
                   </div>
                   <motion.div variants={container} initial="hidden" animate="show" className="space-y-3">
                     {statusTasks.map(task => (
@@ -432,7 +432,7 @@ export default function MyTasks() {
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <PriorityBadge priority={task.priority} />
                           {task.edited && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-accent text-muted-foreground border border-border">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-secondary text-muted-foreground border border-border">
                               ✏️ {t('common.modified')}
                             </span>
                           )}

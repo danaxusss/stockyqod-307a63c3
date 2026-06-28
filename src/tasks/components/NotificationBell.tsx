@@ -13,7 +13,7 @@ export default function NotificationBell({ onClick }: NotificationBellProps) {
   return (
     <button
       onClick={onClick}
-      className="relative p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+      className="relative p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
       aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} non lues)` : ''}`}
     >
       <AnimatePresence>

@@ -70,9 +70,9 @@ export default function ContactsPage() {
       </div>
 
       <div className="flex gap-2 flex-wrap">
-        <button onClick={() => setFilter('')} className={`px-3 py-1 text-xs rounded-full font-medium transition-colors ${!filter ? 'bg-primary text-primary-foreground' : 'bg-accent text-muted-foreground'}`}>{t('contacts.all')}</button>
+        <button onClick={() => setFilter('')} className={`px-3 py-1 text-xs rounded-full font-medium transition-colors ${!filter ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'}`}>{t('contacts.all')}</button>
         {uniqueLabels.map(label => (
-          <button key={label} onClick={() => setFilter(filter === label ? '' : label)} className={`px-3 py-1 text-xs rounded-full font-medium transition-colors ${filter === label ? 'bg-primary text-primary-foreground' : 'bg-accent text-muted-foreground'}`}>{label}</button>
+          <button key={label} onClick={() => setFilter(filter === label ? '' : label)} className={`px-3 py-1 text-xs rounded-full font-medium transition-colors ${filter === label ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'}`}>{label}</button>
         ))}
       </div>
 
@@ -86,7 +86,7 @@ export default function ContactsPage() {
               <p className="font-medium text-foreground text-sm">{contact.name}</p>
               <div className="flex items-center gap-2">
                 <p className="text-xs text-muted-foreground">{contact.phone}</p>
-                <span className="text-xs bg-accent px-2 py-0.5 rounded-full text-muted-foreground">{contact.role_label}</span>
+                <span className="text-xs bg-secondary px-2 py-0.5 rounded-full text-muted-foreground">{contact.role_label}</span>
               </div>
             </div>
             <div className="flex gap-1">

@@ -446,7 +446,7 @@ export default function LiveTrackingMap({ drivers }: Props) {
               {driverData.filter(d => d.location).length} {t('map.inDelivery')}
             </span>
           )}
-          <span className="flex items-center gap-1 text-xs bg-accent text-muted-foreground px-2 py-1 rounded-full">
+          <span className="flex items-center gap-1 text-xs bg-secondary text-muted-foreground px-2 py-1 rounded-full">
             <User className="h-3 w-3" />
             {allDrivers.length} {t('map.driversCount')}
           </span>
@@ -467,7 +467,7 @@ export default function LiveTrackingMap({ drivers }: Props) {
                   key={d.session.id}
                   initial={{ opacity: 0, y: 5 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="flex items-center gap-2 p-2 rounded-lg bg-accent/50 text-sm cursor-pointer hover:bg-accent/80 transition-colors"
+                  className="flex items-center gap-2 p-2 rounded-lg bg-secondary/50 text-sm cursor-pointer hover:bg-secondary/80 transition-colors"
                   onClick={() => zoomToDriver(d.session.driver_id)}
                 >
                   <div

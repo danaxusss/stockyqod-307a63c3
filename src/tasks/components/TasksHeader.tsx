@@ -47,14 +47,14 @@ export default function TasksHeader() {
         onClick={toggle}
         disabled={busy || denied}
         title={denied ? 'Notifications bloquées par le navigateur' : enabled ? 'Désactiver les notifications' : 'Activer les notifications push'}
-        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-50"
+        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors disabled:opacity-50"
       >
         {enabled ? <Bell className="h-3.5 w-3.5 text-emerald-500" /> : <BellOff className="h-3.5 w-3.5" />}
         <span className="hidden sm:inline">{enabled ? 'Notifications activées' : 'Activer les notifications'}</span>
       </button>
       <button
         onClick={() => setLanguage(language === 'fr' ? 'ar' : 'fr')}
-        className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+        className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
         title={language === 'fr' ? 'العربية' : 'Français'}
       >
         {language === 'fr' ? '🇲🇦 العربية' : '🇫🇷 Français'}

@@ -54,7 +54,7 @@ export default function FieldAppShare() {
           <div className="flex-1 w-full space-y-3">
             <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary/60 border border-border">
               <span className="flex-1 min-w-0 truncate text-sm font-mono text-foreground">{appUrl}</span>
-              <button onClick={copy} className="shrink-0 p-1.5 rounded-md hover:bg-accent text-muted-foreground" title="Copier le lien">
+              <button onClick={copy} className="shrink-0 p-1.5 rounded-md hover:bg-secondary text-muted-foreground" title="Copier le lien">
                 {copied ? <Check className="h-4 w-4 text-status-done" /> : <Copy className="h-4 w-4" />}
               </button>
             </div>
