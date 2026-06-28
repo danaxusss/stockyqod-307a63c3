@@ -585,8 +585,8 @@ export default function UserManagementPage() {
                     </label>
                   )}
 
-                  {/* can_create_quote — hidden for super_admin and compta (no quote access) */}
-                  {!['super_admin', 'compta'].includes(formData.new_role) && (
+                  {/* can_create_quote — hidden for super_admin, compta and field staff */}
+                  {!formData.tasks_only && !['super_admin', 'compta'].includes(formData.new_role) && (
                     <label className="flex items-center space-x-3 cursor-pointer">
                       <input type="checkbox" checked={formData.can_create_quote}
                         onChange={e => handleInputChange('can_create_quote', e.target.checked)} className="w-4 h-4 rounded accent-primary" />
@@ -601,27 +601,36 @@ export default function UserManagementPage() {
 
               {/* Company + Seller name */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {!formData.tasks_only && (
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1">Société</label>
+                    <select value={formData.company_id} onChange={e => handleInputChange('company_id', e.target.value)}
+                      className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground">
+                      <option value="">— Aucune —</option>
+                      {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </div>
+                )}
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">Société</label>
-                  <select value={formData.company_id} onChange={e => handleInputChange('company_id', e.target.value)}
-                    className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground">
-                    <option value="">— Aucune —</option>
-                    {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">Nom affiché (login + devis)</label>
+                  <label className="block text-xs font-medium text-foreground mb-1">
+                    {formData.tasks_only ? 'Nom complet' : 'Nom affiché (login + devis)'}
+                  </label>
                   <input type="text" value={formData.custom_seller_name} onChange={e => handleInputChange('custom_seller_name', e.target.value)}
-                    className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground" placeholder="ex: Ahmed — Commercial Casablanca" />
+                    className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground"
+                    placeholder={formData.tasks_only ? 'ex: Omar Fassi' : 'ex: Ahmed — Commercial Casablanca'} />
                 </div>
               </div>
 
               {/* Phone */}
               <div>
-                <label className="block text-xs font-medium text-foreground mb-1">Téléphone (WhatsApp)</label>
+                <label className="block text-xs font-medium text-foreground mb-1">
+                  {formData.tasks_only ? 'Téléphone' : 'Téléphone (WhatsApp)'}
+                </label>
                 <input type="tel" value={formData.phone} onChange={e => handleInputChange('phone', e.target.value)}
                   className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground" placeholder="ex: 0661234567" />
-                <p className="text-[10px] text-muted-foreground mt-1">Utilisé pour le partage WhatsApp vers le commercial.</p>
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  {formData.tasks_only ? 'Numéro de contact du technicien / livreur.' : 'Utilisé pour le partage WhatsApp vers le commercial.'}
+                </p>
               </div>
 
               {/* Tasks / Delivery module access — add-on for main-app users.
@@ -647,6 +656,7 @@ export default function UserManagementPage() {
               )}
 
               {/* Price type */}
+              {!formData.tasks_only && (
               <div>
                 <label className="block text-xs font-medium text-foreground mb-1">Type de prix affiché</label>
                 <select value={formData.price_display_type} onChange={e => handleInputChange('price_display_type', e.target.value)}
@@ -661,9 +671,10 @@ export default function UserManagementPage() {
                 {formData.price_display_type === 'buy' && <p className="text-[10px] text-orange-600 dark:text-orange-400 mt-1">⚠ Prix coûtant{priceRatios ? ` (≈ -${priceRatios.buy}% vs prix normal)` : ''} — usage interne, marge nulle si facturé tel quel.</p>}
                 {formData.price_display_type === 'calculated' && <p className="text-[10px] text-blue-600 dark:text-blue-400 mt-1">Prix d'achat + % marge défini ligne par ligne dans le devis.</p>}
               </div>
+              )}
 
               {/* Brand restrictions */}
-              {availableBrands.length > 0 && (
+              {!formData.tasks_only && availableBrands.length > 0 && (
                 <div>
                   <label className="block text-xs font-medium text-foreground mb-1">Marques autorisées</label>
                   <p className="text-[10px] text-muted-foreground mb-2">Vide = toutes les marques</p>
@@ -679,7 +690,7 @@ export default function UserManagementPage() {
               )}
 
               {/* Stock location restrictions */}
-              {availableStockLocations.length > 0 && (
+              {!formData.tasks_only && availableStockLocations.length > 0 && (
                 <div>
                   <label className="block text-xs font-medium text-foreground mb-1">Emplacements de stock autorisés</label>
                   <p className="text-[10px] text-muted-foreground mb-2">Vide = tous les emplacements</p>

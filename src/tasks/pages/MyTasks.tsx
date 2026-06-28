@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { useDriverTracking, isWithinWorkingHours, hasGPSGranted, setGPSGranted } from '@/tasks/hooks/useDriverTracking';
 import { buildWhatsAppShareUrl, openWhatsAppShare } from '@/utils/whatsappShare';
 import { GPSPermissionDialog } from '@/tasks/components/GPSPermissionDialog';
+import { isOverdue } from '@/tasks/lib/taskUtils';
 import { supabase } from '@/integrations/supabase/client';
 
 const container = { hidden: {}, show: { transition: { staggerChildren: 0.05 } } };
@@ -260,6 +261,11 @@ export default function MyTasks() {
           </p>
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
+          {isOverdue(task) && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-status-refused-light text-status-refused">
+              ⏰ {t('myTasks.overdue')}
+            </span>
+          )}
           <PriorityBadge priority={task.priority} />
           <TrackingIndicator taskId={task.id} />
         </div>
