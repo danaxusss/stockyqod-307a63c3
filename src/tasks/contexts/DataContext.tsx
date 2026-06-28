@@ -106,9 +106,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const fetchUsers = useCallback(async () => {
     setUsersLoading(true);
-    const { data, error } = await supabase.from('app_users').select('*').order('created_at');
+    // Read via the SECURITY DEFINER RPC — direct SELECT on app_users is blocked
+    // by RLS in Stocky (only the safe RPCs are granted to the client).
+    const { data, error } = await supabase.rpc('get_app_users_safe');
+    if (error) console.warn('fetchUsers failed:', error.message);
     if (!error && data) {
-      setUsers(data.map(mapAppUserToTaskUser).filter((u): u is User => u !== null));
+      setUsers((data as any[]).map(mapAppUserToTaskUser).filter((u): u is User => u !== null));
     }
     setUsersLoading(false);
   }, []);
