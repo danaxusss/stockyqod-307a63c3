@@ -15,6 +15,8 @@ import { useDriverTracking, isWithinWorkingHours, hasGPSGranted, setGPSGranted }
 import { buildWhatsAppShareUrl, openWhatsAppShare } from '@/utils/whatsappShare';
 import { GPSPermissionDialog } from '@/tasks/components/GPSPermissionDialog';
 import { isOverdue } from '@/tasks/lib/taskUtils';
+import SignaturePad, { SignaturePadHandle } from '@/tasks/components/SignaturePad';
+import { Camera, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
 const container = { hidden: {}, show: { transition: { staggerChildren: 0.05 } } };
@@ -30,6 +32,10 @@ export default function MyTasks() {
   const [showDone, setShowDone] = useState(false);
   const [refuseTaskId, setRefuseTaskId] = useState<string | null>(null);
   const [refuseComment, setRefuseComment] = useState('');
+  const [proofTaskId, setProofTaskId] = useState<string | null>(null);
+  const [proofPhoto, setProofPhoto] = useState<File | null>(null);
+  const [uploadingProof, setUploadingProof] = useState(false);
+  const sigRef = useRef<SignaturePadHandle>(null);
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
   const [gpsDialogOpen, setGpsDialogOpen] = useState(false);
   const [forcedGpsDialog, setForcedGpsDialog] = useState(false);
@@ -58,6 +64,12 @@ export default function MyTasks() {
     setCheckedIn(true);
     setCheckinTime(timeStr);
     toast.success(t('myTasks.checkinSuccess'));
+    // Persist to DB so the admin attendance board sees it (best-effort).
+    if (user) {
+      supabase.from('task_checkins')
+        .upsert({ user_id: user.id, checkin_date: todayStr, checked_in_at: now.toISOString() }, { onConflict: 'user_id,checkin_date' })
+        .then(({ error }) => { if (error) console.warn('checkin persist failed:', error.message); });
+    }
   };
 
   const [locationRequestDialog, setLocationRequestDialog] = useState(false);
@@ -202,11 +214,43 @@ export default function MyTasks() {
       setRefuseTaskId(taskId);
       return;
     }
+    if (newStatus === 'done') {
+      // Open the proof dialog instead of completing directly.
+      setProofTaskId(taskId);
+      setProofPhoto(null);
+      sigRef.current?.clear();
+      return;
+    }
     updateTaskStatus(taskId, newStatus);
     if (newStatus === 'doing') toast.success(t('myTasks.startedToast'));
-    if (newStatus === 'done') {
+  };
+
+  const completeWithProof = async () => {
+    if (!proofTaskId) return;
+    setUploadingProof(true);
+    try {
+      const extra: Record<string, string> = { completed_at: new Date().toISOString() };
+      const base = `${proofTaskId}/${Date.now()}`;
+      if (proofPhoto) {
+        const path = `${base}-photo.jpg`;
+        const { error } = await supabase.storage.from('task-proofs').upload(path, proofPhoto, { upsert: true, contentType: proofPhoto.type || 'image/jpeg' });
+        if (!error) extra.proof_photo_url = supabase.storage.from('task-proofs').getPublicUrl(path).data.publicUrl;
+      }
+      const sigBlob = await sigRef.current?.toBlob();
+      if (sigBlob) {
+        const path = `${base}-signature.png`;
+        const { error } = await supabase.storage.from('task-proofs').upload(path, sigBlob, { upsert: true, contentType: 'image/png' });
+        if (!error) extra.proof_signature_url = supabase.storage.from('task-proofs').getPublicUrl(path).data.publicUrl;
+      }
+      updateTaskStatus(proofTaskId, 'done', undefined, extra);
       confetti({ particleCount: 80, spread: 60, origin: { y: 0.7 } });
       toast.success(t('myTasks.finishedToast'));
+    } catch (e: any) {
+      toast.error(String(e?.message || e));
+    } finally {
+      setUploadingProof(false);
+      setProofTaskId(null);
+      setProofPhoto(null);
     }
   };
 
@@ -560,6 +604,53 @@ export default function MyTasks() {
           </div>
         )}
       </div>
+
+      {/* Proof of completion Dialog */}
+      <Dialog open={!!proofTaskId} onOpenChange={v => { if (!v && !uploadingProof) setProofTaskId(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t('myTasks.proofTitle')}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">{t('myTasks.proofPrompt')}</p>
+
+            {/* Photo */}
+            <div>
+              <label className="block text-xs font-medium text-foreground mb-1">{t('myTasks.proofPhoto')}</label>
+              {proofPhoto ? (
+                <div className="relative">
+                  <img src={URL.createObjectURL(proofPhoto)} alt="preuve" className="w-full h-40 object-cover rounded-lg border border-border" />
+                  <button onClick={() => setProofPhoto(null)} className="absolute top-1 end-1 p-1 rounded-full bg-black/60 text-white">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : (
+                <label className="flex items-center justify-center gap-2 h-20 rounded-lg border border-dashed border-input bg-secondary/40 cursor-pointer text-sm text-muted-foreground">
+                  <Camera className="h-5 w-5" /> {t('myTasks.proofTakePhoto')}
+                  <input type="file" accept="image/*" capture="environment" className="hidden"
+                    onChange={e => setProofPhoto(e.target.files?.[0] || null)} />
+                </label>
+              )}
+            </div>
+
+            {/* Signature */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-medium text-foreground">{t('myTasks.proofSignature')}</label>
+                <button onClick={() => sigRef.current?.clear()} className="text-[11px] text-muted-foreground hover:text-foreground">{t('myTasks.proofClear')}</button>
+              </div>
+              <SignaturePad ref={sigRef} />
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <Button variant="outline" onClick={() => setProofTaskId(null)} disabled={uploadingProof} className="flex-1">{t('form.cancel')}</Button>
+              <Button onClick={completeWithProof} disabled={uploadingProof} className="flex-1">
+                {uploadingProof ? t('myTasks.sending') : `✓ ${t('myTasks.finish')}`}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Refuse Dialog */}
       <Dialog open={!!refuseTaskId} onOpenChange={() => setRefuseTaskId(null)}>

@@ -10,7 +10,7 @@ interface DataContextType {
   contacts: Contact[];
   users: User[];
   usersLoading: boolean;
-  updateTaskStatus: (taskId: string, status: TaskStatus, comment?: string) => void;
+  updateTaskStatus: (taskId: string, status: TaskStatus, comment?: string, extra?: Partial<Task>) => void;
   addTask: (task: Task) => void;
   deleteTask: (taskId: string) => void;
   updateTask: (taskId: string, updates: Partial<Task>) => void;
@@ -59,6 +59,9 @@ function mapDbTask(data: any): Task {
     due_date: data.due_date || undefined,
     archived_at: data.archived_at || undefined,
     edited: data.edited,
+    proof_photo_url: data.proof_photo_url || undefined,
+    proof_signature_url: data.proof_signature_url || undefined,
+    completed_at: data.completed_at || undefined,
     created_at: data.created_at,
     updated_at: data.updated_at,
   };
@@ -147,7 +150,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     return users.filter(u => u.role === 'super_admin').map(u => u.id);
   }, [users]);
 
-  const updateTaskStatus = useCallback(async (taskId: string, status: TaskStatus, comment?: string) => {
+  const updateTaskStatus = useCallback(async (taskId: string, status: TaskStatus, comment?: string, extra?: Partial<Task>) => {
     const task = tasks.find(t => t.id === taskId);
     if (!task) return;
 
@@ -161,7 +164,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const updateData: any = { status, updated_at: new Date().toISOString() };
     if (comment) updateData.comment = comment;
     if (status === 'done') updateData.archived_at = new Date().toISOString();
+    if (extra) Object.assign(updateData, extra);
 
+    // Optimistic local update so the proof/status reflects immediately.
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...updateData } : t));
     await supabase.from('tasks').update(updateData).eq('id', taskId);
   }, [tasks, addNotification, currentUser]);
 

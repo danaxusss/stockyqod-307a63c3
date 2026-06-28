@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/tasks/contexts/AuthAdapter';
 import { useData } from '@/tasks/contexts/DataContext';
 import { useLanguage } from '@/tasks/contexts/LanguageContext';
@@ -16,7 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { isOverdue, isToday } from '@/tasks/lib/taskUtils';
+import { isOverdue, isToday, todayStr } from '@/tasks/lib/taskUtils';
 
 type Period = 'today' | '7d' | 'all';
 const blankForm = {
@@ -45,6 +46,26 @@ export default function Dashboard() {
   const field = users.filter(u => u.role === 'technician' || u.role === 'driver');
   const activeUserIds = new Set(users.map(u => u.id));
 
+  // Today's check-ins (C-3): user_id -> "HH:MM"
+  const [checkins, setCheckins] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const { data } = await supabase
+        .from('task_checkins')
+        .select('user_id, checked_in_at')
+        .eq('checkin_date', todayStr());
+      if (!active || !data) return;
+      const map: Record<string, string> = {};
+      data.forEach((r: any) => {
+        map[r.user_id] = new Date(r.checked_in_at).toLocaleTimeString(dateLocale, { hour: '2-digit', minute: '2-digit' });
+      });
+      setCheckins(map);
+    })();
+    return () => { active = false; };
+  }, [dateLocale]);
+  const checkedInCount = field.filter(u => checkins[u.id]).length;
+
   // ---- derived task sets ----
   const active = tasks.filter(t => t.status !== 'done' && t.status !== 'refused');
   const doing = active.filter(t => t.status === 'doing');
@@ -64,7 +85,7 @@ export default function Dashboard() {
     { label: t('dashboard.overdue'), value: overdue.length, icon: Clock3, color: 'status-refused' },
     { label: t('dashboard.unassigned'), value: unassigned.length, icon: UserPlus, color: 'priority-high' },
     { label: `${t('dashboard.completed')} · ${periodLabel}`, value: doneInPeriod.length, icon: CheckCircle, color: 'status-done' },
-    { label: t('dashboard.teamActive'), value: field.length, icon: Users, color: 'role-driver' },
+    { label: t('dashboard.teamActive'), value: `${checkedInCount}/${field.length}`, icon: Users, color: 'role-driver' },
   ];
 
   const segments: { id: typeof segment; label: string; count: number; list: Task[] }[] = [
@@ -122,6 +143,7 @@ export default function Dashboard() {
   };
 
   const assigneeOptions = formType === 'technical_intervention' ? technicians : drivers;
+  const editingTask = editId ? tasks.find(t => t.id === editId) : null;
 
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-5">
@@ -173,11 +195,13 @@ export default function Dashboard() {
                 const rc = ROLE_CONFIG[u.role];
                 const open = active.filter(t => t.assigned_to === u.id).length;
                 const busy = doing.some(t => t.assigned_to === u.id);
+                const inAt = checkins[u.id];
                 return (
                   <div key={u.id} className="flex items-center gap-2.5">
-                    <span className={`h-2 w-2 rounded-full ${busy ? 'bg-status-doing animate-pulse' : 'bg-muted-foreground/40'}`} />
+                    <span className={`h-2 w-2 rounded-full ${busy ? 'bg-status-doing animate-pulse' : inAt ? 'bg-status-done' : 'bg-muted-foreground/40'}`} />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-foreground truncate">{rc.emoji} {u.first_name} {u.last_name}</p>
+                      {inAt && <p className="text-[10px] text-status-done">✓ {inAt}</p>}
                     </div>
                     <span className="text-xs text-muted-foreground shrink-0">{open}</span>
                   </div>
@@ -287,6 +311,23 @@ export default function Dashboard() {
             <DialogTitle>{dialogMode === 'create' ? t('dashboard.newTask') : t('dashboard.editTask')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
+            {dialogMode === 'edit' && (editingTask?.proof_photo_url || editingTask?.proof_signature_url) && (
+              <div className="rounded-lg border border-border p-3 bg-secondary/30">
+                <p className="text-xs font-semibold text-foreground mb-2">📎 {t('myTasks.proofTitle')}</p>
+                <div className="flex gap-2">
+                  {editingTask.proof_photo_url && (
+                    <a href={editingTask.proof_photo_url} target="_blank" rel="noreferrer" className="block w-1/2">
+                      <img src={editingTask.proof_photo_url} alt="photo" className="w-full h-24 object-cover rounded border border-border" />
+                    </a>
+                  )}
+                  {editingTask.proof_signature_url && (
+                    <a href={editingTask.proof_signature_url} target="_blank" rel="noreferrer" className="block w-1/2">
+                      <img src={editingTask.proof_signature_url} alt="signature" className="w-full h-24 object-contain rounded border border-border bg-white" />
+                    </a>
+                  )}
+                </div>
+              </div>
+            )}
             {dialogMode === 'create' && (
               <div>
                 <label className="text-sm font-medium text-foreground">{t('dashboard.status')}</label>
