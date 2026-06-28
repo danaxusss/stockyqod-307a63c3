@@ -155,6 +155,7 @@ const fr: Record<string, string> = {
   'salesTasks.next': 'Suivant',
   'salesTasks.createTask': 'Créer la tâche ✨',
   'salesTasks.taskCreated': 'Tâche créée avec succès! 🎉',
+  'salesTasks.noWorker': 'Aucun profil disponible — créez d\'abord un technicien / livreur.',
   'salesTasks.taskDeleted': 'Tâche supprimée',
   'salesTasks.taskEdited': 'Tâche modifiée ✏️',
   'salesTasks.deleteTitle': 'Supprimer la tâche',

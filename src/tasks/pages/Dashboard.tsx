@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import LiveTrackingMap from '@/tasks/components/LiveTrackingMap';
 import FieldAppShare from '@/tasks/components/FieldAppShare';
+import CreateTaskDialog from '@/tasks/components/CreateTaskDialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -305,10 +306,14 @@ export default function Dashboard() {
       <FieldAppShare />
 
       {/* Create / Edit dialog */}
-      <Dialog open={!!dialogMode} onOpenChange={v => { if (!v) closeDialog(); }}>
+      {/* Create uses the shared wizard (identical to the Tasks list). */}
+      <CreateTaskDialog open={dialogMode === 'create'} onOpenChange={v => { if (!v) closeDialog(); }} />
+
+      {/* Edit dialog (status, reassign, proof) */}
+      <Dialog open={dialogMode === 'edit'} onOpenChange={v => { if (!v) closeDialog(); }}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{dialogMode === 'create' ? t('dashboard.newTask') : t('dashboard.editTask')}</DialogTitle>
+            <DialogTitle>{t('dashboard.editTask')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             {dialogMode === 'edit' && (editingTask?.proof_photo_url || editingTask?.proof_signature_url) && (
