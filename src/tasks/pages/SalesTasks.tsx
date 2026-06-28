@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { isOverdue } from '@/tasks/lib/taskUtils';
 
 const container = { hidden: {}, show: { transition: { staggerChildren: 0.05 } } };
 const item = { hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0 } };
@@ -176,6 +177,11 @@ export default function SalesTasks() {
                 <div className="flex items-center gap-2 flex-wrap">
                   <StatusBadge status={task.status} />
                   <PriorityBadge priority={task.priority} />
+                  {isOverdue(task) && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-status-refused-light text-status-refused">
+                      ⏰ {t('dashboard.overdue')}
+                    </span>
+                  )}
                   {task.edited && (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-secondary text-muted-foreground border border-border">
                       ✏️ {t('common.modified')}

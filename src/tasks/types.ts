@@ -40,6 +40,9 @@ export interface Task {
   due_date?: string;
   created_at: string;
   edited?: boolean;
+  proof_photo_url?: string;
+  proof_signature_url?: string;
+  completed_at?: string;
   updated_at: string;
 }
 
