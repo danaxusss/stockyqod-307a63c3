@@ -1,13 +1,20 @@
 import type { Employee, PayslipItem } from '../types';
 
-// 2026 Moroccan statutory rates
+// Moroccan statutory rates (LF 2023 frais pro reform + LF 2025 IR scale).
 const CNSS_RATE_EMPLOYEE = 0.0448;
 const CNSS_EMPLOYEE_MONTHLY_CAP = 268.80;   // 4.48% × 6,000 MAD ceiling
 const AMO_RATE_EMPLOYEE = 0.0226;
-const CIMR_RATE_DEFAULT = 0;
-const FRAIS_PRO_RATE = 0.20;
-const FRAIS_PRO_MONTHLY_CAP = 2500;         // 30,000 / 12
-const FAMILY_DEDUCTION_MONTHLY_PER_DEP = 50; // 600/year ÷ 12, max 6 deps
+
+// Frais professionnels (Art. 59 CGI, reform LF 2023):
+//   35% if annual gross taxable ≤ 78,000 MAD, else 25% — capped at 35,000 MAD/yr.
+//   Computed on the salaire brut imposable (before CNSS/AMO), not net of them.
+const FRAIS_PRO_RATE_LOW = 0.35;
+const FRAIS_PRO_RATE_HIGH = 0.25;
+const FRAIS_PRO_THRESHOLD_ANNUAL = 78000;
+const FRAIS_PRO_ANNUAL_CAP = 35000;
+
+// Déduction pour charge de famille: 500 MAD/year per dependent (LF 2025), max 6.
+const FAMILY_DEDUCTION_ANNUAL_PER_DEP = 500;
 
 const CNSS_RATE_EMPLOYER = 0.0898;
 const CNSS_EMPLOYER_MONTHLY_CAP = 538.80;   // 8.98% × 6,000
@@ -81,20 +88,20 @@ export function computeStatutoryDeductions(params: {
   // CIMR (optional)
   const cimr_employee = grossSalary * (cimrRate / 100);
 
-  // Salaire imposable = gross - CNSS - AMO - CIMR
-  const salaire_imposable = grossSalary - cnss_employee - amo_employee - cimr_employee;
+  // Frais professionnels — computed on the salaire brut imposable (the gross),
+  // rate depends on the annualized gross, capped at 35,000/year.
+  const annualGross = grossSalary * 12;
+  const fraisRate = annualGross <= FRAIS_PRO_THRESHOLD_ANNUAL ? FRAIS_PRO_RATE_LOW : FRAIS_PRO_RATE_HIGH;
+  const frais_pro = Math.min(grossSalary * fraisRate, FRAIS_PRO_ANNUAL_CAP / 12);
 
-  // Frais professionnels: 20% of salaire_imposable, capped at 2,500/month
-  const frais_pro = Math.min(salaire_imposable * FRAIS_PRO_RATE, FRAIS_PRO_MONTHLY_CAP);
+  // Salaire net imposable = gross - frais pro - CNSS - AMO - CIMR
+  const salaire_net_imposable = grossSalary - frais_pro - cnss_employee - amo_employee - cimr_employee;
 
-  // Family deductions: 50 MAD/month per dependent, max 6 deps → max 300 MAD/month
-  const family_deduction = Math.min(dependentsCount, 6) * FAMILY_DEDUCTION_MONTHLY_PER_DEP;
+  // Family deductions: 500 MAD/year per dependent, max 6
+  const annual_family_ded = Math.min(dependentsCount, 6) * FAMILY_DEDUCTION_ANNUAL_PER_DEP;
 
-  // Annual taxable base for IR brackets
-  const annual_taxable = (salaire_imposable - frais_pro) * 12;
-  const annual_family_ded = family_deduction * 12;
-  const annual_ir = applyIRBrackets(annual_taxable);
-  // Apply family deduction after brackets
+  // Annual IR from the bracket scale, then subtract family deductions
+  const annual_ir = applyIRBrackets(salaire_net_imposable * 12);
   const ir_amount = Math.max(0, (annual_ir - annual_family_ded) / 12);
 
   // Employer contributions
