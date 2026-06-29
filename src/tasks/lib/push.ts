@@ -35,7 +35,7 @@ export async function isPushEnabled(): Promise<boolean> {
 async function persistSubscription(userId: string, sub: PushSubscription) {
   const json = sub.toJSON();
   const keys = json.keys || ({} as Record<string, string>);
-  await supabase.from('push_subscriptions').upsert(
+  return supabase.from('push_subscriptions').upsert(
     {
       user_id: userId,
       endpoint: json.endpoint!,
@@ -49,16 +49,21 @@ async function persistSubscription(userId: string, sub: PushSubscription) {
 }
 
 // Requests permission (if needed), subscribes via the SW, and stores the
-// subscription. Returns true when push is active for this device.
+// subscription. Returns true when push is active; false when permission was
+// declined; throws (with a readable message) on a real failure.
 export async function enablePush(userId: string): Promise<boolean> {
-  if (!pushSupported()) return false;
+  if (!pushSupported()) throw new Error('Notifications non supportées par ce navigateur.');
 
   const permission = Notification.permission === 'granted'
     ? 'granted'
     : await Notification.requestPermission();
   if (permission !== 'granted') return false;
 
+  // Ensure an active service worker exists — the index.html registration may
+  // have failed or raced, leaving navigator.serviceWorker.ready pending forever.
+  try { await navigator.serviceWorker.register('/sw.js'); } catch { /* already registered */ }
   const reg = await navigator.serviceWorker.ready;
+
   let sub = await reg.pushManager.getSubscription();
   if (!sub) {
     sub = await reg.pushManager.subscribe({
@@ -66,7 +71,8 @@ export async function enablePush(userId: string): Promise<boolean> {
       applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
     });
   }
-  await persistSubscription(userId, sub);
+  const { error } = await persistSubscription(userId, sub);
+  if (error) throw new Error("Abonnement non enregistré (la table push_subscriptions existe-t-elle ?) : " + error.message);
   return true;
 }
 
