@@ -46,17 +46,17 @@
   .meta{text-align:right;font-size:12px;color:var(--muted);line-height:1.7;}
   .meta b{color:var(--ink);}
 
-  .hero{margin-top:54px;padding-bottom:30px;border-bottom:3px solid var(--ink);}
+  .hero{margin-top:30px;padding-bottom:22px;border-bottom:3px solid var(--ink);}
   .eyebrow{
     display:inline-block;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;
     color:#fff;background:var(--ink);padding:5px 11px;border-radius:100px;margin-bottom:18px;
   }
-  h1{font-size:42px;line-height:1.08;letter-spacing:-1.5px;font-weight:800;}
-  h1 .site{display:block;font-size:42px;color:var(--muted);font-weight:800;}
-  .hero-sub{margin-top:14px;font-size:15px;color:var(--muted);max-width:62ch;}
+  h1{font-size:36px;line-height:1.08;letter-spacing:-1.4px;font-weight:800;}
+  h1 .site{display:block;font-size:36px;color:var(--muted);font-weight:800;}
+  .hero-sub{margin-top:12px;font-size:14.5px;color:var(--muted);max-width:64ch;}
 
-  .stripe{display:flex;gap:0;margin-top:26px;border:1px solid var(--line);border-radius:12px;overflow:hidden;}
-  .stripe .cell{flex:1;padding:16px 18px;border-right:1px solid var(--line);}
+  .stripe{display:flex;gap:0;margin-top:18px;border:1px solid var(--line);border-radius:12px;overflow:hidden;}
+  .stripe .cell{flex:1;padding:13px 16px;border-right:1px solid var(--line);}
   .stripe .cell:last-child{border-right:none;}
   .stripe .k{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:700;}
   .stripe .v{font-size:20px;font-weight:800;margin-top:5px;letter-spacing:-.5px;}
@@ -71,14 +71,14 @@
     width:24px;height:24px;flex:0 0 24px;background:var(--ink);color:#fff;border-radius:6px;
     display:inline-flex;align-items:center;justify-content:center;font-size:12px;letter-spacing:0;
   }
-  section{margin-top:40px;}
-  p{font-size:14px;color:#222;margin-bottom:11px;}
+  section{margin-top:28px;}
+  p{font-size:14px;color:#222;margin-bottom:10px;}
   .lead{font-size:15.5px;color:#1a1a1a;}
 
   /* ---------- Findings cards ---------- */
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
-  .card{border:1px solid var(--line);border-radius:12px;padding:16px 17px;background:#fff;}
-  .card .top{display:flex;align-items:center;gap:9px;margin-bottom:7px;}
+  .card{border:1px solid var(--line);border-radius:12px;padding:13px 15px;background:#fff;}
+  .card .top{display:flex;align-items:center;gap:9px;margin-bottom:6px;}
   .dot{width:9px;height:9px;border-radius:50%;flex:0 0 9px;}
   .dot.bad{background:var(--bad);}
   .dot.warn{background:var(--warn);}
@@ -95,18 +95,18 @@
 
   /* ---------- Plan timeline ---------- */
   .plan{position:relative;}
-  .step{display:flex;gap:16px;padding:15px 0;border-bottom:1px solid var(--line);}
+  .step{display:flex;gap:16px;padding:9px 0;border-bottom:1px solid var(--line);}
   .step:last-child{border-bottom:none;}
   .step .idx{
-    flex:0 0 36px;width:36px;height:36px;border-radius:9px;background:var(--soft);border:1px solid var(--line);
-    display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;
+    flex:0 0 32px;width:32px;height:32px;border-radius:8px;background:var(--soft);border:1px solid var(--line);
+    display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;
   }
   .step .body{flex:1;}
   .step .hd{display:flex;align-items:baseline;justify-content:space-between;gap:12px;}
   .step .name{font-size:15px;font-weight:800;letter-spacing:-.2px;}
   .step .time{font-size:12px;font-weight:700;color:#fff;background:var(--ink);padding:3px 10px;border-radius:100px;white-space:nowrap;}
-  .step .desc{font-size:13px;color:#333;margin-top:4px;}
-  .step .note{font-size:12px;color:var(--muted);margin-top:5px;padding-left:12px;border-left:2px solid var(--line);}
+  .step .desc{font-size:13px;color:#333;margin-top:3px;}
+  .step .note{font-size:12px;color:var(--muted);margin-top:3px;padding-left:12px;border-left:2px solid var(--line);}
 
   /* ---------- Access / notes ---------- */
   .acc{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
@@ -152,16 +152,20 @@
        and Chrome paginates naturally across A4 pages */
     .page{display:contents;}
     .pagenote{display:none;}
-    .runfoot{
-      display:block;position:fixed;left:0;right:0;bottom:7mm;
-      text-align:center;font-size:9px;letter-spacing:1px;color:#b3b3b3;
-    }
+    .runfoot{display:none;}
     /* keep these blocks intact across page breaks */
     .stripe,.hero,.card,.step,.acc .item,.price-main,.price-side,.delay,.notes,.foot{break-inside:avoid;}
     h2{break-after:avoid;}
-    section{margin-top:26px;}
+    section{margin-top:20px;}
   }
-  @page{size:A4;margin:15mm 16mm 14mm;}
+  @page{
+    size:A4;margin:14mm 16mm 15mm;
+    @bottom-center{
+      content:"QODWEB.COM · DIAGNOSTIC & PROPOSITION · WINASHOP.MA";
+      font-size:8pt;letter-spacing:1px;color:#b3b3b3;
+      margin-bottom:6mm;
+    }
+  }
 </style>
 </head>
 <body>
@@ -182,7 +186,7 @@
   <div class="hero">
     <span class="eyebrow">Diagnostic technique &amp; proposition</span>
     <h1>Remise en état &amp; sécurisation<span class="site">winashop.ma</span></h1>
-    <p class="hero-sub">Le site présente plusieurs signes de dysfonctionnement : ouverture incorrecte, certificat de sécurité expiré, configuration du domaine à reprendre et hébergement instable. Plus préoccupant : des publicités étrangères à Winashop apparaissent par moments — un signal probable d’infection ou de script injecté.</p>
+    <p class="hero-sub">Le site est instable : ouverture incorrecte, certificat de sécurité expiré, domaine à reprendre et hébergement défaillant. Plus préoccupant, des publicités étrangères à Winashop apparaissent — signe probable d’une infection ou d’un script injecté.</p>
   </div>
 
   <div class="stripe">
@@ -194,8 +198,8 @@
 
   <section>
     <h2><span class="num">01</span> Résumé en quelques mots</h2>
-    <p class="lead">L’objectif n’est pas seulement de remettre le site en ligne. Il faut aussi sécuriser l’accès HTTPS, vérifier que le domaine pointe au bon endroit et supprimer tout élément suspect avant de rendre le site de nouveau fiable pour les clients.</p>
-    <p>Quand le site arrive à s’afficher, des contenus publicitaires qui ne font pas partie de Winashop peuvent apparaître. Ce comportement ressemble à une infection ou à un script ajouté sans autorisation, et doit être traité en priorité.</p>
+    <p class="lead">L’objectif n’est pas seulement de remettre le site en ligne, mais de sécuriser le HTTPS, vérifier que le domaine pointe au bon endroit et supprimer tout élément suspect avant de le rendre de nouveau fiable.</p>
+    <p>Les publicités étrangères à Winashop qui apparaissent par moments ressemblent à une infection ou à un script ajouté sans autorisation : à traiter en priorité.</p>
   </section>
 
   <section>
@@ -245,87 +249,87 @@
 <div class="page">
   <section id="sec-plan" style="margin-top:0;">
     <h2><span class="num">04</span> Intervention proposée</h2>
-    <p style="margin-bottom:18px;">Les temps indiqués sont des estimations réalistes. Ils peuvent varier selon les accès disponibles, l’état exact du serveur et le niveau d’infection trouvé pendant le nettoyage.</p>
+    <p style="margin-bottom:14px;">Estimations réalistes ; les temps peuvent varier selon les accès, l’état du serveur et le niveau d’infection constaté.</p>
 
     <div class="plan">
       <div class="step">
         <div class="idx">1</div>
         <div class="body">
           <div class="hd"><span class="name">Contrôle technique</span><span class="time">2–3 h</span></div>
-          <div class="desc">Reprendre les points essentiels : domaine, DNS, hébergement, SSL, fichiers du site, accès et erreurs visibles.</div>
-          <div class="note">Avant toute modification, on vérifie et on garde une trace de l’état actuel.</div>
+          <div class="desc">Vérifier domaine, DNS, hébergement, SSL, fichiers et erreurs visibles.</div>
+          <div class="note">État actuel tracé avant toute modification.</div>
         </div>
       </div>
       <div class="step">
         <div class="idx">2</div>
         <div class="body">
           <div class="hd"><span class="name">Correction DNS</span><span class="time">2–4 h</span></div>
-          <div class="desc">Remettre le domaine sur des serveurs DNS fiables et reconnecter proprement le site au bon hébergement.</div>
-          <div class="note">La propagation peut prendre de quelques minutes à 24 h.</div>
+          <div class="desc">Remettre le domaine sur des DNS fiables et le reconnecter au bon hébergement.</div>
+          <div class="note">Propagation : de quelques minutes à 24 h.</div>
         </div>
       </div>
       <div class="step">
         <div class="idx">3</div>
         <div class="body">
           <div class="hd"><span class="name">Hébergement</span><span class="time">4–6 h</span></div>
-          <div class="desc">Vérifier si l’hébergement actuel peut être récupéré. Sinon, préparer une migration vers un environnement plus stable.</div>
-          <div class="note">Le choix final dépendra des accès et de l’état réel du serveur.</div>
+          <div class="desc">Récupérer l’hébergement actuel ou, si besoin, migrer vers un environnement stable.</div>
+          <div class="note">Choix final selon les accès et l’état du serveur.</div>
         </div>
       </div>
       <div class="step">
         <div class="idx">4</div>
         <div class="body">
           <div class="hd"><span class="name">Scan sécurité</span><span class="time">3–5 h</span></div>
-          <div class="desc">Analyser les fichiers, la base de données, le thème, les extensions et les scripts suspects.</div>
-          <div class="note">Nécessaire à cause des publicités qui ne viennent pas de Winashop.</div>
+          <div class="desc">Analyser fichiers, base de données, thème, extensions et scripts suspects.</div>
+          <div class="note">Requis à cause des publicités injectées.</div>
         </div>
       </div>
       <div class="step">
         <div class="idx">5</div>
         <div class="body">
           <div class="hd"><span class="name">Nettoyage</span><span class="time">4–8 h</span></div>
-          <div class="desc">Supprimer les fichiers infectés, redirections, publicités injectées et codes non autorisés.</div>
-          <div class="note">Le temps varie selon le niveau d’infection constaté.</div>
+          <div class="desc">Supprimer fichiers infectés, redirections, publicités et codes non autorisés.</div>
+          <div class="note">Durée selon le niveau d’infection.</div>
         </div>
       </div>
       <div class="step">
         <div class="idx">6</div>
         <div class="body">
           <div class="hd"><span class="name">Remise en ligne</span><span class="time">3–5 h</span></div>
-          <div class="desc">Corriger les erreurs serveur, reconnecter le site et vérifier que les pages principales s’ouvrent correctement.</div>
-          <div class="note">Priorité : rendre le site consultable et stable.</div>
+          <div class="desc">Corriger les erreurs serveur et vérifier l’ouverture des pages principales.</div>
+          <div class="note">Priorité : un site consultable et stable.</div>
         </div>
       </div>
       <div class="step">
         <div class="idx">7</div>
         <div class="body">
           <div class="hd"><span class="name">SSL / HTTPS</span><span class="time">2–3 h</span></div>
-          <div class="desc">Installer un certificat SSL valide et mettre en place le renouvellement automatique.</div>
-          <div class="note">Inclut la version avec et sans www, lorsque c’est possible.</div>
+          <div class="desc">Installer un certificat SSL valide avec renouvellement automatique.</div>
+          <div class="note">Versions avec et sans www, si possible.</div>
         </div>
       </div>
       <div class="step">
         <div class="idx">8</div>
         <div class="body">
           <div class="hd"><span class="name">Optimisation de base</span><span class="time">3–4 h</span></div>
-          <div class="desc">Contrôler cache, images, chargement mobile et réglages de base après la remise en ligne.</div>
-          <div class="note">Le test de vitesse se fait uniquement après stabilisation.</div>
+          <div class="desc">Contrôler cache, images, chargement mobile et réglages de base.</div>
+          <div class="note">Test de vitesse après stabilisation.</div>
         </div>
       </div>
       <div class="step">
         <div class="idx">9</div>
         <div class="body">
           <div class="hd"><span class="name">Sécurisation</span><span class="time">2–3 h</span></div>
-          <div class="desc">Mettre en place des réglages de protection, sauvegardes et recommandations de suivi.</div>
-          <div class="note">Objectif : limiter le risque que le problème revienne.</div>
+          <div class="desc">Mettre en place protections, sauvegardes et recommandations de suivi.</div>
+          <div class="note">Objectif : éviter que le problème revienne.</div>
         </div>
       </div>
       <div class="step">
         <div class="idx">10</div>
         <div class="body">
           <div class="hd"><span class="name">Tests finaux</span><span class="time">1–2 h</span></div>
-          <div class="desc">Tester l’accès au site, le HTTPS, le mobile, les pages principales et l’absence de publicités suspectes.</div>
-          <div class="note">Avant livraison finale au client.</div>
+          <div class="desc">Tester accès, HTTPS, mobile, pages principales et absence de publicités.</div>
+          <div class="note">Avant livraison finale.</div>
         </div>
       </div>
     </div>
@@ -335,7 +339,7 @@
     <h2><span class="num">05</span> Délai global estimé</h2>
     <div class="delay">
       <div class="big">2–4 jours</div>
-      <div class="txt">Ce type d’intervention peut généralement être réalisé en <b>2 à 4 jours ouvrables</b>. Les changements DNS peuvent demander un délai supplémentaire de propagation, généralement entre quelques minutes et 24 heures.</div>
+      <div class="txt">Intervention réalisable en <b>2 à 4 jours ouvrables</b>. La propagation DNS peut ajouter un délai (de quelques minutes à 24 h).</div>
     </div>
   </section>
 
@@ -346,7 +350,7 @@
 <div class="page">
   <section id="sec-access" style="margin-top:0;">
     <h2><span class="num">06</span> Accès nécessaires</h2>
-    <p style="margin-bottom:16px;">Pour intervenir proprement et éviter les suppositions, il faudra idéalement fournir les accès suivants. Si certains ne sont pas disponibles, nous adapterons la méthode — mais cela peut rallonger le délai.</p>
+    <p style="margin-bottom:14px;">Accès à fournir idéalement. À défaut, nous adaptons la méthode — ce qui peut rallonger le délai.</p>
     <div class="acc">
       <div class="item"><b>Compte du nom de domaine</b><span>Pour corriger les DNS et reconnecter le domaine correctement.</span></div>
       <div class="item"><b>Hébergement / serveur / FTP</b><span>Pour vérifier les fichiers, corriger les erreurs et nettoyer les éléments suspects.</span></div>
@@ -360,10 +364,10 @@
     <h2><span class="num">07</span> Notes importantes</h2>
     <div class="notes">
       <ul style="list-style:disc;">
-        <li>Les frais d’hébergement, de renouvellement du nom de domaine, de certificat SSL payant ou d’outils premium ne sont pas inclus dans le prix ci-dessous.</li>
-        <li>Si un nouvel hébergement est nécessaire, il sera proposé séparément avant tout achat.</li>
-        <li>Si une sauvegarde saine existe, elle pourra accélérer la remise en état du site.</li>
-        <li>Après nettoyage, nous recommandons une surveillance minimale afin d’éviter que le même problème revienne.</li>
+        <li>Frais d’hébergement, de domaine, de SSL payant ou d’outils premium non inclus dans le prix ci-dessous.</li>
+        <li>Un nouvel hébergement, si nécessaire, sera proposé séparément avant tout achat.</li>
+        <li>Une sauvegarde saine, si elle existe, accélère la remise en état.</li>
+        <li>Après nettoyage, une surveillance minimale est recommandée pour éviter une récidive.</li>
       </ul>
     </div>
   </section>
@@ -374,19 +378,19 @@
       <div class="price-main">
         <span class="tag">Intervention complète</span>
         <div class="amount">4 000 <small>MAD</small></div>
-        <div class="desc">Couvre le diagnostic approfondi, la correction DNS, la vérification ou préparation d’hébergement, le SSL, le nettoyage des éléments suspects, la remise en ligne et les tests de base.</div>
+        <div class="desc">Diagnostic, correction DNS, hébergement, SSL, nettoyage des éléments suspects, remise en ligne et tests de base.</div>
       </div>
       <div class="price-side">
         <span class="tag">Maintenance mensuelle <br>optionnelle</span>
         <div class="amount">500 <small>MAD / mois</small></div>
-        <div class="desc">Suivi de base du site, contrôle SSL, vérification des sauvegardes, mises à jour simples et assistance rapide en cas d’erreur technique.</div>
+        <div class="desc">Suivi du site, contrôle SSL, sauvegardes, mises à jour simples et assistance rapide.</div>
         <span class="reco">Recommandé après remise en ligne</span>
       </div>
     </div>
   </section>
 
   <div class="foot">
-    <div class="closing">Cette proposition couvre l’intervention technique et la remise en état de base. Une fois les accès reçus, un dernier contrôle permettra de confirmer le déroulement exact de l’opération.</div>
+    <div class="closing">Cette proposition couvre l’intervention technique et la remise en état de base. Le déroulement exact sera confirmé après réception des accès.</div>
     <div class="sign">
       <div class="wordmark" style="justify-content:flex-end;">
         <img src="assets/qodweb-logo.png" alt="qodweb">
