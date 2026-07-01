@@ -109,6 +109,12 @@ export function useAuth() {
           isPaie:        user.is_superadmin || user.is_admin || user.is_compta || false,
         };
 
+    // The is_superadmin / is_admin boolean columns are authoritative — a stale or
+    // mismatched new_role must never strip admin access. Setting is_superadmin in
+    // the DB (then re-login) always grants full access.
+    if (user.is_superadmin) { flags.isSuperAdmin = true; flags.isAdmin = true; flags.isPaie = true; }
+    if (user.is_admin) { flags.isAdmin = true; flags.isPaie = true; }
+
     const permissions: UserPermissions = {
       canCreateQuote: user.can_create_quote,
       allowedStockLocations: user.allowed_stock_locations,
@@ -192,6 +198,10 @@ export function useAuth() {
           isTasks: permissions.isTasks ?? !!restoredTasksRole,
           isTasksOnly: permissions.isTasksOnly ?? restoredTasksOnly,
         };
+        // Boolean columns are authoritative — never let a stale cached blob hide
+        // admin access on reload.
+        if (user.is_superadmin) { recomputedPermissions.isSuperAdmin = true; recomputedPermissions.isAdmin = true; recomputedPermissions.isPaie = true; }
+        if (user.is_admin) { recomputedPermissions.isAdmin = true; recomputedPermissions.isPaie = true; }
         setUserPermissions(recomputedPermissions);
 
         // Restore company context singleton from persisted data
