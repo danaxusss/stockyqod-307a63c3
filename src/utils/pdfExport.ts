@@ -856,73 +856,88 @@ export class PdfExportService {
     };
 
     // ============================================================
-    //  TEMPLATE: SPLIT
-    //  Left accent panel (company) + right dark panel (doc type)
+    //  TEMPLATE: SPLIT ("Bicolore")
+    //  Diagonal accent/dark banner (logo left, doc type right)
+    //  + two boxed info panels (client / document). Colors come
+    //  entirely from the user's accent setting — nothing hardcoded.
     // ============================================================
     const drawSplitHeader = async (): Promise<number> => {
-      const panelH = logoBase64 ? Math.max(logoH + 14, 30) : 30;
-      const halfW = pageWidth / 2;
+      const headerH = logoBase64 ? Math.max(logoH + 12, 34) : 34;
 
-      // Left panel (accent)
+      // Diagonal seam: dark region slants across the right side.
+      const xTop = pageWidth * 0.50;   // seam hits the top edge here
+      const xBot = pageWidth * 0.40;   // ...and the bottom edge here
+
+      // Base accent band across the full width
       doc.setFillColor(...ACCENT);
-      doc.rect(0, 0, halfW, panelH, 'F');
+      doc.rect(0, 0, pageWidth, headerH, 'F');
 
-      // Right panel (dark)
+      // Dark slanted quad on the right (two triangles)
       doc.setFillColor(...DARK);
-      doc.rect(halfW, 0, halfW, panelH, 'F');
+      doc.triangle(xTop, 0, pageWidth, 0, pageWidth, headerH, 'F');
+      doc.triangle(xTop, 0, pageWidth, headerH, xBot, headerH, 'F');
 
-      // Company / logo in left panel
+      // White seam line for a crisp diagonal edge
+      doc.setDrawColor(...WHITE); doc.setLineWidth(0.7);
+      doc.line(xTop, 0, xBot, headerH);
+
+      // Company / logo in the left (accent) region
+      const leftRegionW = xBot - margin - 6;
       if (logoBase64) {
-        const lx = margin;
-        const ly = (panelH - logoH) / 2;
-        doc.addImage(logoBase64, 'AUTO', lx, ly > 0 ? ly : 2, logoW, logoH);
+        const ly = (headerH - logoH) / 2;
+        doc.addImage(logoBase64, 'AUTO', margin, ly > 0 ? ly : 3, logoW, logoH);
       } else {
-        doc.setFont(font, 'bold'); doc.setFontSize(13); doc.setTextColor(...WHITE);
-        const lines = doc.splitTextToSize(companyName, halfW - margin * 2);
-        doc.text(lines, margin + 2, panelH / 2 + 2);
+        doc.setFont(font, 'bold'); doc.setTextColor(...WHITE);
+        let nameSize = 17;
+        doc.setFontSize(nameSize);
+        while (nameSize > 10 && doc.getTextWidth(companyName) > leftRegionW) {
+          nameSize -= 1; doc.setFontSize(nameSize);
+        }
+        const lines = doc.splitTextToSize(companyName, leftRegionW);
+        doc.text(lines, margin, headerH / 2 + 2 - (lines.length - 1) * (nameSize * 0.18));
       }
 
-      // Doc type in right panel
+      // Doc type title in the dark region (right, aligned to edge)
       doc.setFont(font, 'bold');
-      doc.setFontSize((documentType === 'bl' || documentType === 'bon_commande') ? 13 : 20);
+      doc.setFontSize((documentType === 'bl' || documentType === 'bon_commande') ? 18 : 30);
       doc.setTextColor(...ACCENT);
-      doc.text(docTypeLabel, halfW + (halfW - margin) / 2, panelH / 2 + 3, { align: 'center' });
+      doc.text(docTypeLabel, pageWidth - margin, headerH / 2 + 4, { align: 'right' });
 
-      let yy = panelH + 5;
+      let yy = headerH + 6;
 
-      // Two-column client + meta below panels
+      // Two boxed info panels: client (accent header) + document (dark header)
       const clientRows = buildClientRows();
       const metaRows = buildMetaRows();
-      const colW = contentWidth / 2 - 3;
+      const gap = 6;
+      const colW = (contentWidth - gap) / 2;
+      const rowH = 5.4;
+      const headBar = 6;
+      const boxRows = Math.max(clientRows.length, metaRows.length, 1);
+      const boxH = headBar + boxRows * rowH + 4;
 
-      // Thin accent underline
-      doc.setDrawColor(...ACCENT); doc.setLineWidth(0.5);
-      doc.line(margin, yy, margin + colW, yy);
-      doc.setDrawColor(...DARK); doc.setLineWidth(0.5);
-      doc.line(margin + colW + 6, yy, pageWidth - margin, yy);
-      yy += 4;
+      const drawInfoBox = (x: number, titleTxt: string, titleFill: [number, number, number], rows: [string, string][]) => {
+        doc.setDrawColor(224, 224, 224); doc.setLineWidth(0.3);
+        doc.setFillColor(252, 252, 252);
+        doc.rect(x, yy, colW, boxH, 'FD');
+        doc.setFillColor(...titleFill);
+        doc.rect(x, yy, colW, headBar, 'F');
+        doc.setFont(font, 'bold'); doc.setFontSize(7); doc.setTextColor(...WHITE);
+        doc.text(titleTxt, x + 3, yy + headBar - 1.8);
+        let ry = yy + headBar + 4;
+        rows.forEach(([label, value]) => {
+          doc.setFont(font, 'bold'); doc.setFontSize(6.3); doc.setTextColor(...GRAY);
+          doc.text(label.toUpperCase() + ':', x + 3, ry);
+          const vx = x + 3 + doc.getTextWidth(label.toUpperCase() + ':') + 2;
+          doc.setFont(font, 'normal'); doc.setFontSize(7); doc.setTextColor(...DARK);
+          doc.text(String(value ?? ''), vx, ry, { maxWidth: x + colW - vx - 3 });
+          ry += rowH;
+        });
+      };
 
-      let ly = yy, ry = yy;
-      clientRows.forEach(([label, value]) => {
-        doc.setFont(font, 'bold'); doc.setFontSize(6.5); doc.setTextColor(...ACCENT);
-        doc.text(label.toUpperCase() + ':', margin, ly);
-        doc.setFont(font, 'normal'); doc.setFontSize(7.5); doc.setTextColor(...DARK);
-        doc.text(value, margin + doc.getTextWidth(label.toUpperCase() + ':') + 2, ly, { maxWidth: colW - 28 });
-        ly += 5.5;
-      });
-      const metaX = margin + colW + 6;
-      metaRows.forEach(([label, value]) => {
-        doc.setFont(font, 'bold'); doc.setFontSize(6.5); doc.setTextColor(...GRAY);
-        doc.text(label + ':', metaX, ry);
-        doc.setFont(font, 'normal'); doc.setFontSize(7.5); doc.setTextColor(...DARK);
-        doc.text(value, pageWidth - margin, ry, { align: 'right', maxWidth: colW - 10 });
-        ry += 5.5;
-      });
+      drawInfoBox(margin, 'CLIENT', ACCENT, clientRows);
+      drawInfoBox(margin + colW + gap, docTypeLabel, DARK, metaRows);
 
-      const maxY = Math.max(ly, ry);
-      doc.setDrawColor(200, 200, 200); doc.setLineWidth(0.3);
-      doc.line(margin, maxY + 2, pageWidth - margin, maxY + 2);
-      return maxY + 7;
+      return yy + boxH + 6;
     };
 
     // ============================================================

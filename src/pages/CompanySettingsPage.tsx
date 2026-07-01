@@ -231,26 +231,23 @@ const TEMPLATE_DEFINITIONS = [
   {
     id: 'split' as const,
     name: 'Bicolore',
-    desc: 'En-tête partagé couleur / sombre, typographie grande et créative',
+    desc: 'Bandeau diagonal couleur / sombre, logo à gauche, titre à droite',
     preview: (color: string) => (
       <svg viewBox="0 0 120 160" className="w-full h-full">
         <rect width="120" height="160" fill="#f8f9fc" rx="3"/>
-        <rect x="0" y="0" width="60" height="26" fill={color}/>
-        <rect x="60" y="0" width="60" height="26" fill="#1e1e1e"/>
-        <text x="8" y="11" fill="white" fontSize="7" fontWeight="bold">ENTREPRISE</text>
-        <text x="8" y="19" fill="white" fontSize="5" opacity="0.75">Cuisine Pro</text>
-        <text x="112" y="16" textAnchor="end" fill={color} fontSize="9" fontWeight="bold">DEVIS</text>
-        <line x1="8" y1="29" x2="58" y2="29" stroke={color} strokeWidth="0.5"/>
-        <line x1="62" y1="29" x2="112" y2="29" stroke="#1e1e1e" strokeWidth="0.5"/>
-        <rect x="8" y="32" width="48" height="2" fill="#888" opacity="0.4"/>
-        <rect x="8" y="36" width="40" height="2" fill="#888" opacity="0.3"/>
-        <rect x="62" y="32" width="50" height="2" fill="#888" opacity="0.4"/>
-        <rect x="62" y="36" width="42" height="2" fill="#888" opacity="0.3"/>
-        <line x1="8" y1="41" x2="112" y2="41" stroke="#ccc" strokeWidth="0.3"/>
-        <rect x="8" y="43" width="104" height="5" fill={color}/>
-        <rect x="8" y="48" width="104" height="4" fill="white"/>
-        <rect x="8" y="52" width="104" height="4" fill="#f5f5f5"/>
-        <rect x="8" y="56" width="104" height="4" fill="white"/>
+        <rect x="0" y="0" width="120" height="26" fill={color}/>
+        <polygon points="60,0 120,0 120,26 48,26" fill="#1e1e1e"/>
+        <line x1="60" y1="0" x2="48" y2="26" stroke="white" strokeWidth="0.8"/>
+        <text x="8" y="16" fill="white" fontSize="8" fontWeight="bold">ENTREPRISE</text>
+        <text x="112" y="17" textAnchor="end" fill={color} fontSize="10" fontWeight="bold">DEVIS</text>
+        <rect x="8" y="32" width="50" height="20" rx="1" fill="white" stroke="#e0e0e0" strokeWidth="0.4"/>
+        <rect x="8" y="32" width="50" height="5" fill={color}/>
+        <rect x="62" y="32" width="50" height="20" rx="1" fill="white" stroke="#e0e0e0" strokeWidth="0.4"/>
+        <rect x="62" y="32" width="50" height="5" fill="#1e1e1e"/>
+        <rect x="8" y="58" width="104" height="5" fill={color}/>
+        <rect x="8" y="63" width="104" height="4" fill="white"/>
+        <rect x="8" y="67" width="104" height="4" fill="#f5f5f5"/>
+        <rect x="8" y="71" width="104" height="4" fill="white"/>
         <rect x="70" y="130" width="38" height="8" rx="1" fill={color}/>
         <text x="89" y="136" textAnchor="middle" fill="white" fontSize="4" fontWeight="bold">TOTAL TTC</text>
       </svg>
