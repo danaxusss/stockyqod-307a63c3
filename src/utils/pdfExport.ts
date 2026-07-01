@@ -1621,40 +1621,58 @@ async function buildPayslipPdf(payslip: any, settings: any): Promise<{ doc: any;
 
   let y = margin;
 
-  // ── Header band ──
-  doc.setFillColor(...ACCENT);
-  doc.rect(0, 0, pageWidth, 28, 'F');
-
-  // Logo
-  const logoUrl = settings?.logo_url;
-  if (logoUrl) {
-    const logoData = await loadImageAsBase64(logoUrl);
-    if (logoData) {
-      try { doc.addImage(logoData, 'JPEG', margin, 4, 20, 20); } catch {}
+  // ── Header band ── (height fits the logo's natural aspect ratio)
+  let logoBase64: string | null = null;
+  let logoW = 0, logoH = 0;
+  if (settings?.logo_url) {
+    logoBase64 = await loadImageAsBase64(settings.logo_url);
+    if (logoBase64) {
+      try {
+        const props: any = (doc as any).getImageProperties(logoBase64);
+        const maxW = 26, maxH = 18;
+        logoW = maxW;
+        logoH = (props.height / props.width) * logoW;
+        if (logoH > maxH) { logoH = maxH; logoW = (props.width / props.height) * logoH; }
+      } catch { logoW = 16; logoH = 16; }
     }
   }
+  const bandH = Math.max(28, logoH + 8);
 
-  // Company name in header
+  doc.setFillColor(...ACCENT);
+  doc.rect(0, 0, pageWidth, bandH, 'F');
+
+  if (logoBase64) {
+    try { doc.addImage(logoBase64, 'AUTO', margin, (bandH - logoH) / 2, logoW, logoH); } catch {}
+  }
+
+  const textX = margin + (logoBase64 ? logoW + 4 : 0);
   doc.setTextColor(...WHITE);
   doc.setFontSize(13);
   doc.setFont(font, 'bold');
-  doc.text(companyName, margin + (logoUrl ? 24 : 0), 13);
-  if (settings?.address) {
-    doc.setFontSize(7.5);
-    doc.setFont(font, 'normal');
-    doc.text(settings.address, margin + (logoUrl ? 24 : 0), 19);
-  }
+  doc.text(companyName, textX, 11);
+  doc.setFont(font, 'normal');
+  doc.setFontSize(7);
+  let hy = 16;
+  if (settings?.address) { doc.text(String(settings.address), textX, hy); hy += 4; }
+  // Legal identifiers (employer) — only those provided
+  const ids: string[] = [];
+  if (settings?.ice) ids.push(`ICE: ${settings.ice}`);
+  if (settings?.rc) ids.push(`RC: ${settings.rc}`);
+  if (settings?.if_number) ids.push(`IF: ${settings.if_number}`);
+  if (settings?.cnss) ids.push(`CNSS: ${settings.cnss}`);
+  if (settings?.patente) ids.push(`Patente: ${settings.patente}`);
+  if (ids.length) doc.text(ids.join('  ·  '), textX, hy, { maxWidth: contentWidth - 55 });
 
   // Payslip title (right side)
   doc.setFontSize(11);
   doc.setFont(font, 'bold');
-  doc.text('BULLETIN DE PAIE', pageWidth - margin, 12, { align: 'right' });
+  doc.text('BULLETIN DE PAIE', pageWidth - margin, 11, { align: 'right' });
   doc.setFontSize(8);
   doc.setFont(font, 'normal');
-  doc.text(periodLabel, pageWidth - margin, 18, { align: 'right' });
-  doc.text(payslip.payslip_number || '', pageWidth - margin, 23, { align: 'right' });
+  doc.text(periodLabel, pageWidth - margin, 17, { align: 'right' });
+  doc.text(payslip.payslip_number || '', pageWidth - margin, 22, { align: 'right' });
 
-  y = 34;
+  y = bandH + 6;
   doc.setTextColor(...DARK);
 
   // ── Employee info block ──
@@ -1740,7 +1758,6 @@ async function buildPayslipPdf(payslip: any, settings: any): Promise<{ doc: any;
   const deductionsBody: any[] = [
     ['CNSS (4,48% plafonné)', '', PdfExportService.formatCurrency(payslip.cnss_employee)],
     ['AMO (2,26%)', '', PdfExportService.formatCurrency(payslip.amo_employee)],
-    ['Frais professionnels (20%)', '', PdfExportService.formatCurrency(payslip.frais_pro)],
     ['IR (barème progressif)', '', PdfExportService.formatCurrency(payslip.ir_amount)],
   ];
   if (payslip.cimr_employee > 0) {
@@ -1785,7 +1802,18 @@ async function buildPayslipPdf(payslip: any, settings: any): Promise<{ doc: any;
   const netWords = numberToWordsFr(Math.round(payslip.net_salary));
   doc.text(`Arrêté à la somme de : ${netWords} Dirhams`, margin, y);
 
-  y += 8;
+  y += 6;
+  if (payslip.frais_pro > 0) {
+    doc.setFont(font, 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(150, 150, 150);
+    doc.text(
+      `Frais professionnels (abattement fiscal, non retenu) : ${PdfExportService.formatCurrency(payslip.frais_pro)} MAD`,
+      margin, y
+    );
+    y += 6;
+  }
+  doc.setTextColor(...DARK);
 
   // ── Employer cost note ──
   if (payslip.cnss_employer > 0 || payslip.amo_employer > 0 || payslip.alloc_familiales > 0) {
