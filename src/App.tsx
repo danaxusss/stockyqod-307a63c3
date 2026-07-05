@@ -41,6 +41,9 @@ const BonCommandeDetailPage = React.lazy(() => import('./pages/compta/BonCommand
 const BackupPage = React.lazy(() => import('./pages/BackupPage'));
 const ImportPage = React.lazy(() => import('./pages/ImportPage'));
 const ComptabiliteComingSoon = React.lazy(() => import('./pages/ComptabiliteComingSoon'));
+const StockDashboardPage = React.lazy(() => import('./pages/inventaire/StockDashboardPage'));
+const StockLevelsPage = React.lazy(() => import('./pages/inventaire/StockLevelsPage'));
+const StockMovementsPage = React.lazy(() => import('./pages/inventaire/StockMovementsPage'));
 const EmployeesPage = React.lazy(() => import('./pages/paie/EmployeesPage'));
 const PayslipsPage = React.lazy(() => import('./pages/paie/PayslipsPage'));
 const PayslipDetailPage = React.lazy(() => import('./pages/paie/PayslipDetailPage'));
@@ -65,7 +68,7 @@ function PageLoader() {
 
 function AppContent() {
   const { activeLoginModalRole, openLoginModal } = useAppContext();
-  const { canCreateQuote, isSuperAdmin, isFacturation, isPaie, isTasks, isTasksOnly } = useAuth();
+  const { canCreateQuote, isSuperAdmin, isFacturation, isPaie, isStock, isTasks, isTasksOnly } = useAuth();
   const { isAuthenticated: isUserAuthenticated } = useUserAuth();
 
   const handleUserLoginSuccess = () => {};
@@ -150,6 +153,13 @@ function AppContent() {
                 <Route path="/compta/avoirs/:id" element={<AvoirDetailPage />} />
                 <Route path="/compta/bons-commande" element={<BonCommandeDirectoryPage />} />
                 <Route path="/compta/bons-commande/:id" element={<BonCommandeDetailPage />} />
+              </>
+            )}
+            {(isStock || isSuperAdmin) && (
+              <>
+                <Route path="/inventaire" element={<StockDashboardPage />} />
+                <Route path="/inventaire/niveaux" element={<StockLevelsPage />} />
+                <Route path="/inventaire/mouvements" element={<StockMovementsPage />} />
               </>
             )}
             {(isPaie || isSuperAdmin) && (

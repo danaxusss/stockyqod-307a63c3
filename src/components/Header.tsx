@@ -3,7 +3,7 @@ import {
   Package, RefreshCw, LogOut, Shield, FileText, User, Cloud, CloudOff,
   Settings, UserCheck, ShoppingBag, BookOpen, Building2, ChevronDown,
   Truck, Receipt, Calculator, BarChart3, Users, ShoppingCart, LucideIcon,
-  RotateCcw, Sun, Moon, Upload, FileX, BookMarked,
+  RotateCcw, Sun, Moon, Upload, FileX, BookMarked, Boxes, ArrowLeftRight, TrendingUp,
 } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { Link, useLocation, NavLink } from 'react-router-dom';
@@ -12,7 +12,7 @@ import { useUserAuth } from '../hooks/useUserAuth';
 import { useAppContext } from '../context/AppContext';
 import { useToast } from '../context/ToastContext';
 
-type DropdownId = 'catalogue' | 'devis' | 'compta' | 'admin';
+type DropdownId = 'catalogue' | 'devis' | 'stock' | 'compta' | 'admin';
 interface NavItem { to: string; icon: LucideIcon; label: string; }
 
 function NavDropdown({
@@ -110,7 +110,7 @@ export function Header() {
   const navRef = useRef<HTMLDivElement>(null);
 
   const { theme, toggle: toggleTheme } = useTheme();
-  const { isAdmin, isSuperAdmin, isFacturation, companyName, currentUser, canCreateQuote, logout: adminLogout } = useAuth();
+  const { isAdmin, isSuperAdmin, isFacturation, isStock, companyName, currentUser, canCreateQuote, logout: adminLogout } = useAuth();
   const { isAuthenticated: isUserAuthenticated, authenticatedUser, logout: userLogout } = useUserAuth();
   const { syncInfo, syncData, openLoginModal } = useAppContext();
   const { showToast } = useToast();
@@ -264,6 +264,22 @@ export function Header() {
                 items={[
                   { to: '/quotes-history', icon: FileText, label: 'Historique Devis' },
                   { to: '/quote-cart', icon: ShoppingCart, label: 'Nouveau Devis' },
+                ]}
+              />
+            )}
+
+            {/* Stock / Inventaire */}
+            {(isStock || isSuperAdmin) && (
+              <NavDropdown
+                id="stock"
+                icon={Boxes}
+                label="Stock"
+                openId={openDropdown}
+                onToggle={toggleDropdown}
+                items={[
+                  { to: '/inventaire', icon: TrendingUp, label: 'Tableau de bord' },
+                  { to: '/inventaire/niveaux', icon: Boxes, label: 'Niveaux de stock' },
+                  { to: '/inventaire/mouvements', icon: ArrowLeftRight, label: 'Mouvements' },
                 ]}
               />
             )}

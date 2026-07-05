@@ -344,6 +344,43 @@ export interface StockLocation {
   created_at: string;
 }
 
+export type StockMovementType =
+  | 'in' | 'out' | 'adjustment' | 'count' | 'transfer_in' | 'transfer_out' | 'return';
+
+export type StockSourceType =
+  | 'manual' | 'bl' | 'invoice' | 'receipt' | 'transfer' | 'count' | 'return';
+
+export interface StockMovement {
+  id: string;
+  company_id: string | null;
+  barcode: string;
+  location_key: string;
+  location_id: string | null;
+  type: StockMovementType;
+  quantity: number;          // signed applied delta (+in / -out)
+  unit_cost: number | null;
+  balance_after: number | null;
+  reason: string | null;
+  source_type: StockSourceType;
+  source_id: string | null;
+  transfer_group_id: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface ProductStockSetting {
+  id: string;
+  company_id: string | null;
+  barcode: string;
+  location_key: string | null;
+  reorder_point: number;
+  reorder_qty: number;
+  min_qty: number | null;
+  max_qty: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ProductPhoto {
   id: string;
   company_id?: string;
