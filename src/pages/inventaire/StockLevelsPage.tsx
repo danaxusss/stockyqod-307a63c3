@@ -224,6 +224,8 @@ function ProductStockDrawer({
   const [newQty, setNewQty] = useState('');
   const [reason, setReason] = useState('');
   const [saving, setSaving] = useState(false);
+  const [reorderPoint, setReorderPoint] = useState('');
+  const [reorderSaving, setReorderSaving] = useState(false);
 
   const keys = useMemo(() => {
     const s = new Set<string>(Object.keys(product.stock_levels || {}));
@@ -234,13 +236,32 @@ function ProductStockDrawer({
   const loadMoves = useCallback(async () => {
     setLoading(true);
     try {
-      setMovements(await StockService.getMovementsForProduct(product.barcode));
+      const [moves, settings] = await Promise.all([
+        StockService.getMovementsForProduct(product.barcode),
+        StockService.getStockSettings().catch(() => []),
+      ]);
+      setMovements(moves);
+      const s = settings.find(x => x.barcode === product.barcode && !x.location_key);
+      setReorderPoint(s ? String(s.reorder_point) : '');
     } catch (e: any) {
       showToast({ type: 'error', message: e?.message || 'Erreur historique' });
     } finally { setLoading(false); }
   }, [product.barcode, showToast]);
 
   useEffect(() => { loadMoves(); }, [loadMoves]);
+
+  const saveReorder = async () => {
+    const rp = parseFloat(reorderPoint);
+    if (isNaN(rp) || rp < 0) { showToast({ type: 'error', message: 'Seuil invalide' }); return; }
+    setReorderSaving(true);
+    try {
+      await StockService.upsertStockSetting({ barcode: product.barcode, location_key: null, reorder_point: rp, reorder_qty: 0 });
+      showToast({ type: 'success', message: 'Seuil enregistré' });
+      onChanged();
+    } catch (e: any) {
+      showToast({ type: 'error', message: e?.message || 'Échec' });
+    } finally { setReorderSaving(false); }
+  };
 
   const submitAdjust = async () => {
     if (adjustKey == null) return;
@@ -313,6 +334,22 @@ function ProductStockDrawer({
               })}
             </div>
           </div>
+
+          {/* Reorder threshold */}
+          {canWrite && (
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <label className="block text-[11px] text-muted-foreground mb-1">Seuil de réappro. (alerte sous seuil)</label>
+                <input type="number" min={0} value={reorderPoint} onChange={e => setReorderPoint(e.target.value)}
+                  placeholder="ex: 5"
+                  className="w-full px-3 py-2 text-sm rounded-lg bg-secondary border border-border focus:outline-none focus:ring-2 focus:ring-primary/30" />
+              </div>
+              <button onClick={saveReorder} disabled={reorderSaving}
+                className="px-3 py-2 rounded-lg bg-secondary border border-border text-sm text-foreground disabled:opacity-50">
+                {reorderSaving ? '…' : 'Enregistrer'}
+              </button>
+            </div>
+          )}
 
           {/* Adjust form */}
           {adjustKey != null && (
