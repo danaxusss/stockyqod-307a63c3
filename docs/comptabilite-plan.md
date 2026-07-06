@@ -223,11 +223,18 @@ Shared: `AccountPicker`, `AmountInput` (MAD, 2 dec), `JournalEntryGrid`,
   encaissements/paie → écritures) + "À comptabiliser" inbox (draft-by-default,
   optional auto-validate, double-post guard). No new migration.
   ◻︎ *Remaining:* lettrage clients/fournisseurs.
-- ◻︎ **Phase 3** — TVA (encaissement default) + rapprochement bancaire.
-- ◻︎ **Phase 4** — Bilan + CPC, immobilisations, clôture.
+- ✅ **Phase 2b — lettrage** (done). Clients/fournisseurs matching with auto
+  letter codes + délettrage.
+- ◑ **Phase 3** — ✅ TVA declaration (compute + écriture + persist, migration
+  `vat_declarations`). ◻︎ *Remaining:* rapprochement bancaire.
+- ◑ **Phase 4** — ✅ États de synthèse (Bilan + CPC, modèle simplifié) + ✅
+  clôture d'exercice + à-nouveaux. ◻︎ *Remaining:* immobilisations/amortissements,
+  ESG/TF/ETIC, résultat fiscal/IS.
 
-**⚠ Manual step:** run `supabase/migrations/20260706120000_accounting_core.sql`
-in the Supabase SQL editor before using `/comptabilite`.
+**⚠ Manual step:** run these migrations in the Supabase SQL editor before using
+`/comptabilite`:
+- `supabase/migrations/20260706120000_accounting_core.sql`
+- `supabase/migrations/20260706130000_vat_declarations.sql`
 
 ## 6. Phasing / milestones
 
