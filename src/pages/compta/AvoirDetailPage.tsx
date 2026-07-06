@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { FileX, Download, ArrowLeft, Printer } from 'lucide-react';
+import { FileX, Download, ArrowLeft, Printer, Boxes, Loader } from 'lucide-react';
 import { Quote } from '../../types';
 import { SupabaseDocumentsService } from '../../utils/supabaseDocuments';
 import { PdfExportService } from '../../utils/pdfExport';
@@ -18,11 +18,13 @@ function fmt(n: number) {
 export default function AvoirDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { isSuperAdmin, isCompta } = useAuth();
+  const { isSuperAdmin, isCompta, currentUser } = useAuth();
   const { showToast } = useToast();
 
   const [avoir, setAvoir] = useState<Quote | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [stockReturned, setStockReturned] = useState<boolean | null>(null);
+  const [stockBusy, setStockBusy] = useState(false);
   const [avoirDate, setAvoirDate] = useState('');
   const [printTTCOnly, setPrintTTCOnly] = useState(false);
   const [showPrintPreview, setShowPrintPreview] = useState(false);
@@ -36,6 +38,12 @@ export default function AvoirDetailPage() {
       const doc = await SupabaseDocumentsService.getById(id);
       setAvoir(doc);
       setAvoirDate(doc?.quote_date || new Date(doc?.createdAt || Date.now()).toISOString().split('T')[0]);
+      if (doc?.id) {
+        import('../../inventory/lib/stockPosting')
+          .then(m => m.isDocumentStockPosted(doc.id))
+          .then(setStockReturned)
+          .catch(() => setStockReturned(false));
+      }
     } catch (e) {
       showToast({ type: 'error', title: 'Erreur', message: String(e) });
     } finally {
@@ -57,6 +65,26 @@ export default function AvoirDetailPage() {
     const compId = av.issuing_company_id || av.company_id;
     if (!compId) return null;
     try { return await CompanySettingsService.getSettings(compId); } catch { return null; }
+  };
+
+  const handleReturnStock = async () => {
+    if (!avoir) return;
+    setStockBusy(true);
+    try {
+      const { postDocumentStockReturn } = await import('../../inventory/lib/stockPosting');
+      const res = await postDocumentStockReturn(avoir, { createdBy: currentUser?.username || null });
+      if (res.posted === 0 && res.skipped === 0) {
+        showToast({ type: 'info', title: 'Déjà remis', message: 'Le stock de cet avoir a déjà été remis.' });
+      } else {
+        const skipMsg = res.skipped > 0 ? ` · ${res.skipped} ignoré(s)` : '';
+        showToast({ type: 'success', title: 'Stock remis', message: `${res.posted} retour(s) en stock${skipMsg}` });
+      }
+      setStockReturned(true);
+    } catch (e) {
+      showToast({ type: 'error', title: 'Erreur stock', message: String((e as any)?.message || e) });
+    } finally {
+      setStockBusy(false);
+    }
   };
 
   const handleExportPdf = async () => {
@@ -115,6 +143,19 @@ export default function AvoirDetailPage() {
           className={`px-2 py-1.5 rounded-lg transition-colors text-xs font-medium ${printTTCOnly ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400 ring-1 ring-blue-500/40' : 'hover:bg-accent text-muted-foreground border border-border'}`}
         >
           TTC
+        </button>
+        <button
+          onClick={handleReturnStock}
+          disabled={stockBusy || stockReturned === true}
+          title={stockReturned ? 'Le stock de cet avoir a déjà été remis' : 'Remettre les quantités retournées en stock'}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors ${
+            stockReturned
+              ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 cursor-default'
+              : 'bg-secondary hover:bg-secondary/70 text-foreground border border-border'
+          } disabled:opacity-60`}
+        >
+          {stockBusy ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Boxes className="h-3.5 w-3.5" />}
+          <span>{stockReturned ? 'Stock remis' : 'Remettre en stock'}</span>
         </button>
         <button onClick={handleExportPdf} className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
           <Download className="h-3.5 w-3.5" /><span>PDF</span>

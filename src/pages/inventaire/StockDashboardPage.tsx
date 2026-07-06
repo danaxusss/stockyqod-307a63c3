@@ -109,6 +109,15 @@ export default function StockDashboardPage() {
               <div className="flex items-center gap-2 mb-3">
                 <AlertTriangle className="h-4 w-4 text-amber-500" />
                 <h2 className="text-sm font-semibold text-foreground">Réapprovisionnement</h2>
+                {stats.lowStock.length > 0 && (
+                  <Link
+                    to="/inventaire/commandes"
+                    state={{ prefillBarcodes: stats.lowStock.map(p => p.barcode) }}
+                    className="ml-auto text-[11px] font-medium px-2 py-1 rounded-md bg-primary/10 text-primary hover:bg-primary/20"
+                  >
+                    Créer un bon de commande
+                  </Link>
+                )}
               </div>
               {stats.lowStock.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-4">Aucun article sous le seuil. Définissez des seuils dans Niveaux de stock.</p>

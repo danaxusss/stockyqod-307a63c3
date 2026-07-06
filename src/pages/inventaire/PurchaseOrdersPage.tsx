@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { ClipboardList, Plus, Search, Trash2, Loader, Check, X } from 'lucide-react';
 import type { Product, Provider, StockLocation, PurchaseOrderItem, PurchaseOrderStatus } from '../../types';
 import { StockService } from '../../utils/supabaseStock';
@@ -18,11 +18,17 @@ const STATUS: Record<PurchaseOrderStatus, { label: string; cls: string }> = {
 
 export default function PurchaseOrdersPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { currentUser } = useAuth();
   const { showToast } = useToast();
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+  const prefillBarcodes: string[] = (location.state as any)?.prefillBarcodes || [];
+
+  useEffect(() => {
+    if (prefillBarcodes.length > 0) setShowCreate(true);
+  }, [prefillBarcodes.length]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -81,6 +87,7 @@ export default function PurchaseOrdersPage() {
       {showCreate && (
         <CreatePOModal
           createdBy={currentUser?.username || null}
+          initialBarcodes={prefillBarcodes}
           onClose={() => setShowCreate(false)}
           onCreated={(id) => { setShowCreate(false); navigate(`/inventaire/commandes/${id}`); }}
         />
@@ -89,7 +96,7 @@ export default function PurchaseOrdersPage() {
   );
 }
 
-function CreatePOModal({ createdBy, onClose, onCreated }: { createdBy: string | null; onClose: () => void; onCreated: (id: string) => void; }) {
+function CreatePOModal({ createdBy, initialBarcodes = [], onClose, onCreated }: { createdBy: string | null; initialBarcodes?: string[]; onClose: () => void; onCreated: (id: string) => void; }) {
   const { showToast } = useToast();
   const [products, setProducts] = useState<Product[]>([]);
   const [providers, setProviders] = useState<Provider[]>([]);
@@ -104,13 +111,22 @@ function CreatePOModal({ createdBy, onClose, onCreated }: { createdBy: string | 
 
   useEffect(() => {
     (async () => {
-      const [p, pr, l] = await Promise.all([
-        StockService.getProducts(), StockLocationsService.getProviders(), StockLocationsService.getStockLocations(),
+      const [p, pr, l, settings] = await Promise.all([
+        StockService.getProducts(), StockLocationsService.getProviders(),
+        StockLocationsService.getStockLocations(), StockService.getStockSettings().catch(() => []),
       ]);
       setProducts(p); setProviders(pr); setLocations(l);
       if (l.length > 0) setLocationKey(l[0].abbreviation || l[0].name);
+      if (initialBarcodes.length > 0) {
+        const reorderQty = new Map(settings.filter(s => !s.location_key).map(s => [s.barcode, s.reorder_qty]));
+        const seeded = initialBarcodes
+          .map(bc => p.find(x => x.barcode === bc))
+          .filter((x): x is Product => !!x)
+          .map(x => ({ barcode: x.barcode, label: x.name, qty_ordered: reorderQty.get(x.barcode) || 1, qty_received: 0, unit_cost: Number(x.buyprice) || 0 }));
+        setLines(seeded);
+      }
     })().catch(() => {});
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
