@@ -211,6 +211,21 @@ Shared: `AccountPicker`, `AmountInput` (MAD, 2 dec), `JournalEntryGrid`,
 
 ---
 
+## Build status (branch claude/busy-hawking-qecj8k)
+
+- ✅ **Phase 1 — Foundation** (done). Migration `20260706120000_accounting_core.sql`
+  (fiscal years, accounts, journals, écritures + lignes, `post_journal_entry` +
+  `reverse_journal_entry` RPCs). PCM seed (~70 CGNC accounts) + default journaux.
+  Pages: Tableau de bord (+ init PCM), Plan comptable, Saisie/Journaux, Grand
+  livre, Balance (+CSV). Access = super_admin/admin/compta; nav dropdown.
+  Régime: engagement/normal. Defaults per the open decisions below.
+- ◻︎ **Phase 2** — auto-posting engine (invoices/payments/paie → écritures) + lettrage.
+- ◻︎ **Phase 3** — TVA (encaissement default) + rapprochement bancaire.
+- ◻︎ **Phase 4** — Bilan + CPC, immobilisations, clôture.
+
+**⚠ Manual step:** run `supabase/migrations/20260706120000_accounting_core.sql`
+in the Supabase SQL editor before using `/comptabilite`.
+
 ## 6. Phasing / milestones
 
 **Phase 1 — Foundation (ledger core).** Migrations (FY, accounts, journals,
