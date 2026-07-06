@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { Search, Package, AlertTriangle, X, History, SlidersHorizontal, Loader } from 'lucide-react';
 import type { Product, StockLocation, StockMovement, ProductStockSetting } from '../../types';
-import { StockService, totalStock } from '../../utils/supabaseStock';
+import { StockService } from '../../utils/supabaseStock';
 import { StockLocationsService } from '../../utils/supabaseStockLocations';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
+import { useAccessibleLocations } from '../../inventory/hooks/useAccessibleLocations';
 
 function fmt(n: number) {
   return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(n);
@@ -41,6 +42,13 @@ export default function StockLevelsPage() {
   const [detail, setDetail] = useState<Product | null>(null);
 
   const resolve = useLocationResolver(locations);
+  const { keyAllowed, filterLevels } = useAccessibleLocations();
+
+  // Total across only the locations this user may see (branch scoping).
+  const accessibleTotal = useCallback(
+    (p: Product) => Object.values(filterLevels(p.stock_levels)).reduce((s, v) => s + (Number(v) || 0), 0),
+    [filterLevels]
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -71,17 +79,17 @@ export default function StockLevelsPage() {
 
   const isLow = useCallback((p: Product) => {
     const rp = reorderByBarcode.get(p.barcode);
-    return rp != null && totalStock(p) <= rp;
-  }, [reorderByBarcode]);
+    return rp != null && accessibleTotal(p) <= rp;
+  }, [reorderByBarcode, accessibleTotal]);
 
   // Location keys present across products, filtered by what the user may see.
   const locationKeys = useMemo(() => {
     const keys = new Set<string>();
     products.forEach(p => Object.keys(p.stock_levels || {}).forEach(k => keys.add(k)));
     return Array.from(keys)
-      .filter(k => canAccessStockLocation(k))
+      .filter(k => keyAllowed(k))
       .sort((a, b) => resolve(a).localeCompare(resolve(b)));
-  }, [products, canAccessStockLocation, resolve]);
+  }, [products, keyAllowed, resolve]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -176,7 +184,7 @@ export default function StockLevelsPage() {
                           </td>
                         );
                       })}
-                      <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-foreground">{fmt(totalStock(p))}</td>
+                      <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-foreground">{fmt(accessibleTotal(p))}</td>
                       <td className="px-2 text-muted-foreground"><History className="h-3.5 w-3.5" /></td>
                     </tr>
                   );
@@ -195,6 +203,7 @@ export default function StockLevelsPage() {
           product={detail}
           locations={locations}
           resolve={resolve}
+          keyAllowed={keyAllowed}
           canWrite={canWrite}
           currentUsername={currentUser?.username || null}
           onClose={() => setDetail(null)}
@@ -207,11 +216,12 @@ export default function StockLevelsPage() {
 
 // ── Product detail drawer: per-location levels, adjust, movement history ──────
 function ProductStockDrawer({
-  product, locations, resolve, canWrite, currentUsername, onClose, onChanged,
+  product, locations, resolve, keyAllowed, canWrite, currentUsername, onClose, onChanged,
 }: {
   product: Product;
   locations: StockLocation[];
   resolve: (k: string) => string;
+  keyAllowed: (k: string) => boolean;
   canWrite: boolean;
   currentUsername: string | null;
   onClose: () => void;
@@ -230,8 +240,8 @@ function ProductStockDrawer({
   const keys = useMemo(() => {
     const s = new Set<string>(Object.keys(product.stock_levels || {}));
     locations.forEach(l => s.add(l.abbreviation || l.name));
-    return Array.from(s).sort((a, b) => resolve(a).localeCompare(resolve(b)));
-  }, [product, locations, resolve]);
+    return Array.from(s).filter(k => keyAllowed(k)).sort((a, b) => resolve(a).localeCompare(resolve(b)));
+  }, [product, locations, resolve, keyAllowed]);
 
   const loadMoves = useCallback(async () => {
     setLoading(true);

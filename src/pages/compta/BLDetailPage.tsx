@@ -145,6 +145,9 @@ export default function BLDetailPage() {
       } else {
         const skipMsg = res.skipped > 0 ? ` · ${res.skipped} ignoré(s) (emplacement/code manquant)` : '';
         showToast({ type: 'success', title: 'Stock décompté', message: `${res.posted} mouvement(s) de sortie${skipMsg}` });
+        if (res.negatives && res.negatives > 0) {
+          showToast({ type: 'warning', title: 'Stock négatif', message: `${res.negatives} article(s) passent en stock négatif — vérifiez les réceptions.` });
+        }
       }
       setStockPosted(true);
     } catch (e) {

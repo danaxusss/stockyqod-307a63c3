@@ -4,6 +4,7 @@ import type { Product, StockLocation, StockMovement, StockMovementType } from '.
 import { StockService } from '../../utils/supabaseStock';
 import { StockLocationsService } from '../../utils/supabaseStockLocations';
 import { useToast } from '../../context/ToastContext';
+import { useAccessibleLocations } from '../../inventory/hooks/useAccessibleLocations';
 
 function fmt(n: number) {
   return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(n);
@@ -67,16 +68,19 @@ export default function StockMovementsPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  const { keyAllowed } = useAccessibleLocations();
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return movements;
     return movements.filter(m => {
+      if (!keyAllowed(m.location_key)) return false;
+      if (!q) return true;
       const p = products.get(m.barcode);
       return m.barcode.toLowerCase().includes(q)
         || (p?.name || '').toLowerCase().includes(q)
         || (m.reason || '').toLowerCase().includes(q);
     });
-  }, [movements, query, products]);
+  }, [movements, query, products, keyAllowed]);
 
   return (
     <div className="max-w-6xl mx-auto py-6 px-3">

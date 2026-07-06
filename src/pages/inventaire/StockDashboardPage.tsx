@@ -2,8 +2,9 @@ import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Package, AlertTriangle, TrendingUp, Boxes, ArrowLeftRight, Loader, Coins } from 'lucide-react';
 import type { Product, StockMovement, ProductStockSetting } from '../../types';
-import { StockService, totalStock, stockValue } from '../../utils/supabaseStock';
+import { StockService } from '../../utils/supabaseStock';
 import { useToast } from '../../context/ToastContext';
+import { useAccessibleLocations } from '../../inventory/hooks/useAccessibleLocations';
 
 function fmt(n: number) {
   return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(n);
@@ -23,6 +24,10 @@ export default function StockDashboardPage() {
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [settings, setSettings] = useState<ProductStockSetting[]>([]);
   const [loading, setLoading] = useState(true);
+  const { keyAllowed, filterLevels } = useAccessibleLocations();
+
+  const accTotal = useCallback((p: Product) => Object.values(filterLevels(p.stock_levels)).reduce((s, v) => s + (Number(v) || 0), 0), [filterLevels]);
+  const accValue = useCallback((p: Product) => accTotal(p) * (Number(p.buyprice) || 0), [accTotal]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -47,16 +52,16 @@ export default function StockDashboardPage() {
   }, [settings]);
 
   const stats = useMemo(() => {
-    const totalValue = products.reduce((s, p) => s + stockValue(p), 0);
-    const outOfStock = products.filter(p => totalStock(p) <= 0).length;
+    const totalValue = products.reduce((s, p) => s + accValue(p), 0);
+    const outOfStock = products.filter(p => accTotal(p) <= 0).length;
     const lowStock = products.filter(p => {
       const rp = reorderByBarcode.get(p.barcode);
-      return rp != null && totalStock(p) <= rp;
+      return rp != null && accTotal(p) <= rp;
     });
-    const todayMoves = movements.filter(m => isToday(m.created_at)).length;
-    const skuInStock = products.filter(p => totalStock(p) > 0).length;
+    const todayMoves = movements.filter(m => isToday(m.created_at) && keyAllowed(m.location_key)).length;
+    const skuInStock = products.filter(p => accTotal(p) > 0).length;
     return { totalValue, outOfStock, lowStock, todayMoves, skuInStock };
-  }, [products, movements, reorderByBarcode]);
+  }, [products, movements, reorderByBarcode, accValue, accTotal, keyAllowed]);
 
   const kpis = [
     { icon: Coins, label: 'Valeur du stock (CMUP)', value: fmtMad(stats.totalValue), tone: 'text-primary bg-primary/10' },
@@ -130,7 +135,7 @@ export default function StockDashboardPage() {
                         <div className="text-[10px] text-muted-foreground font-mono">{p.barcode}</div>
                       </div>
                       <div className="text-right shrink-0 ml-2">
-                        <div className="text-sm font-bold text-amber-600 dark:text-amber-400 tabular-nums">{totalStock(p)}</div>
+                        <div className="text-sm font-bold text-amber-600 dark:text-amber-400 tabular-nums">{accTotal(p)}</div>
                         <div className="text-[10px] text-muted-foreground">seuil {reorderByBarcode.get(p.barcode)}</div>
                       </div>
                     </div>
@@ -145,11 +150,11 @@ export default function StockDashboardPage() {
                 <ArrowLeftRight className="h-4 w-4 text-primary" />
                 <h2 className="text-sm font-semibold text-foreground">Derniers mouvements</h2>
               </div>
-              {movements.length === 0 ? (
+              {movements.filter(m => keyAllowed(m.location_key)).length === 0 ? (
                 <p className="text-sm text-muted-foreground py-4">Aucun mouvement enregistré.</p>
               ) : (
                 <div className="space-y-1">
-                  {movements.slice(0, 12).map(m => (
+                  {movements.filter(m => keyAllowed(m.location_key)).slice(0, 12).map(m => (
                     <div key={m.id} className="flex items-center justify-between px-3 py-1.5 rounded-lg hover:bg-secondary/40 text-xs">
                       <div className="min-w-0">
                         <div className="text-foreground truncate max-w-[200px] font-mono">{m.barcode}</div>

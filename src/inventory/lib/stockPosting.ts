@@ -34,7 +34,7 @@ function resolveKey(product: Product | undefined, candidates: (string | undefine
   return clean[0];
 }
 
-export interface PostResult { posted: number; skipped: number; skippedItems: string[]; }
+export interface PostResult { posted: number; skipped: number; skippedItems: string[]; negatives?: number; }
 
 /**
  * Post stock-OUT movements for a delivered document (BL). Idempotent by
@@ -50,7 +50,7 @@ export async function postDocumentStockOut(
   const products = await StockService.getProducts();
   const byBarcode = new Map(products.map(p => [p.barcode, p]));
 
-  let posted = 0, skipped = 0;
+  let posted = 0, skipped = 0, negatives = 0;
   const skippedItems: string[] = [];
   const touchedBarcodes: string[] = [];
 
@@ -76,7 +76,7 @@ export async function postDocumentStockOut(
     if (targets.length === 0) { skipped++; skippedItems.push(item.quoteName || barcode); continue; }
 
     for (const t of targets) {
-      await StockService.applyMovement({
+      const mv = await StockService.applyMovement({
         barcode,
         locationKey: t.key,
         type: 'out',
@@ -87,6 +87,7 @@ export async function postDocumentStockOut(
         createdBy: opts.createdBy ?? null,
         locationId: t.locId,
       });
+      if (mv?.balance_after != null && Number(mv.balance_after) < 0) negatives++;
       posted++;
     }
     touchedBarcodes.push(barcode);
@@ -97,7 +98,7 @@ export async function postDocumentStockOut(
     void notifyLowStock(touchedBarcodes);
   }
 
-  return { posted, skipped, skippedItems };
+  return { posted, skipped, skippedItems, negatives };
 }
 
 /**

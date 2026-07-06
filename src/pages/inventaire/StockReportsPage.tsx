@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { BarChart3, Download, Loader, Coins, TrendingUp, Moon } from 'lucide-react';
 import type { Product, StockMovement } from '../../types';
-import { StockService, totalStock, stockValue } from '../../utils/supabaseStock';
+import { StockService } from '../../utils/supabaseStock';
 import { useToast } from '../../context/ToastContext';
+import { useAccessibleLocations } from '../../inventory/hooks/useAccessibleLocations';
 
 function fmt(n: number) { return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(n); }
 function fmtMad(n: number) { return fmt(n) + ' MAD'; }
@@ -42,28 +43,31 @@ export default function StockReportsPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  const { keyAllowed, filterLevels } = useAccessibleLocations();
+
   const rows = useMemo<Row[]>(() => {
     const since = Date.now() - periodDays * 86400000;
     const soldBy = new Map<string, number>();
     const lastOutBy = new Map<string, string>();
     for (const m of movements) {
+      if (!keyAllowed(m.location_key)) continue;
       const t = new Date(m.created_at).getTime();
       if (!lastOutBy.has(m.barcode)) lastOutBy.set(m.barcode, m.created_at);
       if (t >= since) soldBy.set(m.barcode, (soldBy.get(m.barcode) || 0) + Math.abs(m.quantity));
     }
     return products.map(p => {
-      const qty = totalStock(p);
+      const qty = Object.values(filterLevels(p.stock_levels)).reduce((s, v) => s + (Number(v) || 0), 0);
       const cmup = Number(p.buyprice) || 0;
       const sell = Number(p.price) || 0;
       return {
         barcode: p.barcode, name: p.name, brand: p.brand || '',
-        qty, cmup, value: stockValue(p), sellValue: qty * sell,
+        qty, cmup, value: qty * cmup, sellValue: qty * sell,
         soldQty: soldBy.get(p.barcode) || 0,
         lastOut: lastOutBy.get(p.barcode) || null,
         margin: sell - cmup,
       };
     });
-  }, [products, movements, periodDays]);
+  }, [products, movements, periodDays, keyAllowed, filterLevels]);
 
   const totals = useMemo(() => {
     const value = rows.reduce((s, r) => s + r.value, 0);
