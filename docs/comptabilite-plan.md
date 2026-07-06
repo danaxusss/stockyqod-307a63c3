@@ -219,7 +219,10 @@ Shared: `AccountPicker`, `AmountInput` (MAD, 2 dec), `JournalEntryGrid`,
   Pages: Tableau de bord (+ init PCM), Plan comptable, Saisie/Journaux, Grand
   livre, Balance (+CSV). Access = super_admin/admin/compta; nav dropdown.
   Régime: engagement/normal. Defaults per the open decisions below.
-- ◻︎ **Phase 2** — auto-posting engine (invoices/payments/paie → écritures) + lettrage.
+- ✅ **Phase 2 — auto-posting** (done). `postingRules.ts` (factures/avoirs/
+  encaissements/paie → écritures) + "À comptabiliser" inbox (draft-by-default,
+  optional auto-validate, double-post guard). No new migration.
+  ◻︎ *Remaining:* lettrage clients/fournisseurs.
 - ◻︎ **Phase 3** — TVA (encaissement default) + rapprochement bancaire.
 - ◻︎ **Phase 4** — Bilan + CPC, immobilisations, clôture.
 
