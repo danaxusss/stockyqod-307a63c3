@@ -52,6 +52,7 @@ export async function postDocumentStockOut(
 
   let posted = 0, skipped = 0;
   const skippedItems: string[] = [];
+  const touchedBarcodes: string[] = [];
 
   for (const item of doc.items) {
     const barcode = itemBarcode(item);
@@ -88,6 +89,12 @@ export async function postDocumentStockOut(
       });
       posted++;
     }
+    touchedBarcodes.push(barcode);
+  }
+
+  if (touchedBarcodes.length > 0) {
+    const { notifyLowStock } = await import('./lowStockAlert');
+    void notifyLowStock(touchedBarcodes);
   }
 
   return { posted, skipped, skippedItems };

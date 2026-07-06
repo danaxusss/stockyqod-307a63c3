@@ -285,6 +285,10 @@ function ProductStockDrawer({
         locationId: loc?.id ?? null,
       });
       showToast({ type: 'success', message: `Stock ajusté (${delta > 0 ? '+' : ''}${delta})` });
+      if (delta < 0) {
+        const { notifyLowStock } = await import('../../inventory/lib/lowStockAlert');
+        void notifyLowStock([product.barcode]);
+      }
       setAdjustKey(null); setNewQty(''); setReason('');
       await loadMoves();
       onChanged();
