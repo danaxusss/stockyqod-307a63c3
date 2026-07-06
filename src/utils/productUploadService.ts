@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+import { getCompanyContext } from './supabaseCompanyFilter';
 import { Product } from '../types';
 
 export class ProductUploadService {
@@ -20,12 +21,15 @@ export class ProductUploadService {
       }
     }
 
-    // Load existing barcodes to determine new vs existing products
-    const { data: existingProducts } = await supabase.from('products').select('barcode, brand, provider');
+    // Load existing barcodes to determine new vs existing products (and keep the
+    // previous stock_levels so we can log a reconciling ledger movement after import)
+    const { data: existingProducts } = await supabase.from('products').select('barcode, brand, provider, stock_levels');
     const existingMap = new Map<string, { brand: string; provider: string }>();
+    const oldStockByBarcode = new Map<string, Record<string, number>>();
     if (existingProducts) {
       for (const p of existingProducts) {
         existingMap.set(p.barcode, { brand: p.brand, provider: p.provider });
+        oldStockByBarcode.set(p.barcode, ((p as any).stock_levels || {}) as Record<string, number>);
       }
     }
 
@@ -102,8 +106,65 @@ export class ProductUploadService {
       }
     }
 
+    // Log reconciling ledger movements for every changed (barcode, location) so
+    // the stock_movements journal stays consistent with the imported quantities.
+    // Best-effort: never fail the import if this step errors.
+    try {
+      await this.logImportReconcile(validProducts, oldStockByBarcode);
+    } catch (e) {
+      console.warn('Stock reconcile after import failed (non-blocking):', e);
+    }
+
     if (totalFailed > 0) {
       throw new Error(`Upload partially failed: ${totalUploaded} products uploaded, ${totalFailed} failed.`);
+    }
+  }
+
+  /**
+   * After a catalogue import overwrites products.stock_levels with absolute
+   * values, record a 'count' movement for each (barcode, location) whose
+   * quantity changed. We insert directly (NOT via apply_stock_movement) because
+   * the upsert already set the absolute level — the movement only records the
+   * delta and the resulting balance for the audit journal.
+   */
+  private static async logImportReconcile(
+    imported: Product[],
+    oldStockByBarcode: Map<string, Record<string, number>>
+  ): Promise<void> {
+    const { companyId } = getCompanyContext();
+    const batchId = (crypto as any).randomUUID ? crypto.randomUUID() : `import-${Date.now()}`;
+    const now = new Date().toISOString();
+
+    type MovRow = {
+      company_id: string | null; barcode: string; location_key: string; type: string;
+      quantity: number; balance_after: number; reason: string; source_type: string;
+      source_id: string; created_by: string; created_at: string;
+    };
+    const rows: MovRow[] = [];
+
+    for (const p of imported) {
+      const oldLevels = oldStockByBarcode.get(p.barcode) || {};
+      const newLevels = p.stock_levels || {};
+      const keys = new Set<string>([...Object.keys(oldLevels), ...Object.keys(newLevels)]);
+      for (const key of keys) {
+        const oldQty = Number(oldLevels[key]) || 0;
+        const newQty = Number(newLevels[key]) || 0;
+        const delta = newQty - oldQty;
+        if (delta === 0) continue;
+        rows.push({
+          company_id: companyId, barcode: p.barcode, location_key: key, type: 'count',
+          quantity: delta, balance_after: newQty, reason: 'Import Excel', source_type: 'count',
+          source_id: batchId, created_by: 'import', created_at: now,
+        });
+      }
+    }
+
+    if (rows.length === 0) return;
+    const INS_BATCH = 500;
+    for (let i = 0; i < rows.length; i += INS_BATCH) {
+      const slice = rows.slice(i, i + INS_BATCH);
+      const { error } = await (supabase.from('stock_movements') as any).insert(slice);
+      if (error) throw error;
     }
   }
 
