@@ -381,6 +381,37 @@ export interface ProductStockSetting {
   updated_at: string;
 }
 
+export type PurchaseOrderStatus = 'draft' | 'sent' | 'partial' | 'received' | 'cancelled';
+
+export interface PurchaseOrderItem {
+  id?: string;
+  po_id?: string;
+  barcode: string;
+  label: string;
+  qty_ordered: number;
+  qty_received: number;
+  unit_cost: number;
+  sort_order?: number;
+}
+
+export interface PurchaseOrder {
+  id: string;
+  company_id: string | null;
+  po_number: string;
+  provider_id: string | null;
+  provider_name: string | null;
+  location_key: string | null;
+  status: PurchaseOrderStatus;
+  order_date: string;
+  expected_date: string | null;
+  total_ht: number;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  items?: PurchaseOrderItem[];
+}
+
 export interface ProductPhoto {
   id: string;
   company_id?: string;

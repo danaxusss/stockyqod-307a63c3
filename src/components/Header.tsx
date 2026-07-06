@@ -279,6 +279,7 @@ export function Header() {
                 items={[
                   { to: '/inventaire', icon: TrendingUp, label: 'Tableau de bord' },
                   { to: '/inventaire/niveaux', icon: Boxes, label: 'Niveaux de stock' },
+                  { to: '/inventaire/commandes', icon: ShoppingCart, label: 'Bons de commande' },
                   { to: '/inventaire/reception', icon: Package, label: 'Réception' },
                   { to: '/inventaire/transfert', icon: ArrowLeftRight, label: 'Transfert' },
                   { to: '/inventaire/inventaire', icon: BookOpen, label: 'Inventaire physique' },
