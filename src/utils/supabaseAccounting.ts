@@ -199,6 +199,48 @@ export class AccountingService {
     return entry;
   }
 
+  // ── Lettrage ──────────────────────────────────────────────────────────────
+  /** Posted lines for an account, with entry date/reference joined. */
+  static async getAccountLines(accountCode: string, fiscalYearId?: string): Promise<Array<JournalEntryLine & { entry_date: string; reference: string | null; entry_label: string | null }>> {
+    let q = (supabase as any).from('journal_entry_lines')
+      .select('*, entry:journal_entries!inner(entry_date, reference, label, status, fiscal_year_id, company_id)')
+      .eq('account_code', accountCode)
+      .eq('entry.status', 'posted');
+    const { companyId, bypassFilter } = getCompanyContext();
+    if (!bypassFilter && companyId) q = q.eq('company_id', companyId);
+    if (fiscalYearId) q = q.eq('entry.fiscal_year_id', fiscalYearId);
+    const { data, error } = await q.limit(10000);
+    if (error) throw error;
+    return (data || []).map((r: any) => ({ ...r, entry_date: r.entry?.entry_date, reference: r.entry?.reference, entry_label: r.entry?.label }));
+  }
+
+  static async letterLines(lineIds: string[], code: string): Promise<void> {
+    const { error } = await (supabase as any).from('journal_entry_lines')
+      .update({ lettrage_code: code, lettered_at: new Date().toISOString() }).in('id', lineIds);
+    if (error) throw error;
+  }
+
+  static async unletter(code: string, accountCode: string): Promise<void> {
+    const { error } = await (supabase as any).from('journal_entry_lines')
+      .update({ lettrage_code: null, lettered_at: null }).eq('lettrage_code', code).eq('account_code', accountCode);
+    if (error) throw error;
+  }
+
+  // ── TVA declarations ──────────────────────────────────────────────────────
+  static async listVatDeclarations(): Promise<any[]> {
+    const { data, error } = await scope((supabase as any).from('vat_declarations').select('*').order('period', { ascending: false }));
+    if (error) throw error;
+    return data || [];
+  }
+
+  static async saveVatDeclaration(rec: any): Promise<any> {
+    const { companyId } = getCompanyContext();
+    const { data, error } = await (supabase as any).from('vat_declarations')
+      .upsert({ ...rec, company_id: rec.company_id ?? companyId }, { onConflict: 'company_id,period' }).select().single();
+    if (error) throw error;
+    return data;
+  }
+
   // ── Reporting: grand livre + balance ──────────────────────────────────────
   /** All posted lines for the company (optionally a fiscal year), joined with entry header data. */
   static async getPostedLines(fiscalYearId?: string): Promise<Array<JournalEntryLine & { entry_date: string; entry_number: number | null; journal_id: string; reference: string | null; entry_label: string | null }>> {

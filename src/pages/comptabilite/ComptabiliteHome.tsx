@@ -93,6 +93,8 @@ export default function ComptabiliteHome() {
     { to: '/comptabilite/journaux', icon: BookOpen, label: 'Saisie / Journaux', desc: 'Saisir et valider les écritures' },
     { to: '/comptabilite/grand-livre', icon: FileText, label: 'Grand livre', desc: 'Mouvements par compte' },
     { to: '/comptabilite/balance', icon: Scale, label: 'Balance', desc: 'Soldes par compte' },
+    { to: '/comptabilite/lettrage', icon: BookOpen, label: 'Lettrage', desc: 'Rapprocher débits / crédits' },
+    { to: '/comptabilite/tva', icon: FileText, label: 'Déclaration TVA', desc: 'TVA due / crédit de la période' },
     { to: '/comptabilite/plan', icon: BookMarked, label: 'Plan comptable', desc: 'Comptes CGNC' },
   ];
 

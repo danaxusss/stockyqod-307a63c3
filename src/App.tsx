@@ -46,6 +46,8 @@ const JournalEntryPage = React.lazy(() => import('./pages/comptabilite/JournalEn
 const GrandLivrePage = React.lazy(() => import('./pages/comptabilite/GrandLivrePage'));
 const BalancePage = React.lazy(() => import('./pages/comptabilite/BalancePage'));
 const AComptabiliserPage = React.lazy(() => import('./pages/comptabilite/AComptabiliserPage'));
+const LettragePage = React.lazy(() => import('./pages/comptabilite/LettragePage'));
+const TvaPage = React.lazy(() => import('./pages/comptabilite/TvaPage'));
 const StockDashboardPage = React.lazy(() => import('./pages/inventaire/StockDashboardPage'));
 const StockLevelsPage = React.lazy(() => import('./pages/inventaire/StockLevelsPage'));
 const StockMovementsPage = React.lazy(() => import('./pages/inventaire/StockMovementsPage'));
@@ -156,8 +158,10 @@ function AppContent() {
                 <Route path="/comptabilite/plan" element={<PlanComptablePage />} />
                 <Route path="/comptabilite/a-comptabiliser" element={<AComptabiliserPage />} />
                 <Route path="/comptabilite/journaux" element={<JournalEntryPage />} />
+                <Route path="/comptabilite/lettrage" element={<LettragePage />} />
                 <Route path="/comptabilite/grand-livre" element={<GrandLivrePage />} />
                 <Route path="/comptabilite/balance" element={<BalancePage />} />
+                <Route path="/comptabilite/tva" element={<TvaPage />} />
               </>
             )}
             {(isFacturation || isSuperAdmin) && (
