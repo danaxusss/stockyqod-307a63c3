@@ -283,6 +283,7 @@ export function Header() {
                   { to: '/inventaire/transfert', icon: ArrowLeftRight, label: 'Transfert' },
                   { to: '/inventaire/inventaire', icon: BookOpen, label: 'Inventaire physique' },
                   { to: '/inventaire/mouvements', icon: FileText, label: 'Mouvements' },
+                  { to: '/inventaire/rapports', icon: BarChart3, label: 'Valorisation & rapports' },
                 ]}
               />
             )}
