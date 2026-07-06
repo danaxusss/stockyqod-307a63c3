@@ -326,6 +326,7 @@ export function Header() {
                   { to: '/comptabilite/balance', icon: Calculator, label: 'Balance' },
                   { to: '/comptabilite/tva', icon: Receipt, label: 'Déclaration TVA' },
                   { to: '/comptabilite/etats', icon: BarChart3, label: 'États de synthèse' },
+                  { to: '/comptabilite/cloture', icon: Settings, label: 'Clôture d\'exercice' },
                   { to: '/comptabilite/plan', icon: BookMarked, label: 'Plan comptable' },
                 ]}
               />

@@ -37,6 +37,51 @@ export class AccountingService {
     if (error) throw error;
   }
 
+  /**
+   * Clôture: carries forward class 1–5 balances as à-nouveaux into the next
+   * fiscal year (created if needed), books the résultat to 1191, posts the AN
+   * entry, and locks the closed year. Requires no draft entries remain.
+   */
+  static async closeExercice(fy: FiscalYear, user: string | null): Promise<{ newYearLabel: string; carried: number }> {
+    const r2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
+    const drafts = await this.listEntries({ fiscalYearId: fy.id, status: 'draft', limit: 1 });
+    if (drafts.length > 0) throw new Error('Des écritures en brouillon existent — validez-les ou supprimez-les avant la clôture.');
+
+    const lines = await this.getPostedLines(fy.id);
+    const bal = new Map<string, number>();
+    for (const l of lines) bal.set(l.account_code, (bal.get(l.account_code) || 0) + (Number(l.debit) || 0) - (Number(l.credit) || 0));
+
+    const y = Number(fy.label);
+    const { companyId } = getCompanyContext();
+    let next = (await this.listFiscalYears()).find(x => x.label === String(y + 1));
+    if (!next) {
+      const { data, error } = await (supabase as any).from('accounting_fiscal_years')
+        .insert({ company_id: companyId, label: String(y + 1), start_date: `${y + 1}-01-01`, end_date: `${y + 1}-12-31`, status: 'open' }).select().single();
+      if (error) throw error;
+      next = data as FiscalYear;
+    }
+
+    const anLines: JournalEntryLine[] = [];
+    bal.forEach((b, code) => {
+      const c = Number(String(code)[0]);
+      if (c >= 1 && c <= 5 && Math.abs(b) > 0.005) anLines.push({ account_code: code, label: 'À-nouveau', debit: b > 0 ? r2(b) : 0, credit: b < 0 ? r2(-b) : 0 });
+    });
+    const D = r2(anLines.reduce((s, l) => s + l.debit, 0));
+    const C = r2(anLines.reduce((s, l) => s + l.credit, 0));
+    const diff = r2(D - C);
+    if (Math.abs(diff) > 0.005) anLines.push({ account_code: '1191', label: 'Résultat de l\'exercice', debit: diff < 0 ? r2(-diff) : 0, credit: diff > 0 ? r2(diff) : 0 });
+
+    if (anLines.length > 0) {
+      const journals = await this.listJournals();
+      await this.createFromDraft(
+        { journalType: 'anouveaux', date: `${y + 1}-01-01`, reference: `AN ${y + 1}`, label: `À-nouveaux ${y + 1}`, sourceType: 'anouveaux', sourceId: `an:${next.id}`, lines: anLines },
+        next.id, journals, { post: true, createdBy: user },
+      );
+    }
+    await this.closeFiscalYear(fy.id, user);
+    return { newYearLabel: next.label, carried: anLines.length };
+  }
+
   // ── Accounts (plan comptable) ─────────────────────────────────────────────
   static async listAccounts(): Promise<Account[]> {
     const { data, error } = await scope((supabase as any).from('accounts').select('*').order('code'));
