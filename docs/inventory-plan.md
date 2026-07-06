@@ -178,14 +178,17 @@ Shared components: `LocationPicker`, `QtyStepper`, `MovementBadge`,
 - ✅ **Phase 2** — auto stock-out on BL (`Décompter le stock`, idempotent) +
   Réception (goods-in + CMUP).
 - ✅ **Phase 3** — Transfert entre emplacements; Inventaire physique (écarts);
-  reorder-point editing + low-stock alerts on the dashboard.
-  ◻︎ *Remaining:* low-stock **push** notifications (needs edge function/cron).
+  reorder-point editing + dashboard alerts + **low-stock push** notifications
+  (reuses send-push; alerts managers when an item hits its seuil).
 - ✅ **Phase 4** — Valorisation & rotation reports (CMUP value, margin, dormant,
-  sold/period, CSV export). ◻︎ *Remaining:* purchase-order lifecycle (new tables).
+  sold/period, CSV export) + **purchase-order lifecycle** (BC → réception,
+  CMUP-aware, draft→partial→received).
 - ◻︎ **Phase 5** — lot/série/péremption, FIFO, native scanning, COGS↔Comptabilité.
 
-**⚠ Manual step:** run `supabase/migrations/20260705120000_inventory_stock_movements.sql`
-in the Supabase SQL editor — nothing works until the table + RPC exist.
+**⚠ Manual step:** run BOTH migrations in the Supabase SQL editor — nothing
+works until the tables + RPC exist:
+- `supabase/migrations/20260705120000_inventory_stock_movements.sql`
+- `supabase/migrations/20260705130000_purchase_orders.sql`
 
 ## 5. Phasing / milestones
 
