@@ -45,6 +45,7 @@ const PlanComptablePage = React.lazy(() => import('./pages/comptabilite/PlanComp
 const JournalEntryPage = React.lazy(() => import('./pages/comptabilite/JournalEntryPage'));
 const GrandLivrePage = React.lazy(() => import('./pages/comptabilite/GrandLivrePage'));
 const BalancePage = React.lazy(() => import('./pages/comptabilite/BalancePage'));
+const AComptabiliserPage = React.lazy(() => import('./pages/comptabilite/AComptabiliserPage'));
 const StockDashboardPage = React.lazy(() => import('./pages/inventaire/StockDashboardPage'));
 const StockLevelsPage = React.lazy(() => import('./pages/inventaire/StockLevelsPage'));
 const StockMovementsPage = React.lazy(() => import('./pages/inventaire/StockMovementsPage'));
@@ -153,6 +154,7 @@ function AppContent() {
               <>
                 <Route path="/comptabilite" element={<ComptabiliteHome />} />
                 <Route path="/comptabilite/plan" element={<PlanComptablePage />} />
+                <Route path="/comptabilite/a-comptabiliser" element={<AComptabiliserPage />} />
                 <Route path="/comptabilite/journaux" element={<JournalEntryPage />} />
                 <Route path="/comptabilite/grand-livre" element={<GrandLivrePage />} />
                 <Route path="/comptabilite/balance" element={<BalancePage />} />

@@ -89,6 +89,7 @@ export default function ComptabiliteHome() {
   ];
 
   const nav = [
+    { to: '/comptabilite/a-comptabiliser', icon: BookOpen, label: 'À comptabiliser', desc: 'Factures, règlements et paie → écritures' },
     { to: '/comptabilite/journaux', icon: BookOpen, label: 'Saisie / Journaux', desc: 'Saisir et valider les écritures' },
     { to: '/comptabilite/grand-livre', icon: FileText, label: 'Grand livre', desc: 'Mouvements par compte' },
     { to: '/comptabilite/balance', icon: Scale, label: 'Balance', desc: 'Soldes par compte' },

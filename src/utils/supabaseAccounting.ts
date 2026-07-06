@@ -167,6 +167,38 @@ export class AccountingService {
     if (error) throw error;
   }
 
+  // ── Auto-posting (Phase 2) ────────────────────────────────────────────────
+  /** Set of source_ids that already have a journal entry (for double-post guard). */
+  static async postedSourceIds(): Promise<Set<string>> {
+    let q = (supabase as any).from('journal_entries').select('source_id').not('source_id', 'is', null);
+    const { companyId, bypassFilter } = getCompanyContext();
+    if (!bypassFilter && companyId) q = q.eq('company_id', companyId);
+    const { data, error } = await q.limit(20000);
+    if (error) throw error;
+    return new Set((data || []).map((r: any) => r.source_id as string));
+  }
+
+  /**
+   * Create a DRAFT entry from an auto-posting rule draft. Resolves the journal
+   * by type and tags source_type/source_id (idempotency handled by caller).
+   * Optionally posts immediately.
+   */
+  static async createFromDraft(
+    draft: { journalType: string; date: string; reference: string; label: string; sourceType: string; sourceId: string; lines: JournalEntryLine[] },
+    fiscalYearId: string,
+    journals: Journal[],
+    opts: { post?: boolean; createdBy?: string | null } = {}
+  ): Promise<JournalEntry> {
+    const journal = journals.find(j => j.type === draft.journalType) || journals.find(j => j.type === 'od');
+    if (!journal) throw new Error(`Journal introuvable pour le type ${draft.journalType}`);
+    const entry = await this.createEntry(
+      { fiscal_year_id: fiscalYearId, journal_id: journal.id, entry_date: draft.date, reference: draft.reference, label: draft.label, source_type: draft.sourceType, source_id: draft.sourceId, created_by: opts.createdBy ?? null },
+      draft.lines,
+    );
+    if (opts.post) return this.postEntry(entry.id, opts.createdBy ?? null);
+    return entry;
+  }
+
   // ── Reporting: grand livre + balance ──────────────────────────────────────
   /** All posted lines for the company (optionally a fiscal year), joined with entry header data. */
   static async getPostedLines(fiscalYearId?: string): Promise<Array<JournalEntryLine & { entry_date: string; entry_number: number | null; journal_id: string; reference: string | null; entry_label: string | null }>> {

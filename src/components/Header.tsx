@@ -319,6 +319,7 @@ export function Header() {
                 onToggle={toggleDropdown}
                 items={[
                   { to: '/comptabilite', icon: BarChart3, label: 'Tableau de bord' },
+                  { to: '/comptabilite/a-comptabiliser', icon: Receipt, label: 'À comptabiliser' },
                   { to: '/comptabilite/journaux', icon: BookOpen, label: 'Saisie / Journaux' },
                   { to: '/comptabilite/grand-livre', icon: FileText, label: 'Grand livre' },
                   { to: '/comptabilite/balance', icon: Calculator, label: 'Balance' },
