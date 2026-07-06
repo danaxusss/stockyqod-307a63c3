@@ -12,7 +12,7 @@ import { useUserAuth } from '../hooks/useUserAuth';
 import { useAppContext } from '../context/AppContext';
 import { useToast } from '../context/ToastContext';
 
-type DropdownId = 'catalogue' | 'devis' | 'stock' | 'compta' | 'admin';
+type DropdownId = 'catalogue' | 'devis' | 'stock' | 'compta' | 'gc' | 'admin';
 interface NavItem { to: string; icon: LucideIcon; label: string; }
 
 function NavDropdown({
@@ -110,7 +110,8 @@ export function Header() {
   const navRef = useRef<HTMLDivElement>(null);
 
   const { theme, toggle: toggleTheme } = useTheme();
-  const { isAdmin, isSuperAdmin, isFacturation, isStock, companyName, currentUser, canCreateQuote, logout: adminLogout } = useAuth();
+  const { isAdmin, isSuperAdmin, isFacturation, isCompta, isStock, companyName, currentUser, canCreateQuote, logout: adminLogout } = useAuth();
+  const isAccounting = isSuperAdmin || isAdmin || isCompta;
   const { isAuthenticated: isUserAuthenticated, authenticatedUser, logout: userLogout } = useUserAuth();
   const { syncInfo, syncData, openLoginModal } = useAppContext();
   const { showToast } = useToast();
@@ -308,25 +309,22 @@ export function Header() {
               />
             )}
 
-            {/* Comptabilité — coming soon */}
-            {(isFacturation || isSuperAdmin) && (
-              <NavLink
-                to="/comptabilite"
-                className={({ isActive }) => `
-                  group flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium
-                  transition-all duration-150
-                  ${isActive
-                    ? 'bg-primary/10 text-primary'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-accent/40'
-                  }
-                `}
-              >
-                <BookMarked className="h-3.5 w-3.5 shrink-0" />
-                <span className="hidden sm:inline">Comptabilité</span>
-                <span className="hidden sm:inline ml-0.5 text-[8px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400 bg-amber-500/12 px-1 py-0.5 rounded">
-                  Bientôt
-                </span>
-              </NavLink>
+            {/* Comptabilité générale */}
+            {isAccounting && (
+              <NavDropdown
+                id="gc"
+                icon={BookMarked}
+                label="Comptabilité"
+                openId={openDropdown}
+                onToggle={toggleDropdown}
+                items={[
+                  { to: '/comptabilite', icon: BarChart3, label: 'Tableau de bord' },
+                  { to: '/comptabilite/journaux', icon: BookOpen, label: 'Saisie / Journaux' },
+                  { to: '/comptabilite/grand-livre', icon: FileText, label: 'Grand livre' },
+                  { to: '/comptabilite/balance', icon: Calculator, label: 'Balance' },
+                  { to: '/comptabilite/plan', icon: BookMarked, label: 'Plan comptable' },
+                ]}
+              />
             )}
 
             {/* Admin */}

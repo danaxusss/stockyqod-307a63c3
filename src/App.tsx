@@ -40,7 +40,11 @@ const BonCommandeDirectoryPage = React.lazy(() => import('./pages/compta/BonComm
 const BonCommandeDetailPage = React.lazy(() => import('./pages/compta/BonCommandeDetailPage'));
 const BackupPage = React.lazy(() => import('./pages/BackupPage'));
 const ImportPage = React.lazy(() => import('./pages/ImportPage'));
-const ComptabiliteComingSoon = React.lazy(() => import('./pages/ComptabiliteComingSoon'));
+const ComptabiliteHome = React.lazy(() => import('./pages/comptabilite/ComptabiliteHome'));
+const PlanComptablePage = React.lazy(() => import('./pages/comptabilite/PlanComptablePage'));
+const JournalEntryPage = React.lazy(() => import('./pages/comptabilite/JournalEntryPage'));
+const GrandLivrePage = React.lazy(() => import('./pages/comptabilite/GrandLivrePage'));
+const BalancePage = React.lazy(() => import('./pages/comptabilite/BalancePage'));
 const StockDashboardPage = React.lazy(() => import('./pages/inventaire/StockDashboardPage'));
 const StockLevelsPage = React.lazy(() => import('./pages/inventaire/StockLevelsPage'));
 const StockMovementsPage = React.lazy(() => import('./pages/inventaire/StockMovementsPage'));
@@ -74,7 +78,8 @@ function PageLoader() {
 
 function AppContent() {
   const { activeLoginModalRole, openLoginModal } = useAppContext();
-  const { canCreateQuote, isSuperAdmin, isFacturation, isPaie, isStock, isTasks, isTasksOnly } = useAuth();
+  const { canCreateQuote, isAdmin, isCompta, isSuperAdmin, isFacturation, isPaie, isStock, isTasks, isTasksOnly } = useAuth();
+  const isAccounting = isSuperAdmin || isAdmin || isCompta;
   const { isAuthenticated: isUserAuthenticated } = useUserAuth();
 
   const handleUserLoginSuccess = () => {};
@@ -144,9 +149,17 @@ function AppContent() {
                 <Route path="/admin/import" element={<ImportPage />} />
               </>
             )}
+            {isAccounting && (
+              <>
+                <Route path="/comptabilite" element={<ComptabiliteHome />} />
+                <Route path="/comptabilite/plan" element={<PlanComptablePage />} />
+                <Route path="/comptabilite/journaux" element={<JournalEntryPage />} />
+                <Route path="/comptabilite/grand-livre" element={<GrandLivrePage />} />
+                <Route path="/comptabilite/balance" element={<BalancePage />} />
+              </>
+            )}
             {(isFacturation || isSuperAdmin) && (
               <>
-                <Route path="/comptabilite" element={<ComptabiliteComingSoon />} />
                 <Route path="/compta/bls" element={<BLDirectoryPage />} />
                 <Route path="/compta/bls/:id" element={<BLDetailPage />} />
                 <Route path="/compta/proformas" element={<ProformaDirectoryPage />} />

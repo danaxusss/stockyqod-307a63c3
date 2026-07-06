@@ -10,9 +10,13 @@ export const Permissions = {
     u.new_role === 'super_admin' ||
     (u.new_role === 'manager' && u.cross_branch_read === true),
 
-  // compta is reserved for future accounting — no access yet
-  canAccessCompta: (u: AppUser) =>
+  // Facturation (billing documents) access
+  canAccessFacturation: (u: AppUser) =>
     u.new_role === 'super_admin' || u.new_role === 'facturation',
+
+  // Comptabilité générale (general accounting ledger)
+  canAccessCompta: (u: AppUser) =>
+    u.new_role === 'super_admin' || u.new_role === 'admin' || u.new_role === 'compta',
 
   canCreateQuote: (u: AppUser) =>
     u.new_role !== 'super_admin' &&

@@ -381,6 +381,83 @@ export interface ProductStockSetting {
   updated_at: string;
 }
 
+// ── Comptabilité générale ───────────────────────────────────────────────────
+export type AccountingType = 'bilan_actif' | 'bilan_passif' | 'charge' | 'produit' | 'tresorerie';
+
+export interface FiscalYear {
+  id: string;
+  company_id: string;
+  label: string;
+  start_date: string;
+  end_date: string;
+  status: 'open' | 'closed';
+  closed_at: string | null;
+  closed_by: string | null;
+}
+
+export interface Account {
+  id: string;
+  company_id: string;
+  code: string;
+  label: string;
+  class: number;
+  type: AccountingType;
+  parent_code: string | null;
+  is_auxiliary: boolean;
+  aux_kind: 'client' | 'fournisseur' | null;
+  vat_rate: number | null;
+  lettrable: boolean;
+  active: boolean;
+  is_system: boolean;
+}
+
+export type JournalType = 'vente' | 'achat' | 'banque' | 'caisse' | 'od' | 'anouveaux' | 'paie';
+
+export interface Journal {
+  id: string;
+  company_id: string;
+  code: string;
+  label: string;
+  type: JournalType;
+  counterpart_account_code: string | null;
+}
+
+export interface JournalEntryLine {
+  id?: string;
+  entry_id?: string;
+  company_id?: string;
+  account_code: string;
+  aux_account_id?: string | null;
+  label?: string | null;
+  debit: number;
+  credit: number;
+  vat_rate?: number | null;
+  lettrage_code?: string | null;
+  lettered_at?: string | null;
+  analytic_code?: string | null;
+  sort_order?: number;
+}
+
+export interface JournalEntry {
+  id: string;
+  company_id: string;
+  fiscal_year_id: string;
+  journal_id: string;
+  entry_number: number | null;
+  entry_date: string;
+  reference: string | null;
+  label: string | null;
+  status: 'draft' | 'posted' | 'reversed';
+  source_type: string;
+  source_id: string | null;
+  posted_at: string | null;
+  posted_by: string | null;
+  reversed_by: string | null;
+  created_by: string | null;
+  created_at: string;
+  lines?: JournalEntryLine[];
+}
+
 export type PurchaseOrderStatus = 'draft' | 'sent' | 'partial' | 'received' | 'cancelled';
 
 export interface PurchaseOrderItem {
