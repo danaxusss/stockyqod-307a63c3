@@ -48,6 +48,7 @@ const BalancePage = React.lazy(() => import('./pages/comptabilite/BalancePage'))
 const AComptabiliserPage = React.lazy(() => import('./pages/comptabilite/AComptabiliserPage'));
 const LettragePage = React.lazy(() => import('./pages/comptabilite/LettragePage'));
 const TvaPage = React.lazy(() => import('./pages/comptabilite/TvaPage'));
+const EtatsSynthesePage = React.lazy(() => import('./pages/comptabilite/EtatsSynthesePage'));
 const StockDashboardPage = React.lazy(() => import('./pages/inventaire/StockDashboardPage'));
 const StockLevelsPage = React.lazy(() => import('./pages/inventaire/StockLevelsPage'));
 const StockMovementsPage = React.lazy(() => import('./pages/inventaire/StockMovementsPage'));
@@ -162,6 +163,7 @@ function AppContent() {
                 <Route path="/comptabilite/grand-livre" element={<GrandLivrePage />} />
                 <Route path="/comptabilite/balance" element={<BalancePage />} />
                 <Route path="/comptabilite/tva" element={<TvaPage />} />
+                <Route path="/comptabilite/etats" element={<EtatsSynthesePage />} />
               </>
             )}
             {(isFacturation || isSuperAdmin) && (

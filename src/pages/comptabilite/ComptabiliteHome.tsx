@@ -95,6 +95,7 @@ export default function ComptabiliteHome() {
     { to: '/comptabilite/balance', icon: Scale, label: 'Balance', desc: 'Soldes par compte' },
     { to: '/comptabilite/lettrage', icon: BookOpen, label: 'Lettrage', desc: 'Rapprocher débits / crédits' },
     { to: '/comptabilite/tva', icon: FileText, label: 'Déclaration TVA', desc: 'TVA due / crédit de la période' },
+    { to: '/comptabilite/etats', icon: Scale, label: 'États de synthèse', desc: 'Bilan & CPC (modèle simplifié)' },
     { to: '/comptabilite/plan', icon: BookMarked, label: 'Plan comptable', desc: 'Comptes CGNC' },
   ];
 
