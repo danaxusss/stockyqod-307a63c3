@@ -78,9 +78,11 @@ export default function StockDashboardPage() {
             <p className="text-xs text-muted-foreground">Vue d'ensemble de l'inventaire</p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Link to="/inventaire/niveaux" className="px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium">Niveaux de stock</Link>
-          <Link to="/inventaire/mouvements" className="px-3 py-2 rounded-lg bg-secondary text-foreground text-sm font-medium border border-border">Mouvements</Link>
+          <Link to="/inventaire/reception" className="px-3 py-2 rounded-lg bg-secondary text-foreground text-sm font-medium border border-border">Réception</Link>
+          <Link to="/inventaire/transfert" className="px-3 py-2 rounded-lg bg-secondary text-foreground text-sm font-medium border border-border">Transfert</Link>
+          <Link to="/inventaire/inventaire" className="px-3 py-2 rounded-lg bg-secondary text-foreground text-sm font-medium border border-border">Inventaire</Link>
         </div>
       </div>
 

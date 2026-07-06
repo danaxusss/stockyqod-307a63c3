@@ -280,7 +280,9 @@ export function Header() {
                   { to: '/inventaire', icon: TrendingUp, label: 'Tableau de bord' },
                   { to: '/inventaire/niveaux', icon: Boxes, label: 'Niveaux de stock' },
                   { to: '/inventaire/reception', icon: Package, label: 'Réception' },
-                  { to: '/inventaire/mouvements', icon: ArrowLeftRight, label: 'Mouvements' },
+                  { to: '/inventaire/transfert', icon: ArrowLeftRight, label: 'Transfert' },
+                  { to: '/inventaire/inventaire', icon: BookOpen, label: 'Inventaire physique' },
+                  { to: '/inventaire/mouvements', icon: FileText, label: 'Mouvements' },
                 ]}
               />
             )}

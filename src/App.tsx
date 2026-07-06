@@ -45,6 +45,8 @@ const StockDashboardPage = React.lazy(() => import('./pages/inventaire/StockDash
 const StockLevelsPage = React.lazy(() => import('./pages/inventaire/StockLevelsPage'));
 const StockMovementsPage = React.lazy(() => import('./pages/inventaire/StockMovementsPage'));
 const StockReceivePage = React.lazy(() => import('./pages/inventaire/StockReceivePage'));
+const StockTransferPage = React.lazy(() => import('./pages/inventaire/StockTransferPage'));
+const StockCountPage = React.lazy(() => import('./pages/inventaire/StockCountPage'));
 const EmployeesPage = React.lazy(() => import('./pages/paie/EmployeesPage'));
 const PayslipsPage = React.lazy(() => import('./pages/paie/PayslipsPage'));
 const PayslipDetailPage = React.lazy(() => import('./pages/paie/PayslipDetailPage'));
@@ -162,6 +164,8 @@ function AppContent() {
                 <Route path="/inventaire/niveaux" element={<StockLevelsPage />} />
                 <Route path="/inventaire/mouvements" element={<StockMovementsPage />} />
                 <Route path="/inventaire/reception" element={<StockReceivePage />} />
+                <Route path="/inventaire/transfert" element={<StockTransferPage />} />
+                <Route path="/inventaire/inventaire" element={<StockCountPage />} />
               </>
             )}
             {(isPaie || isSuperAdmin) && (
