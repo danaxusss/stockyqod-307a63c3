@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { Truck, Download, ArrowLeft, FileText, Building2, Loader, Pencil, Check, X, Plus, CopyPlus, Search as SearchIcon, Printer, Eye, EyeOff } from 'lucide-react';
+import { Truck, Download, ArrowLeft, FileText, Building2, Loader, Pencil, Check, X, Plus, CopyPlus, Search as SearchIcon, Printer, Eye, EyeOff, Boxes } from 'lucide-react';
 import { Quote, QuoteItem, Company, Product } from '../../types';
 import { SupabaseDocumentsService } from '../../utils/supabaseDocuments';
 import { SupabaseCompaniesService } from '../../utils/supabaseCompanies';
@@ -20,7 +20,9 @@ export default function BLDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { isSuperAdmin, isCompta } = useAuth();
+  const { isSuperAdmin, isCompta, currentUser } = useAuth();
+  const [stockPosted, setStockPosted] = useState<boolean | null>(null);
+  const [stockBusy, setStockBusy] = useState(false);
   const { showToast } = useToast();
 
   const [bl, setBl] = useState<Quote | null>(null);
@@ -61,6 +63,12 @@ export default function BLDetailPage() {
       ]);
       setBl(doc);
       setCompanies(allCompanies);
+      if (doc?.id) {
+        import('../../inventory/lib/stockPosting')
+          .then(m => m.isDocumentStockPosted(doc.id))
+          .then(setStockPosted)
+          .catch(() => setStockPosted(false));
+      }
       if (doc?.company_id) {
         setTargetCompanyId(doc.company_id);
         const settings = await CompanySettingsService.getSettings(doc.company_id).catch(() => null);
@@ -123,6 +131,29 @@ export default function BLDetailPage() {
       showToast({ type: 'error', title: 'Erreur', message: String(e) });
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handlePostStock = async () => {
+    if (!bl) return;
+    setStockBusy(true);
+    try {
+      const { postDocumentStockOut } = await import('../../inventory/lib/stockPosting');
+      const res = await postDocumentStockOut(bl, { createdBy: currentUser?.username || null });
+      if (res.posted === 0 && res.skipped === 0) {
+        showToast({ type: 'info', title: 'Déjà décompté', message: 'Le stock de ce BL a déjà été décompté.' });
+      } else {
+        const skipMsg = res.skipped > 0 ? ` · ${res.skipped} ignoré(s) (emplacement/code manquant)` : '';
+        showToast({ type: 'success', title: 'Stock décompté', message: `${res.posted} mouvement(s) de sortie${skipMsg}` });
+        if (res.negatives && res.negatives > 0) {
+          showToast({ type: 'warning', title: 'Stock négatif', message: `${res.negatives} article(s) passent en stock négatif — vérifiez les réceptions.` });
+        }
+      }
+      setStockPosted(true);
+    } catch (e) {
+      showToast({ type: 'error', title: 'Erreur stock', message: String((e as any)?.message || e) });
+    } finally {
+      setStockBusy(false);
     }
   };
 
@@ -262,6 +293,19 @@ export default function BLDetailPage() {
               className={`p-1.5 rounded-lg transition-colors ${(blPricesOverride !== null ? blPricesOverride : (companySettings?.bl_show_prices ?? true)) ? 'bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/40' : 'hover:bg-accent text-muted-foreground'}`}
             >
               {(blPricesOverride !== null ? blPricesOverride : (companySettings?.bl_show_prices ?? true)) ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+            </button>
+            <button
+              onClick={handlePostStock}
+              disabled={stockBusy || stockPosted === true}
+              title={stockPosted ? 'Le stock de ce BL a déjà été décompté' : 'Décompter les quantités livrées du stock'}
+              className={`flex items-center space-x-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                stockPosted
+                  ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 cursor-default'
+                  : 'bg-secondary hover:bg-secondary/70 text-foreground border border-border'
+              } disabled:opacity-60`}
+            >
+              {stockBusy ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Boxes className="h-3.5 w-3.5" />}
+              <span>{stockPosted ? 'Stock décompté' : 'Décompter le stock'}</span>
             </button>
             <button onClick={handleExportPdf} className="flex items-center space-x-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
               <Download className="h-3.5 w-3.5" /><span>PDF</span>

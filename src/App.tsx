@@ -40,7 +40,27 @@ const BonCommandeDirectoryPage = React.lazy(() => import('./pages/compta/BonComm
 const BonCommandeDetailPage = React.lazy(() => import('./pages/compta/BonCommandeDetailPage'));
 const BackupPage = React.lazy(() => import('./pages/BackupPage'));
 const ImportPage = React.lazy(() => import('./pages/ImportPage'));
-const ComptabiliteComingSoon = React.lazy(() => import('./pages/ComptabiliteComingSoon'));
+const ComptabiliteHome = React.lazy(() => import('./pages/comptabilite/ComptabiliteHome'));
+const PlanComptablePage = React.lazy(() => import('./pages/comptabilite/PlanComptablePage'));
+const JournalEntryPage = React.lazy(() => import('./pages/comptabilite/JournalEntryPage'));
+const GrandLivrePage = React.lazy(() => import('./pages/comptabilite/GrandLivrePage'));
+const BalancePage = React.lazy(() => import('./pages/comptabilite/BalancePage'));
+const AComptabiliserPage = React.lazy(() => import('./pages/comptabilite/AComptabiliserPage'));
+const LettragePage = React.lazy(() => import('./pages/comptabilite/LettragePage'));
+const TvaPage = React.lazy(() => import('./pages/comptabilite/TvaPage'));
+const EtatsSynthesePage = React.lazy(() => import('./pages/comptabilite/EtatsSynthesePage'));
+const CloturePage = React.lazy(() => import('./pages/comptabilite/CloturePage'));
+const RapprochementPage = React.lazy(() => import('./pages/comptabilite/RapprochementPage'));
+const ImmobilisationsPage = React.lazy(() => import('./pages/comptabilite/ImmobilisationsPage'));
+const StockDashboardPage = React.lazy(() => import('./pages/inventaire/StockDashboardPage'));
+const StockLevelsPage = React.lazy(() => import('./pages/inventaire/StockLevelsPage'));
+const StockMovementsPage = React.lazy(() => import('./pages/inventaire/StockMovementsPage'));
+const StockReceivePage = React.lazy(() => import('./pages/inventaire/StockReceivePage'));
+const StockTransferPage = React.lazy(() => import('./pages/inventaire/StockTransferPage'));
+const StockCountPage = React.lazy(() => import('./pages/inventaire/StockCountPage'));
+const StockReportsPage = React.lazy(() => import('./pages/inventaire/StockReportsPage'));
+const PurchaseOrdersPage = React.lazy(() => import('./pages/inventaire/PurchaseOrdersPage'));
+const PurchaseOrderDetailPage = React.lazy(() => import('./pages/inventaire/PurchaseOrderDetailPage'));
 const EmployeesPage = React.lazy(() => import('./pages/paie/EmployeesPage'));
 const PayslipsPage = React.lazy(() => import('./pages/paie/PayslipsPage'));
 const PayslipDetailPage = React.lazy(() => import('./pages/paie/PayslipDetailPage'));
@@ -65,7 +85,8 @@ function PageLoader() {
 
 function AppContent() {
   const { activeLoginModalRole, openLoginModal } = useAppContext();
-  const { canCreateQuote, isSuperAdmin, isFacturation, isPaie, isTasks, isTasksOnly } = useAuth();
+  const { canCreateQuote, isAdmin, isCompta, isSuperAdmin, isFacturation, isPaie, isStock, isTasks, isTasksOnly } = useAuth();
+  const isAccounting = isSuperAdmin || isAdmin || isCompta;
   const { isAuthenticated: isUserAuthenticated } = useUserAuth();
 
   const handleUserLoginSuccess = () => {};
@@ -135,9 +156,24 @@ function AppContent() {
                 <Route path="/admin/import" element={<ImportPage />} />
               </>
             )}
+            {isAccounting && (
+              <>
+                <Route path="/comptabilite" element={<ComptabiliteHome />} />
+                <Route path="/comptabilite/plan" element={<PlanComptablePage />} />
+                <Route path="/comptabilite/a-comptabiliser" element={<AComptabiliserPage />} />
+                <Route path="/comptabilite/journaux" element={<JournalEntryPage />} />
+                <Route path="/comptabilite/lettrage" element={<LettragePage />} />
+                <Route path="/comptabilite/grand-livre" element={<GrandLivrePage />} />
+                <Route path="/comptabilite/balance" element={<BalancePage />} />
+                <Route path="/comptabilite/tva" element={<TvaPage />} />
+                <Route path="/comptabilite/etats" element={<EtatsSynthesePage />} />
+                <Route path="/comptabilite/cloture" element={<CloturePage />} />
+                <Route path="/comptabilite/banque" element={<RapprochementPage />} />
+                <Route path="/comptabilite/immobilisations" element={<ImmobilisationsPage />} />
+              </>
+            )}
             {(isFacturation || isSuperAdmin) && (
               <>
-                <Route path="/comptabilite" element={<ComptabiliteComingSoon />} />
                 <Route path="/compta/bls" element={<BLDirectoryPage />} />
                 <Route path="/compta/bls/:id" element={<BLDetailPage />} />
                 <Route path="/compta/proformas" element={<ProformaDirectoryPage />} />
@@ -150,6 +186,19 @@ function AppContent() {
                 <Route path="/compta/avoirs/:id" element={<AvoirDetailPage />} />
                 <Route path="/compta/bons-commande" element={<BonCommandeDirectoryPage />} />
                 <Route path="/compta/bons-commande/:id" element={<BonCommandeDetailPage />} />
+              </>
+            )}
+            {(isStock || isSuperAdmin) && (
+              <>
+                <Route path="/inventaire" element={<StockDashboardPage />} />
+                <Route path="/inventaire/niveaux" element={<StockLevelsPage />} />
+                <Route path="/inventaire/mouvements" element={<StockMovementsPage />} />
+                <Route path="/inventaire/reception" element={<StockReceivePage />} />
+                <Route path="/inventaire/transfert" element={<StockTransferPage />} />
+                <Route path="/inventaire/inventaire" element={<StockCountPage />} />
+                <Route path="/inventaire/rapports" element={<StockReportsPage />} />
+                <Route path="/inventaire/commandes" element={<PurchaseOrdersPage />} />
+                <Route path="/inventaire/commandes/:id" element={<PurchaseOrderDetailPage />} />
               </>
             )}
             {(isPaie || isSuperAdmin) && (

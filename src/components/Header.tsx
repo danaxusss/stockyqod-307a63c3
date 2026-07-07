@@ -3,7 +3,7 @@ import {
   Package, RefreshCw, LogOut, Shield, FileText, User, Cloud, CloudOff,
   Settings, UserCheck, ShoppingBag, BookOpen, Building2, ChevronDown,
   Truck, Receipt, Calculator, BarChart3, Users, ShoppingCart, LucideIcon,
-  RotateCcw, Sun, Moon, Upload, FileX, BookMarked,
+  RotateCcw, Sun, Moon, Upload, FileX, BookMarked, Boxes, ArrowLeftRight, TrendingUp,
 } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { Link, useLocation, NavLink } from 'react-router-dom';
@@ -12,7 +12,7 @@ import { useUserAuth } from '../hooks/useUserAuth';
 import { useAppContext } from '../context/AppContext';
 import { useToast } from '../context/ToastContext';
 
-type DropdownId = 'catalogue' | 'devis' | 'compta' | 'admin';
+type DropdownId = 'catalogue' | 'devis' | 'stock' | 'compta' | 'gc' | 'admin';
 interface NavItem { to: string; icon: LucideIcon; label: string; }
 
 function NavDropdown({
@@ -110,7 +110,8 @@ export function Header() {
   const navRef = useRef<HTMLDivElement>(null);
 
   const { theme, toggle: toggleTheme } = useTheme();
-  const { isAdmin, isSuperAdmin, isFacturation, companyName, currentUser, canCreateQuote, logout: adminLogout } = useAuth();
+  const { isAdmin, isSuperAdmin, isFacturation, isCompta, isStock, companyName, currentUser, canCreateQuote, logout: adminLogout } = useAuth();
+  const isAccounting = isSuperAdmin || isAdmin || isCompta;
   const { isAuthenticated: isUserAuthenticated, authenticatedUser, logout: userLogout } = useUserAuth();
   const { syncInfo, syncData, openLoginModal } = useAppContext();
   const { showToast } = useToast();
@@ -268,6 +269,27 @@ export function Header() {
               />
             )}
 
+            {/* Stock / Inventaire */}
+            {(isStock || isSuperAdmin) && (
+              <NavDropdown
+                id="stock"
+                icon={Boxes}
+                label="Stock"
+                openId={openDropdown}
+                onToggle={toggleDropdown}
+                items={[
+                  { to: '/inventaire', icon: TrendingUp, label: 'Tableau de bord' },
+                  { to: '/inventaire/niveaux', icon: Boxes, label: 'Niveaux de stock' },
+                  { to: '/inventaire/commandes', icon: ShoppingCart, label: 'Bons de commande' },
+                  { to: '/inventaire/reception', icon: Package, label: 'Réception' },
+                  { to: '/inventaire/transfert', icon: ArrowLeftRight, label: 'Transfert' },
+                  { to: '/inventaire/inventaire', icon: BookOpen, label: 'Inventaire physique' },
+                  { to: '/inventaire/mouvements', icon: FileText, label: 'Mouvements' },
+                  { to: '/inventaire/rapports', icon: BarChart3, label: 'Valorisation & rapports' },
+                ]}
+              />
+            )}
+
             {/* Facturation (formerly Comptabilité) */}
             {(isFacturation || isSuperAdmin) && (
               <NavDropdown
@@ -287,25 +309,29 @@ export function Header() {
               />
             )}
 
-            {/* Comptabilité — coming soon */}
-            {(isFacturation || isSuperAdmin) && (
-              <NavLink
-                to="/comptabilite"
-                className={({ isActive }) => `
-                  group flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium
-                  transition-all duration-150
-                  ${isActive
-                    ? 'bg-primary/10 text-primary'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-accent/40'
-                  }
-                `}
-              >
-                <BookMarked className="h-3.5 w-3.5 shrink-0" />
-                <span className="hidden sm:inline">Comptabilité</span>
-                <span className="hidden sm:inline ml-0.5 text-[8px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400 bg-amber-500/12 px-1 py-0.5 rounded">
-                  Bientôt
-                </span>
-              </NavLink>
+            {/* Comptabilité générale */}
+            {isAccounting && (
+              <NavDropdown
+                id="gc"
+                icon={BookMarked}
+                label="Comptabilité"
+                openId={openDropdown}
+                onToggle={toggleDropdown}
+                items={[
+                  { to: '/comptabilite', icon: BarChart3, label: 'Tableau de bord' },
+                  { to: '/comptabilite/a-comptabiliser', icon: Receipt, label: 'À comptabiliser' },
+                  { to: '/comptabilite/journaux', icon: BookOpen, label: 'Saisie / Journaux' },
+                  { to: '/comptabilite/lettrage', icon: RotateCcw, label: 'Lettrage' },
+                  { to: '/comptabilite/grand-livre', icon: FileText, label: 'Grand livre' },
+                  { to: '/comptabilite/balance', icon: Calculator, label: 'Balance' },
+                  { to: '/comptabilite/tva', icon: Receipt, label: 'Déclaration TVA' },
+                  { to: '/comptabilite/banque', icon: Building2, label: 'Rapprochement bancaire' },
+                  { to: '/comptabilite/immobilisations', icon: Building2, label: 'Immobilisations' },
+                  { to: '/comptabilite/etats', icon: BarChart3, label: 'États de synthèse' },
+                  { to: '/comptabilite/cloture', icon: Settings, label: 'Clôture d\'exercice' },
+                  { to: '/comptabilite/plan', icon: BookMarked, label: 'Plan comptable' },
+                ]}
+              />
             )}
 
             {/* Admin */}

@@ -370,6 +370,8 @@ export function useAuth() {
   const isSeniorSales = userPermissions?.isSeniorSales ?? false;
   const isJuniorSales = userPermissions?.isJuniorSales ?? false;
   const isPaie = userPermissions?.isPaie ?? false;
+  // Stock management: super_admin, admin and managers.
+  const isStock = isSuperAdmin || isAdmin || isManager;
   const isTasks = userPermissions?.isTasks ?? false;
   const isTasksOnly = userPermissions?.isTasksOnly ?? false;
   const tasksRole = userPermissions?.tasksRole ?? null;
@@ -389,6 +391,7 @@ export function useAuth() {
     isSeniorSales,
     isJuniorSales,
     isPaie,
+    isStock,
     isTasks,
     isTasksOnly,
     tasksRole,

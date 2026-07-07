@@ -344,6 +344,151 @@ export interface StockLocation {
   created_at: string;
 }
 
+export type StockMovementType =
+  | 'in' | 'out' | 'adjustment' | 'count' | 'transfer_in' | 'transfer_out' | 'return';
+
+export type StockSourceType =
+  | 'manual' | 'bl' | 'invoice' | 'receipt' | 'transfer' | 'count' | 'return';
+
+export interface StockMovement {
+  id: string;
+  company_id: string | null;
+  barcode: string;
+  location_key: string;
+  location_id: string | null;
+  type: StockMovementType;
+  quantity: number;          // signed applied delta (+in / -out)
+  unit_cost: number | null;
+  balance_after: number | null;
+  reason: string | null;
+  source_type: StockSourceType;
+  source_id: string | null;
+  transfer_group_id: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface ProductStockSetting {
+  id: string;
+  company_id: string | null;
+  barcode: string;
+  location_key: string | null;
+  reorder_point: number;
+  reorder_qty: number;
+  min_qty: number | null;
+  max_qty: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ── Comptabilité générale ───────────────────────────────────────────────────
+export type AccountingType = 'bilan_actif' | 'bilan_passif' | 'charge' | 'produit' | 'tresorerie';
+
+export interface FiscalYear {
+  id: string;
+  company_id: string;
+  label: string;
+  start_date: string;
+  end_date: string;
+  status: 'open' | 'closed';
+  closed_at: string | null;
+  closed_by: string | null;
+}
+
+export interface Account {
+  id: string;
+  company_id: string;
+  code: string;
+  label: string;
+  class: number;
+  type: AccountingType;
+  parent_code: string | null;
+  is_auxiliary: boolean;
+  aux_kind: 'client' | 'fournisseur' | null;
+  vat_rate: number | null;
+  lettrable: boolean;
+  active: boolean;
+  is_system: boolean;
+}
+
+export type JournalType = 'vente' | 'achat' | 'banque' | 'caisse' | 'od' | 'anouveaux' | 'paie';
+
+export interface Journal {
+  id: string;
+  company_id: string;
+  code: string;
+  label: string;
+  type: JournalType;
+  counterpart_account_code: string | null;
+}
+
+export interface JournalEntryLine {
+  id?: string;
+  entry_id?: string;
+  company_id?: string;
+  account_code: string;
+  aux_account_id?: string | null;
+  label?: string | null;
+  debit: number;
+  credit: number;
+  vat_rate?: number | null;
+  lettrage_code?: string | null;
+  lettered_at?: string | null;
+  analytic_code?: string | null;
+  sort_order?: number;
+}
+
+export interface JournalEntry {
+  id: string;
+  company_id: string;
+  fiscal_year_id: string;
+  journal_id: string;
+  entry_number: number | null;
+  entry_date: string;
+  reference: string | null;
+  label: string | null;
+  status: 'draft' | 'posted' | 'reversed';
+  source_type: string;
+  source_id: string | null;
+  posted_at: string | null;
+  posted_by: string | null;
+  reversed_by: string | null;
+  created_by: string | null;
+  created_at: string;
+  lines?: JournalEntryLine[];
+}
+
+export type PurchaseOrderStatus = 'draft' | 'sent' | 'partial' | 'received' | 'cancelled';
+
+export interface PurchaseOrderItem {
+  id?: string;
+  po_id?: string;
+  barcode: string;
+  label: string;
+  qty_ordered: number;
+  qty_received: number;
+  unit_cost: number;
+  sort_order?: number;
+}
+
+export interface PurchaseOrder {
+  id: string;
+  company_id: string | null;
+  po_number: string;
+  provider_id: string | null;
+  provider_name: string | null;
+  location_key: string | null;
+  status: PurchaseOrderStatus;
+  order_date: string;
+  expected_date: string | null;
+  total_ht: number;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  items?: PurchaseOrderItem[];
+}
+
 export interface ProductPhoto {
   id: string;
   company_id?: string;
