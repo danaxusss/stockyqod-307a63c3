@@ -138,6 +138,8 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps = {}
         { to: '/paie/employes', icon: Users, label: 'Employés' },
         { to: '/paie/bulletins', icon: Wallet, label: 'Bulletins de paie' },
         { to: '/paie/journee', icon: Receipt, label: 'Journée de paie' },
+        { to: '/paie/conges', icon: Users, label: 'Congés' },
+        { to: '/paie/avances', icon: Calculator, label: 'Avances & prêts' },
         { to: '/paie/simulation', icon: Calculator, label: 'Simulateur' },
         { to: '/paie/rubriques', icon: FileX, label: 'Rubriques' },
         { to: '/paie/parametres', icon: RotateCcw, label: 'Paramètres' },

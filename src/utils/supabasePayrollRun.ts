@@ -4,6 +4,7 @@ import { SupabaseEmployeesService } from './supabaseEmployees';
 import { PayrollSettingsService } from './supabasePayrollSettings';
 import { AccountingService } from './supabaseAccounting';
 import { computeAnciennete, computePayroll } from './payrollCalc';
+import { LoanService } from './supabasePayrollHr';
 import { DEFAULT_ACCOUNTS } from '../accounting/pcmSeed';
 import type { Payslip } from '../types';
 
@@ -73,7 +74,9 @@ export class PayrollRunService {
 
     for (const e of active) {
       const anc = computeAnciennete(e.hire_date, e.base_salary);
-      const res = computePayroll({ base_salary: e.base_salary, anciennete_amount: anc.amount, cimr_rate: e.cimr_rate ?? 0, dependents_count: e.dependents_count ?? 0, settings });
+      const loans = await LoanService.activeForEmployee(e.id).catch(() => []);
+      const loanDeduction = r2(loans.reduce((s, l) => s + Math.min(Number(l.monthly_installment) || 0, Number(l.remaining) || 0), 0));
+      const res = computePayroll({ base_salary: e.base_salary, anciennete_amount: anc.amount, cimr_rate: e.cimr_rate ?? 0, dependents_count: e.dependents_count ?? 0, autres_retenues: loanDeduction, settings });
       seq += 1;
       const payslip_number = `PAIE-${year}-${String(seq).padStart(3, '0')}`;
       await (supabase as any).from('payslips').insert({
@@ -81,7 +84,7 @@ export class PayrollRunService {
         hours_worked: 191, base_salary: e.base_salary, anciennete_rate: anc.rate, anciennete_amount: anc.amount,
         other_earnings: 0, total_gross: res.brut_global,
         cnss_employee: res.cnss_employee, amo_employee: res.amo_employee, cimr_employee: res.cimr_employee,
-        frais_pro: res.frais_pro, ir_amount: res.ir_amount, other_deductions: 0,
+        frais_pro: res.frais_pro, ir_amount: res.ir_amount, other_deductions: loanDeduction,
         total_deductions: res.total_deductions, net_salary: res.net_salary,
         cnss_employer: res.cnss_employer, amo_employer: res.amo_employer, alloc_familiales: res.alloc_familiales,
         tfp_employer: res.tfp_employer, run_id: run.id,
@@ -100,9 +103,18 @@ export class PayrollRunService {
     const run = await this.getRun(runId);
     if (!run) throw new Error('Lot introuvable');
     const { companyId } = getCompanyContext();
-    // Lock payslips + write cumuls
+    // Lock payslips + write cumuls + apply loan repayments
     for (const p of (run.payslips || [])) {
       await (supabase as any).from('payslips').update({ is_locked: true }).eq('id', p.id);
+      if ((p.other_deductions || 0) > 0) {
+        let toRepay = p.other_deductions;
+        const loans = await LoanService.activeForEmployee(p.employee_id).catch(() => []);
+        for (const l of loans) {
+          if (toRepay <= 0) break;
+          const pay = Math.min(Number(l.monthly_installment) || 0, Number(l.remaining) || 0, toRepay);
+          if (pay > 0) { await LoanService.applyRepayment(l.id, pay); toRepay = r2(toRepay - pay); }
+        }
+      }
       await (supabase as any).from('payroll_cumuls').upsert({
         company_id: companyId, employee_id: p.employee_id, year: run.period_year, month: run.period_month,
         gross: p.total_gross, taxable: r2(p.total_gross - p.frais_pro), ir: p.ir_amount,
