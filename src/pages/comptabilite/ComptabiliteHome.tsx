@@ -96,7 +96,9 @@ export default function ComptabiliteHome() {
     { to: '/comptabilite/lettrage', icon: BookOpen, label: 'Lettrage', desc: 'Rapprocher débits / crédits' },
     { to: '/comptabilite/tva', icon: FileText, label: 'Déclaration TVA', desc: 'TVA due / crédit de la période' },
     { to: '/comptabilite/banque', icon: Wallet, label: 'Rapprochement bancaire', desc: 'Importer un relevé par scan (IA)' },
+    { to: '/comptabilite/immobilisations', icon: BookMarked, label: 'Immobilisations', desc: 'Amortissements & dotations' },
     { to: '/comptabilite/etats', icon: Scale, label: 'États de synthèse', desc: 'Bilan & CPC (modèle simplifié)' },
+    { to: '/comptabilite/cloture', icon: BookOpen, label: 'Clôture d\'exercice', desc: 'Verrou + à-nouveaux' },
     { to: '/comptabilite/plan', icon: BookMarked, label: 'Plan comptable', desc: 'Comptes CGNC' },
   ];
 

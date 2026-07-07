@@ -100,4 +100,16 @@ export class BankService {
       .update({ matched_entry_line_id: entryLineId, reconciled: !!entryLineId }).eq('id', lineId);
     if (error) throw error;
   }
+
+  /** Recompute the statement status from its lines (all reconciled → 'reconciled'). */
+  static async syncStatus(id: string): Promise<void> {
+    const s = await this.get(id);
+    if (!s) return;
+    const lines = s.lines || [];
+    const status = lines.length > 0 && lines.every(l => l.reconciled) ? 'reconciled' : 'draft';
+    if (status !== s.status) {
+      const { error } = await (supabase as any).from('bank_statements').update({ status }).eq('id', id);
+      if (error) throw error;
+    }
+  }
 }

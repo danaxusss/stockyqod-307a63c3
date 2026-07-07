@@ -221,6 +221,7 @@ function DetailView({ statement, onReload, createdBy }: { statement: BankStateme
         });
         if (cand) { await BankService.setLineReconciled(bl.id!, cand.id); used.add(cand.id); matched++; }
       }
+      if (matched > 0) await BankService.syncStatus(statement.id);
       showToast({ type: matched ? 'success' : 'info', message: matched ? `${matched} ligne(s) rapprochée(s)` : 'Aucune correspondance trouvée' });
       onReload();
     } catch (e: any) { showToast({ type: 'error', message: e?.message || 'Échec' }); }
@@ -245,6 +246,7 @@ function DetailView({ statement, onReload, createdBy }: { statement: BankStateme
       const full = await AccountingService.getEntry(entry.id);
       const treasuryLine = full?.lines?.find(l => l.account_code === treasury);
       await BankService.setLineReconciled(bl.id!, treasuryLine?.id || null);
+      await BankService.syncStatus(statement.id);
       showToast({ type: 'success', message: 'Écriture générée et rapprochée' });
       setGenFor(null); setCounterpart(''); onReload();
     } catch (e: any) { showToast({ type: 'error', message: e?.message || 'Échec' }); }

@@ -244,19 +244,38 @@ export class AccountingService {
     return entry;
   }
 
+  // ── Posted-entries helper (two-step: entries → lines, avoids embedded filters) ─
+  private static async postedEntryMap(fiscalYearId?: string): Promise<Map<string, any>> {
+    let q = (supabase as any).from('journal_entries')
+      .select('id, entry_date, entry_number, journal_id, reference, label')
+      .eq('status', 'posted');
+    q = scope(q);
+    if (fiscalYearId) q = q.eq('fiscal_year_id', fiscalYearId);
+    const { data, error } = await q.limit(20000);
+    if (error) throw error;
+    return new Map((data || []).map((e: any) => [e.id, e]));
+  }
+
+  private static async linesForEntries(entryIds: string[], accountCode?: string): Promise<any[]> {
+    if (entryIds.length === 0) return [];
+    const out: any[] = [];
+    for (let i = 0; i < entryIds.length; i += 300) {
+      const batch = entryIds.slice(i, i + 300);
+      let q = (supabase as any).from('journal_entry_lines').select('*').in('entry_id', batch);
+      if (accountCode) q = q.eq('account_code', accountCode);
+      const { data, error } = await q.limit(20000);
+      if (error) throw error;
+      out.push(...(data || []));
+    }
+    return out;
+  }
+
   // ── Lettrage ──────────────────────────────────────────────────────────────
   /** Posted lines for an account, with entry date/reference joined. */
   static async getAccountLines(accountCode: string, fiscalYearId?: string): Promise<Array<JournalEntryLine & { entry_date: string; reference: string | null; entry_label: string | null }>> {
-    let q = (supabase as any).from('journal_entry_lines')
-      .select('*, entry:journal_entries!inner(entry_date, reference, label, status, fiscal_year_id, company_id)')
-      .eq('account_code', accountCode)
-      .eq('entry.status', 'posted');
-    const { companyId, bypassFilter } = getCompanyContext();
-    if (!bypassFilter && companyId) q = q.eq('company_id', companyId);
-    if (fiscalYearId) q = q.eq('entry.fiscal_year_id', fiscalYearId);
-    const { data, error } = await q.limit(10000);
-    if (error) throw error;
-    return (data || []).map((r: any) => ({ ...r, entry_date: r.entry?.entry_date, reference: r.entry?.reference, entry_label: r.entry?.label }));
+    const entries = await this.postedEntryMap(fiscalYearId);
+    const lines = await this.linesForEntries(Array.from(entries.keys()), accountCode);
+    return lines.map((r: any) => { const e = entries.get(r.entry_id); return { ...r, entry_date: e?.entry_date, reference: e?.reference, entry_label: e?.label }; });
   }
 
   static async letterLines(lineIds: string[], code: string): Promise<void> {
@@ -289,21 +308,11 @@ export class AccountingService {
   // ── Reporting: grand livre + balance ──────────────────────────────────────
   /** All posted lines for the company (optionally a fiscal year), joined with entry header data. */
   static async getPostedLines(fiscalYearId?: string): Promise<Array<JournalEntryLine & { entry_date: string; entry_number: number | null; journal_id: string; reference: string | null; entry_label: string | null }>> {
-    let q = (supabase as any).from('journal_entry_lines')
-      .select('*, entry:journal_entries!inner(entry_date, entry_number, journal_id, reference, label, status, fiscal_year_id, company_id)')
-      .eq('entry.status', 'posted');
-    const { companyId, bypassFilter } = getCompanyContext();
-    if (!bypassFilter && companyId) q = q.eq('company_id', companyId);
-    if (fiscalYearId) q = q.eq('entry.fiscal_year_id', fiscalYearId);
-    const { data, error } = await q.limit(20000);
-    if (error) throw error;
-    return (data || []).map((r: any) => ({
-      ...r,
-      entry_date: r.entry?.entry_date,
-      entry_number: r.entry?.entry_number,
-      journal_id: r.entry?.journal_id,
-      reference: r.entry?.reference,
-      entry_label: r.entry?.label,
-    }));
+    const entries = await this.postedEntryMap(fiscalYearId);
+    const lines = await this.linesForEntries(Array.from(entries.keys()));
+    return lines.map((r: any) => {
+      const e = entries.get(r.entry_id);
+      return { ...r, entry_date: e?.entry_date, entry_number: e?.entry_number, journal_id: e?.journal_id, reference: e?.reference, entry_label: e?.label };
+    });
   }
 }

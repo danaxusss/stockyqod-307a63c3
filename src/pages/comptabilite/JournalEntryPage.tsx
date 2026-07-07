@@ -135,6 +135,15 @@ export default function JournalEntryPage() {
 
   if (loading) return <div className="flex items-center justify-center py-24 text-muted-foreground"><Loader className="h-5 w-5 animate-spin mr-2" />Chargement…</div>;
 
+  if (journals.length === 0 || accounts.length === 0) {
+    return (
+      <div className="max-w-md mx-auto py-20 px-3 text-center">
+        <p className="text-sm text-muted-foreground mb-4">Le plan comptable n'est pas encore initialisé pour cette société.</p>
+        <a href="/comptabilite" className="inline-flex px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium">Aller au tableau de bord</a>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-5xl mx-auto py-6 px-3">
       <datalist id="acc-list">
