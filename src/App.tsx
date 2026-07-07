@@ -69,6 +69,8 @@ const PayrollRunPage = React.lazy(() => import('./pages/paie/PayrollRunPage'));
 const CongesPage = React.lazy(() => import('./pages/paie/CongesPage'));
 const AvancesPage = React.lazy(() => import('./pages/paie/AvancesPage'));
 const DeclarationsPage = React.lazy(() => import('./pages/paie/DeclarationsPage'));
+const StcPage = React.lazy(() => import('./pages/paie/StcPage'));
+const AttestationsPage = React.lazy(() => import('./pages/paie/AttestationsPage'));
 const RubriquesPage = React.lazy(() => import('./pages/paie/RubriquesPage'));
 const ParametresPaiePage = React.lazy(() => import('./pages/paie/ParametresPaiePage'));
 const TasksLayout = React.lazy(() => import('./tasks/TasksLayout'));
@@ -217,6 +219,8 @@ function AppContent() {
                 <Route path="/paie/conges" element={<CongesPage />} />
                 <Route path="/paie/avances" element={<AvancesPage />} />
                 <Route path="/paie/declarations" element={<DeclarationsPage />} />
+                <Route path="/paie/stc" element={<StcPage />} />
+                <Route path="/paie/attestations" element={<AttestationsPage />} />
                 <Route path="/paie/simulation" element={<SimulationPage />} />
                 <Route path="/paie/rubriques" element={<RubriquesPage />} />
                 <Route path="/paie/parametres" element={<ParametresPaiePage />} />

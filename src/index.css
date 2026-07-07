@@ -327,3 +327,10 @@ video { transition: filter 0.3s ease; }
   --priority-high: 25 95% 53%;
   --priority-urgent: 0 84% 60%;
 }
+
+/* Print: isolate #print-area (used by PAIE STC / attestations) */
+@media print {
+  body * { visibility: hidden; }
+  #print-area, #print-area * { visibility: visible; }
+  #print-area { position: absolute; left: 0; top: 0; width: 100%; }
+}
