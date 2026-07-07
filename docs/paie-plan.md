@@ -215,6 +215,20 @@ phase avec le SQL exact à exécuter.
 
 ---
 
+## Build status (branch claude/busy-hawking-qecj8k)
+
+- ✅ **Phase 1** — `payroll_settings` (taux versionnés), `payroll_rubriques`
+  (bibliothèque + défauts marocains), moteur de calcul piloté par les paramètres
+  + **taxe formation pro (1,6 %)**, **Simulateur** (brut↔net, coût employeur),
+  page Paramètres, page Rubriques.
+- ✅ **Phase 2** — **Journée de paie** (génération en lot), livre de paie,
+  cumuls, **écriture de paie consolidée** vers la Compta.
+- ◻︎ **Phase 3** — congés & soldes, avances/prêts, absences, présence via Tâches.
+- ◻︎ **Phase 4** — déclarations CNSS/DAMANCOM, IR 9421, CIMR, ordre de virement.
+- ◻︎ **Phase 5** — STC, attestations/documents, portail employé.
+
+**⚠ Migration à exécuter** (SQL editor) : `20260707120000_payroll_deep.sql`.
+
 ## 8. Décisions à confirmer (avant Phase 1)
 1. **Périmètre prioritaire** — recommander **Phase 1 + 2** d'abord (rubriques +
    run + cumuls + intégration compta), car c'est le socle qui rend la paie
