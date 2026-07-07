@@ -227,8 +227,10 @@ phase avec le SQL exact à exécuter.
   remboursement à la validation du lot).
 - ✅ **Phase 4** — déclarations CNSS/BDS, IR, CIMR + ordre de virement (CSV).
   ◻︎ *Remaining:* fichier DAMANCOM/virement au format bancaire natif ; 9421 annuel.
-- ◻︎ **Phase 5** — STC (solde de tout compte), attestations/documents, portail
-  employé ; wiring du bulletin détaillé sur les rubriques/variables.
+- ◑ **Phase 5** — ✅ STC (solde de tout compte) + ✅ attestations (travail/
+  salaire/certificat, imprimables). ◻︎ *Remaining:* portail employé
+  (employees.user_id ↔ app_users) ; wiring du bulletin détaillé sur les
+  rubriques/variables ; 13ᵉ mois.
 
 **⚠ Migrations à exécuter** (SQL editor) :
 - `20260707120000_payroll_deep.sql` (fait ✓)
