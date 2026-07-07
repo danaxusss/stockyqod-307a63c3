@@ -137,6 +137,9 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps = {}
       items: [
         { to: '/paie/employes', icon: Users, label: 'Employés' },
         { to: '/paie/bulletins', icon: Wallet, label: 'Bulletins de paie' },
+        { to: '/paie/simulation', icon: Calculator, label: 'Simulateur' },
+        { to: '/paie/rubriques', icon: FileX, label: 'Rubriques' },
+        { to: '/paie/parametres', icon: RotateCcw, label: 'Paramètres' },
       ],
     }] : []),
     ...((isTasks || isSuperAdmin) ? [{

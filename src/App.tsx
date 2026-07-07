@@ -64,6 +64,9 @@ const PurchaseOrderDetailPage = React.lazy(() => import('./pages/inventaire/Purc
 const EmployeesPage = React.lazy(() => import('./pages/paie/EmployeesPage'));
 const PayslipsPage = React.lazy(() => import('./pages/paie/PayslipsPage'));
 const PayslipDetailPage = React.lazy(() => import('./pages/paie/PayslipDetailPage'));
+const SimulationPage = React.lazy(() => import('./pages/paie/SimulationPage'));
+const RubriquesPage = React.lazy(() => import('./pages/paie/RubriquesPage'));
+const ParametresPaiePage = React.lazy(() => import('./pages/paie/ParametresPaiePage'));
 const TasksLayout = React.lazy(() => import('./tasks/TasksLayout'));
 const TasksDashboard = React.lazy(() => import('./tasks/pages/Dashboard'));
 const TasksList = React.lazy(() => import('./tasks/pages/SalesTasks'));
@@ -206,6 +209,9 @@ function AppContent() {
                 <Route path="/paie/employes" element={<EmployeesPage />} />
                 <Route path="/paie/bulletins" element={<PayslipsPage />} />
                 <Route path="/paie/bulletins/:id" element={<PayslipDetailPage />} />
+                <Route path="/paie/simulation" element={<SimulationPage />} />
+                <Route path="/paie/rubriques" element={<RubriquesPage />} />
+                <Route path="/paie/parametres" element={<ParametresPaiePage />} />
               </>
             )}
             {(isTasks || isSuperAdmin) && (
