@@ -129,6 +129,25 @@ export class SupabasePayslipsService {
     if (error) throw error;
   }
 
+  static async getVariables(payslipId: string): Promise<any[]> {
+    const { data, error } = await (supabase as any).from('payslip_variables').select('*').eq('payslip_id', payslipId).order('sort_order');
+    if (error) throw error;
+    return data || [];
+  }
+
+  static async replaceVariables(payslipId: string, companyId: string | null, vars: any[]): Promise<void> {
+    await (supabase as any).from('payslip_variables').delete().eq('payslip_id', payslipId);
+    if (vars.length === 0) return;
+    const rows = vars.map((v, i) => ({
+      payslip_id: payslipId, company_id: companyId, rubrique_id: v.rubrique_id ?? null, code: v.code ?? null,
+      label: v.label, type: v.type, quantity: v.quantity ?? 1, rate: v.rate ?? 0, amount: Number(v.amount) || 0,
+      soumis_cnss: v.soumis_cnss !== false, soumis_ir: v.soumis_ir !== false, soumis_cimr: !!v.soumis_cimr,
+      inclus_anciennete: !!v.inclus_anciennete, sort_order: i,
+    }));
+    const { error } = await (supabase as any).from('payslip_variables').insert(rows);
+    if (error) throw error;
+  }
+
   static async upsertItems(payslipId: string, items: Omit<PayslipItem, 'id' | 'payslip_id'>[]): Promise<PayslipItem[]> {
     // Delete existing then insert fresh
     await supabase.from('payslip_items').delete().eq('payslip_id', payslipId);
