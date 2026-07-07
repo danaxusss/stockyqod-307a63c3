@@ -223,11 +223,16 @@ phase avec le SQL exact à exécuter.
   page Paramètres, page Rubriques.
 - ✅ **Phase 2** — **Journée de paie** (génération en lot), livre de paie,
   cumuls, **écriture de paie consolidée** vers la Compta.
-- ◻︎ **Phase 3** — congés & soldes, avances/prêts, absences, présence via Tâches.
-- ◻︎ **Phase 4** — déclarations CNSS/DAMANCOM, IR 9421, CIMR, ordre de virement.
-- ◻︎ **Phase 5** — STC, attestations/documents, portail employé.
+- ✅ **Phase 3** — congés (demandes + soldes) & avances/prêts (retenue auto +
+  remboursement à la validation du lot).
+- ✅ **Phase 4** — déclarations CNSS/BDS, IR, CIMR + ordre de virement (CSV).
+  ◻︎ *Remaining:* fichier DAMANCOM/virement au format bancaire natif ; 9421 annuel.
+- ◻︎ **Phase 5** — STC (solde de tout compte), attestations/documents, portail
+  employé ; wiring du bulletin détaillé sur les rubriques/variables.
 
-**⚠ Migration à exécuter** (SQL editor) : `20260707120000_payroll_deep.sql`.
+**⚠ Migrations à exécuter** (SQL editor) :
+- `20260707120000_payroll_deep.sql` (fait ✓)
+- `20260707130000_leave_loans.sql` (congés + avances/prêts)
 
 ## 8. Décisions à confirmer (avant Phase 1)
 1. **Périmètre prioritaire** — recommander **Phase 1 + 2** d'abord (rubriques +
