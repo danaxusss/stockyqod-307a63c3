@@ -225,16 +225,22 @@ Shared: `AccountPicker`, `AmountInput` (MAD, 2 dec), `JournalEntryGrid`,
   ◻︎ *Remaining:* lettrage clients/fournisseurs.
 - ✅ **Phase 2b — lettrage** (done). Clients/fournisseurs matching with auto
   letter codes + délettrage.
-- ◑ **Phase 3** — ✅ TVA declaration (compute + écriture + persist, migration
-  `vat_declarations`). ◻︎ *Remaining:* rapprochement bancaire.
-- ◑ **Phase 4** — ✅ États de synthèse (Bilan + CPC, modèle simplifié) + ✅
-  clôture d'exercice + à-nouveaux. ◻︎ *Remaining:* immobilisations/amortissements,
-  ESG/TF/ETIC, résultat fiscal/IS.
+- ✅ **Phase 3** — TVA declaration (compute + écriture + persist) + rapprochement
+  bancaire (AI scan extraction → auto-match → generate écriture, statement
+  auto-status).
+- ✅ **Phase 4** — États de synthèse (Bilan + CPC) + clôture d'exercice +
+  à-nouveaux + immobilisations/amortissements (linéaire).
+  ◻︎ *Remaining (advanced, optional):* ESG / Tableau de financement / ETIC,
+  résultat fiscal / IS (cotisation minimale, acomptes), régime encaissement TVA.
 
-**⚠ Manual step:** run these migrations in the Supabase SQL editor before using
-`/comptabilite`:
-- `supabase/migrations/20260706120000_accounting_core.sql`
-- `supabase/migrations/20260706130000_vat_declarations.sql`
+**⚠ Manual steps** before using `/comptabilite`:
+- Run these migrations in the Supabase SQL editor:
+  - `20260706120000_accounting_core.sql`
+  - `20260706130000_vat_declarations.sql`
+  - `20260706140000_bank_statements.sql`
+  - `20260706150000_fixed_assets.sql`
+- Deploy edge function `parse-bank-statement` (uses existing `OPENROUTER_API_KEY`).
+- Open `/comptabilite` and click **"Initialiser le plan comptable"** once per company.
 
 ## 6. Phasing / milestones
 
