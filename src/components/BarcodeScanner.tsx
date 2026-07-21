@@ -1,7 +1,10 @@
 // @ts-nocheck
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { X, Flashlight, FlashlightOff, RotateCcw } from 'lucide-react';
-import { BrowserMultiFormatReader, BarcodeFormat, DecodeHintType } from '@zxing/library';
+import {
+  MultiFormatReader, BarcodeFormat, DecodeHintType,
+  BinaryBitmap, HybridBinarizer, HTMLCanvasElementLuminanceSource,
+} from '@zxing/library';
 
 interface BarcodeScannerProps {
   onScan: (barcode: string) => void;
@@ -22,7 +25,8 @@ export function BarcodeScanner({ onScan, onClose, isOpen }: BarcodeScannerProps)
   const lastRef   = useRef(0);
   const doneRef   = useRef(false);                     // prevent double-fire after first scan
   const nativeRef = useRef<any>(null);                 // BarcodeDetector instance
-  const zxingRef  = useRef<BrowserMultiFormatReader | null>(null);
+  const nativeReadyRef = useRef<boolean | null>(null); // null = unknown, false = unusable
+  const zxingRef  = useRef<MultiFormatReader | null>(null);
 
   const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
   const [camId,   setCamId]   = useState('');
@@ -71,41 +75,67 @@ export function BarcodeScanner({ onScan, onClose, isOpen }: BarcodeScannerProps)
       const now = Date.now();
       if (now - lastRef.current >= SCAN_INTERVAL_MS) {
         lastRef.current = now;
-        try {
-          if (hasNative) {
-            // Native path — the browser decodes directly from the video frame
+
+        // ── Native BarcodeDetector path (Chrome/Android) ──────────────────
+        if (hasNative && nativeReadyRef.current !== false) {
+          try {
             if (!nativeRef.current) {
-              nativeRef.current = new (window as any).BarcodeDetector({ formats: NATIVE_FORMATS });
+              // Only request formats the browser actually supports, and make
+              // sure QR is among them — otherwise fall back to ZXing.
+              const supported: string[] = await (window as any).BarcodeDetector.getSupportedFormats();
+              const formats = NATIVE_FORMATS.filter(f => supported.includes(f));
+              if (!formats.includes('qr_code') && !formats.length) {
+                nativeReadyRef.current = false; // unusable → ZXing
+              } else {
+                nativeRef.current = new (window as any).BarcodeDetector({ formats });
+                nativeReadyRef.current = true;
+              }
             }
-            const results = await nativeRef.current.detect(v);
-            if (results.length > 0) { onDetect(results[0].rawValue); return; }
-          } else {
-            // ZXing canvas fallback — grab a frame and let ZXing decode it
-            const c = canvasRef.current;
-            if (!c) { rafRef.current = requestAnimationFrame(tick); return; }
+            if (nativeRef.current) {
+              const results = await nativeRef.current.detect(v);
+              if (results.length > 0) { onDetect(results[0].rawValue); return; }
+              rafRef.current = requestAnimationFrame(tick);
+              return;
+            }
+          } catch {
+            // Native unusable on this device → permanently switch to ZXing
+            nativeReadyRef.current = false;
+          }
+        }
+
+        // ── ZXing canvas fallback (iOS Safari, older browsers) ────────────
+        try {
+          const c = canvasRef.current;
+          if (c && v.videoWidth) {
             c.width  = v.videoWidth;
             c.height = v.videoHeight;
             const ctx = c.getContext('2d', { willReadFrequently: true });
-            if (!ctx) { rafRef.current = requestAnimationFrame(tick); return; }
-            ctx.drawImage(v, 0, 0);
-
-            if (!zxingRef.current) {
-              const hints = new Map();
-              hints.set(DecodeHintType.POSSIBLE_FORMATS, [
-                BarcodeFormat.CODE_128, BarcodeFormat.EAN_13, BarcodeFormat.EAN_8,
-                BarcodeFormat.CODE_39,  BarcodeFormat.UPC_A,  BarcodeFormat.UPC_E,
-                BarcodeFormat.ITF,      BarcodeFormat.CODABAR,
-              ]);
-              hints.set(DecodeHintType.TRY_HARDER, true);
-              zxingRef.current = new BrowserMultiFormatReader(hints);
+            if (ctx) {
+              ctx.drawImage(v, 0, 0);
+              if (!zxingRef.current) {
+                const hints = new Map();
+                hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+                  BarcodeFormat.QR_CODE,
+                  BarcodeFormat.CODE_128, BarcodeFormat.EAN_13, BarcodeFormat.EAN_8,
+                  BarcodeFormat.CODE_39,  BarcodeFormat.UPC_A,  BarcodeFormat.UPC_E,
+                  BarcodeFormat.ITF,      BarcodeFormat.CODABAR, BarcodeFormat.DATA_MATRIX,
+                ]);
+                hints.set(DecodeHintType.TRY_HARDER, true);
+                const reader = new MultiFormatReader();
+                reader.setHints(hints);
+                zxingRef.current = reader;
+              }
+              const source = new HTMLCanvasElementLuminanceSource(c);
+              const bitmap = new BinaryBitmap(new HybridBinarizer(source));
+              const result = zxingRef.current.decodeWithState
+                ? zxingRef.current.decodeWithState(bitmap)
+                : zxingRef.current.decode(bitmap);
+              if (result) { onDetect(result.getText()); return; }
             }
-            const imgData = ctx.getImageData(0, 0, c.width, c.height);
-            const result  = zxingRef.current.decodeFromImageData(imgData);
-            onDetect(result.getText());
-            return;
           }
         } catch {
-          // NotFoundException / ChecksumException are normal on most frames — ignore
+          // NotFoundException on most frames is normal — reset reader state and retry
+          zxingRef.current?.reset?.();
         }
       }
       rafRef.current = requestAnimationFrame(tick);
@@ -178,12 +208,12 @@ export function BarcodeScanner({ onScan, onClose, isOpen }: BarcodeScannerProps)
         className="absolute inset-0 w-full h-full object-cover"
         playsInline muted autoPlay
       />
-      {/* ZXing needs a hidden canvas to capture frames */}
-      {!hasNative && <canvas ref={canvasRef} className="hidden" />}
+      {/* Hidden canvas — always present for the ZXing fallback path */}
+      <canvas ref={canvasRef} className="hidden" />
 
       {/* Aim frame */}
       <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-        <div className="w-72 h-36 relative">
+        <div className="w-64 h-64 relative">
           {/* Dim surround */}
           <div className="absolute inset-0 border-2 border-white/15 rounded" />
           {/* Corner brackets */}
@@ -195,7 +225,7 @@ export function BarcodeScanner({ onScan, onClose, isOpen }: BarcodeScannerProps)
           <div className="absolute inset-x-3 top-1/2 -translate-y-px h-0.5 bg-primary/60 animate-pulse" />
         </div>
         <p className="mt-5 text-white/50 text-sm tracking-wide select-none">
-          Pointez vers un code-barre
+          Pointez vers un code-barre ou QR
         </p>
       </div>
 
