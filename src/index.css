@@ -5,124 +5,123 @@
 @layer base {
   :root {
     /* ═══════════════════════════════════════════════════════════
-       STOCKY PRECISION — Design System 2.0
-       Philosophy: Apple-grade clarity + Bloomberg data precision
-       Light mode: clean white-surface, zero visual noise
+       STOCKY LEDGER — Design System 3.0
+       Philosophy: formal accounting / ERP. Deep navy brand,
+       neutral paper surfaces, visible structure, quiet chrome.
     ═══════════════════════════════════════════════════════════ */
 
     /* Surfaces */
-    --background:      220 25% 96%;    /* #F2F4FA — cool off-white */
-    --foreground:      222 47% 9%;     /* #0C1220 — deep slate */
+    --background:      216 20% 96%;    /* #F3F4F7 — neutral paper */
+    --foreground:      222 40% 11%;    /* #111827 — ink */
 
-    --card:            0 0% 100%;      /* #FFFFFF — pure white cards */
-    --card-foreground: 222 47% 9%;
+    --card:            0 0% 100%;      /* #FFFFFF — white ledger card */
+    --card-foreground: 222 40% 11%;
 
     --popover:         0 0% 100%;
-    --popover-foreground: 222 47% 9%;
+    --popover-foreground: 222 40% 11%;
 
-    /* Brand */
-    --primary:         217 91% 57%;   /* #3479F0 — bold iOS blue */
+    /* Brand — deep banking navy */
+    --primary:         221 55% 37%;    /* #2B4C92 — formal navy */
     --primary-foreground: 0 0% 100%;
 
     /* Secondary surfaces */
-    --secondary:       220 22% 93%;   /* #ECF0F9 — subtle tinted bg */
-    --secondary-foreground: 222 30% 30%;
+    --secondary:       216 18% 92.5%;  /* #E9ECF1 — quiet tinted bg */
+    --secondary-foreground: 220 25% 27%;
 
-    --muted:           220 20% 95%;   /* #F0F3FA */
-    --muted-foreground: 220 14% 48%; /* #697190 */
+    --muted:           216 16% 94%;    /* #EDEFF3 */
+    --muted-foreground: 220 11% 43%;   /* #616B7C */
 
-    --accent:          217 91% 57%;   /* same as primary */
-    --accent-foreground: 217 91% 57%;
+    --accent:          221 55% 37%;    /* same as primary */
+    --accent-foreground: 221 55% 37%;
 
     /* Status */
-    --destructive:     4 86% 58%;     /* #E84040 */
+    --destructive:     0 65% 46%;      /* #C22929 — formal red */
     --destructive-foreground: 0 0% 100%;
 
     /* Structure */
-    --border:          220 22% 88%;   /* #D4DAF0 — barely there */
+    --border:          216 15% 86%;    /* #D6DAE1 — visible ledger rule */
     --input:           0 0% 100%;
-    --ring:            217 91% 57%;
-    --radius:          0.875rem;      /* 14px */
+    --ring:            221 55% 42%;
+    --radius:          0.5rem;         /* 8px — squared, business */
 
-    /* ── Elevation Shadows (multi-layer, diffuse — Apple style) ── */
-    --shadow-xs:      0 1px 2px rgba(12,18,32,0.04);
-    --shadow-sm:      0 1px 3px rgba(12,18,32,0.06), 0 2px 8px rgba(12,18,32,0.04);
-    --shadow-md:      0 2px 6px rgba(12,18,32,0.06), 0 8px 24px rgba(12,18,32,0.07);
-    --shadow-lg:      0 4px 12px rgba(12,18,32,0.07), 0 16px 40px rgba(12,18,32,0.09);
-    --shadow-xl:      0 8px 20px rgba(12,18,32,0.08), 0 32px 64px rgba(12,18,32,0.11);
-    --shadow-glow:    0 0 0 3px rgba(52,121,240,0.18), 0 0 20px rgba(52,121,240,0.10);
-    --shadow-elevated: 0 20px 48px rgba(12,18,32,0.12), 0 6px 16px rgba(12,18,32,0.07);
+    /* ── Elevation Shadows (tight, sober) ── */
+    --shadow-xs:      0 1px 2px rgba(17,24,39,0.05);
+    --shadow-sm:      0 1px 2px rgba(17,24,39,0.06), 0 1px 4px rgba(17,24,39,0.04);
+    --shadow-md:      0 1px 3px rgba(17,24,39,0.07), 0 4px 12px rgba(17,24,39,0.05);
+    --shadow-lg:      0 2px 6px rgba(17,24,39,0.07), 0 10px 24px rgba(17,24,39,0.07);
+    --shadow-xl:      0 4px 10px rgba(17,24,39,0.08), 0 20px 40px rgba(17,24,39,0.09);
+    --shadow-glow:    0 0 0 3px rgba(43,76,146,0.15);
+    --shadow-elevated: 0 12px 32px rgba(17,24,39,0.10), 0 4px 10px rgba(17,24,39,0.06);
 
-    /* Gradients */
-    --gradient-primary: linear-gradient(140deg, #4F8EF7 0%, #2A65E8 100%);
-    --gradient-surface: linear-gradient(160deg, #FFFFFF 0%, #F0F3FA 100%);
-    --gradient-dark:    linear-gradient(140deg, #0C1220 0%, #0F1A30 100%);
+    /* Gradients — kept for compatibility, now near-flat */
+    --gradient-primary: linear-gradient(160deg, #33589F 0%, #274687 100%);
+    --gradient-surface: linear-gradient(160deg, #FFFFFF 0%, #F0F2F6 100%);
+    --gradient-dark:    linear-gradient(160deg, #111827 0%, #151C2B 100%);
 
     /* Sidebar (kept for compatibility) */
-    --sidebar-background: 222 47% 9%;
-    --sidebar-foreground: 220 25% 90%;
-    --sidebar-primary: 217 91% 57%;
+    --sidebar-background: 222 40% 11%;
+    --sidebar-foreground: 216 20% 90%;
+    --sidebar-primary: 221 55% 37%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 222 40% 14%;
-    --sidebar-accent-foreground: 220 25% 90%;
-    --sidebar-border: 222 35% 15%;
-    --sidebar-ring: 217 91% 57%;
+    --sidebar-accent: 222 32% 16%;
+    --sidebar-accent-foreground: 216 20% 90%;
+    --sidebar-border: 222 28% 17%;
+    --sidebar-ring: 221 55% 42%;
   }
 
   .dark {
     /* ═══════════════════════════════════════════════════════════
-       DARK MODE: Deep precision
-       True near-black surfaces, no purple tint, crisp blue text
+       DARK MODE: enterprise slate — not pure black, no neon
     ═══════════════════════════════════════════════════════════ */
 
-    --background:      224 44% 4%;    /* #050811 — near-true dark */
-    --foreground:      216 38% 93%;   /* #E4ECFA — cool white */
+    --background:      221 26% 8%;     /* #0F1420 — slate night */
+    --foreground:      216 25% 91%;    /* #E2E7EF */
 
-    --card:            224 38% 8%;    /* #0D1220 — dark card */
-    --card-foreground: 216 38% 93%;
+    --card:            221 24% 11%;    /* #151B2A */
+    --card-foreground: 216 25% 91%;
 
-    --popover:         224 38% 10%;   /* #101828 */
-    --popover-foreground: 216 38% 93%;
+    --popover:         221 24% 12%;
+    --popover-foreground: 216 25% 91%;
 
-    --primary:         217 91% 65%;   /* #60A5FA — blue-400, readable in dark */
-    --primary-foreground: 224 44% 4%;
+    --primary:         218 52% 60%;    /* #6389CC — steel blue, button-safe */
+    --primary-foreground: 0 0% 100%;
 
-    --secondary:       224 34% 13%;   /* #171E2F */
-    --secondary-foreground: 216 28% 78%;
+    --secondary:       220 20% 16%;    /* #212837 */
+    --secondary-foreground: 216 18% 76%;
 
-    --muted:           224 34% 11%;   /* #131827 */
-    --muted-foreground: 220 20% 50%; /* #6A7A9B */
+    --muted:           220 20% 14%;    /* #1C2230 */
+    --muted-foreground: 218 12% 57%;   /* #7C8698 */
 
-    --accent:          217 91% 65%;
-    --accent-foreground: 217 91% 78%;
+    --accent:          218 52% 60%;
+    --accent-foreground: 218 60% 78%;
 
-    --destructive:     4 86% 62%;     /* #EE4848 */
+    --destructive:     0 60% 55%;      /* #D14343 */
     --destructive-foreground: 0 0% 100%;
 
-    --border:          224 34% 15%;   /* #1B2438 */
-    --input:           224 34% 13%;
-    --ring:            217 91% 65%;
+    --border:          220 17% 20%;    /* #2A3140 */
+    --input:           220 20% 16%;
+    --ring:            218 52% 60%;
 
     --shadow-xs:      0 1px 2px rgba(0,0,0,0.35);
-    --shadow-sm:      0 2px 8px rgba(0,0,0,0.45), 0 1px 3px rgba(0,0,0,0.30);
-    --shadow-md:      0 4px 16px rgba(0,0,0,0.55), 0 2px 6px rgba(0,0,0,0.35);
-    --shadow-lg:      0 8px 28px rgba(0,0,0,0.65), 0 4px 10px rgba(0,0,0,0.40);
-    --shadow-xl:      0 16px 48px rgba(0,0,0,0.75), 0 6px 16px rgba(0,0,0,0.50);
-    --shadow-glow:    0 0 0 3px rgba(96,165,250,0.22), 0 0 24px rgba(96,165,250,0.12);
-    --shadow-elevated: 0 20px 48px rgba(0,0,0,0.80), 0 6px 16px rgba(0,0,0,0.55);
+    --shadow-sm:      0 1px 3px rgba(0,0,0,0.40), 0 1px 2px rgba(0,0,0,0.30);
+    --shadow-md:      0 2px 8px rgba(0,0,0,0.45), 0 1px 4px rgba(0,0,0,0.30);
+    --shadow-lg:      0 4px 14px rgba(0,0,0,0.50), 0 2px 6px rgba(0,0,0,0.35);
+    --shadow-xl:      0 8px 24px rgba(0,0,0,0.55), 0 4px 10px rgba(0,0,0,0.40);
+    --shadow-glow:    0 0 0 3px rgba(122,155,216,0.18);
+    --shadow-elevated: 0 12px 32px rgba(0,0,0,0.60), 0 4px 10px rgba(0,0,0,0.45);
 
-    --gradient-primary: linear-gradient(140deg, #7CB9FB 0%, #4F8EF7 100%);
-    --gradient-surface: linear-gradient(160deg, #0D1220 0%, #050811 100%);
-    --gradient-dark:    linear-gradient(140deg, #050811 0%, #0D1220 100%);
+    --gradient-primary: linear-gradient(160deg, #8AA8DE 0%, #6E8FCE 100%);
+    --gradient-surface: linear-gradient(160deg, #151B2A 0%, #0F1420 100%);
+    --gradient-dark:    linear-gradient(160deg, #0F1420 0%, #151B2A 100%);
 
-    --sidebar-background: 224 44% 4%;
-    --sidebar-foreground: 216 38% 90%;
-    --sidebar-primary: 217 91% 65%;
-    --sidebar-primary-foreground: 224 44% 4%;
-    --sidebar-accent: 224 38% 11%;
-    --sidebar-accent-foreground: 216 38% 90%;
-    --sidebar-border: 224 34% 13%;
-    --sidebar-ring: 217 91% 65%;
+    --sidebar-background: 221 26% 8%;
+    --sidebar-foreground: 216 25% 89%;
+    --sidebar-primary: 218 52% 60%;
+    --sidebar-primary-foreground: 221 30% 10%;
+    --sidebar-accent: 220 22% 13%;
+    --sidebar-accent-foreground: 216 25% 89%;
+    --sidebar-border: 220 18% 17%;
+    --sidebar-ring: 218 52% 60%;
   }
 }
 
@@ -133,20 +132,22 @@
   }
 
   html {
-    /* System font stack — SF Pro on Apple, Segoe on Windows, clean everywhere */
-    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Helvetica Neue',
-      'Segoe UI', Arial, sans-serif;
+    /* Inter — the professional ERP/finance standard; system stack fallback */
+    font-family: 'Inter Variable', Inter, system-ui, -apple-system, BlinkMacSystemFont,
+      'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
+    /* cv05/cv11: disambiguated l/1 glyphs — matters for references & codes */
+    font-feature-settings: 'cv05', 'cv11';
   }
 
   body {
     @apply bg-background text-foreground;
   }
 
-  /* Tabular numbers everywhere they're used for data */
-  .font-mono {
+  /* Tabular numbers wherever data is displayed — amounts must align */
+  .font-mono, .tabular-nums, table, .finance-amount {
     font-variant-numeric: tabular-nums;
     font-feature-settings: 'tnum';
   }

@@ -98,7 +98,7 @@ export default function StockReportsPage() {
   const kpis = [
     { icon: Coins, label: 'Valeur du stock (CMUP)', value: fmtMad(totals.value), tone: 'text-primary bg-primary/10' },
     { icon: TrendingUp, label: 'Valeur de vente potentielle', value: fmtMad(totals.potential), tone: 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10' },
-    { icon: BarChart3, label: 'Marge potentielle', value: fmtMad(totals.margin), tone: 'text-violet-600 dark:text-violet-400 bg-violet-500/10' },
+    { icon: BarChart3, label: 'Marge potentielle', value: fmtMad(totals.margin), tone: 'text-primary bg-primary/10' },
     { icon: Moon, label: `Articles dormants (${periodDays}j)`, value: String(totals.dormant), tone: 'text-amber-600 dark:text-amber-400 bg-amber-500/10' },
   ];
 

@@ -293,7 +293,7 @@ export function AIChatWidget({ embedded = false, onClose }: { embedded?: boolean
       {!embedded && !isOpen && (
         <div className="fixed bottom-6 right-6 z-40">
           <button onClick={() => setIsOpen(true)}
-            className="relative flex items-center justify-center w-12 h-12 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+            className="relative flex items-center justify-center w-12 h-12 bg-primary hover:bg-primary/90 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
             title="Assistant IA">
             <Bot className="h-6 w-6" />
           </button>

@@ -36,7 +36,7 @@ export default function ComptabiliteComingSoon() {
         {/* Icon */}
         <div className="
           inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-5
-          bg-gradient-to-br from-violet-500 to-violet-700
+          bg-gradient-to-br bg-primary
           shadow-[0_4px_16px_rgba(124,58,237,0.35)]
         ">
           <BookMarked className="h-8 w-8 text-white" />
@@ -74,8 +74,8 @@ export default function ComptabiliteComingSoon() {
         <div className="divide-y divide-border/40">
           {PLANNED_FEATURES.map(({ icon: Icon, label, desc }) => (
             <div key={label} className="flex items-start gap-4 px-5 py-4">
-              <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-violet-500/10 flex items-center justify-center mt-0.5">
-                <Icon className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+              <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center mt-0.5">
+                <Icon className="h-4 w-4 text-primary" />
               </div>
               <div>
                 <p className="text-sm font-medium text-foreground">{label}</p>

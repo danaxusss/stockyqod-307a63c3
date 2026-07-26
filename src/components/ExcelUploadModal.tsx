@@ -376,10 +376,10 @@ export function ExcelUploadModal({ onClose, onSuccess }: ExcelUploadModalProps) 
           </div>
 
           {/* Price Multipliers Configuration */}
-          <div className="mb-6 p-4 bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 border border-purple-200 dark:border-purple-800 rounded-lg">
+          <div className="mb-6 p-4 bg-secondary/60 border border-border rounded-lg">
             <div className="flex items-center space-x-2 mb-4">
-              <Calculator className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-              <h3 className="text-lg font-semibold text-purple-900 dark:text-purple-100">
+              <Calculator className="h-5 w-5 text-primary" />
+              <h3 className="text-lg font-semibold text-foreground">
                 Configuration des Multiplicateurs de Prix
               </h3>
             </div>
@@ -397,7 +397,7 @@ export function ExcelUploadModal({ onClose, onSuccess }: ExcelUploadModalProps) 
                     step="0.01"
                     min="1.00"
                     max="10.00"
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white dark:bg-slate-700 text-gray-900 dark:text-white"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent bg-white dark:bg-slate-700 text-gray-900 dark:text-white"
                   />
                   <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-sm text-gray-500 dark:text-gray-400">
                     ×
@@ -420,7 +420,7 @@ export function ExcelUploadModal({ onClose, onSuccess }: ExcelUploadModalProps) 
                     step="0.01"
                     min="1.00"
                     max="10.00"
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white dark:bg-slate-700 text-gray-900 dark:text-white"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent bg-white dark:bg-slate-700 text-gray-900 dark:text-white"
                   />
                   <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-sm text-gray-500 dark:text-gray-400">
                     ×

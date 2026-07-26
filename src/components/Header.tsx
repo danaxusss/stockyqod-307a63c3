@@ -173,11 +173,10 @@ export function Header() {
             {/* Status dot + icon */}
             <div className="relative">
               <div className="
-                w-7 h-7 rounded-lg flex items-center justify-center
-                bg-gradient-to-br from-primary to-primary/70
-                shadow-[0_2px_8px_rgba(52,121,240,0.35)]
+                w-7 h-7 rounded-md flex items-center justify-center
+                bg-primary shadow-sm
               ">
-                <Package className="h-3.5 w-3.5 text-white" />
+                <Package className="h-3.5 w-3.5 text-primary-foreground" />
               </div>
               {/* Online/offline indicator */}
               <div className={`

@@ -306,16 +306,16 @@ export default function UserManagementPage() {
     if (user.tasks_only) {
       return user.tasks_role === 'driver'
         ? { label: 'Livreur',    icon: User, cls: 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300' }
-        : { label: 'Technicien', icon: User, cls: 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-800 dark:text-indigo-300' };
+        : { label: 'Technicien', icon: User, cls: 'bg-primary/10 dark:bg-primary/15 text-primary dark:text-primary' };
     }
     const role = user.new_role ||
       (user.is_superadmin ? 'super_admin' : user.is_admin ? 'admin' : user.is_compta ? 'compta' : null);
     switch (role) {
       case 'super_admin':  return { label: 'Super Admin',    icon: Star,       cls: 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300' };
-      case 'admin':        return { label: 'Admin',           icon: Shield,     cls: 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300' };
+      case 'admin':        return { label: 'Admin',           icon: Shield,     cls: 'bg-primary/10 dark:bg-primary/15 text-primary dark:text-primary' };
       case 'manager':      return { label: 'Manager',         icon: GitBranch,  cls: 'bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300' };
       case 'facturation':  return { label: 'Facturation',     icon: DollarSign, cls: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300' };
-      case 'compta':       return { label: 'Compta',          icon: Calculator, cls: 'bg-teal-100 dark:bg-teal-900/30 text-teal-800 dark:text-teal-300' };
+      case 'compta':       return { label: 'Compta',          icon: Calculator, cls: 'bg-sky-100 dark:bg-sky-900/30 text-sky-800 dark:text-sky-300' };
       case 'senior_sales': return { label: 'Sr. Commercial',  icon: UserCheck,  cls: 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300' };
       case 'junior_sales': return { label: 'Jr. Commercial',  icon: User,       cls: 'bg-sky-100 dark:bg-sky-900/30 text-sky-800 dark:text-sky-300' };
       default:            return { label: 'Commercial', icon: User, cls: 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300' };
@@ -380,10 +380,10 @@ export default function UserManagementPage() {
           {[
             { label: 'Total', value: users.length, cls: 'bg-secondary' },
             { label: 'Super Admins', value: users.filter(u => getUserRole(u) === 'super_admin').length, cls: 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300' },
-            { label: 'Admins', value: users.filter(u => getUserRole(u) === 'admin').length, cls: 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300' },
+            { label: 'Admins', value: users.filter(u => getUserRole(u) === 'admin').length, cls: 'bg-primary/10 dark:bg-primary/15 text-primary dark:text-primary' },
             { label: 'Managers', value: users.filter(u => getUserRole(u) === 'manager').length, cls: 'bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300' },
             { label: 'Facturation', value: users.filter(u => getUserRole(u) === 'facturation').length, cls: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300' },
-            { label: 'Compta', value: users.filter(u => getUserRole(u) === 'compta').length, cls: 'bg-teal-100 dark:bg-teal-900/30 text-teal-800 dark:text-teal-300' },
+            { label: 'Compta', value: users.filter(u => getUserRole(u) === 'compta').length, cls: 'bg-sky-100 dark:bg-sky-900/30 text-sky-800 dark:text-sky-300' },
             { label: 'Commerciaux', value: users.filter(u => ['senior_sales','junior_sales'].includes(getUserRole(u))).length, cls: 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300' },
           ].map(({ label, value, cls }) => (
             <span key={label} className={`px-2 py-1 rounded-lg text-xs font-medium ${cls}`}>{value} {label}</span>

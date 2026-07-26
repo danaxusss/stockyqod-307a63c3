@@ -9,9 +9,9 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 
 const TYPE_CONFIG: { type: ImportDocType; label: string; icon: React.ElementType; color: string }[] = [
-  { type: 'clients',  label: 'Clients',   icon: Users,     color: 'text-violet-400 bg-violet-500/10 border-violet-500/30' },
+  { type: 'clients',  label: 'Clients',   icon: Users,     color: 'text-primary bg-primary/10 border-primary/30' },
   { type: 'quote',    label: 'Devis',     icon: FileText,  color: 'text-blue-400 bg-blue-500/10 border-blue-500/30' },
-  { type: 'bl',       label: 'BL',        icon: Truck,     color: 'text-teal-400 bg-teal-500/10 border-teal-500/30' },
+  { type: 'bl',       label: 'BL',        icon: Truck,     color: 'text-sky-400 bg-sky-500/10 border-sky-500/30' },
   { type: 'proforma', label: 'Proforma',  icon: FileText,  color: 'text-amber-400 bg-amber-500/10 border-amber-500/30' },
   { type: 'invoice',  label: 'Facture',   icon: Receipt,   color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30' },
   { type: 'avoir',    label: 'Avoir',     icon: FileX,     color: 'text-rose-400 bg-rose-500/10 border-rose-500/30' },

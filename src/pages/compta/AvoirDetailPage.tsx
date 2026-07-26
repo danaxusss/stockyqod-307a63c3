@@ -121,7 +121,7 @@ export default function AvoirDetailPage() {
           <ArrowLeft className="h-4 w-4 text-muted-foreground" />
         </button>
         <div className="flex-1 min-w-0">
-          <h1 className="text-lg font-bold text-foreground font-mono text-violet-600 dark:text-violet-400">{avoir.quoteNumber}</h1>
+          <h1 className="text-lg font-bold text-foreground font-mono text-primary">{avoir.quoteNumber}</h1>
           <div className="flex items-center gap-2 mt-0.5">
             <span className="text-xs text-muted-foreground">{avoir.customer?.fullName} —</span>
             <input

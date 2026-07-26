@@ -92,8 +92,8 @@ function CircleNav({ items }: { items: NavItem[] }) {
           <Link
             to="/search"
             className="absolute z-20 flex flex-col items-center justify-center gap-1.5 rounded-full
-              bg-gradient-to-br from-primary to-primary/80 text-white
-              shadow-[0_4px_24px_rgba(52,121,240,0.40)] hover:scale-105 transition-transform duration-200"
+              bg-primary text-primary-foreground
+              shadow-lg hover:scale-[1.03] transition-transform duration-200"
             style={{ width: r1 * 2 - 8, height: r1 * 2 - 8, left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}
           >
             <Search className="h-5 w-5" />
@@ -135,7 +135,7 @@ function CircleNav({ items }: { items: NavItem[] }) {
       {/* Mobile: 2-col grid */}
       <div className="grid grid-cols-2 gap-2.5 md:hidden">
         <Link to="/search"
-          className="col-span-2 flex items-center gap-3 p-4 rounded-xl bg-gradient-to-r from-primary to-primary/80
+          className="col-span-2 flex items-center gap-3 p-4 rounded-xl bg-primary
             text-white shadow-lg hover:shadow-primary/30 hover:-translate-y-0.5 transition-all duration-200">
           <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
             <Search className="h-5 w-5" />
@@ -185,7 +185,7 @@ function DocumentPipeline({ items }: { items: PipelineItem[] }) {
                   transition-colors group relative overflow-hidden">
                 {/* Subtle gradient top bar */}
                 <div className={`absolute top-0 left-0 right-0 h-0.5 ${item.gradient}`} />
-                <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${item.gradient} flex items-center justify-center
+                <div className={`w-10 h-10 rounded-xl ${item.gradient} flex items-center justify-center
                   shadow-sm group-hover:scale-110 transition-transform duration-200`}>
                   <Icon className="h-4.5 w-4.5 text-white h-[18px] w-[18px]" />
                 </div>
@@ -212,8 +212,8 @@ function DocumentPipeline({ items }: { items: PipelineItem[] }) {
             <Link key={item.to} to={item.to}
               className="flex items-center gap-2.5 p-3 rounded-xl bg-card border border-border/50 shadow-sm
                 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 overflow-hidden relative">
-              <div className={`absolute top-0 left-0 bottom-0 w-1 bg-gradient-to-b ${item.gradient}`} />
-              <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${item.gradient} flex items-center justify-center shrink-0 ml-1`}>
+              <div className={`absolute top-0 left-0 bottom-0 w-1 ${item.gradient}`} />
+              <div className={`w-9 h-9 rounded-xl ${item.gradient} flex items-center justify-center shrink-0 ml-1`}>
                 <Icon className="h-4 w-4 text-white" />
               </div>
               <div>
@@ -388,24 +388,24 @@ export function Home() {
 
   /* ── Data ── */
   const navItems: NavItem[] = [
-    { to: '/products',  icon: FolderOpen,   label: 'Produits',        sub: 'Parcourir',  accent: 'bg-indigo-500',  color: '#6366f1' },
-    { to: '/clients',   icon: Users,         label: 'Clients',        sub: 'Gestion',    accent: 'bg-sky-500',     color: '#0ea5e9' },
-    { to: '/sheets',    icon: FileText,      label: 'Fiches',         sub: 'Documents',  accent: 'bg-teal-500',    color: '#14b8a6' },
-    { to: '/photos',    icon: Images,        label: 'Galerie',        sub: 'Photos',     accent: 'bg-pink-500',    color: '#ec4899' },
+    { to: '/products',  icon: FolderOpen,   label: 'Produits',        sub: 'Parcourir',  accent: 'bg-blue-800',    color: '#1e40af' },
+    { to: '/clients',   icon: Users,         label: 'Clients',        sub: 'Gestion',    accent: 'bg-sky-700',     color: '#0369a1' },
+    { to: '/sheets',    icon: FileText,      label: 'Fiches',         sub: 'Documents',  accent: 'bg-sky-800',    color: '#0f766e' },
+    { to: '/photos',    icon: Images,        label: 'Galerie',        sub: 'Photos',     accent: 'bg-slate-600',   color: '#475569' },
     ...(canCreateQuote() ? [
-      { to: '/quote-cart',     icon: ShoppingCart, label: 'Nouveau Devis', sub: 'Créer',      accent: 'bg-violet-500',  color: '#8b5cf6' },
-      { to: '/quotes-history', icon: FileText,     label: 'Devis',         sub: 'Historique', accent: 'bg-emerald-500', color: '#10b981' },
+      { to: '/quote-cart',     icon: ShoppingCart, label: 'Nouveau Devis', sub: 'Créer',      accent: 'bg-primary',     color: '#2b4c92' },
+      { to: '/quotes-history', icon: FileText,     label: 'Devis',         sub: 'Historique', accent: 'bg-emerald-700', color: '#047857' },
     ] : []),
   ];
 
   const pipelineItems: PipelineItem[] = [
-    { to: '/compta/bons-commande', icon: ClipboardList, label: 'BC',       sub: 'Commande',  gradient: 'from-blue-500 to-blue-600' },
-    { to: '/compta/bls',           icon: Truck,         label: 'BL',       sub: 'Livraison', gradient: 'from-teal-500 to-teal-600' },
-    { to: '/compta/proformas',     icon: FileText,      label: 'Proforma', sub: 'Devis pro', gradient: 'from-emerald-500 to-emerald-600' },
-    { to: '/compta/invoices',      icon: Receipt,       label: 'Facture',  sub: 'Facturer',  gradient: 'from-indigo-500 to-indigo-600' },
-    { to: '/compta/avoirs',        icon: FileX,         label: 'Avoir',    sub: 'Crédit',    gradient: 'from-rose-500 to-rose-600' },
-    { to: '/compta/returns',       icon: RotateCcw,     label: 'Retour',   sub: 'Gestion',   gradient: 'from-amber-500 to-amber-600' },
-    { to: '/compta/clients',       icon: Calculator,    label: 'Clients',  sub: 'Financier', gradient: 'from-violet-500 to-violet-600' },
+    { to: '/compta/bons-commande', icon: ClipboardList, label: 'BC',       sub: 'Commande',  gradient: 'bg-blue-800' },
+    { to: '/compta/bls',           icon: Truck,         label: 'BL',       sub: 'Livraison', gradient: 'bg-sky-700' },
+    { to: '/compta/proformas',     icon: FileText,      label: 'Proforma', sub: 'Devis pro', gradient: 'bg-emerald-700' },
+    { to: '/compta/invoices',      icon: Receipt,       label: 'Facture',  sub: 'Facturer',  gradient: 'bg-slate-700' },
+    { to: '/compta/avoirs',        icon: FileX,         label: 'Avoir',    sub: 'Crédit',    gradient: 'bg-rose-700' },
+    { to: '/compta/returns',       icon: RotateCcw,     label: 'Retour',   sub: 'Gestion',   gradient: 'bg-amber-600' },
+    { to: '/compta/clients',       icon: Calculator,    label: 'Clients',  sub: 'Financier', gradient: 'bg-cyan-800' },
   ];
 
   return (
@@ -414,10 +414,10 @@ export function Home() {
       {/* ── Stats ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
         <StatCard icon={Boxes}       accent="bg-primary"      label="Produits"     value={formatNumber(state.products.length)} sub="références actives" />
-        <StatCard icon={Package}     accent="bg-emerald-500"  label="Stock Total"  value={formatNumber(totalStock)}            sub="toutes zones" />
-        <StatCard icon={BarChart3}   accent="bg-indigo-500"   label="Emplacements" value={allLocations.size.toString()}        sub="zones actives" />
+        <StatCard icon={Package}     accent="bg-emerald-700"  label="Stock Total"  value={formatNumber(totalStock)}            sub="toutes zones" />
+        <StatCard icon={BarChart3}   accent="bg-sky-700"   label="Emplacements" value={allLocations.size.toString()}        sub="zones actives" />
         <StatCard icon={syncInfo.isOnline ? Wifi : WifiOff}
-                  accent={syncInfo.isOnline ? 'bg-teal-500' : 'bg-muted-foreground'}
+                  accent={syncInfo.isOnline ? 'bg-emerald-700' : 'bg-muted-foreground'}
                   label="Connexion"
                   value={syncInfo.isOnline ? 'En ligne' : 'Hors ligne'}
                   sub={syncInfo.isOnline ? 'Base synchronisée' : 'Mode local'} />
@@ -443,7 +443,7 @@ export function Home() {
           <SectionLabel>Administration</SectionLabel>
           <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
             <AdminCard onClick={handleSync} disabled={isSyncing || !state.isOnline} icon={RefreshCw} accent="bg-orange-500" label="Synchroniser" sub={isSyncing ? 'En cours...' : 'Serveur'} />
-            <AdminCard onClick={() => setShowUploadModal(true)} icon={Upload}   accent="bg-violet-500" label="Import Excel"  sub="Télécharger" />
+            <AdminCard onClick={() => setShowUploadModal(true)} icon={Upload}   accent="bg-primary" label="Import Excel"  sub="Télécharger" />
             <AdminCard to="/admin/statistics" icon={BarChart3}  accent="bg-primary"      label="Statistiques" sub="Données" />
             <AdminCard to="/admin/settings"   icon={Settings}   accent="bg-slate-500"    label="Paramètres"   sub="Config" />
             <AdminCard to="/admin/backup"     icon={Database}   accent="bg-rose-700"     label="Sauvegarde"   sub="Backup" />

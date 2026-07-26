@@ -140,7 +140,7 @@ export function PublicSharePage() {
                   <span className="px-2 py-0.5 bg-primary/10 text-primary text-xs rounded-lg">{sheet.manufacturer}</span>
                 )}
                 {sheet.category && (
-                  <span className="px-2 py-0.5 bg-violet-500/10 text-violet-500 text-xs rounded-lg">{sheet.category}</span>
+                  <span className="px-2 py-0.5 bg-primary/10 text-primary text-xs rounded-lg">{sheet.category}</span>
                 )}
                 {sheet.sector && (
                   <span className="px-2 py-0.5 bg-amber-500/10 text-amber-600 text-xs rounded-lg">{sheet.sector}</span>

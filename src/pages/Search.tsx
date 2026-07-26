@@ -360,7 +360,7 @@ export function SearchPage() {
                           </Link>
                         )}
                         {(productPhotoCounts[product.barcode] || 0) > 0 && (
-                          <Link to={`/photos?barcode=${encodeURIComponent(product.barcode)}`} onClick={(e) => e.stopPropagation()} title={`${productPhotoCounts[product.barcode]} photo(s)`} className="shrink-0 text-violet-500 hover:text-violet-400 transition-colors">
+                          <Link to={`/photos?barcode=${encodeURIComponent(product.barcode)}`} onClick={(e) => e.stopPropagation()} title={`${productPhotoCounts[product.barcode]} photo(s)`} className="shrink-0 text-primary hover:text-primary transition-colors">
                             <Images className="h-3.5 w-3.5" />
                           </Link>
                         )}
