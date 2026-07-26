@@ -398,7 +398,7 @@ export function QuotesHistoryPage() {
                                   disabled={isCreatingBL === quote.id || quote.status === 'final' || (quote.document_type && quote.document_type !== 'quote')}
                                   className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent text-foreground disabled:opacity-40"
                                 >
-                                  {isCreatingBL === quote.id ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Truck className="h-3.5 w-3.5 text-teal-500" />}Créer un BL
+                                  {isCreatingBL === quote.id ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Truck className="h-3.5 w-3.5 text-sky-600" />}Créer un BL
                                 </button>
                               )}
                               <button
@@ -453,7 +453,7 @@ export function QuotesHistoryPage() {
             { icon: FileText, label: 'Total Devis', value: filteredQuotes.length, color: 'text-primary bg-primary/10' },
             { icon: DollarSign, label: 'Valeur Totale', value: `${formatCurrency(filteredQuotes.reduce((s,q) => s + q.totalAmount, 0))} Dh`, color: 'text-emerald-400 bg-emerald-500/10' },
             { icon: Edit, label: 'En attente', value: filteredQuotes.filter(q => q.status === 'draft').length, color: 'text-amber-400 bg-amber-500/10' },
-            { icon: Check, label: 'Confirmés', value: filteredQuotes.filter(q => q.status === 'final').length, color: 'text-violet-400 bg-violet-500/10' },
+            { icon: Check, label: 'Confirmés', value: filteredQuotes.filter(q => q.status === 'final').length, color: 'text-primary bg-primary/10' },
           ].map(({ icon: Icon, label, value, color }) => (
             <div key={label} className="glass rounded-lg p-3">
               <div className="flex items-center space-x-2">

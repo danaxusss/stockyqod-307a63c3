@@ -75,8 +75,8 @@ export function Layout({ children }: LayoutProps) {
             <Menu className="h-5 w-5" />
           </button>
           <div className="flex items-center gap-1.5">
-            <div className="w-6 h-6 rounded-md bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center">
-              <Package className="h-3.5 w-3.5 text-white" />
+            <div className="w-6 h-6 rounded-md bg-primary flex items-center justify-center">
+              <Package className="h-3.5 w-3.5 text-primary-foreground" />
             </div>
             <span className="text-sm font-bold text-foreground">Stocky</span>
           </div>

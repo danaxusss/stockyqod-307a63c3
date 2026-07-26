@@ -464,7 +464,7 @@ export default function InvoiceDetailPage() {
             {(isSuperAdmin || isCompta) && invoice.status === 'final' && (
               <button
                 onClick={() => { setAvoirReason(''); setShowAvoirModal(true); }}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs bg-violet-600 hover:bg-violet-700 text-white rounded-lg"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs bg-primary hover:bg-primary/90 text-white rounded-lg"
                 title="Créer un avoir (note de crédit)"
               >
                 <X className="h-3 w-3" />Avoir
@@ -954,7 +954,7 @@ export default function InvoiceDetailPage() {
           <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-sm p-5 space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
-                <X className="h-4 w-4 text-violet-500" />Créer un avoir
+                <X className="h-4 w-4 text-primary" />Créer un avoir
               </h2>
               <button onClick={() => setShowAvoirModal(false)} className="p-1 rounded hover:bg-secondary text-muted-foreground"><X className="h-4 w-4" /></button>
             </div>
@@ -986,7 +986,7 @@ export default function InvoiceDetailPage() {
                   }
                 }}
                 disabled={avoirLoading}
-                className="flex-1 px-3 py-2 text-sm bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded-lg"
+                className="flex-1 px-3 py-2 text-sm bg-primary hover:bg-primary/90 disabled:opacity-50 text-white rounded-lg"
               >
                 {avoirLoading ? 'Création...' : 'Créer l\'avoir'}
               </button>

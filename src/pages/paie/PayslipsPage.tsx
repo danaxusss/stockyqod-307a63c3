@@ -199,7 +199,7 @@ export default function PayslipsPage() {
                     className="hover:bg-accent/20 cursor-pointer"
                     onClick={() => navigate(`/paie/bulletins/${p.id}`)}
                   >
-                    <td className="px-4 py-2.5 font-mono font-semibold text-violet-600 dark:text-violet-400">{p.payslip_number}</td>
+                    <td className="px-4 py-2.5 font-mono font-semibold text-primary">{p.payslip_number}</td>
                     <td className="px-4 py-2.5 font-medium text-foreground">{(p.employee as unknown as { full_name: string })?.full_name || '—'}</td>
                     <td className="px-4 py-2.5 text-muted-foreground">{MONTHS[p.period_month - 1]} {p.period_year}</td>
                     <td className="px-4 py-2.5 text-right font-mono text-foreground">{fmt(p.total_gross)} MAD</td>

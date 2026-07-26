@@ -199,8 +199,8 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps = {}
           className={`flex items-center gap-2 flex-1 min-w-0 hover:opacity-80 transition-opacity ${!showExpanded ? 'justify-center' : ''}`}
         >
           <div className="relative shrink-0">
-            <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-gradient-to-br from-primary to-primary/70 shadow-[0_2px_8px_rgba(52,121,240,0.35)]">
-              <Package className="h-3.5 w-3.5 text-white" />
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-primary shadow-sm">
+              <Package className="h-3.5 w-3.5 text-primary-foreground" />
             </div>
             <div className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border-[1.5px] border-card ${isOnline ? 'bg-emerald-500' : 'bg-red-500'}`} />
           </div>

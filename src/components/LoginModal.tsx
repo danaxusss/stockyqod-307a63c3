@@ -136,7 +136,7 @@ export function LoginModal({ roleType, isInitialGate = false, onClose, onLoginSu
     <div className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-md w-full overflow-hidden" style={{ boxShadow: 'var(--shadow-elevated)' }}>
         {/* Header gradient bar */}
-        <div className="h-1 w-full bg-gradient-to-r from-primary to-primary/60" />
+        <div className="h-1 w-full bg-primary" />
         
         <div className="flex items-center justify-between p-6 border-b border-border">
           <div className="flex items-center space-x-3">

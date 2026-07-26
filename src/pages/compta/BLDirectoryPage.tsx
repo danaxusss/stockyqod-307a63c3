@@ -176,7 +176,7 @@ export default function BLDirectoryPage() {
       <div className="glass rounded-xl shadow-lg p-4">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center space-x-2.5">
-            <div className="p-2 bg-teal-600 rounded-lg">
+            <div className="p-2 bg-sky-700 rounded-lg">
               <Truck className="h-4 w-4 text-white" />
             </div>
             <div>

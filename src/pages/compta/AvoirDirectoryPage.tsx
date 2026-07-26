@@ -156,7 +156,7 @@ export default function AvoirDirectoryPage() {
       <div className="glass rounded-xl shadow-lg p-4">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center space-x-2.5">
-            <div className="p-2 bg-violet-600 rounded-lg">
+            <div className="p-2 bg-primary rounded-lg">
               <FileX className="h-4 w-4 text-white" />
             </div>
             <div>
@@ -179,7 +179,7 @@ export default function AvoirDirectoryPage() {
               </select>
             )}
             <button onClick={openCreateModal}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-violet-600 hover:bg-violet-700 text-white rounded-lg transition-colors">
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-primary hover:bg-primary/90 text-white rounded-lg transition-colors">
               <Plus className="h-3.5 w-3.5" /><span>Nouvel avoir</span>
             </button>
           </div>
@@ -213,7 +213,7 @@ export default function AvoirDirectoryPage() {
                 {paginated.map(av => (
                   <tr key={av.id} className="hover:bg-accent/30 transition-colors">
                     <td className="px-3 py-2.5">
-                      <Link to={`/compta/avoirs/${av.id}`} className="text-xs font-mono font-semibold text-violet-600 dark:text-violet-400 hover:underline">{av.quoteNumber}</Link>
+                      <Link to={`/compta/avoirs/${av.id}`} className="text-xs font-mono font-semibold text-primary hover:underline">{av.quoteNumber}</Link>
                     </td>
                     <td className="px-3 py-2.5">
                       {(() => { const c = (av.customer as any)?.clientCode || (av.customer as any)?.client_code || ''; return c ? <span className="text-[10px] font-mono bg-blue-500/10 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded">{c}</span> : <span className="text-[10px] text-muted-foreground">—</span>; })()}
@@ -270,7 +270,7 @@ export default function AvoirDirectoryPage() {
           <div className="glass rounded-xl shadow-2xl w-full max-w-md p-5 space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-base font-bold text-foreground flex items-center gap-2">
-                <FileX className="h-4 w-4 text-violet-500" />Nouvel avoir
+                <FileX className="h-4 w-4 text-primary" />Nouvel avoir
               </h2>
               <button onClick={() => setShowCreateModal(false)} className="p-1 rounded hover:bg-secondary text-muted-foreground"><X className="h-4 w-4" /></button>
             </div>
@@ -316,7 +316,7 @@ export default function AvoirDirectoryPage() {
               <button onClick={() => setShowCreateModal(false)}
                 className="flex-1 px-3 py-2 text-sm border border-input rounded-lg hover:bg-accent text-foreground">Annuler</button>
               <button onClick={handleCreate} disabled={isCreating}
-                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded-lg">
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm bg-primary hover:bg-primary/90 disabled:opacity-50 text-white rounded-lg">
                 {isCreating ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
                 <span>{isCreating ? 'Création...' : 'Créer l\'avoir'}</span>
               </button>

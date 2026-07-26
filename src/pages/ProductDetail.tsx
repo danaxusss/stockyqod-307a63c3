@@ -266,12 +266,12 @@ export function ProductDetail() {
   const hasLinkedSheets = linkedSheets.length > 0;
 
   const colorSchemes = [
-    { bg: 'bg-violet-500/10', text: 'text-violet-400', textDark: 'text-violet-300' },
+    { bg: 'bg-primary/10', text: 'text-primary', textDark: 'text-primary' },
     { bg: 'bg-orange-500/10', text: 'text-orange-400', textDark: 'text-orange-300' },
     { bg: 'bg-rose-500/10', text: 'text-rose-400', textDark: 'text-rose-300' },
     { bg: 'bg-amber-500/10', text: 'text-amber-400', textDark: 'text-amber-300' },
     { bg: 'bg-pink-500/10', text: 'text-pink-400', textDark: 'text-pink-300' },
-    { bg: 'bg-indigo-500/10', text: 'text-indigo-400', textDark: 'text-indigo-300' },
+    { bg: 'bg-primary/10', text: 'text-primary', textDark: 'text-primary' },
   ];
 
   return (
@@ -359,7 +359,7 @@ export function ProductDetail() {
                 <button onClick={handleCopy} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm transition-colors">
                   <Copy className="h-3.5 w-3.5" /><span>Copier</span>
                 </button>
-                <button onClick={handleAddToCart} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-sm transition-colors">
+                <button onClick={handleAddToCart} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg text-sm transition-colors">
                   <Plus className="h-3.5 w-3.5" /><span>Ajouter au Panier</span>
                 </button>
               </div>
@@ -404,25 +404,25 @@ export function ProductDetail() {
                   <DollarSign className="h-4 w-4 text-emerald-400 shrink-0" />
                   <div><p className="text-[11px] text-emerald-400">Normal</p><p className="text-sm font-bold text-foreground">{product.price.toFixed(2)} Dh</p></div>
                 </div>
-                <div className="flex items-center gap-2 p-2.5 bg-violet-500/10 rounded-lg">
-                  <Users className="h-4 w-4 text-violet-400 shrink-0" />
-                  <div><p className="text-[11px] text-violet-400">Revendeur</p><p className="text-sm font-bold text-foreground">{product.reseller_price.toFixed(2)} Dh</p></div>
+                <div className="flex items-center gap-2 p-2.5 bg-primary/10 rounded-lg">
+                  <Users className="h-4 w-4 text-primary shrink-0" />
+                  <div><p className="text-[11px] text-primary">Revendeur</p><p className="text-sm font-bold text-foreground">{product.reseller_price.toFixed(2)} Dh</p></div>
                 </div>
                 <div className="flex items-center gap-2 p-2.5 bg-orange-500/10 rounded-lg">
                   <ShoppingCart className="h-4 w-4 text-orange-400 shrink-0" />
                   <div><p className="text-[11px] text-orange-400">Achat</p><p className="text-sm font-bold text-foreground">{product.buyprice.toFixed(2)} Dh</p></div>
                 </div>
-                <div className="flex items-center gap-2 p-2.5 bg-indigo-500/10 rounded-lg">
-                  <TrendingUp className="h-4 w-4 text-indigo-400 shrink-0" />
-                  <div><p className="text-[11px] text-indigo-400">Marge Normale</p><p className="text-sm font-bold text-foreground">{normalMargin.toFixed(1)}%</p></div>
+                <div className="flex items-center gap-2 p-2.5 bg-primary/10 rounded-lg">
+                  <TrendingUp className="h-4 w-4 text-primary shrink-0" />
+                  <div><p className="text-[11px] text-primary">Marge Normale</p><p className="text-sm font-bold text-foreground">{normalMargin.toFixed(1)}%</p></div>
                 </div>
                 <div className="flex items-center gap-2 p-2.5 bg-rose-500/10 rounded-lg">
                   <TrendingUp className="h-4 w-4 text-rose-400 shrink-0" />
                   <div><p className="text-[11px] text-rose-400">Marge Revendeur</p><p className="text-sm font-bold text-foreground">{resellerMargin.toFixed(1)}%</p></div>
                 </div>
-                <div className="flex items-center gap-2 p-2.5 bg-teal-500/10 rounded-lg">
-                  <Building className="h-4 w-4 text-teal-400 shrink-0" />
-                  <div><p className="text-[11px] text-teal-400">Fournisseur</p><p className="text-sm font-bold text-foreground truncate">{product.provider || '—'}</p></div>
+                <div className="flex items-center gap-2 p-2.5 bg-sky-500/10 rounded-lg">
+                  <Building className="h-4 w-4 text-sky-400 shrink-0" />
+                  <div><p className="text-[11px] text-sky-400">Fournisseur</p><p className="text-sm font-bold text-foreground truncate">{product.provider || '—'}</p></div>
                 </div>
               </div>
             </div>
@@ -499,7 +499,7 @@ export function ProductDetail() {
             <div className="mb-5">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
-                  <Images className="h-4 w-4 text-violet-500" /> Photos ({linkedPhotos.length})
+                  <Images className="h-4 w-4 text-primary" /> Photos ({linkedPhotos.length})
                 </h3>
                 <a href={`/photos?barcode=${encodeURIComponent(product.barcode)}`} className="text-xs text-primary hover:underline">
                   Voir tout

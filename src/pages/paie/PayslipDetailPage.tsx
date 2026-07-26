@@ -173,7 +173,7 @@ export default function PayslipDetailPage() {
       <div className="flex items-center gap-2 flex-wrap">
         <button onClick={() => navigate('/paie/bulletins')} className="p-1.5 hover:bg-accent rounded-lg"><ArrowLeft className="h-4 w-4 text-muted-foreground" /></button>
         <div className="flex-1 min-w-0">
-          <h1 className="text-lg font-bold font-mono text-violet-600 dark:text-violet-400">{payslip.payslip_number}</h1>
+          <h1 className="text-lg font-bold font-mono text-primary">{payslip.payslip_number}</h1>
           <p className="text-xs text-muted-foreground">{emp?.full_name} — {MONTHS[payslip.period_month - 1]} {payslip.period_year}{locked ? ' · verrouillé' : ''}</p>
         </div>
         {dirty && <span className="text-[10px] text-amber-500 font-medium">Non sauvegardé</span>}

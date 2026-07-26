@@ -68,7 +68,7 @@ export default function StockDashboardPage() {
     { icon: Boxes, label: 'Réf. en stock', value: fmt(stats.skuInStock), tone: 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10' },
     { icon: AlertTriangle, label: 'Sous le seuil', value: fmt(stats.lowStock.length), tone: 'text-amber-600 dark:text-amber-400 bg-amber-500/10' },
     { icon: Package, label: 'Ruptures', value: fmt(stats.outOfStock), tone: 'text-red-600 dark:text-red-400 bg-red-500/10' },
-    { icon: ArrowLeftRight, label: 'Mouvements aujourd\'hui', value: fmt(stats.todayMoves), tone: 'text-violet-600 dark:text-violet-400 bg-violet-500/10' },
+    { icon: ArrowLeftRight, label: 'Mouvements aujourd\'hui', value: fmt(stats.todayMoves), tone: 'text-primary bg-primary/10' },
   ];
 
   return (

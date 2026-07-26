@@ -135,7 +135,7 @@ export default function ClientFinancialPage() {
       <div className="glass rounded-xl shadow-lg p-4">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center space-x-2.5">
-            <div className="p-2 bg-violet-600 rounded-lg">
+            <div className="p-2 bg-primary rounded-lg">
               <Calculator className="h-4 w-4 text-white" />
             </div>
             <div>

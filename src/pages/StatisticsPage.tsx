@@ -339,12 +339,12 @@ export function StatisticsPage() {
         {quoteStats && (
           <>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-              <div className="bg-purple-50 dark:bg-purple-900/20 p-3 rounded-lg">
+              <div className="bg-primary/10 p-3 rounded-lg">
                 <div className="flex items-center space-x-2">
-                  <FileText className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                  <FileText className="h-5 w-5 text-primary" />
                   <div>
-                    <p className="text-[11px] text-purple-600 dark:text-purple-400">Total Devis</p>
-                    <p className="text-lg font-bold text-purple-900 dark:text-purple-100">{formatNumber(quoteStats.totalQuotes)}</p>
+                    <p className="text-[11px] text-primary">Total Devis</p>
+                    <p className="text-lg font-bold text-foreground dark:text-foreground">{formatNumber(quoteStats.totalQuotes)}</p>
                   </div>
                 </div>
               </div>
@@ -357,12 +357,12 @@ export function StatisticsPage() {
                   </div>
                 </div>
               </div>
-              <div className="bg-indigo-50 dark:bg-indigo-900/20 p-3 rounded-lg">
+              <div className="bg-primary/10 p-3 rounded-lg">
                 <div className="flex items-center space-x-2">
-                  <TrendingUp className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+                  <TrendingUp className="h-5 w-5 text-primary" />
                   <div>
-                    <p className="text-[11px] text-indigo-600 dark:text-indigo-400">Moy.</p>
-                    <p className="text-lg font-bold text-indigo-900 dark:text-indigo-100">{formatCurrency(quoteStats.averageQuoteValue)} Dh</p>
+                    <p className="text-[11px] text-primary">Moy.</p>
+                    <p className="text-lg font-bold text-foreground dark:text-foreground">{formatCurrency(quoteStats.averageQuoteValue)} Dh</p>
                   </div>
                 </div>
               </div>
@@ -458,12 +458,12 @@ export function StatisticsPage() {
               </div>
             </div>
           </div>
-          <div className="bg-purple-50 dark:bg-purple-900/20 p-3 rounded-lg">
+          <div className="bg-primary/10 p-3 rounded-lg">
             <div className="flex items-center space-x-2">
-              <Award className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+              <Award className="h-5 w-5 text-primary" />
               <div>
-                <p className="text-[11px] text-purple-600 dark:text-purple-400">Admins</p>
-                <p className="text-lg font-bold text-purple-900 dark:text-purple-100">{formatNumber(users.filter(u => u.is_admin).length)}</p>
+                <p className="text-[11px] text-primary">Admins</p>
+                <p className="text-lg font-bold text-foreground dark:text-foreground">{formatNumber(users.filter(u => u.is_admin).length)}</p>
               </div>
             </div>
           </div>

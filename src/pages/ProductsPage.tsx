@@ -248,8 +248,8 @@ export default function ProductsPage() {
                               )}
                               {hasPhotos && (
                                 <button onClick={() => navigate(`/photos?barcode=${encodeURIComponent(product.barcode)}`)} title={`${photoCounts[product.barcode]} photo(s)`}
-                                  className="p-0.5 hover:bg-violet-500/10 rounded transition-colors">
-                                  <Images className="h-3 w-3 text-violet-500 shrink-0" />
+                                  className="p-0.5 hover:bg-primary/10 rounded transition-colors">
+                                  <Images className="h-3 w-3 text-primary shrink-0" />
                                 </button>
                               )}
                             </div>
