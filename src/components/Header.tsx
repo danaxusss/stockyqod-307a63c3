@@ -250,6 +250,7 @@ export function Header() {
                 { to: '/products', icon: ShoppingBag, label: 'Produits' },
                 { to: '/clients', icon: UserCheck, label: 'Clients' },
                 { to: '/sheets', icon: BookOpen, label: 'Fiches Techniques' },
+                { to: '/catalogue-pdf', icon: BookMarked, label: 'Catalogue PDF' },
               ]}
             />
 
