@@ -71,11 +71,12 @@ export default function CatalogueImportPage() {
         <div className="flex items-start gap-3">
           <div className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10 shrink-0"><Database className="h-5 w-5 text-primary" /></div>
           <div className="flex-1">
-            <h2 className="text-sm font-semibold text-foreground">1. Familles & produits</h2>
+            <h2 className="text-sm font-semibold text-foreground">1. Familles, produits & photos</h2>
             <p className="text-xs text-muted-foreground mt-0.5 mb-3">
-              Les données du catalogue (2 705 produits, 642 familles) sont embarquées dans l'application.
-              Les références déjà présentes dans Stocky gardent leur prix et leur nom — seules la famille
-              et les métadonnées catalogue sont attachées. Relançable sans doublons.
+              Les données du catalogue (2 705 produits, 642 familles) <b>et les photos</b> sont embarquées
+              dans l'application — un seul clic suffit. Les références déjà présentes dans Stocky gardent
+              leur prix et leur nom — seules la famille, la photo et les métadonnées catalogue sont
+              attachées. Relançable sans doublons.
             </p>
             {dataReport ? (
               <div className="text-xs bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 rounded-md px-3 py-2 inline-flex items-center gap-1.5">
@@ -97,11 +98,12 @@ export default function CatalogueImportPage() {
         <div className="flex items-start gap-3">
           <div className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10 shrink-0"><Images className="h-5 w-5 text-primary" /></div>
           <div className="flex-1">
-            <h2 className="text-sm font-semibold text-foreground">2. Photos</h2>
+            <h2 className="text-sm font-semibold text-foreground">2. Photos supplémentaires <span className="font-normal text-muted-foreground">(optionnel)</span></h2>
             <p className="text-xs text-muted-foreground mt-0.5 mb-3">
-              Sélectionnez le dossier <code className="px-1 rounded bg-secondary">images/</code> de l'outil
-              catalogue-pm (≈ 1 700 fichiers, 7 Mo). Chaque photo est associée automatiquement à son produit
-              puis envoyée dans le stockage. À lancer après l'étape 1.
+              Les ~1 700 photos du catalogue sont déjà incluses et liées par l'étape 1 — <b>rien à faire ici</b>.
+              Ce bouton sert uniquement à importer des photos additionnelles depuis un dossier local
+              (fichiers nommés par référence, ex. <code className="px-1 rounded bg-secondary">BRP-YL.jpg</code>) ;
+              elles sont envoyées dans le stockage et remplacent la photo embarquée.
             </p>
             <input ref={folderRef} type="file" multiple className="hidden"
               // @ts-expect-error non-standard folder-picker attribute
