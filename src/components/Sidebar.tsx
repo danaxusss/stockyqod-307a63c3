@@ -108,6 +108,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps = {}
         { to: '/clients', icon: UserCheck, label: 'Clients' },
         { to: '/sheets', icon: BookOpen, label: 'Fiches Techniques' },
         { to: '/photos', icon: Images, label: 'Galerie Photos' },
+        { to: '/catalogue-pdf', icon: BookMarked, label: 'Catalogue PDF' },
       ],
     },
     ...(canCreateQuote() ? [{
