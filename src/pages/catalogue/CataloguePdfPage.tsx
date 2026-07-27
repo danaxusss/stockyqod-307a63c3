@@ -15,6 +15,58 @@ function fmt(n: number) { return new Intl.NumberFormat('fr-FR', { minimumFractio
 type VisFilter = 'all' | 'visible' | 'hidden' | 'nophoto';
 const PAGE_SIZE = 50;
 
+/** Prominent one-click initialisation when the catalogue is empty. */
+function SeedImportBanner({ onDone }: { onDone: () => void }) {
+  const { showToast } = useToast();
+  const [state, setState] = useState<{ msg: string; pct: number } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const run = async () => {
+    setError(null);
+    setState({ msg: 'Chargement des données…', pct: 0 });
+    try {
+      const seed = (await import('../../data/cataloguePmSeed.json')).default as any;
+      const report = await CatalogService.importSeed(seed, (msg, pct) => setState({ msg, pct }));
+      showToast({ type: 'success', title: 'Catalogue initialisé', message: `${report.familiesCreated} familles · ${report.productsMatched} produits liés · ${report.productsCreated} créés` });
+      onDone();
+    } catch (e: any) {
+      const msg = e?.message || String(e);
+      setError(msg);
+      showToast({ type: 'error', title: 'Import échoué', message: msg });
+    } finally { setState(null); }
+  };
+
+  return (
+    <div className="mb-4 bg-primary/5 border border-primary/25 rounded-lg p-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <div className="text-sm font-semibold text-foreground">Catalogue non initialisé</div>
+          <p className="text-xs text-muted-foreground mt-0.5 max-w-xl">
+            Importez en un clic les <b>642 familles</b>, liez les <b>2 705 produits</b> (vos prix et noms
+            Stocky sont conservés) et attachez les <b>photos embarquées</b>. Relançable sans doublons.
+          </p>
+        </div>
+        <button onClick={run} disabled={!!state}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-60">
+          {state ? <Loader className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+          Importer maintenant
+        </button>
+      </div>
+      {state && (
+        <div className="mt-3">
+          <div className="flex justify-between text-xs mb-1"><span className="text-muted-foreground">{state.msg}</span><span className="tabular-nums">{state.pct}%</span></div>
+          <div className="h-1.5 bg-secondary rounded-full overflow-hidden"><div className="h-full bg-primary transition-all" style={{ width: `${state.pct}%` }} /></div>
+        </div>
+      )}
+      {error && (
+        <div className="mt-3 text-xs bg-destructive/10 text-destructive rounded-md px-3 py-2 font-mono break-all">
+          {error}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function CataloguePdfPage() {
   const { isAdmin, isSuperAdmin } = useAuth();
   const { showToast } = useToast();
@@ -208,6 +260,11 @@ export default function CataloguePdfPage() {
           <div className="flex justify-between text-xs mb-1"><span className="text-muted-foreground">{genState.msg}</span><span className="tabular-nums">{genState.pct}%</span></div>
           <div className="h-1.5 bg-secondary rounded-full overflow-hidden"><div className="h-full bg-primary transition-all" style={{ width: `${genState.pct}%` }} /></div>
         </div>
+      )}
+
+      {/* Zero-state: catalogue not yet initialized — run the import right here */}
+      {families.length === 0 && !loading && (
+        <SeedImportBanner onDone={load} />
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-4">

@@ -159,23 +159,32 @@ export class CatalogService {
     const total = updates.length + creates.length;
     for (let i = 0; i < updates.length; i += 100) {
       const batch = updates.slice(i, i + 100);
-      await Promise.all(batch.map(u => {
+      const results = await Promise.all(batch.map(u => {
         const { barcode, ...patch } = u;
         return (supabase as any).from('products').update(patch).eq('barcode', barcode);
       }));
+      const failed = results.find((r: any) => r.error);
+      if (failed?.error) throw new Error(`Mise à jour produits: ${failed.error.message}`);
       done += batch.length;
       onProgress(`Association des produits existants… ${done}/${total}`, 10 + Math.round((done / total) * 80));
     }
     for (let i = 0; i < creates.length; i += 200) {
       const batch = creates.slice(i, i + 200);
       const { error } = await (supabase as any).from('products').insert(batch);
-      if (error) throw error;
+      if (error) throw new Error(`Création produits: ${error.message}`);
       done += batch.length;
       onProgress(`Création des nouveaux produits… ${done}/${total}`, 10 + Math.round((done / total) * 80));
     }
 
+    // Verify against the database rather than trusting our own counters.
+    onProgress('Vérification…', 96);
+    const famCount = (await this.listFamilies()).length;
+    const { count: linkedCount } = await (supabase as any).from('products')
+      .select('barcode', { count: 'exact', head: true }).not('catalog_family_id', 'is', null);
+    if (!famCount) throw new Error('Vérification échouée: aucune famille en base après import');
+
     onProgress('Terminé', 100);
-    return { familiesCreated, productsMatched: updates.length, productsCreated: creates.length };
+    return { familiesCreated: famCount, productsMatched: linkedCount ?? updates.length, productsCreated: creates.length };
   }
 
   /**

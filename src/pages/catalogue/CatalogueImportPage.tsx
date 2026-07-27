@@ -21,16 +21,19 @@ export default function CatalogueImportPage() {
   const [photoReport, setPhotoReport] = useState<PhotoReport | null>(null);
   const folderRef = useRef<HTMLInputElement>(null);
 
+  const [dataError, setDataError] = useState<string | null>(null);
   const importData = async () => {
-    if (!confirm('Importer le catalogue « petit matériel » (2 705 produits, 642 familles) ?\n\nProduits déjà présents dans Stocky : seule la famille et les métadonnées catalogue sont attachées (prix et noms Stocky conservés). Produits absents : créés avec le prix du catalogue et un stock à 0.')) return;
+    setDataError(null);
     setState({ msg: 'Chargement des données…', pct: 0 });
     try {
       const seed = await loadSeed();
       const report = await CatalogService.importSeed(seed, (msg, pct) => setState({ msg, pct }));
       setDataReport(report);
-      showToast({ type: 'success', title: 'Import terminé', message: `${report.productsMatched} associés · ${report.productsCreated} créés` });
+      showToast({ type: 'success', title: 'Import terminé', message: `${report.familiesCreated} familles · ${report.productsMatched} produits liés` });
     } catch (e: any) {
-      showToast({ type: 'error', title: 'Erreur', message: e?.message || 'Échec de l\'import' });
+      const msg = e?.message || 'Échec de l\'import';
+      setDataError(msg);
+      showToast({ type: 'error', title: 'Erreur', message: msg });
     } finally { setState(null); }
   };
 
@@ -81,13 +84,16 @@ export default function CatalogueImportPage() {
             {dataReport ? (
               <div className="text-xs bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 rounded-md px-3 py-2 inline-flex items-center gap-1.5">
                 <Check className="h-3.5 w-3.5" />
-                {dataReport.familiesCreated} familles créées · {dataReport.productsMatched} produits associés · {dataReport.productsCreated} créés
+                {dataReport.familiesCreated} familles · {dataReport.productsMatched} produits liés · {dataReport.productsCreated} créés
               </div>
             ) : (
               <button onClick={importData} disabled={!!state}
                 className="px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-60">
                 Importer les données
               </button>
+            )}
+            {dataError && (
+              <div className="mt-2 text-xs bg-destructive/10 text-destructive rounded-md px-3 py-2 font-mono break-all">{dataError}</div>
             )}
           </div>
         </div>
