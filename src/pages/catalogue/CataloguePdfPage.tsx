@@ -2,10 +2,10 @@ import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom';
 import {
   BookImage, Loader, Search, Plus, Pencil, Trash2, ChevronUp, ChevronDown,
-  Eye, EyeOff, FileDown, Upload, ImageOff,
+  Eye, EyeOff, FileDown, Upload, ImageOff, Calculator, X,
 } from 'lucide-react';
 import { CatalogService, type CatalogFamily, type CatalogProduct } from '../../utils/supabaseCatalog';
-import { generateCataloguePdf, fetchCatalogImages, type CatalogueVariant } from '../../utils/cataloguePdf';
+import { generateCataloguePdf, fetchCatalogImages, type CatalogueVariant, type CatalogueTemplate } from '../../utils/cataloguePdf';
 import { CompanySettingsService } from '../../utils/companySettings';
 import { getCompanyContext } from '../../utils/supabaseCompanyFilter';
 import { useAuth } from '../../hooks/useAuth';
@@ -14,6 +14,121 @@ import { useToast } from '../../context/ToastContext';
 function fmt(n: number) { return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(n); }
 type VisFilter = 'all' | 'visible' | 'hidden' | 'nophoto';
 const PAGE_SIZE = 50;
+
+/**
+ * Bulk price calculator. Two operations on the current filter scope:
+ *  - Prix Pro = Prix TTC × N %  (fills reseller_price)
+ *  - Prix TTC ajusté de ±N %    (updates the base price itself)
+ */
+function PriceCalculator({ scope, scopeLabel, onClose, onApplied }: {
+  scope: CatalogProduct[];
+  scopeLabel: string;
+  onClose: () => void;
+  onApplied: (patches: Map<string, Partial<CatalogProduct>>) => void;
+}) {
+  const { showToast } = useToast();
+  const [proPct, setProPct] = useState('90');
+  const [ttcPct, setTtcPct] = useState('5');
+  const [rounding, setRounding] = useState<'cents' | 'dirham'>('cents');
+  const [applying, setApplying] = useState<null | { label: string; done: number; total: number }>(null);
+
+  const roundP = (n: number) => rounding === 'dirham' ? Math.round(n) : Math.round(n * 100) / 100;
+  const sample = scope.find(p => p.price > 0);
+
+  const apply = async (op: 'pro' | 'ttc') => {
+    const pct = Number(op === 'pro' ? proPct : ttcPct);
+    if (!isFinite(pct)) { showToast({ type: 'error', message: 'Pourcentage invalide' }); return; }
+    const rows = scope
+      .filter(p => p.price > 0)
+      .map(p => ({
+        barcode: p.barcode,
+        patch: op === 'pro'
+          ? { reseller_price: roundP(p.price * (pct / 100)) }
+          : { price: roundP(p.price * (1 + pct / 100)) },
+      }));
+    if (rows.length === 0) { showToast({ type: 'error', message: 'Aucun produit avec un prix > 0 dans la sélection' }); return; }
+    const label = op === 'pro'
+      ? `Prix Pro = Prix TTC × ${pct} %`
+      : `Prix TTC ${pct >= 0 ? '+' : ''}${pct} %`;
+    if (!window.confirm(`${label}\nAppliquer à ${rows.length} produit(s) (${scopeLabel}) ?${op === 'ttc' ? '\n\n⚠ Le Prix TTC est utilisé partout dans Stocky (devis, factures…).' : ''}`)) return;
+    setApplying({ label, done: 0, total: rows.length });
+    try {
+      await CatalogService.bulkPatch(rows, (done, total) => setApplying({ label, done, total }));
+      onApplied(new Map(rows.map(r => [r.barcode, r.patch])));
+      showToast({ type: 'success', title: 'Prix mis à jour', message: `${rows.length} produit(s) · ${label}` });
+    } catch (e: any) {
+      showToast({ type: 'error', title: 'Erreur', message: e?.message || 'Échec' });
+    } finally { setApplying(null); }
+  };
+
+  return (
+    <div className="mb-4 bg-card border border-primary/25 rounded-lg p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <Calculator className="h-4 w-4 text-primary" />
+          <span className="text-sm font-semibold text-foreground">Calculateur de prix</span>
+          <span className="text-xs text-muted-foreground">· s'applique à {scopeLabel} ({scope.length})</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <select value={rounding} onChange={e => setRounding(e.target.value as any)} className="px-2 py-1 text-xs rounded bg-secondary border border-border">
+            <option value="cents">Arrondi : centimes</option>
+            <option value="dirham">Arrondi : dirham entier</option>
+          </select>
+          <button onClick={onClose} className="p-1 rounded hover:bg-secondary"><X className="h-4 w-4 text-muted-foreground" /></button>
+        </div>
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-3">
+        {/* Prix Pro */}
+        <div className="border border-border/60 rounded-lg p-3">
+          <div className="text-xs font-medium text-foreground mb-2">Prix Pro (revendeur)</div>
+          <div className="flex items-center gap-1.5 text-sm flex-wrap">
+            <span className="text-muted-foreground text-xs">Prix Pro = Prix TTC ×</span>
+            <input type="number" value={proPct} onChange={e => setProPct(e.target.value)}
+              className="w-20 px-2 py-1.5 text-sm text-right rounded bg-secondary border border-border" />
+            <span className="text-muted-foreground text-xs">%</span>
+            <button onClick={() => apply('pro')} disabled={!!applying}
+              className="ml-auto px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium disabled:opacity-60">
+              Appliquer ({scope.filter(p => p.price > 0).length})
+            </button>
+          </div>
+          {sample && (
+            <p className="text-[11px] text-muted-foreground mt-2">
+              Ex. {sample.barcode} : {fmt(sample.price)} → <b className="text-foreground">{fmt(roundP(sample.price * (Number(proPct) || 0) / 100))} MAD</b>
+            </p>
+          )}
+        </div>
+
+        {/* Prix TTC */}
+        <div className="border border-border/60 rounded-lg p-3">
+          <div className="text-xs font-medium text-foreground mb-2">Prix TTC (prix de base) <span className="text-amber-600 dark:text-amber-400 font-normal">— impacte devis & factures</span></div>
+          <div className="flex items-center gap-1.5 text-sm flex-wrap">
+            <span className="text-muted-foreground text-xs">Ajuster de</span>
+            <input type="number" value={ttcPct} onChange={e => setTtcPct(e.target.value)}
+              className="w-20 px-2 py-1.5 text-sm text-right rounded bg-secondary border border-border" />
+            <span className="text-muted-foreground text-xs">% (négatif = baisse)</span>
+            <button onClick={() => apply('ttc')} disabled={!!applying}
+              className="ml-auto px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium disabled:opacity-60">
+              Appliquer ({scope.filter(p => p.price > 0).length})
+            </button>
+          </div>
+          {sample && (
+            <p className="text-[11px] text-muted-foreground mt-2">
+              Ex. {sample.barcode} : {fmt(sample.price)} → <b className="text-foreground">{fmt(roundP(sample.price * (1 + (Number(ttcPct) || 0) / 100)))} MAD</b>
+            </p>
+          )}
+        </div>
+      </div>
+
+      {applying && (
+        <div className="mt-3">
+          <div className="flex justify-between text-xs mb-1"><span className="text-muted-foreground">{applying.label}</span><span className="tabular-nums">{applying.done}/{applying.total}</span></div>
+          <div className="h-1.5 bg-secondary rounded-full overflow-hidden"><div className="h-full bg-primary transition-all" style={{ width: `${Math.round((applying.done / applying.total) * 100)}%` }} /></div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /** Prominent one-click initialisation when the catalogue is empty. */
 function SeedImportBanner({ onDone }: { onDone: () => void }) {
@@ -83,8 +198,10 @@ export default function CataloguePdfPage() {
 
   // generation state
   const [variant, setVariant] = useState<CatalogueVariant>('ttc');
+  const [template, setTemplate] = useState<CatalogueTemplate>('list');
   const [genFams, setGenFams] = useState<Set<string>>(new Set()); // empty = all
   const [genState, setGenState] = useState<{ msg: string; pct: number } | null>(null);
+  const [showCalc, setShowCalc] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const photoTarget = useRef<string | null>(null);
 
@@ -203,6 +320,7 @@ export default function CataloguePdfPage() {
 
       const { blob, pages, filename } = await generateCataloguePdf(fams, images, {
         variant,
+        template,
         title: 'CATALOGUE PETIT MATÉRIEL',
         brand: settings?.company_name || 'CUISIMAT GROUPE',
         site: (settings?.website || 'cuisimat-groupe.ma').replace(/^https?:\/\//, ''),
@@ -241,6 +359,15 @@ export default function CataloguePdfPage() {
           <Link to="/catalogue-pdf/import" className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-secondary border border-border text-sm">
             <Upload className="h-3.5 w-3.5" /> Import initial
           </Link>
+          <button onClick={() => setShowCalc(v => !v)}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm ${showCalc ? 'bg-primary/10 border-primary/30 text-primary' : 'bg-secondary border-border'}`}>
+            <Calculator className="h-3.5 w-3.5" /> Calculateur
+          </button>
+          <select value={template} onChange={e => setTemplate(e.target.value as CatalogueTemplate)}
+            className="px-2 py-2 text-sm rounded-lg bg-secondary border border-border" title="Modèle de mise en page">
+            <option value="list">Modèle : Liste</option>
+            <option value="grid">Modèle : Grille</option>
+          </select>
           <select value={variant} onChange={e => setVariant(e.target.value as CatalogueVariant)}
             className="px-2 py-2 text-sm rounded-lg bg-secondary border border-border">
             <option value="ttc">Prix TTC</option>
@@ -265,6 +392,15 @@ export default function CataloguePdfPage() {
       {/* Zero-state: catalogue not yet initialized — run the import right here */}
       {families.length === 0 && !loading && (
         <SeedImportBanner onDone={load} />
+      )}
+
+      {showCalc && (
+        <PriceCalculator
+          scope={filtered}
+          scopeLabel={famFilter || query || vis !== 'all' ? 'les produits filtrés' : 'tous les produits'}
+          onClose={() => setShowCalc(false)}
+          onApplied={patches => setProducts(prev => prev.map(p => patches.get(p.barcode) ? { ...p, ...patches.get(p.barcode)! } : p))}
+        />
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-4">

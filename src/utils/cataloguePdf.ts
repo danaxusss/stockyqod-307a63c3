@@ -9,9 +9,11 @@ import QRCode from 'qrcode';
 import type { CatalogFamily, CatalogProduct } from './supabaseCatalog';
 
 export type CatalogueVariant = 'ttc' | 'pro' | 'none';
+export type CatalogueTemplate = 'list' | 'grid';
 
 export interface CatalogueOptions {
   variant: CatalogueVariant;
+  template?: CatalogueTemplate;  // default 'list'
   title: string;          // e.g. "CATALOGUE PETIT MATÉRIEL"
   brand: string;          // company name
   site: string;           // e.g. cuisimat-groupe.ma
@@ -120,6 +122,39 @@ function layoutProducts(doc: jsPDF, fams: Fam[], startPage: number, wDes: number
   return { pages, famMeta };
 }
 
+// ── grid template layout ────────────────────────────────────────────────────
+const G_COLS = 3, G_GAP = 10;
+const CARD_W = (CW - (G_COLS - 1) * G_GAP) / G_COLS;   // ≈ 165 pt
+const CARD_H = 196, CARD_PHOTO = 104;
+
+type GridOp =
+  | ['fam', string, string, number, number]
+  | ['famcont', string, number]
+  | ['grow', CatalogProduct[], number];               // one row of up to 3 cards
+
+function layoutGrid(fams: Fam[], startPage: number) {
+  const pages: GridOp[][] = [];
+  let cur: GridOp[] = [];
+  const famMeta = new Map<string, [number, number]>();
+  let y = TOP;
+  const flush = () => { pages.push(cur); cur = []; y = TOP; };
+  for (const f of fams) {
+    if (y - (FAM_H + 6 + CARD_H) < BOT) flush();
+    famMeta.set(f.id, [startPage + pages.length, y]);
+    cur.push(['fam', f.name, f.id, y, f.products.length]); y -= FAM_H + 6;
+    for (let i = 0; i < f.products.length; i += G_COLS) {
+      if (y - CARD_H < BOT) {
+        flush();
+        cur.push(['famcont', f.name, y]); y -= FAM_H - 6 + 4;
+      }
+      cur.push(['grow', f.products.slice(i, i + G_COLS), y]);
+      y -= CARD_H + G_GAP;
+    }
+  }
+  if (cur.length) pages.push(cur);
+  return { pages, famMeta };
+}
+
 type IdxOp = ['letter', string, number, number] | ['entry', Fam, number, number];
 
 function layoutIndex(fams: Fam[]) {
@@ -214,9 +249,14 @@ export async function generateCataloguePdf(
   const logo = opts.logoDataUrl ? await measure(opts.logoDataUrl) : null;
 
   progress('Mise en page…', 5);
+  const template: CatalogueTemplate = opts.template || 'list';
   const { pages: idxPages, lettersSeen } = layoutIndex(included);
   const nIdx = idxPages.length;
-  const { pages: prodPages, famMeta } = layoutProducts(doc, included, 1 + nIdx + 1, wDes);
+  const laidOut = template === 'grid'
+    ? layoutGrid(included, 1 + nIdx + 1)
+    : layoutProducts(doc, included, 1 + nIdx + 1, wDes);
+  const prodPages = laidOut.pages as (Op[] | GridOp[])[];
+  const famMeta = laidOut.famMeta;
   const total = 1 + nIdx + prodPages.length;
   const lettersAbs = new Map<string, number>();
   lettersSeen.forEach((rel, L) => lettersAbs.set(L, 2 + rel));
@@ -336,11 +376,69 @@ export async function generateCataloguePdf(
   });
 
   // ============ PRODUCTS ============
+  const drawCard = (p: CatalogProduct, x: number, yTopRl: number) => {
+    hex(doc, '#FFFFFF'); doc.setDrawColor(LINE); doc.setLineWidth(0.6);
+    roundRect(doc, x, yTopRl - CARD_H, CARD_W, CARD_H, 5, 'FD');
+    const im = images.get(p.barcode);
+    const photoX = x + (CARD_W - CARD_PHOTO) / 2;
+    if (im) drawFitted(doc, im, photoX, yTopRl - 8 - CARD_PHOTO, CARD_PHOTO);
+    else {
+      hex(doc, MIST);
+      roundRect(doc, photoX, yTopRl - 8 - CARD_PHOTO, CARD_PHOTO, CARD_PHOTO, 4);
+      doc.setTextColor(FADE); font(doc, 'F', 6.5);
+      text(doc, 'photo', x + CARD_W / 2, yTopRl - 8 - CARD_PHOTO / 2 - 2, 'center');
+    }
+    // réf
+    doc.setTextColor(INK); font(doc, 'FB', 7.5);
+    let ref = p.barcode || '';
+    while (widthOf(doc, ref) > CARD_W - 14 && ref.length > 4) ref = ref.slice(0, -2);
+    text(doc, ref, x + 7, yTopRl - CARD_PHOTO - 22);
+    // désignation — max 3 lines, ellipsis
+    let desLines = split(doc, p.name || '', 'F', 6.8, CARD_W - 14);
+    if (desLines.length > 3) { desLines = desLines.slice(0, 3); desLines[2] = desLines[2].replace(/.{2}$/, '…'); }
+    doc.setTextColor(GRAY); font(doc, 'F', 6.8);
+    desLines.forEach((ln, k) => text(doc, ln, x + 7, yTopRl - CARD_PHOTO - 32 - k * 8.5));
+    // prix
+    if (priceLabel) {
+      doc.setTextColor(RED); font(doc, 'FH', 10);
+      text(doc, fprice(pval(p)), x + CARD_W - 7, yTopRl - CARD_H + 9, 'right');
+      doc.setTextColor(FADE); font(doc, 'F', 5.5);
+      text(doc, priceLabel, x + 7, yTopRl - CARD_H + 9);
+    }
+  };
+
   prodPages.forEach((ops, pi) => {
     doc.addPage();
     const page = 2 + nIdx + pi;
     header(doc, logo, title);
-    for (const op of ops) {
+    if (template === 'grid') {
+      for (const op of ops as GridOp[]) {
+        if (op[0] === 'fam') {
+          const [, name, , y0, nrows] = op;
+          addOutline(name, page);
+          hex(doc, RED); rect(doc, ML, y0 - FAM_H + 4, 4.5, FAM_H - 4);
+          doc.setTextColor(INK); font(doc, 'FH', 12);
+          let nm = name;
+          while (widthOf(doc, nm) > CW - 110) nm = nm.slice(0, -2);
+          text(doc, nm, ML + 13, y0 - FAM_H + 12);
+          doc.setTextColor(GRAY); font(doc, 'F', 8);
+          text(doc, `${nrows} article${nrows > 1 ? 's' : ''}`, PW - MR, y0 - FAM_H + 12, 'right');
+        } else if (op[0] === 'famcont') {
+          const [, name, y0] = op;
+          const h = FAM_H - 6;
+          hex(doc, FADE); rect(doc, ML, y0 - h + 4, 4.5, h - 4);
+          doc.setTextColor(GRAY); font(doc, 'FH', 9);
+          text(doc, name + '   (SUITE)', ML + 13, y0 - h + 9);
+        } else {
+          const [, row, y0] = op;
+          row.forEach((p, i) => drawCard(p, ML + i * (CARD_W + G_GAP), y0));
+        }
+      }
+      footer(doc, page, total, site, true);
+      if (pi % 10 === 0) progress(`Pages produits… ${pi + 1}/${prodPages.length}`, 40 + Math.round((pi / prodPages.length) * 55));
+      return;
+    }
+    for (const op of ops as Op[]) {
       if (op[0] === 'fam') {
         const [, name, fid, y0, nrows] = op;
         addOutline(name, page);
@@ -400,7 +498,8 @@ export async function generateCataloguePdf(
 
   progress('Finalisation…', 98);
   const sfx = { ttc: '', pro: '_PRO', none: '_SANS_PRIX' }[variant];
-  const filename = `CATALOGUE${sfx}_${today}.pdf`;
+  const tpl = template === 'grid' ? '_GRILLE' : '';
+  const filename = `CATALOGUE${tpl}${sfx}_${today}.pdf`;
   return { blob: doc.output('blob'), pages: total, filename };
 }
 
