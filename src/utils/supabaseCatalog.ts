@@ -93,6 +93,21 @@ export class CatalogService {
     if (error) throw error;
   }
 
+  /** Bulk per-product patches (used by the price calculator), error-checked. */
+  static async bulkPatch(
+    rows: { barcode: string; patch: Partial<CatalogProduct> }[],
+    onProgress?: (done: number, total: number) => void,
+  ): Promise<void> {
+    for (let i = 0; i < rows.length; i += 100) {
+      const batch = rows.slice(i, i + 100);
+      const results = await Promise.all(batch.map(r =>
+        (supabase as any).from('products').update(r.patch).eq('barcode', r.barcode)));
+      const failed = results.find((r: any) => r.error);
+      if (failed?.error) throw new Error(failed.error.message);
+      onProgress?.(Math.min(i + 100, rows.length), rows.length);
+    }
+  }
+
   /**
    * Bundled catalogue photos (shipped in public/catalogue-images/) are stored
    * as bare filenames; user-replaced photos live in Storage under catalogue/.
