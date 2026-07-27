@@ -93,7 +93,12 @@ export class CatalogService {
     if (error) throw error;
   }
 
+  /**
+   * Bundled catalogue photos (shipped in public/catalogue-images/) are stored
+   * as bare filenames; user-replaced photos live in Storage under catalogue/.
+   */
   static publicImageUrl(path: string): string {
+    if (!path.includes('/')) return `${import.meta.env.BASE_URL || '/'}catalogue-images/${path}`;
     return supabase.storage.from('product-photos').getPublicUrl(path).data.publicUrl;
   }
 
@@ -135,12 +140,17 @@ export class CatalogService {
       const match = byNorm.get(normRef(sp.ref));
       if (match) {
         // Collision policy: keep Stocky's name/price — attach catalogue metadata only.
-        updates.push({ barcode: match.barcode, ...meta });
+        // Photo: link the bundled image, but never clobber a Storage upload (contains '/').
+        const keepUpload = match.catalog_image && match.catalog_image.includes('/');
+        updates.push({
+          barcode: match.barcode, ...meta,
+          catalog_image: keepUpload ? match.catalog_image : (sp.image ?? match.catalog_image ?? null),
+        });
       } else {
         creates.push({
           barcode: sp.ref, name: sp.designation || sp.ref, brand: '', techsheet: '',
           price: sp.price ?? 0, buyprice: 0, reseller_price: sp.price_pro ?? 0,
-          provider: '', stock_levels: {}, ...meta,
+          provider: '', stock_levels: {}, catalog_image: sp.image ?? null, ...meta,
         });
       }
     }
