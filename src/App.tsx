@@ -73,8 +73,7 @@ const StcPage = React.lazy(() => import('./pages/paie/StcPage'));
 const AttestationsPage = React.lazy(() => import('./pages/paie/AttestationsPage'));
 const RubriquesPage = React.lazy(() => import('./pages/paie/RubriquesPage'));
 const ParametresPaiePage = React.lazy(() => import('./pages/paie/ParametresPaiePage'));
-const CataloguePdfPage = React.lazy(() => import('./pages/catalogue/CataloguePdfPage'));
-const CatalogueImportPage = React.lazy(() => import('./pages/catalogue/CatalogueImportPage'));
+const CataloguePage = React.lazy(() => import('./pages/catalogue/CataloguePage'));
 const TasksLayout = React.lazy(() => import('./tasks/TasksLayout'));
 const TasksDashboard = React.lazy(() => import('./tasks/pages/Dashboard'));
 const TasksList = React.lazy(() => import('./tasks/pages/SalesTasks'));
@@ -154,8 +153,7 @@ function AppContent() {
             <Route path="/products" element={<ProductsPage />} />
             <Route path="/sheets" element={<TechnicalSheetsPage />} />
             <Route path="/photos" element={<ProductPhotosPage />} />
-            <Route path="/catalogue-pdf" element={<CataloguePdfPage />} />
-            <Route path="/catalogue-pdf/import" element={<CatalogueImportPage />} />
+            <Route path="/catalogue" element={<CataloguePage />} />
             <Route path="/share/:token" element={<PublicSharePage />} />
             <Route path="/admin/statistics" element={<StatisticsPage />} />
             <Route path="/admin/settings" element={<CompanySettingsPage />} />
