@@ -38,6 +38,10 @@ function loadConfig() {
     headless: cfg.headless === undefined ? true : !!cfg.headless,
     // Optional explicit path to chrome.exe if auto-detection fails.
     executablePath: process.env.WA_CHROME_PATH || cfg.executablePath || undefined,
+    // open-wa 4.76 ships an outdated User-Agent that WhatsApp Web now rejects
+    // ("works with Chrome 100 or later"). Force a modern one so the QR loads.
+    userAgent: cfg.userAgent ||
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
   };
 }
 const CFG = loadConfig();
@@ -159,6 +163,7 @@ async function main() {
       useChrome: CFG.useChrome,
       executablePath: CFG.executablePath,
       headless: CFG.headless,
+      customUserAgent: CFG.userAgent,
       qrTimeout: 0,
       authTimeout: 0,
       cacheEnabled: false,
