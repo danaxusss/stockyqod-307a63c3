@@ -6,6 +6,7 @@ import {
   BarChart3, Users, ShoppingCart, LucideIcon, X,
   RotateCcw, Sun, Moon, Upload, FileX, BookMarked, Home, Images, ClipboardList,
   Wallet, ListTodo, Archive, Contact as ContactIcon, LayoutDashboard, MessageCircle,
+  Megaphone, FileText,
 } from 'lucide-react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useTheme } from '../hooks/useTheme';
@@ -169,6 +170,8 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps = {}
       items: [
         { to: '/whatsapp', icon: MessageCircle, label: 'WhatsApp' },
         { to: '/whatsapp/contacts', icon: Users, label: 'Contacts WhatsApp' },
+        { to: '/whatsapp/studio', icon: FileText, label: 'Studio de contenu' },
+        { to: '/whatsapp/campaigns', icon: Megaphone, label: 'Campagnes' },
       ],
     }] : []),
     ...(isSuperAdmin ? [{
