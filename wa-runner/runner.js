@@ -141,11 +141,14 @@ async function processOutbox() {
       sent = await client.sendMessage(chatId, job.body);
     }
 
-    // whatsapp-web.js always returns a Message object on success; a real WhatsApp
-    // message id is `true_<chat>_<hash>`. No more "any string == sent" false
-    // positives — a failed send throws and is caught below.
-    const msgId = sent && sent.id ? (sent.id._serialized || String(sent.id)) : null;
-    if (!msgId) throw new Error('Send returned no message id');
+    // With whatsapp-web.js, a resolved sendMessage() means the message was
+    // accepted — a real failure throws and is caught below. The message id is
+    // only used later to correlate acks, so extract it best-effort and never
+    // fail the send just because the id shape differs across library versions.
+    const rawId = sent && sent.id;
+    const msgId = !rawId ? null
+      : (typeof rawId === 'string' ? rawId
+        : (rawId._serialized || rawId.id || null));
 
     await db.from('wa_outbox').update({ status: 'sent', sent_at: new Date().toISOString(), wa_message_id: msgId, last_error: null }).eq('id', job.id);
     log(`sent → ${job.to_phone}`);
