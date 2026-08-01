@@ -2,13 +2,25 @@ import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import {
   MessageCircle, Loader, RefreshCw, Power, PauseCircle, PlayCircle, QrCode,
   Send, Wifi, WifiOff, Settings2, Copy, ShieldAlert, CheckCheck, Check,
+  Inbox, UserX, Moon, Gauge, Clock, AlertTriangle,
 } from 'lucide-react';
-import { WhatsappService, runnerOnline, type WaSession, type WaOutbox } from '../../utils/supabaseWhatsapp';
+import { WhatsappService, runnerOnline, type WaSession, type WaOutbox, type WaInbound, type QueueStats } from '../../utils/supabaseWhatsapp';
 import { getCompanyContext } from '../../utils/supabaseCompanyFilter';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
 
 const ackLabel = (a: number) => a >= 3 ? 'Lu' : a === 2 ? 'Distribué' : a === 1 ? 'Envoyé' : '';
+
+/** Translate raw runner errors into something a human can act on. */
+function humanError(err: string | null): string {
+  if (!err) return 'Raison inconnue';
+  const e = err.toLowerCase();
+  if (e.includes('not registered')) return 'Numéro absent de WhatsApp';
+  if (e.includes('opt-out')) return 'Numéro désinscrit';
+  if (e.includes('timeout')) return 'Délai dépassé — vérifiez le runner';
+  if (e.includes('session closed') || e.includes('disconnected') || e.includes('detached')) return 'Session interrompue — relancez le runner';
+  return err;
+}
 
 export default function ConnectionCenterPage() {
   const { isAdmin, isSuperAdmin, currentUser } = useAuth();
@@ -16,6 +28,8 @@ export default function ConnectionCenterPage() {
 
   const [session, setSession] = useState<WaSession | null>(null);
   const [outbox, setOutbox] = useState<WaOutbox[]>([]);
+  const [inbound, setInbound] = useState<WaInbound[]>([]);
+  const [qstats, setQstats] = useState<QueueStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
   const [testPhone, setTestPhone] = useState('');
@@ -28,7 +42,12 @@ export default function ConnectionCenterPage() {
       const s = initial ? await WhatsappService.ensureSession() : (session ? await WhatsappService.getSession(session.id) : await WhatsappService.ensureSession());
       if (s) {
         setSession(s);
-        setOutbox(await WhatsappService.recentOutbox(s.id));
+        const [ob, ib, qs] = await Promise.all([
+          WhatsappService.recentOutbox(s.id),
+          WhatsappService.recentInbound(s.id),
+          WhatsappService.queueStats(s.id),
+        ]);
+        setOutbox(ob); setInbound(ib); setQstats(qs);
       }
     } catch (e: any) {
       if (initial) showToast({ type: 'error', message: e?.message || 'Erreur' });
@@ -77,6 +96,12 @@ export default function ConnectionCenterPage() {
 
   const copy = (t: string) => { navigator.clipboard?.writeText(t); showToast({ type: 'success', message: 'Copié' }); };
 
+  const optOut = async (phone: string) => {
+    if (!window.confirm(`Désinscrire ${phone} ? Ce numéro ne recevra plus aucun message.`)) return;
+    try { await WhatsappService.addOptOut(phone, 'reply'); showToast({ type: 'success', message: `${phone} désinscrit` }); }
+    catch (e: any) { showToast({ type: 'error', message: e?.message || 'Échec' }); }
+  };
+
   if (!isAdmin && !isSuperAdmin) return <div className="text-center py-12 text-muted-foreground">Accès réservé aux administrateurs.</div>;
   if (loading) return <div className="flex items-center justify-center py-24 text-muted-foreground"><Loader className="h-5 w-5 animate-spin mr-2" />Chargement…</div>;
 
@@ -107,6 +132,45 @@ export default function ConnectionCenterPage() {
           <button onClick={() => setShowSettings(v => !v)} className="p-2 rounded-lg bg-secondary border border-border" title="Réglages d'envoi"><Settings2 className="h-4 w-4" /></button>
         </div>
       </div>
+
+      {/* Today at a glance */}
+      {session && qstats && (() => {
+        const capPct = session.daily_cap ? Math.min(100, Math.round((qstats.sentToday / session.daily_cap) * 100)) : 0;
+        const capFull = qstats.sentToday >= session.daily_cap;
+        const h = new Date().getHours();
+        const quietNow = session.quiet_start <= session.quiet_end
+          ? (h >= session.quiet_start && h < session.quiet_end)
+          : (h >= session.quiet_start || h < session.quiet_end);
+        return (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+            <div className={`bg-card border rounded-lg px-3 py-2 ${capFull ? 'border-amber-500/40' : 'border-border/60'}`}>
+              <div className="flex items-center gap-1 text-[11px] text-muted-foreground"><Gauge className="h-3 w-3" /> Envoyés aujourd'hui</div>
+              <div className="text-base font-bold text-foreground">{qstats.sentToday} <span className="text-xs font-normal text-muted-foreground">/ {session.daily_cap}</span></div>
+              <div className="h-1 rounded-full bg-secondary overflow-hidden mt-1">
+                <div className={`h-full transition-all ${capFull ? 'bg-amber-500' : 'bg-primary'}`} style={{ width: `${capPct}%` }} />
+              </div>
+              {capFull && <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">Plafond atteint — reprise demain</p>}
+            </div>
+            <div className="bg-card border border-border/60 rounded-lg px-3 py-2">
+              <div className="flex items-center gap-1 text-[11px] text-muted-foreground"><Clock className="h-3 w-3" /> En file d'attente</div>
+              <div className="text-base font-bold text-foreground">{qstats.queued}</div>
+              <p className="text-[10px] text-muted-foreground mt-0.5">{qstats.queued > 0 ? 'envoi espacé en cours' : 'rien en attente'}</p>
+            </div>
+            <div className={`bg-card border rounded-lg px-3 py-2 ${qstats.failedToday > 0 ? 'border-red-500/40' : 'border-border/60'}`}>
+              <div className="flex items-center gap-1 text-[11px] text-muted-foreground"><AlertTriangle className="h-3 w-3" /> Échecs aujourd'hui</div>
+              <div className={`text-base font-bold ${qstats.failedToday > 0 ? 'text-red-600 dark:text-red-400' : 'text-foreground'}`}>{qstats.failedToday}</div>
+              <p className="text-[10px] text-muted-foreground mt-0.5">{qstats.failedToday > 0 ? 'détail dans la liste ci-dessous' : 'aucun problème'}</p>
+            </div>
+            <div className={`bg-card border rounded-lg px-3 py-2 ${quietNow ? 'border-blue-500/40' : 'border-border/60'}`}>
+              <div className="flex items-center gap-1 text-[11px] text-muted-foreground"><Moon className="h-3 w-3" /> Heures calmes</div>
+              <div className="text-base font-bold text-foreground">{session.quiet_start}h – {session.quiet_end}h</div>
+              <p className={`text-[10px] mt-0.5 ${quietNow ? 'text-blue-600 dark:text-blue-400 font-medium' : 'text-muted-foreground'}`}>
+                {quietNow ? 'actives — envois en pause' : 'inactives — envois autorisés'}
+              </p>
+            </div>
+          </div>
+        );
+      })()}
 
       {!online && (
         <div className="mb-4 bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 text-sm text-amber-700 dark:text-amber-400 flex items-start gap-2">
@@ -195,6 +259,36 @@ export default function ConnectionCenterPage() {
         </div>
       </details>
 
+      {/* Inbound replies */}
+      <div className="mt-4 bg-card border border-border/60 rounded-lg overflow-hidden">
+        <div className="px-3 py-2 bg-secondary/50 border-b border-border/60 text-sm font-semibold flex items-center gap-1.5">
+          <Inbox className="h-4 w-4 text-primary" /> Réponses reçues
+          {inbound.length > 0 && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-primary/15 text-primary">{inbound.length}</span>}
+        </div>
+        {inbound.length === 0 ? (
+          <div className="px-3 py-6 text-center text-muted-foreground text-sm">Aucune réponse pour l'instant — elles apparaîtront ici dès qu'un client répond.</div>
+        ) : (
+          <ul className="divide-y divide-border/40">
+            {inbound.map(r => (
+              <li key={r.id} className="px-3 py-2 flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-xs text-foreground">{r.from}</span>
+                    <span className="text-[10px] text-muted-foreground">{new Date(r.created_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground truncate">{r.body || <span className="italic">(média)</span>}</p>
+                </div>
+                <button onClick={() => optOut(r.from)}
+                  className="shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] text-red-600 dark:text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/30"
+                  title="Ne plus jamais écrire à ce numéro">
+                  <UserX className="h-3.5 w-3.5" /> Désinscrire
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
       {/* Recent outbox */}
       <div className="mt-4 bg-card border border-border/60 rounded-lg overflow-hidden">
         <div className="px-3 py-2 bg-secondary/50 border-b border-border/60 text-sm font-semibold">Derniers messages</div>
@@ -207,7 +301,12 @@ export default function ConnectionCenterPage() {
                 <td className="px-3 py-2 text-right">
                   {m.status === 'sent'
                     ? <span className="inline-flex items-center gap-1 text-[11px] text-emerald-700 dark:text-emerald-400">{m.ack >= 2 ? <CheckCheck className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}{ackLabel(m.ack) || 'Envoyé'}</span>
-                    : m.status === 'failed' ? <span className="text-[11px] text-red-600 dark:text-red-400" title={m.last_error || ''}>Échec</span>
+                    : m.status === 'failed' ? (
+                      <span className="inline-flex flex-col items-end">
+                        <span className="text-[11px] text-red-600 dark:text-red-400 font-medium">Échec</span>
+                        <span className="text-[10px] text-muted-foreground max-w-[180px] truncate" title={m.last_error || ''}>{humanError(m.last_error)}</span>
+                      </span>
+                    )
                     : m.status === 'blocked' ? <span className="text-[11px] text-amber-600 dark:text-amber-400">Bloqué (opt-out)</span>
                     : <span className="text-[11px] text-muted-foreground">En file…</span>}
                 </td>

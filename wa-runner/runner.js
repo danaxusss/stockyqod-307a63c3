@@ -240,11 +240,21 @@ async function main() {
   });
 
   // inbound messages (ignore our own and group traffic)
+  const STOP_WORDS = /^\s*(stop|arret|arrêt|arreter|arrêter|desinscription|désinscription|desabonner|désabonner|unsubscribe|no)\s*[.!]?\s*$/i;
   client.on('message', async (m) => {
     try {
       if (m.fromMe || m.from === 'status@broadcast' || String(m.from).endsWith('@g.us')) return;
       const phone = '+' + String(m.from).replace(/@c\.us$/, '');
       await emit('inbound', { from: phone, body: m.body || '', type: m.type });
+      // auto opt-out: a STOP-like reply immediately blocks all future sends
+      if (m.body && STOP_WORDS.test(m.body)) {
+        await db.from('wa_opt_outs').upsert(
+          { company_id: CFG.companyId, phone, reason: 'stop-reply' },
+          { onConflict: 'company_id,phone' }
+        );
+        await emit('opt_out', { phone, via: 'stop-reply', body: m.body });
+        log(`opt-out (STOP) ← ${phone}`);
+      }
     } catch { /* */ }
   });
 

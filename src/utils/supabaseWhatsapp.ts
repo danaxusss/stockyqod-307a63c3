@@ -126,4 +126,34 @@ export class WhatsappService {
     if (error) throw error;
     return data || [];
   }
+
+  /** Inbound replies captured by the runner (wa_events type = 'inbound'). */
+  static async recentInbound(sessionId: string, limit = 15): Promise<WaInbound[]> {
+    const { data, error } = await (supabase as any).from('wa_events')
+      .select('id, payload, created_at').eq('session_id', sessionId).eq('type', 'inbound')
+      .order('created_at', { ascending: false }).limit(limit);
+    if (error) throw error;
+    return (data || []).map((e: any) => ({
+      id: e.id,
+      from: e.payload?.from || '',
+      body: e.payload?.body || '',
+      created_at: e.created_at,
+    }));
+  }
+
+  /** Today's queue health: sent so far, still queued, failed today. */
+  static async queueStats(sessionId: string): Promise<QueueStats> {
+    const start = new Date(); start.setHours(0, 0, 0, 0);
+    const count = (q: any) => q.then((r: any) => r.count || 0);
+    const base = () => (supabase as any).from('wa_outbox').select('id', { count: 'exact', head: true }).eq('session_id', sessionId);
+    const [sentToday, queued, failedToday] = await Promise.all([
+      count(base().eq('status', 'sent').gte('sent_at', start.toISOString())),
+      count(base().in('status', ['pending', 'sending'])),
+      count(base().eq('status', 'failed').gte('created_at', start.toISOString())),
+    ]);
+    return { sentToday, queued, failedToday };
+  }
 }
+
+export interface WaInbound { id: string; from: string; body: string; created_at: string }
+export interface QueueStats { sentToday: number; queued: number; failedToday: number }
