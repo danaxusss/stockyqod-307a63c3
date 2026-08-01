@@ -168,6 +168,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps = {}
       label: 'Marketing',
       items: [
         { to: '/whatsapp', icon: MessageCircle, label: 'WhatsApp' },
+        { to: '/whatsapp/contacts', icon: Users, label: 'Contacts WhatsApp' },
       ],
     }] : []),
     ...(isSuperAdmin ? [{
