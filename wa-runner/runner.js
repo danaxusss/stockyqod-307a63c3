@@ -20,6 +20,21 @@ const QRCode = require('qrcode');
 const { createClient } = require('@supabase/supabase-js');
 const wa = require('@open-wa/wa-automate');
 
+// ── open-wa User-Agent fix ────────────────────────────────────────────────────
+// open-wa 4.76 hard-codes an old UA ("WhatsApp/2.2147.16 … Chrome/104") and only
+// honours `customUserAgent` in Docker mode, so WhatsApp Web shows the
+// "update Chrome 100+" page and the QR never renders. Overwrite the module-level
+// UA with a modern browser UA before wa.create() so the page loads normally.
+const MODERN_UA = process.env.WA_USER_AGENT ||
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+try {
+  const pcfg = require('@open-wa/wa-automate/dist/config/puppeteer.config');
+  pcfg.useragent = MODERN_UA;                    // used by browser.js setUserAgent()
+  if (typeof pcfg.createUserAgent === 'function') pcfg.createUserAgent = () => MODERN_UA;
+} catch (e) {
+  console.warn('[ua] could not patch open-wa user agent:', e && e.message);
+}
+
 // ── config ──────────────────────────────────────────────────────────────────
 function loadConfig() {
   const file = path.join(__dirname, 'config.json');
