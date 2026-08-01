@@ -3,5 +3,8 @@
   "serviceKey": "SERVICE_ROLE_KEY_from_Supabase_settings_API",
   "sessionId": "paste-the-session-id-shown-in-the-Connection-Center",
   "companyId": "paste-your-company-id",
-  "pollMs": 5000
+  "pollMs": 5000,
+  "useChrome": true,
+  "headless": true,
+  "executablePath": ""
 }

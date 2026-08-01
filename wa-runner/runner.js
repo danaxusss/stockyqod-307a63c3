@@ -31,6 +31,13 @@ function loadConfig() {
     sessionId: process.env.WA_SESSION_ID || cfg.sessionId,
     companyId: process.env.WA_COMPANY_ID || cfg.companyId,
     pollMs: Number(process.env.WA_POLL_MS || cfg.pollMs || 5000),
+    // Use the real Google Chrome (recommended by open-wa for multi-device).
+    // Set to false in config.json to fall back to the bundled Chromium.
+    useChrome: cfg.useChrome === undefined ? true : !!cfg.useChrome,
+    // Show the browser window (helps first-time pairing on some machines).
+    headless: cfg.headless === undefined ? true : !!cfg.headless,
+    // Optional explicit path to chrome.exe if auto-detection fails.
+    executablePath: process.env.WA_CHROME_PATH || cfg.executablePath || undefined,
   };
 }
 const CFG = loadConfig();
@@ -149,12 +156,16 @@ async function main() {
     client = await wa.create({
       sessionId: `stocky_${CFG.sessionId}`,
       multiDevice: true,
-      headless: true,
+      useChrome: CFG.useChrome,
+      executablePath: CFG.executablePath,
+      headless: CFG.headless,
       qrTimeout: 0,
-      authTimeout: 60,
+      authTimeout: 0,
       cacheEnabled: false,
       disableSpins: true,
       qrLogSkip: true,
+      killProcessOnBrowserClose: true,
+      chromiumArgs: ['--no-sandbox', '--disable-dev-shm-usage'],
       sessionDataPath: path.join(__dirname, '.sessions'),
       catchQR: async (base64Qr) => {
         // base64Qr is already a data URL from open-wa; store it for the UI
