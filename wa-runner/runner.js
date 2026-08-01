@@ -219,8 +219,10 @@ async function main() {
       }
     });
 
-    const info = await client.getHostDevice().catch(() => null);
-    const phone = info && info.id && info.id.user ? '+' + info.id.user : null;
+    // open-wa 4.76 exposes getHostNumber() (getHostDevice was removed).
+    const num = await client.getHostNumber().catch(() => null);
+    const digits = num ? String(num).replace(/[^\d]/g, '') : '';
+    const phone = digits ? '+' + digits : null;
     await patchSession({ status: 'connected', phone_number: phone, qr_data_url: null });
     await emit('connected', { phone });
     log('Connected as', phone || '(unknown)');
