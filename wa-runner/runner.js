@@ -165,7 +165,6 @@ async function main() {
       disableSpins: true,
       qrLogSkip: true,
       killProcessOnBrowserClose: true,
-      chromiumArgs: ['--no-sandbox', '--disable-dev-shm-usage'],
       sessionDataPath: path.join(__dirname, '.sessions'),
       catchQR: async (base64Qr) => {
         // base64Qr is already a data URL from open-wa; store it for the UI
