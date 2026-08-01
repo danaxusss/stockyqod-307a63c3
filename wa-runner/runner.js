@@ -9,6 +9,10 @@
  *  • Re-checks the opt-out list at the last mile before every send.
  *  • Reports acks (sent/delivered/read) and inbound messages into `wa_events`.
  *
+ * Engine: whatsapp-web.js (free, MIT, actively maintained). Unlike open-wa it
+ * sends to any number that is on WhatsApp — including numbers that are not in
+ * the phone's contacts — via getNumberId(), which is what marketing needs.
+ *
  * Config comes from config.json (copied from config.example.json) or env vars.
  * Nothing here trusts the network for auth — it uses the Supabase service key,
  * so keep config.json on the machine only.
@@ -18,22 +22,7 @@ const fs = require('fs');
 const path = require('path');
 const QRCode = require('qrcode');
 const { createClient } = require('@supabase/supabase-js');
-const wa = require('@open-wa/wa-automate');
-
-// ── open-wa User-Agent fix ────────────────────────────────────────────────────
-// open-wa 4.76 hard-codes an old UA ("WhatsApp/2.2147.16 … Chrome/104") and only
-// honours `customUserAgent` in Docker mode, so WhatsApp Web shows the
-// "update Chrome 100+" page and the QR never renders. Overwrite the module-level
-// UA with a modern browser UA before wa.create() so the page loads normally.
-const MODERN_UA = process.env.WA_USER_AGENT ||
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
-try {
-  const pcfg = require('@open-wa/wa-automate/dist/config/puppeteer.config');
-  pcfg.useragent = MODERN_UA;                    // used by browser.js setUserAgent()
-  if (typeof pcfg.createUserAgent === 'function') pcfg.createUserAgent = () => MODERN_UA;
-} catch (e) {
-  console.warn('[ua] could not patch open-wa user agent:', e && e.message);
-}
+const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 
 // ── config ──────────────────────────────────────────────────────────────────
 function loadConfig() {
@@ -46,17 +35,11 @@ function loadConfig() {
     sessionId: process.env.WA_SESSION_ID || cfg.sessionId,
     companyId: process.env.WA_COMPANY_ID || cfg.companyId,
     pollMs: Number(process.env.WA_POLL_MS || cfg.pollMs || 5000),
-    // Use the real Google Chrome (recommended by open-wa for multi-device).
-    // Set to false in config.json to fall back to the bundled Chromium.
-    useChrome: cfg.useChrome === undefined ? true : !!cfg.useChrome,
     // Show the browser window (helps first-time pairing on some machines).
     headless: cfg.headless === undefined ? true : !!cfg.headless,
-    // Optional explicit path to chrome.exe if auto-detection fails.
+    // Optional explicit path to chrome.exe. If empty, whatsapp-web.js uses the
+    // Chromium that ships with its puppeteer dependency.
     executablePath: process.env.WA_CHROME_PATH || cfg.executablePath || undefined,
-    // open-wa 4.76 ships an outdated User-Agent that WhatsApp Web now rejects
-    // ("works with Chrome 100 or later"). Force a modern one so the QR loads.
-    userAgent: cfg.userAgent ||
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
   };
 }
 const CFG = loadConfig();
@@ -77,8 +60,8 @@ function gaussianDelayMs(meanSec, stdSec) {
   const sec = Math.max(8, meanSec + z * stdSec);
   return Math.round(sec * 1000);
 }
-// WhatsApp chatId from an E.164 phone (+2126… → 2126…@c.us).
-const toChatId = (phone) => phone.replace(/[^\d]/g, '') + '@c.us';
+// Digits only, no leading + (+2126… → 2126…), for getNumberId().
+const toDigits = (phone) => String(phone).replace(/[^\d]/g, '');
 
 async function getSession() {
   const { data, error } = await db.from('wa_sessions').select('*').eq('id', CFG.sessionId).single();
@@ -115,9 +98,11 @@ async function isOptedOut(phone) {
 
 // ── send loop ───────────────────────────────────────────────────────────────
 let client = null;
+let clientReady = false;
 let running = true;
 
 async function processOutbox() {
+  if (!clientReady) return;
   const s = await getSession();
   if (s.paused || s.status !== 'connected') return;
   if (inQuietHours(s.quiet_start, s.quiet_end)) return;
@@ -142,11 +127,26 @@ async function processOutbox() {
   }
 
   try {
-    const chatId = toChatId(job.to_phone);
-    let res;
-    if (job.media_url) res = await client.sendImage(chatId, job.media_url, 'file', job.body || '');
-    else res = await client.sendText(chatId, job.body);
-    const msgId = typeof res === 'string' ? res : (res && res._serialized) || null;
+    // Resolve the number on WhatsApp. Works for non-contacts too; returns null
+    // when the number simply isn't registered on WhatsApp.
+    const numberId = await client.getNumberId(toDigits(job.to_phone));
+    if (!numberId) throw new Error('Number not registered on WhatsApp');
+    const chatId = numberId._serialized;
+
+    let sent;
+    if (job.media_url) {
+      const media = await MessageMedia.fromUrl(job.media_url, { unsafeMime: true });
+      sent = await client.sendMessage(chatId, media, { caption: job.body || '' });
+    } else {
+      sent = await client.sendMessage(chatId, job.body);
+    }
+
+    // whatsapp-web.js always returns a Message object on success; a real WhatsApp
+    // message id is `true_<chat>_<hash>`. No more "any string == sent" false
+    // positives — a failed send throws and is caught below.
+    const msgId = sent && sent.id ? (sent.id._serialized || String(sent.id)) : null;
+    if (!msgId) throw new Error('Send returned no message id');
+
     await db.from('wa_outbox').update({ status: 'sent', sent_at: new Date().toISOString(), wa_message_id: msgId, last_error: null }).eq('id', job.id);
     log(`sent → ${job.to_phone}`);
     // humanized pause before the next one
@@ -171,61 +171,82 @@ async function loop() {
 async function main() {
   log('Starting Stocky WA runner for session', CFG.sessionId);
   await patchSession({ status: 'pairing', qr_data_url: null });
-  try {
-    client = await wa.create({
-      sessionId: `stocky_${CFG.sessionId}`,
-      multiDevice: true,
-      useChrome: CFG.useChrome,
-      executablePath: CFG.executablePath,
-      headless: CFG.headless,
-      customUserAgent: CFG.userAgent,
-      qrTimeout: 0,
-      authTimeout: 0,
-      cacheEnabled: false,
-      disableSpins: true,
-      qrLogSkip: true,
-      killProcessOnBrowserClose: true,
-      sessionDataPath: path.join(__dirname, '.sessions'),
-      catchQR: async (base64Qr) => {
-        // base64Qr is already a data URL from open-wa; store it for the UI
-        try {
-          const dataUrl = base64Qr.startsWith('data:') ? base64Qr : `data:image/png;base64,${base64Qr}`;
-          await patchSession({ status: 'pairing', qr_data_url: dataUrl });
-          log('QR published — scan it from the Connection Center.');
-        } catch (e) { log('QR publish error:', e && e.message); }
-      },
-    });
 
-    client.onAck(async (msg) => {
-      try {
-        const id = msg.id && (msg.id._serialized || msg.id);
-        if (id) await db.from('wa_outbox').update({ ack: msg.ack }).eq('wa_message_id', id);
-        await emit('ack', { message_id: id, ack: msg.ack });
-      } catch { /* */ }
-    });
-    client.onMessage(async (m) => {
-      try {
-        if (m.fromMe || m.isGroupMsg) return;
-        const phone = '+' + String(m.from).replace(/@c\.us$/, '');
-        await emit('inbound', { from: phone, body: m.body || '', type: m.type });
-      } catch { /* */ }
-    });
-    client.onStateChanged(async (state) => {
-      log('state:', state);
-      if (state === 'CONNECTED') await patchSession({ status: 'connected', qr_data_url: null });
-      if (['UNPAIRED', 'UNPAIRED_IDLE', 'CONFLICT'].includes(state)) {
-        await patchSession({ status: 'disconnected' });
-        await emit('disconnected', { state });
-      }
-    });
+  const puppeteerOpts = {
+    headless: CFG.headless,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  };
+  if (CFG.executablePath) puppeteerOpts.executablePath = CFG.executablePath;
 
-    // open-wa 4.76 exposes getHostNumber() (getHostDevice was removed).
-    const num = await client.getHostNumber().catch(() => null);
-    const digits = num ? String(num).replace(/[^\d]/g, '') : '';
+  client = new Client({
+    // LocalAuth persists the linked session under .sessions/ so the QR only has
+    // to be scanned once. clientId keeps multiple runners isolated on one PC.
+    authStrategy: new LocalAuth({
+      clientId: `stocky_${CFG.sessionId}`,
+      dataPath: path.join(__dirname, '.sessions'),
+    }),
+    puppeteer: puppeteerOpts,
+    takeoverOnConflict: true,
+    takeoverTimeoutMs: 10000,
+  });
+
+  client.on('qr', async (qr) => {
+    try {
+      const dataUrl = await QRCode.toDataURL(qr, { margin: 1, width: 320 });
+      await patchSession({ status: 'pairing', qr_data_url: dataUrl });
+      log('QR published — scan it from the Connection Center.');
+    } catch (e) { log('QR publish error:', e && e.message); }
+  });
+
+  client.on('authenticated', () => log('authenticated — session saved.'));
+  client.on('auth_failure', async (m) => {
+    log('auth failure:', m);
+    await patchSession({ status: 'disconnected' }).catch(() => {});
+    await emit('disconnected', { reason: 'auth_failure', detail: String(m) });
+  });
+
+  client.on('ready', async () => {
+    clientReady = true;
+    const wid = client.info && client.info.wid;
+    const digits = wid ? String(wid.user || '').replace(/[^\d]/g, '') : '';
     const phone = digits ? '+' + digits : null;
     await patchSession({ status: 'connected', phone_number: phone, qr_data_url: null });
     await emit('connected', { phone });
     log('Connected as', phone || '(unknown)');
+  });
+
+  client.on('change_state', (state) => log('state:', state));
+
+  client.on('disconnected', async (reason) => {
+    clientReady = false;
+    log('disconnected:', reason);
+    await patchSession({ status: 'disconnected' }).catch(() => {});
+    await emit('disconnected', { reason: String(reason) });
+    // whatsapp-web.js tears down the browser on disconnect; exit so the .bat /
+    // process manager can restart us and re-establish the session.
+    process.exit(1);
+  });
+
+  // ack: 1 = sent(server), 2 = delivered, 3 = read, 4 = played (voice)
+  client.on('message_ack', async (msg, ack) => {
+    try {
+      const id = msg.id && (msg.id._serialized || String(msg.id));
+      if (id) await db.from('wa_outbox').update({ ack }).eq('wa_message_id', id);
+      await emit('ack', { message_id: id, ack });
+    } catch { /* */ }
+  });
+
+  // inbound messages (ignore our own and group traffic)
+  client.on('message', async (m) => {
+    try {
+      if (m.fromMe || m.from === 'status@broadcast' || String(m.from).endsWith('@g.us')) return;
+      const phone = '+' + String(m.from).replace(/@c\.us$/, '');
+      await emit('inbound', { from: phone, body: m.body || '', type: m.type });
+    } catch { /* */ }
+  });
+
+  try {
+    await client.initialize();
     loop();
   } catch (e) {
     log('fatal:', e && e.message);
@@ -234,6 +255,12 @@ async function main() {
   }
 }
 
-process.on('SIGINT', async () => { running = false; log('Shutting down…'); await patchSession({ status: 'disconnected' }).catch(() => {}); process.exit(0); });
+process.on('SIGINT', async () => {
+  running = false;
+  log('Shutting down…');
+  try { if (client) await client.destroy(); } catch { /* */ }
+  await patchSession({ status: 'disconnected' }).catch(() => {});
+  process.exit(0);
+});
 
 main();

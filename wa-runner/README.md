@@ -11,6 +11,18 @@ et remonte les statuts (envoyé / distribué / lu) et les réponses.
 > cadence progressivement (warm-up), et n'écrivez qu'à des contacts qui ont
 > consenti. Un numéro peut être banni.
 
+> 🔄 **Mise à jour du moteur (v2).** Le runner utilise désormais
+> **whatsapp-web.js** (gratuit, maintenu) au lieu d'open-wa, qui était obsolète
+> et ne pouvait pas écrire aux numéros non enregistrés. Si tu utilisais déjà
+> l'ancienne version, fais **une fois** sur le PC :
+>
+> 1. Supprime le dossier **`node_modules`** et le dossier **`.sessions`** dans `wa-runner`.
+> 2. Relance **`DEMARRER.bat`** (il réinstalle les dépendances, ~2-3 min).
+> 3. **Re-scanne le QR** depuis le Centre de connexion (nouvelle session).
+>
+> Rien à changer dans Stocky ni dans Supabase : la file, les campagnes, les
+> délais et les opt-outs sont conservés.
+
 ## Installation (Windows, une fois)
 
 1. Installer **Node.js LTS** : https://nodejs.org/ (bouton « LTS »).
