@@ -19,6 +19,8 @@ export interface CatalogueOptions {
   brand: string;
   site: string;
   logoDataUrl?: string | null;
+  /** optional filename tag, e.g. PHOTOS */
+  tag?: string;
   onProgress?: (msg: string, pct: number) => void;
 }
 
@@ -441,7 +443,8 @@ export async function generateCataloguePdf(
   progress('Finalisation…', 98);
   const sfx = { ttc: '', pro: '_PRO', none: '_SANS_PRIX' }[variant];
   const lay = layout === 'grid' ? '_GRILLE' : '';
-  return { blob: d.output('blob'), pages: total, filename: `CATALOGUE${lay}${sfx}_${today}.pdf` };
+  const tag = opts.tag ? `_${opts.tag}` : '';
+  return { blob: d.output('blob'), pages: total, filename: `CATALOGUE${lay}${tag}${sfx}_${today}.pdf` };
 }
 
 // ── image helpers ───────────────────────────────────────────────────────────

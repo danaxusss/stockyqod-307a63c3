@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import {
   BookImage, Loader, Search, Plus, Pencil, Trash2, ChevronUp, ChevronDown,
-  Eye, EyeOff, FileDown, Upload, ImageOff, Calculator, X, Check, Save,
+  Eye, EyeOff, FileDown, Upload, ImageOff, Calculator, X, Save, SlidersHorizontal,
 } from 'lucide-react';
 import { CatalogueService, type CatalogueFamily, type CatalogueProduct, type PriceField } from '../../utils/supabaseCatalogue';
 import { generateCataloguePdf, fetchCatalogueImages, type CatalogueVariant, type CatalogueLayout } from '../../utils/cataloguePdf';
@@ -37,6 +37,14 @@ export default function CataloguePage() {
   const [genFams, setGenFams] = useState<Set<string>>(new Set());
   const [gen, setGen] = useState<{ msg: string; pct: number } | null>(null);
   const [pdfUrl, setPdfUrl] = useState<{ url: string; name: string; pages: number } | null>(null);
+
+  // export options
+  const [showExport, setShowExport] = useState(false);
+  const [expPhoto, setExpPhoto] = useState<'all' | 'with' | 'without'>('all');
+  const [expPrice, setExpPrice] = useState<'all' | 'with' | 'without'>('all');
+  const [expMin, setExpMin] = useState('');
+  const [expMax, setExpMax] = useState('');
+  const [expUseFilter, setExpUseFilter] = useState(false);
 
   const photoInput = useRef<HTMLInputElement>(null);
   const photoTarget = useRef<CatalogueProduct | null>(null);
@@ -157,17 +165,47 @@ export default function CataloguePage() {
     } catch (e: any) { showToast({ type: 'error', message: e?.message || 'Échec (référence déjà utilisée ?)' }); }
   };
 
+  // ── Export selection (shared by the live count and the generator) ─────────
+  const exportFams = useMemo(() => {
+    const want = genFams.size ? genFams : null;
+    const min = expMin === '' ? null : Number(expMin);
+    const max = expMax === '' ? null : Number(expMax);
+    const q = query.trim().toLowerCase();
+    // price actually printed for the chosen variant
+    const effPrice = (p: CatalogueProduct) => variant === 'pro' ? (p.price_pro ?? p.price) : p.price;
+
+    const keep = (p: CatalogueProduct) => {
+      if (p.hidden) return false;
+      if (expPhoto === 'with' && !p.image) return false;
+      if (expPhoto === 'without' && p.image) return false;
+      const v = effPrice(p);
+      if (expPrice === 'with' && (v == null || v <= 0)) return false;
+      if (expPrice === 'without' && v != null && v > 0) return false;
+      if (min != null && (v == null || v < min)) return false;
+      if (max != null && (v == null || v > max)) return false;
+      if (expUseFilter) {
+        if (famFilter && p.family_id !== famFilter) return false;
+        if (q && !p.ref.toLowerCase().includes(q) && !p.designation.toLowerCase().includes(q)) return false;
+      }
+      return true;
+    };
+
+    return families
+      .filter(f => !want || want.has(f.id))
+      .map(f => ({ ...f, products: products.filter(p => p.family_id === f.id && keep(p)).sort((a, b) => (a.sort_order - b.sort_order) || a.ref.localeCompare(b.ref)) }))
+      .filter(f => f.products.length > 0);
+  }, [families, products, genFams, expPhoto, expPrice, expMin, expMax, expUseFilter, famFilter, query, variant]);
+
+  const exportCount = useMemo(() => exportFams.reduce((s, f) => s + f.products.length, 0), [exportFams]);
+  const exportFiltersOn = expPhoto !== 'all' || expPrice !== 'all' || expMin !== '' || expMax !== '' || expUseFilter;
+
   // ── PDF ───────────────────────────────────────────────────────────────────
   const generate = async () => {
     setGen({ msg: 'Préparation…', pct: 0 });
     if (pdfUrl) { URL.revokeObjectURL(pdfUrl.url); setPdfUrl(null); }
     try {
-      const want = genFams.size ? genFams : null;
-      const fams = families
-        .filter(f => !want || want.has(f.id))
-        .map(f => ({ ...f, products: products.filter(p => p.family_id === f.id && !p.hidden).sort((a, b) => (a.sort_order - b.sort_order) || a.ref.localeCompare(b.ref)) }))
-        .filter(f => f.products.length > 0);
-      if (!fams.length) throw new Error('Aucun produit visible dans la sélection');
+      const fams = exportFams;
+      if (!fams.length) throw new Error('Aucun produit ne correspond aux options d\'export');
 
       const all = fams.flatMap(f => f.products);
       const images = await fetchCatalogueImages(all, CatalogueService.imageUrl, (msg, pct) => setGen({ msg, pct: Math.round(pct * 0.35) }));
@@ -188,6 +226,7 @@ export default function CataloguePage() {
         brand: s?.company_name || 'CUISIMAT GROUPE',
         site: (s?.website || 'cuisimat-groupe.ma').replace(/^https?:\/\//, ''),
         logoDataUrl,
+        tag: expPhoto === 'with' ? 'PHOTOS' : expPhoto === 'without' ? 'SANS-PHOTO' : undefined,
         onProgress: (msg, pct) => setGen({ msg, pct: 35 + Math.round(pct * 0.65) }),
       });
       setPdfUrl({ url: URL.createObjectURL(blob), name: filename, pages });
@@ -233,13 +272,81 @@ export default function CataloguePage() {
             <option value="pro">Prix Pro</option>
             <option value="none">Sans prix</option>
           </select>
-          <button onClick={generate} disabled={!!gen}
+          <button onClick={() => setShowExport(v => !v)}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm ${showExport || exportFiltersOn ? 'bg-primary/10 border-primary/30 text-primary' : 'bg-secondary border-border'}`}>
+            <SlidersHorizontal className="h-3.5 w-3.5" /> Filtres export{exportFiltersOn ? ' •' : ''}
+          </button>
+          <button onClick={generate} disabled={!!gen || exportCount === 0}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-60">
             {gen ? <Loader className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
-            {genFams.size ? `Générer (${genFams.size} fam.)` : 'Générer le PDF'}
+            Générer ({exportCount})
           </button>
         </div>
       </div>
+
+      {showExport && (
+        <div className="mb-4 bg-card border border-primary/25 rounded-lg p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <SlidersHorizontal className="h-4 w-4 text-primary" />
+              <span className="text-sm font-semibold text-foreground">Filtres d'export</span>
+              <span className="text-xs text-muted-foreground">· ce qui entrera dans le PDF</span>
+            </div>
+            <div className="flex items-center gap-2">
+              {exportFiltersOn && (
+                <button onClick={() => { setExpPhoto('all'); setExpPrice('all'); setExpMin(''); setExpMax(''); setExpUseFilter(false); }}
+                  className="text-xs text-muted-foreground hover:text-foreground">Réinitialiser</button>
+              )}
+              <button onClick={() => setShowExport(false)} className="p-1 rounded hover:bg-secondary"><X className="h-4 w-4 text-muted-foreground" /></button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div>
+              <label className="block text-[11px] text-muted-foreground mb-1">Photos</label>
+              <select value={expPhoto} onChange={e => setExpPhoto(e.target.value as any)}
+                className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border">
+                <option value="all">Tous les produits</option>
+                <option value="with">Avec photo uniquement</option>
+                <option value="without">Sans photo uniquement</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11px] text-muted-foreground mb-1">Prix ({variant === 'pro' ? 'Pro' : variant === 'ttc' ? 'TTC' : 'n/a'})</label>
+              <select value={expPrice} onChange={e => setExpPrice(e.target.value as any)} disabled={variant === 'none'}
+                className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border disabled:opacity-50">
+                <option value="all">Tous les produits</option>
+                <option value="with">Avec prix uniquement</option>
+                <option value="without">Sans prix uniquement</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11px] text-muted-foreground mb-1">Prix min (MAD)</label>
+              <input type="number" value={expMin} onChange={e => setExpMin(e.target.value)} placeholder="—"
+                className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border" />
+            </div>
+            <div>
+              <label className="block text-[11px] text-muted-foreground mb-1">Prix max (MAD)</label>
+              <input type="number" value={expMax} onChange={e => setExpMax(e.target.value)} placeholder="—"
+                className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border" />
+            </div>
+          </div>
+
+          <label className="flex items-center gap-1.5 text-xs text-muted-foreground mt-3 cursor-pointer">
+            <input type="checkbox" checked={expUseFilter} onChange={e => setExpUseFilter(e.target.checked)} className="accent-[hsl(var(--primary))]" />
+            Appliquer aussi la recherche et la famille sélectionnées à l'écran
+          </label>
+
+          <div className="mt-3 pt-3 border-t border-border/60 flex items-center gap-3 flex-wrap text-xs">
+            <span className={exportCount === 0 ? 'text-destructive font-medium' : 'text-foreground font-medium'}>
+              {exportCount === 0 ? 'Aucun produit ne correspond' : `${exportCount} produit(s) · ${exportFams.length} famille(s)`}
+            </span>
+            <span className="text-muted-foreground">
+              Les produits masqués (🚫) sont toujours exclus{genFams.size ? ` · ${genFams.size} famille(s) cochée(s)` : ''}
+            </span>
+          </div>
+        </div>
+      )}
 
       {gen && (
         <div className="mb-4 bg-card border border-border rounded-lg p-3">
