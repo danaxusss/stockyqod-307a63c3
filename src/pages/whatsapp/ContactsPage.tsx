@@ -3,7 +3,8 @@ import {
   Users, Loader, Search, Plus, Upload, Trash2, Tag, X, Check, Save,
   UserX, Download, ShieldOff, ChevronDown,
 } from 'lucide-react';
-import { WaContactsService, matchSegment, type WaContact, type WaSegment, type SegmentFilter, type ImportRow, type ImportReport } from '../../utils/supabaseWaContacts';
+import { WaContactsService, matchSegment, type WaContact, type WaSegment, type SegmentFilter, type ImportRow, type ImportReport, type EngagementCtx } from '../../utils/supabaseWaContacts';
+import { WhatsappService } from '../../utils/supabaseWhatsapp';
 import { normalizePhone } from '../../utils/phone';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
@@ -62,6 +63,8 @@ export default function ContactsPage() {
 
   const [query, setQuery] = useState('');
   const [tagFilter, setTagFilter] = useState<string[]>([]);
+  const [behavior, setBehavior] = useState<'' | 'read' | 'replied' | 'silent'>('');
+  const [eng, setEng] = useState<EngagementCtx | null>(null);
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
@@ -87,9 +90,21 @@ export default function ContactsPage() {
     return Array.from(s).sort();
   }, [contacts]);
 
-  const filter: SegmentFilter = useMemo(() => ({ search: query || undefined, tagsAll: tagFilter.length ? tagFilter : undefined }), [query, tagFilter]);
-  const filtered = useMemo(() => contacts.filter(c => matchSegment(c, filter)), [contacts, filter]);
-  useEffect(() => { setPage(0); }, [query, tagFilter]);
+  const filter: SegmentFilter = useMemo(() => ({
+    search: query || undefined, tagsAll: tagFilter.length ? tagFilter : undefined,
+    behavior: behavior || undefined,
+  }), [query, tagFilter, behavior]);
+
+  // engagement sets are only fetched when a behavior filter is first used
+  useEffect(() => {
+    if (behavior && !eng) WaContactsService.engagement().then(setEng).catch(() => {});
+  }, [behavior, eng]);
+
+  const filtered = useMemo(
+    () => (behavior && !eng) ? [] : contacts.filter(c => matchSegment(c, filter, eng || undefined)),
+    [contacts, filter, behavior, eng]
+  );
+  useEffect(() => { setPage(0); }, [query, tagFilter, behavior]);
   const pageItems = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
   const nPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const reachable = useMemo(() => filtered.filter(c => !optOutSet.has(c.phone)).length, [filtered, optOutSet]);
@@ -134,7 +149,20 @@ export default function ContactsPage() {
     await load();
     showToast({ type: 'success', message: 'Segment enregistré' });
   };
-  const applySegment = (s: WaSegment) => { setQuery(s.filter.search || ''); setTagFilter(s.filter.tagsAll || []); };
+  const applySegment = (s: WaSegment) => { setQuery(s.filter.search || ''); setTagFilter(s.filter.tagsAll || []); setBehavior((s.filter.behavior as any) || ''); };
+
+  const verifyNumbers = async () => {
+    const unchecked = filtered.filter(c => !c.wa_status).map(c => c.phone);
+    if (!unchecked.length) { showToast({ type: 'info', message: 'Tous les contacts affichés sont déjà vérifiés' }); return; }
+    if (!window.confirm(`Vérifier ${unchecked.length} numéro(s) sur WhatsApp ? Le runner traite ~1 numéro/seconde.`)) return;
+    setBusy(true);
+    try {
+      const session = await WhatsappService.ensureSession();
+      await WaContactsService.requestValidation(session.id, unchecked);
+      showToast({ type: 'success', message: `Vérification de ${unchecked.length} numéro(s) lancée — rechargez la page dans quelques minutes` });
+    } catch (e: any) { showToast({ type: 'error', message: e?.message || 'Échec' }); }
+    finally { setBusy(false); }
+  };
 
   const exportCsv = () => {
     const header = ['phone', 'name', 'email', 'tags', 'opted_out'];
@@ -194,6 +222,18 @@ export default function ContactsPage() {
                 {segments.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             )}
+            <select value={behavior} onChange={e => setBehavior(e.target.value as any)}
+              className="px-2 py-2 text-sm rounded-lg bg-secondary border border-border" title="Filtrer selon l'engagement passé">
+              <option value="">Comportement…</option>
+              <option value="read">A lu un message</option>
+              <option value="replied">A répondu</option>
+              <option value="silent">Contacté sans réaction</option>
+            </select>
+            <button onClick={verifyNumbers} disabled={busy}
+              className="flex items-center gap-1 px-2.5 py-2 rounded-lg bg-secondary border border-border text-xs disabled:opacity-50"
+              title="Vérifier via le runner quels numéros affichés sont réellement sur WhatsApp">
+              <Check className="h-3.5 w-3.5" /> Vérifier
+            </button>
             <button onClick={() => {
               if (!query && !tagFilter.length) { showToast({ type: 'info', message: 'Appliquez d\'abord un filtre à enregistrer' }); return; }
               setDialog({ kind: 'segment' });
@@ -258,7 +298,9 @@ export default function ContactsPage() {
                       </td>
                       <td className="px-3 py-1.5">
                         {out ? <span className="text-[11px] text-amber-600 dark:text-amber-400">Désinscrit</span>
-                          : <span className="text-[11px] text-emerald-700 dark:text-emerald-400">Joignable</span>}
+                          : c.wa_status === 'invalid' ? <span className="text-[11px] text-red-600 dark:text-red-400" title="Ce numéro n'est pas sur WhatsApp">Pas de WhatsApp</span>
+                          : c.wa_status === 'valid' ? <span className="text-[11px] text-emerald-700 dark:text-emerald-400" title={`Vérifié sur WhatsApp${c.wa_checked_at ? ' le ' + new Date(c.wa_checked_at).toLocaleDateString('fr-FR') : ''}`}>WhatsApp ✓</span>
+                          : <span className="text-[11px] text-muted-foreground" title="Cliquez sur « Vérifier » pour contrôler ce numéro">Non vérifié</span>}
                       </td>
                     </tr>
                   );

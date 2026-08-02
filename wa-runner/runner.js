@@ -63,6 +63,70 @@ function gaussianDelayMs(meanSec, stdSec) {
 // Digits only, no leading + (+2126… → 2126…), for getNumberId().
 const toDigits = (phone) => String(phone).replace(/[^\d]/g, '');
 
+// WhatsApp message ids come in several shapes across library versions:
+// "true_2126…@c.us_3EB0…", { _serialized }, { id }. We correlate acks on the
+// trailing hex token, which is stable in all of them.
+function msgIdForms(raw) {
+  if (!raw) return { full: null, hex: null };
+  const full = typeof raw === 'string' ? raw : (raw._serialized || raw.id || null);
+  if (!full) return { full: null, hex: null };
+  const parts = String(full).split('_');
+  return { full: String(full), hex: parts[parts.length - 1] || String(full) };
+}
+
+// Apply an ack to the outbox. Acks may arrive out of order — only ever raise.
+// Matching order: exact id → trailing-hex → most recent sent row to that phone.
+async function applyAck(rawId, phone, ack) {
+  const { full, hex } = msgIdForms(rawId);
+  if (full) {
+    const { data } = await db.from('wa_outbox').update({ ack })
+      .eq('wa_message_id', full).lt('ack', ack).select('id');
+    if (data && data.length) return true;
+  }
+  if (hex) {
+    const { data } = await db.from('wa_outbox').update({ ack })
+      .like('wa_message_id', '%' + hex).lt('ack', ack).select('id');
+    if (data && data.length) return true;
+  }
+  if (phone) {
+    const { data: row } = await db.from('wa_outbox').select('id')
+      .eq('session_id', CFG.sessionId).eq('to_phone', phone)
+      .eq('status', 'sent').lt('ack', ack)
+      .order('sent_at', { ascending: false }).limit(1).maybeSingle();
+    if (row) { await db.from('wa_outbox').update({ ack }).eq('id', row.id); return true; }
+  }
+  return false;
+}
+
+// Catch up on acks that arrived while the runner was offline: re-read the
+// last messages of every chat we recently sent to and re-apply their acks.
+async function reconcileAcks() {
+  try {
+    const since = new Date(Date.now() - 7 * 86400_000).toISOString();
+    const { data: rows } = await db.from('wa_outbox')
+      .select('id, to_phone, wa_message_id, ack')
+      .eq('session_id', CFG.sessionId).eq('status', 'sent')
+      .lt('ack', 3).gte('sent_at', since)
+      .order('sent_at', { ascending: false }).limit(200);
+    if (!rows || !rows.length) return;
+    const phones = [...new Set(rows.map(r => r.to_phone))];
+    let fixed = 0;
+    for (const phone of phones.slice(0, 50)) {
+      try {
+        const chat = await client.getChatById(toDigits(phone) + '@c.us');
+        const msgs = await chat.fetchMessages({ limit: 20, fromMe: true });
+        for (const m of msgs) {
+          if (typeof m.ack === 'number' && m.ack > 0) {
+            if (await applyAck(m.id, phone, m.ack)) fixed++;
+          }
+        }
+      } catch { /* chat may not exist anymore */ }
+      await sleep(400);
+    }
+    if (fixed) log(`reconciled ${fixed} ack(s) missed while offline`);
+  } catch (e) { log('reconcile error:', e && e.message); }
+}
+
 async function getSession() {
   const { data, error } = await db.from('wa_sessions').select('*').eq('id', CFG.sessionId).single();
   if (error) throw error;
@@ -94,6 +158,86 @@ function inQuietHours(qStart, qEnd) {
 async function isOptedOut(phone) {
   const { data } = await db.from('wa_opt_outs').select('id').eq('company_id', CFG.companyId).eq('phone', phone).maybeSingle();
   return !!data;
+}
+async function setContactValidity(phone, status) {
+  await db.from('wa_contacts')
+    .update({ wa_status: status, wa_checked_at: new Date().toISOString() })
+    .eq('company_id', CFG.companyId).eq('phone', phone);
+}
+
+// ── app → runner commands (wa_commands) ─────────────────────────────────────
+async function processCommands() {
+  if (!clientReady) return;
+  const { data: cmd } = await db.from('wa_commands')
+    .select('*').eq('session_id', CFG.sessionId).eq('status', 'pending')
+    .order('created_at', { ascending: true }).limit(1).maybeSingle();
+  if (!cmd) return;
+  const { data: claimed } = await db.from('wa_commands')
+    .update({ status: 'running' }).eq('id', cmd.id).eq('status', 'pending').select().maybeSingle();
+  if (!claimed) return;
+
+  try {
+    if (cmd.type === 'validate_numbers') {
+      const phones = Array.isArray(cmd.payload && cmd.payload.phones) ? cmd.payload.phones : [];
+      let valid = 0, invalid = 0;
+      log(`validating ${phones.length} number(s)…`);
+      for (const phone of phones) {
+        try {
+          const id = await client.getNumberId(toDigits(phone));
+          await setContactValidity(phone, id ? 'valid' : 'invalid');
+          id ? valid++ : invalid++;
+        } catch { /* leave unchecked on transient errors */ }
+        await sleep(600 + Math.random() * 500); // gentle pace — these are lookups
+      }
+      await db.from('wa_commands').update({ status: 'done', result: { checked: phones.length, valid, invalid } }).eq('id', cmd.id);
+      log(`validation done: ${valid} valid, ${invalid} invalid`);
+    } else {
+      await db.from('wa_commands').update({ status: 'failed', result: { error: 'unknown command type' } }).eq('id', cmd.id);
+    }
+  } catch (e) {
+    await db.from('wa_commands').update({ status: 'failed', result: { error: String(e && e.message || e) } }).eq('id', cmd.id);
+  }
+}
+
+// ── auto-replies (keyword rules) ────────────────────────────────────────────
+// Rules are cached and refreshed lazily; per-contact cooldown and a global
+// hourly cap keep this from ever looking like bot spam.
+let autoRules = [];
+let autoRulesAt = 0;
+const autoReplied = new Map();       // `${ruleId}|${phone}` → last reply ts
+let autoReplyWindow = [];            // timestamps of replies in the last hour
+const fold = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+
+async function refreshAutoRules() {
+  if (Date.now() - autoRulesAt < 60_000) return;
+  autoRulesAt = Date.now();
+  const { data } = await db.from('wa_auto_replies')
+    .select('*').eq('company_id', CFG.companyId).eq('active', true);
+  autoRules = data || [];
+}
+
+async function maybeAutoReply(from, body) {
+  await refreshAutoRules();
+  if (!autoRules.length || !body) return;
+  const text = fold(body);
+  const rule = autoRules.find(r => {
+    const kw = fold(r.keyword);
+    return r.match_type === 'contains' ? text.includes(kw) : text === kw;
+  });
+  if (!rule) return;
+
+  const key = `${rule.id}|${from}`;
+  const cooldownMs = (rule.cooldown_hours || 24) * 3600_000;
+  if (autoReplied.has(key) && Date.now() - autoReplied.get(key) < cooldownMs) return;
+  autoReplyWindow = autoReplyWindow.filter(t => Date.now() - t < 3600_000);
+  if (autoReplyWindow.length >= 20) { log('auto-reply hourly cap reached — skipping'); return; }
+
+  await client.sendMessage(from, rule.reply_body);
+  autoReplied.set(key, Date.now());
+  autoReplyWindow.push(Date.now());
+  const phone = '+' + String(from).replace(/@c\.us$/, '');
+  await emit('auto_reply', { to: phone, keyword: rule.keyword });
+  log(`auto-reply (${rule.keyword}) → ${phone}`);
 }
 
 // ── send loop ───────────────────────────────────────────────────────────────
@@ -128,9 +272,15 @@ async function processOutbox() {
 
   try {
     // Resolve the number on WhatsApp. Works for non-contacts too; returns null
-    // when the number simply isn't registered on WhatsApp.
+    // when the number simply isn't registered on WhatsApp — a permanent
+    // condition: fail immediately (no retries) and remember it on the contact.
     const numberId = await client.getNumberId(toDigits(job.to_phone));
-    if (!numberId) throw new Error('Number not registered on WhatsApp');
+    if (!numberId) {
+      await db.from('wa_outbox').update({ status: 'failed', last_error: 'not registered on WhatsApp' }).eq('id', job.id);
+      await setContactValidity(job.to_phone, 'invalid');
+      log(`skip (no WhatsApp) → ${job.to_phone}`);
+      return;
+    }
     const chatId = numberId._serialized;
 
     let sent;
@@ -145,12 +295,10 @@ async function processOutbox() {
     // accepted — a real failure throws and is caught below. The message id is
     // only used later to correlate acks, so extract it best-effort and never
     // fail the send just because the id shape differs across library versions.
-    const rawId = sent && sent.id;
-    const msgId = !rawId ? null
-      : (typeof rawId === 'string' ? rawId
-        : (rawId._serialized || rawId.id || null));
+    const msgId = msgIdForms(sent && sent.id).full;
 
     await db.from('wa_outbox').update({ status: 'sent', sent_at: new Date().toISOString(), wa_message_id: msgId, last_error: null }).eq('id', job.id);
+    await setContactValidity(job.to_phone, 'valid');
     log(`sent → ${job.to_phone}`);
     // humanized pause before the next one
     await sleep(gaussianDelayMs(s.delay_mean_sec, s.delay_std_sec));
@@ -178,7 +326,7 @@ async function loop() {
   let lastPurge = 0;
   while (running) {
     try {
-      await heartbeat(); await processOutbox();
+      await heartbeat(); await processOutbox(); await processCommands();
       if (Date.now() - lastPurge > 6 * 3600_000) {
         lastPurge = Date.now();
         purgeOld().catch(e => log('purge error:', e && e.message));
@@ -235,6 +383,8 @@ async function main() {
     await patchSession({ status: 'connected', phone_number: phone, qr_data_url: null });
     await emit('connected', { phone });
     log('Connected as', phone || '(unknown)');
+    // catch up on delivery/read receipts that arrived while we were offline
+    reconcileAcks();
   });
 
   client.on('change_state', (state) => log('state:', state));
@@ -252,9 +402,10 @@ async function main() {
   // ack: 1 = sent(server), 2 = delivered, 3 = read, 4 = played (voice)
   client.on('message_ack', async (msg, ack) => {
     try {
-      const id = msg.id && (msg.id._serialized || String(msg.id));
-      if (id) await db.from('wa_outbox').update({ ack }).eq('wa_message_id', id);
-      await emit('ack', { message_id: id, ack });
+      if (typeof ack !== 'number' || ack < 1) return;
+      const to = msg.to && String(msg.to).endsWith('@c.us') ? '+' + String(msg.to).replace(/@c\.us$/, '') : null;
+      const matched = await applyAck(msg.id, to, ack);
+      if (!matched) log(`ack ${ack} unmatched (${to || 'unknown'})`);
     } catch { /* */ }
   });
 
@@ -275,7 +426,9 @@ async function main() {
         );
         await emit('opt_out', { phone, via: 'stop-reply', body: m.body });
         log(`opt-out (STOP) ← ${phone}`);
+        return; // never auto-reply to an opt-out
       }
+      await maybeAutoReply(m.from, m.body);
     } catch { /* */ }
   });
 

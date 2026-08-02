@@ -172,6 +172,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps = {}
         { to: '/whatsapp/contacts', icon: Users, label: 'Contacts WhatsApp' },
         { to: '/whatsapp/studio', icon: FileText, label: 'Studio de contenu' },
         { to: '/whatsapp/campaigns', icon: Megaphone, label: 'Campagnes' },
+        { to: '/whatsapp/analytics', icon: BarChart3, label: 'Analyse' },
       ],
     }] : []),
     ...(isSuperAdmin ? [{
