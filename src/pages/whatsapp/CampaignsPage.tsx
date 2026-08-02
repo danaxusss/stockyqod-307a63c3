@@ -2,12 +2,13 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Megaphone, Plus, Loader, Trash2, X, Play, Pause, StopCircle, Send,
   Users, Clock, CheckCheck, Check, Eye, Image as ImageIcon, FileText, RefreshCw,
+  MousePointerClick,
 } from 'lucide-react';
 import {
   WaCampaignsService, renderMessage, type WaCampaign, type WaTemplate, type CampaignStats,
 } from '../../utils/supabaseWaCampaigns';
 import { WhatsappService, type WaSession } from '../../utils/supabaseWhatsapp';
-import { WaContactsService, matchSegment, type WaSegment, type WaContact } from '../../utils/supabaseWaContacts';
+import { WaContactsService, matchSegment, type WaSegment, type WaContact, type EngagementCtx } from '../../utils/supabaseWaContacts';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
 
@@ -146,9 +147,15 @@ function Editor({ draft, sessions, segments, templates, contacts, optedOut, curr
   const [testPhone, setTestPhone] = useState('');
   const [testing, setTesting] = useState(false);
 
+  // behavior filters need engagement sets — fetched once if the segment uses one
+  const [eng, setEng] = useState<EngagementCtx | null>(null);
+  useEffect(() => {
+    if (c.segment_filter?.behavior && !eng) WaContactsService.engagement().then(setEng).catch(() => {});
+  }, [c.segment_filter?.behavior, eng]);
+
   const audience = useMemo(
-    () => contacts.filter(ct => !optedOut.has(ct.phone) && matchSegment(ct, c.segment_filter || {})),
-    [contacts, optedOut, c.segment_filter]
+    () => contacts.filter(ct => !optedOut.has(ct.phone) && ct.wa_status !== 'invalid' && matchSegment(ct, c.segment_filter || {}, eng || undefined)),
+    [contacts, optedOut, c.segment_filter, eng]
   );
   const preview = useMemo(
     () => renderMessage(c.body || '', SAMPLE, { label: c.cta_label, url: c.cta_url }),
@@ -267,6 +274,14 @@ function Editor({ draft, sessions, segments, templates, contacts, optedOut, curr
                   placeholder="https://…" className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border" />
               </div>
             </div>
+            {c.cta_url && (
+              <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                <input type="checkbox" checked={!!c.track_clicks} onChange={e => setC({ ...c, track_clicks: e.target.checked })}
+                  className="accent-[hsl(var(--primary))]" />
+                Compter les clics sur le lien
+                <span className="text-[10px]">(nécessite la fonction wa-link déployée — le lien passe par un redirecteur)</span>
+              </label>
+            )}
 
             <div>
               <label className="block text-[11px] text-muted-foreground mb-1">Média (image)</label>
@@ -420,6 +435,7 @@ function Detail({ campaign, currentUser, onClose, onEdit, onChanged }: {
             <Stat label="Lus" value={stats?.read} icon={<CheckCheck className="h-3.5 w-3.5 text-blue-500" />} />
             <Stat label="Échecs" value={stats?.failed} tone="red" />
             <Stat label="Bloqués" value={stats?.blocked} tone="amber" />
+            {stats?.clicks != null && <Stat label="Clics" value={stats.clicks} icon={<MousePointerClick className="h-3.5 w-3.5" />} />}
           </div>
 
           <div className="flex items-center gap-1 text-xs text-muted-foreground">

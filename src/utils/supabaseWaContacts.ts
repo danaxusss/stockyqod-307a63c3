@@ -12,6 +12,8 @@ export interface WaContact {
   custom: Record<string, any>;
   source: string;
   created_at: string;
+  wa_status?: 'valid' | 'invalid' | null;   // runner-verified WhatsApp presence
+  wa_checked_at?: string | null;
 }
 
 export interface SegmentFilter {
@@ -20,6 +22,14 @@ export interface SegmentFilter {
   tagsAll?: string[];     // has all of
   tagsNone?: string[];    // has none of
   hasField?: string;      // custom field present & non-empty
+  behavior?: 'read' | 'replied' | 'silent';  // engagement with past sends
+}
+
+/** Phone sets describing past engagement, used by behavior filters. */
+export interface EngagementCtx {
+  sent: Set<string>;      // ever received a message from us
+  read: Set<string>;      // read at least one (ack >= 3)
+  replied: Set<string>;   // ever wrote back
 }
 
 export interface WaSegment {
@@ -32,7 +42,13 @@ export interface ImportRow { phone: string; name?: string; email?: string; tags?
 export interface ImportReport { inserted: number; updated: number; invalid: string[]; optedOut: number; duplicatesInFile: number }
 
 /** Apply a segment filter to an in-memory contact list (also used by campaigns). */
-export function matchSegment(c: WaContact, f: SegmentFilter): boolean {
+export function matchSegment(c: WaContact, f: SegmentFilter, eng?: EngagementCtx): boolean {
+  if (f.behavior && eng) {
+    if (f.behavior === 'read' && !eng.read.has(c.phone)) return false;
+    if (f.behavior === 'replied' && !eng.replied.has(c.phone)) return false;
+    // silent = we reached them but they never read nor replied
+    if (f.behavior === 'silent' && !(eng.sent.has(c.phone) && !eng.read.has(c.phone) && !eng.replied.has(c.phone))) return false;
+  }
   if (f.search) {
     const q = f.search.toLowerCase();
     const hay = `${c.name || ''} ${c.phone} ${c.email || ''}`.toLowerCase();
@@ -56,7 +72,7 @@ export class WaContactsService {
     const PAGE = 1000;
     for (let from = 0; ; from += PAGE) {
       let q = (supabase as any).from('wa_contacts')
-        .select('id, phone, name, email, tags, custom, source, created_at')
+        .select('id, phone, name, email, tags, custom, source, created_at, wa_status, wa_checked_at')
         .order('created_at', { ascending: false }).range(from, from + PAGE - 1);
       if (!bypassFilter && companyId) q = q.eq('company_id', companyId);
       const { data, error } = await q;
@@ -145,6 +161,41 @@ export class WaContactsService {
       onProgress(done, payload.length);
     }
     return { inserted: payload.length - updated, updated, invalid, optedOut, duplicatesInFile };
+  }
+
+  /** Build the engagement sets behavior filters need (one pass over outbox + inbound). */
+  static async engagement(): Promise<EngagementCtx> {
+    const { companyId } = getCompanyContext();
+    const sent = new Set<string>(), read = new Set<string>(), replied = new Set<string>();
+    const PAGE = 1000;
+    for (let from = 0; ; from += PAGE) {
+      const { data } = await (supabase as any).from('wa_outbox')
+        .select('to_phone, ack').eq('company_id', companyId).eq('status', 'sent')
+        .range(from, from + PAGE - 1);
+      for (const r of (data || [])) { sent.add(r.to_phone); if (r.ack >= 3) read.add(r.to_phone); }
+      if (!data || data.length < PAGE) break;
+    }
+    const { data: inb } = await (supabase as any).from('wa_events')
+      .select('payload').eq('company_id', companyId).eq('type', 'inbound').limit(2000);
+    for (const e of (inb || [])) { const p = e.payload?.from; if (p && !String(p).includes('@')) replied.add(p); }
+    return { sent, read, replied };
+  }
+
+  // ── Number validation (runner does the checking via wa_commands) ────────
+  /** Queue a validation run; the runner picks it up and writes wa_status per contact. */
+  static async requestValidation(sessionId: string, phones: string[]): Promise<number> {
+    const { companyId } = getCompanyContext();
+    if (!phones.length) return 0;
+    // one pending command at a time — don't stack duplicates
+    const { data: pending } = await (supabase as any).from('wa_commands')
+      .select('id').eq('session_id', sessionId).in('status', ['pending', 'running']).limit(1);
+    if (pending?.length) throw new Error('Une vérification est déjà en cours — patientez.');
+    const { error } = await (supabase as any).from('wa_commands').insert({
+      company_id: companyId, session_id: sessionId,
+      type: 'validate_numbers', payload: { phones },
+    });
+    if (error) throw error;
+    return phones.length;
   }
 
   // ── Segments ────────────────────────────────────────────────────────────
