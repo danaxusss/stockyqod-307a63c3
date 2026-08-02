@@ -1,10 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   FileText, Plus, Loader, Trash2, Save, X, Image as ImageIcon,
-  Link2, Eye, Variable, Send, Dices, Shuffle, MessageSquareReply, Pencil,
+  Link2, Eye, Variable, Send, Dices, Shuffle,
 } from 'lucide-react';
 import { WaCampaignsService, renderMessage, extractVars, type WaTemplate } from '../../utils/supabaseWaCampaigns';
-import { WaAutoRepliesService, type WaAutoReply } from '../../utils/supabaseWaAutoReplies';
 import { WhatsappService } from '../../utils/supabaseWhatsapp';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
@@ -132,8 +131,6 @@ export default function StudioPage() {
         </div>
       )}
 
-      <AutoRepliesSection />
-
       {/* Editor modal */}
       {editing && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-start sm:items-center justify-center p-3 overflow-y-auto" onMouseDown={() => setEditing(null)}>
@@ -231,134 +228,6 @@ export default function StudioPage() {
               </div>
               <button onClick={() => setEditing(null)} className="px-3 py-1.5 rounded-lg bg-secondary border border-border text-sm">Annuler</button>
               <button onClick={save} disabled={saving} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50">
-                {saving ? <Loader className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Enregistrer
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ── Auto-replies (keyword rules, executed by the runner) ──────────────────── */
-function AutoRepliesSection() {
-  const { showToast } = useToast();
-  const [rules, setRules] = useState<WaAutoReply[]>([]);
-  const [editing, setEditing] = useState<Partial<WaAutoReply> | null>(null);
-  const [saving, setSaving] = useState(false);
-
-  const load = async () => {
-    try { setRules(await WaAutoRepliesService.list()); }
-    catch { /* table may not exist until the migration is applied */ }
-  };
-  useEffect(() => { load(); }, []);
-
-  const save = async () => {
-    if (!editing) return;
-    setSaving(true);
-    try {
-      await WaAutoRepliesService.save(editing as any);
-      showToast({ type: 'success', message: 'Règle enregistrée' });
-      setEditing(null); await load();
-    } catch (e: any) { showToast({ type: 'error', message: e?.message || 'Échec' }); }
-    finally { setSaving(false); }
-  };
-
-  const toggle = async (r: WaAutoReply) => {
-    try { await WaAutoRepliesService.setActive(r.id, !r.active); await load(); }
-    catch (e: any) { showToast({ type: 'error', message: e?.message || 'Échec' }); }
-  };
-
-  const remove = async (r: WaAutoReply) => {
-    if (!window.confirm(`Supprimer la règle « ${r.keyword} » ?`)) return;
-    try { await WaAutoRepliesService.remove(r.id); await load(); }
-    catch (e: any) { showToast({ type: 'error', message: e?.message || 'Échec' }); }
-  };
-
-  return (
-    <div className="mt-6">
-      <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-        <div>
-          <h2 className="text-sm font-bold text-foreground flex items-center gap-1.5">
-            <MessageSquareReply className="h-4 w-4 text-primary" /> Réponses automatiques
-          </h2>
-          <p className="text-xs text-muted-foreground">Quand un client écrit un mot-clé, le runner répond tout seul (max. 1 fois par contact par période).</p>
-        </div>
-        <button onClick={() => setEditing({ keyword: '', reply_body: '', match_type: 'exact', active: true, cooldown_hours: 24 })}
-          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-secondary border border-border text-xs font-medium">
-          <Plus className="h-3.5 w-3.5" /> Nouvelle règle
-        </button>
-      </div>
-
-      {rules.length === 0 ? (
-        <div className="bg-card border border-border/60 rounded-lg py-6 text-center text-muted-foreground text-xs">
-          Aucune règle. Exemple : mot-clé « prix » → réponse avec votre catalogue.
-        </div>
-      ) : (
-        <div className="bg-card border border-border/60 rounded-lg divide-y divide-border/40">
-          {rules.map(r => (
-            <div key={r.id} className={`px-3 py-2 flex items-center gap-3 ${r.active ? '' : 'opacity-50'}`}>
-              <button onClick={() => toggle(r)} title={r.active ? 'Désactiver' : 'Activer'}
-                className={`shrink-0 w-8 h-4.5 rounded-full transition-colors relative ${r.active ? 'bg-primary' : 'bg-secondary border border-border'}`}
-                style={{ height: 18 }}>
-                <span className={`absolute top-0.5 h-3.5 w-3.5 rounded-full bg-white shadow transition-all ${r.active ? 'left-4' : 'left-0.5'}`} />
-              </button>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <code className="text-xs font-semibold px-1.5 py-0.5 rounded bg-secondary">{r.keyword}</code>
-                  <span className="text-[10px] text-muted-foreground">{r.match_type === 'contains' ? 'contenu dans le message' : 'message exact'} · rappel max 1×/{r.cooldown_hours}h</span>
-                </div>
-                <p className="text-xs text-muted-foreground truncate mt-0.5">{r.reply_body}</p>
-              </div>
-              <button onClick={() => setEditing(r)} className="p-1 rounded hover:bg-secondary text-muted-foreground" title="Modifier"><Pencil className="h-3.5 w-3.5" /></button>
-              <button onClick={() => remove(r)} className="p-1 rounded hover:bg-secondary text-red-600 dark:text-red-400" title="Supprimer"><Trash2 className="h-3.5 w-3.5" /></button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {editing && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onMouseDown={() => setEditing(null)}>
-          <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-md" onMouseDown={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border/60">
-              <h2 className="text-sm font-semibold text-foreground">{editing.id ? 'Modifier la règle' : 'Nouvelle règle'}</h2>
-              <button onClick={() => setEditing(null)} className="p-1 rounded hover:bg-secondary"><X className="h-4 w-4" /></button>
-            </div>
-            <div className="p-4 space-y-3">
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-[11px] text-muted-foreground mb-1">Mot-clé</label>
-                  <input autoFocus value={editing.keyword || ''} onChange={e => setEditing({ ...editing, keyword: e.target.value })}
-                    placeholder="prix" className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border" />
-                </div>
-                <div>
-                  <label className="block text-[11px] text-muted-foreground mb-1">Correspondance</label>
-                  <select value={editing.match_type || 'exact'} onChange={e => setEditing({ ...editing, match_type: e.target.value as any })}
-                    className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border">
-                    <option value="exact">Message exact</option>
-                    <option value="contains">Contenu dans le message</option>
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="block text-[11px] text-muted-foreground mb-1">Réponse envoyée</label>
-                <textarea value={editing.reply_body || ''} onChange={e => setEditing({ ...editing, reply_body: e.target.value })}
-                  rows={4} placeholder={'Bonjour ! Voici notre catalogue : https://…'}
-                  className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border resize-none" />
-              </div>
-              <div>
-                <label className="block text-[11px] text-muted-foreground mb-1">Ne pas répondre au même contact plus d'une fois par</label>
-                <select value={editing.cooldown_hours ?? 24} onChange={e => setEditing({ ...editing, cooldown_hours: Number(e.target.value) })}
-                  className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border">
-                  <option value={1}>1 heure</option>
-                  <option value={6}>6 heures</option>
-                  <option value={24}>24 heures</option>
-                  <option value={168}>7 jours</option>
-                </select>
-              </div>
-              <button onClick={save} disabled={saving}
-                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50">
                 {saving ? <Loader className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Enregistrer
               </button>
             </div>

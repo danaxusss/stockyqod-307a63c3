@@ -19,11 +19,10 @@ export interface WaCampaign {
   status: 'draft' | 'scheduled' | 'running' | 'paused' | 'done' | 'cancelled';
   scheduled_at: string | null;
   total_recipients: number;
-  track_clicks: boolean;
   created_at: string;
 }
 
-export interface CampaignStats { total: number; queued: number; sent: number; delivered: number; read: number; failed: number; blocked: number; clicks: number | null }
+export interface CampaignStats { total: number; queued: number; sent: number; delivered: number; read: number; failed: number; blocked: number }
 
 /**
  * Spintax: "{Bonjour|Salut} {{name}}" picks one option at random per render,
@@ -121,7 +120,7 @@ export class WaCampaignsService {
     const payload = {
       name: c.name, session_id: c.session_id ?? null, body: c.body ?? '', media_url: c.media_url ?? null,
       cta_label: c.cta_label ?? null, cta_url: c.cta_url ?? null, segment_filter: c.segment_filter ?? {},
-      scheduled_at: c.scheduled_at ?? null, track_clicks: c.track_clicks ?? false,
+      scheduled_at: c.scheduled_at ?? null,
     };
     if (c.id) {
       const { data, error } = await (supabase as any).from('wa_campaigns').update(payload).eq('id', c.id).select().single();
@@ -165,24 +164,6 @@ export class WaCampaignsService {
     const audience = await this.resolveAudience(c.segment_filter);
     if (!audience.length) throw new Error('Audience vide (segment sans contact joignable)');
 
-    // click tracking: swap the CTA for a short redirect link served by the
-    // wa-link edge function. Falls back to the raw URL if anything fails.
-    let ctaUrl = c.cta_url;
-    if (c.track_clicks && c.cta_url) {
-      try {
-        const { data: existing } = await (supabase as any).from('wa_links')
-          .select('code').eq('campaign_id', campaignId).maybeSingle();
-        let code = existing?.code;
-        if (!code) {
-          code = Math.random().toString(36).slice(2, 10);
-          const { error } = await (supabase as any).from('wa_links')
-            .insert({ company_id: companyId, campaign_id: campaignId, code, target_url: c.cta_url });
-          if (error) throw error;
-        }
-        ctaUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/wa-link?c=${code}`;
-      } catch { ctaUrl = c.cta_url; }
-    }
-
     // phones already sent for this campaign (safe re-launch / resume)
     const { data: sentRows } = await (supabase as any).from('wa_outbox')
       .select('to_phone').eq('campaign_id', campaignId).in('status', ['sent', 'sending']);
@@ -200,7 +181,7 @@ export class WaCampaignsService {
       const outPayload: { phone: string; body: string; contact_id: string }[] = [];
       for (const ct of batch) {
         if (alreadySent.has(ct.phone)) { skipped++; continue; }
-        const body = renderMessage(c.body, ct, { label: c.cta_label, url: ctaUrl });
+        const body = renderMessage(c.body, ct, { label: c.cta_label, url: c.cta_url });
         if (!existingRec.has(ct.phone)) {
           recPayload.push({ campaign_id: campaignId, company_id: companyId, contact_id: ct.id, phone: ct.phone, name: ct.name, body });
         }
@@ -268,23 +249,10 @@ export class WaCampaignsService {
     return campaigns.map(c => flips.has(c.id) ? { ...c, status: flips.get(c.id)! } : c);
   }
 
-  /** Click count for a campaign's tracked link, or null when tracking is off. */
-  static async clickCount(campaignId: string): Promise<number | null> {
-    const { data: link } = await (supabase as any).from('wa_links')
-      .select('id').eq('campaign_id', campaignId).maybeSingle();
-    if (!link) return null;
-    const { count } = await (supabase as any).from('wa_link_clicks')
-      .select('id', { count: 'exact', head: true }).eq('link_id', link.id);
-    return count || 0;
-  }
-
   static async stats(campaignId: string): Promise<CampaignStats> {
-    const [{ data }, clicks] = await Promise.all([
-      (supabase as any).from('wa_outbox').select('status, ack').eq('campaign_id', campaignId),
-      this.clickCount(campaignId).catch(() => null),
-    ]);
+    const { data } = await (supabase as any).from('wa_outbox').select('status, ack').eq('campaign_id', campaignId);
     const rows = (data || []) as { status: string; ack: number }[];
-    const s: CampaignStats = { total: rows.length, queued: 0, sent: 0, delivered: 0, read: 0, failed: 0, blocked: 0, clicks };
+    const s: CampaignStats = { total: rows.length, queued: 0, sent: 0, delivered: 0, read: 0, failed: 0, blocked: 0 };
     for (const r of rows) {
       if (r.status === 'pending' || r.status === 'sending') s.queued++;
       else if (r.status === 'sent') { s.sent++; if (r.ack >= 2) s.delivered++; if (r.ack >= 3) s.read++; }
