@@ -63,7 +63,7 @@ export default function ContactsPage() {
 
   const [query, setQuery] = useState('');
   const [tagFilter, setTagFilter] = useState<string[]>([]);
-  const [behavior, setBehavior] = useState<'' | 'read' | 'replied' | 'silent'>('');
+  const [behavior, setBehavior] = useState<'' | 'replied'>('');
   const [eng, setEng] = useState<EngagementCtx | null>(null);
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -225,9 +225,7 @@ export default function ContactsPage() {
             <select value={behavior} onChange={e => setBehavior(e.target.value as any)}
               className="px-2 py-2 text-sm rounded-lg bg-secondary border border-border" title="Filtrer selon l'engagement passé">
               <option value="">Comportement…</option>
-              <option value="read">A lu un message</option>
-              <option value="replied">A répondu</option>
-              <option value="silent">Contacté sans réaction</option>
+              <option value="replied">A déjà répondu</option>
             </select>
             <button onClick={verifyNumbers} disabled={busy}
               className="flex items-center gap-1 px-2.5 py-2 rounded-lg bg-secondary border border-border text-xs disabled:opacity-50"

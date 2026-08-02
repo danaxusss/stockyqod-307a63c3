@@ -199,47 +199,6 @@ async function processCommands() {
   }
 }
 
-// ── auto-replies (keyword rules) ────────────────────────────────────────────
-// Rules are cached and refreshed lazily; per-contact cooldown and a global
-// hourly cap keep this from ever looking like bot spam.
-let autoRules = [];
-let autoRulesAt = 0;
-const autoReplied = new Map();       // `${ruleId}|${phone}` → last reply ts
-let autoReplyWindow = [];            // timestamps of replies in the last hour
-const fold = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
-
-async function refreshAutoRules() {
-  if (Date.now() - autoRulesAt < 60_000) return;
-  autoRulesAt = Date.now();
-  const { data } = await db.from('wa_auto_replies')
-    .select('*').eq('company_id', CFG.companyId).eq('active', true);
-  autoRules = data || [];
-}
-
-async function maybeAutoReply(from, body) {
-  await refreshAutoRules();
-  if (!autoRules.length || !body) return;
-  const text = fold(body);
-  const rule = autoRules.find(r => {
-    const kw = fold(r.keyword);
-    return r.match_type === 'contains' ? text.includes(kw) : text === kw;
-  });
-  if (!rule) return;
-
-  const key = `${rule.id}|${from}`;
-  const cooldownMs = (rule.cooldown_hours || 24) * 3600_000;
-  if (autoReplied.has(key) && Date.now() - autoReplied.get(key) < cooldownMs) return;
-  autoReplyWindow = autoReplyWindow.filter(t => Date.now() - t < 3600_000);
-  if (autoReplyWindow.length >= 20) { log('auto-reply hourly cap reached — skipping'); return; }
-
-  await client.sendMessage(from, rule.reply_body);
-  autoReplied.set(key, Date.now());
-  autoReplyWindow.push(Date.now());
-  const phone = '+' + String(from).replace(/@c\.us$/, '');
-  await emit('auto_reply', { to: phone, keyword: rule.keyword });
-  log(`auto-reply (${rule.keyword}) → ${phone}`);
-}
-
 // ── send loop ───────────────────────────────────────────────────────────────
 let client = null;
 let clientReady = false;
@@ -426,9 +385,7 @@ async function main() {
         );
         await emit('opt_out', { phone, via: 'stop-reply', body: m.body });
         log(`opt-out (STOP) ← ${phone}`);
-        return; // never auto-reply to an opt-out
       }
-      await maybeAutoReply(m.from, m.body);
     } catch { /* */ }
   });
 

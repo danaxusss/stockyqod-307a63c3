@@ -22,14 +22,12 @@ export interface SegmentFilter {
   tagsAll?: string[];     // has all of
   tagsNone?: string[];    // has none of
   hasField?: string;      // custom field present & non-empty
-  behavior?: 'read' | 'replied' | 'silent';  // engagement with past sends
+  behavior?: 'replied';   // engagement with past sends (reliable signals only)
 }
 
 /** Phone sets describing past engagement, used by behavior filters. */
 export interface EngagementCtx {
-  sent: Set<string>;      // ever received a message from us
-  read: Set<string>;      // read at least one (ack >= 3)
-  replied: Set<string>;   // ever wrote back
+  replied: Set<string>;   // ever wrote back (the only fully reliable signal)
 }
 
 export interface WaSegment {
@@ -43,12 +41,7 @@ export interface ImportReport { inserted: number; updated: number; invalid: stri
 
 /** Apply a segment filter to an in-memory contact list (also used by campaigns). */
 export function matchSegment(c: WaContact, f: SegmentFilter, eng?: EngagementCtx): boolean {
-  if (f.behavior && eng) {
-    if (f.behavior === 'read' && !eng.read.has(c.phone)) return false;
-    if (f.behavior === 'replied' && !eng.replied.has(c.phone)) return false;
-    // silent = we reached them but they never read nor replied
-    if (f.behavior === 'silent' && !(eng.sent.has(c.phone) && !eng.read.has(c.phone) && !eng.replied.has(c.phone))) return false;
-  }
+  if (f.behavior === 'replied' && eng && !eng.replied.has(c.phone)) return false;
   if (f.search) {
     const q = f.search.toLowerCase();
     const hay = `${c.name || ''} ${c.phone} ${c.email || ''}`.toLowerCase();
@@ -163,22 +156,16 @@ export class WaContactsService {
     return { inserted: payload.length - updated, updated, invalid, optedOut, duplicatesInFile };
   }
 
-  /** Build the engagement sets behavior filters need (one pass over outbox + inbound). */
+  /** Build the engagement sets behavior filters need. Replies are the only
+   *  reliable engagement signal (read receipts are unreliable), so that's all
+   *  we compute — from inbound events. */
   static async engagement(): Promise<EngagementCtx> {
     const { companyId } = getCompanyContext();
-    const sent = new Set<string>(), read = new Set<string>(), replied = new Set<string>();
-    const PAGE = 1000;
-    for (let from = 0; ; from += PAGE) {
-      const { data } = await (supabase as any).from('wa_outbox')
-        .select('to_phone, ack').eq('company_id', companyId).eq('status', 'sent')
-        .range(from, from + PAGE - 1);
-      for (const r of (data || [])) { sent.add(r.to_phone); if (r.ack >= 3) read.add(r.to_phone); }
-      if (!data || data.length < PAGE) break;
-    }
+    const replied = new Set<string>();
     const { data: inb } = await (supabase as any).from('wa_events')
       .select('payload').eq('company_id', companyId).eq('type', 'inbound').limit(2000);
     for (const e of (inb || [])) { const p = e.payload?.from; if (p && !String(p).includes('@')) replied.add(p); }
-    return { sent, read, replied };
+    return { replied };
   }
 
   // ── Number validation (runner does the checking via wa_commands) ────────
