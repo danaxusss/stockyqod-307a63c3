@@ -98,15 +98,15 @@ export class WhatsappService {
   }
 
   // ── Test send (Phase 1) ───────────────────────────────────────────────────
-  static async sendTest(sessionId: string, phone: string, body: string, createdBy: string | null): Promise<void> {
+  static async sendTest(sessionId: string, phone: string, body: string, createdBy: string | null, mediaUrl: string | null = null): Promise<void> {
     const { companyId } = getCompanyContext();
     const n = normalizePhone(phone);
     if (!n) throw new Error('Numéro invalide — vérifiez le format (ex. 0612345678 ou +212612345678)');
-    if (!body.trim()) throw new Error('Message vide');
+    if (!body.trim() && !mediaUrl) throw new Error('Message vide');
     if (await this.isOptedOut(n)) throw new Error('Ce numéro est dans la liste de désinscription');
     const { error } = await (supabase as any).from('wa_outbox').insert({
       company_id: companyId, session_id: sessionId, to_phone: n, body: body.trim(),
-      source: 'test', created_by: createdBy,
+      media_url: mediaUrl, source: 'test', created_by: createdBy,
     });
     if (error) throw error;
   }

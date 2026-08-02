@@ -66,6 +66,7 @@ export default function ContactsPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const [showImport, setShowImport] = useState(false);
+  const [dialog, setDialog] = useState<null | { kind: 'add' } | { kind: 'tag'; add: boolean } | { kind: 'segment' } | { kind: 'optout' }>(null);
   const [busy, setBusy] = useState(false);
   const optOutFileRef = useRef<HTMLInputElement>(null);
 
@@ -94,12 +95,10 @@ export default function ContactsPage() {
   const reachable = useMemo(() => filtered.filter(c => !optOutSet.has(c.phone)).length, [filtered, optOutSet]);
 
   // ── actions ───────────────────────────────────────────────────────────────
-  const addContact = async () => {
-    const phone = prompt('Numéro (ex. 0612345678) :'); if (!phone) return;
-    if (!normalizePhone(phone)) { showToast({ type: 'error', message: 'Numéro invalide' }); return; }
-    const name = prompt('Nom (optionnel) :') || undefined;
-    try { await WaContactsService.upsertOne({ phone, name }); await load(); }
-    catch (e: any) { showToast({ type: 'error', message: e?.message || 'Échec' }); }
+  const addContact = async (phone: string, name: string, tags: string[]) => {
+    await WaContactsService.upsertOne({ phone, name: name || undefined, tags });
+    await load();
+    showToast({ type: 'success', message: 'Contact ajouté' });
   };
 
   const bulkDelete = async () => {
@@ -110,10 +109,7 @@ export default function ContactsPage() {
     finally { setBusy(false); }
   };
 
-  const bulkTag = async (add: boolean) => {
-    const t = prompt(add ? 'Tag à ajouter aux contacts sélectionnés :' : 'Tag à retirer :');
-    if (!t?.trim()) return;
-    const tag = t.trim();
+  const bulkTag = async (add: boolean, tag: string) => {
     const updates = contacts.filter(c => selected.has(c.id)).map(c => {
       const tags = add ? Array.from(new Set([...c.tags, tag])) : c.tags.filter(x => x !== tag);
       return { id: c.id, tags };
@@ -133,11 +129,10 @@ export default function ContactsPage() {
     finally { setBusy(false); }
   };
 
-  const saveSegment = async () => {
-    if (!query && !tagFilter.length) { showToast({ type: 'info', message: 'Appliquez d\'abord un filtre à enregistrer' }); return; }
-    const name = prompt('Nom du segment :'); if (!name?.trim()) return;
-    try { await WaContactsService.saveSegment(name.trim(), filter); await load(); showToast({ type: 'success', message: 'Segment enregistré' }); }
-    catch (e: any) { showToast({ type: 'error', message: e?.message || 'Échec' }); }
+  const saveSegment = async (name: string) => {
+    await WaContactsService.saveSegment(name, filter);
+    await load();
+    showToast({ type: 'success', message: 'Segment enregistré' });
   };
   const applySegment = (s: WaSegment) => { setQuery(s.filter.search || ''); setTagFilter(s.filter.tagsAll || []); };
 
@@ -199,9 +194,12 @@ export default function ContactsPage() {
                 {segments.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             )}
-            <button onClick={saveSegment} className="px-2.5 py-2 rounded-lg bg-secondary border border-border text-xs" title="Enregistrer le filtre comme segment"><Save className="h-3.5 w-3.5" /></button>
+            <button onClick={() => {
+              if (!query && !tagFilter.length) { showToast({ type: 'info', message: 'Appliquez d\'abord un filtre à enregistrer' }); return; }
+              setDialog({ kind: 'segment' });
+            }} className="px-2.5 py-2 rounded-lg bg-secondary border border-border text-xs" title="Enregistrer le filtre comme segment"><Save className="h-3.5 w-3.5" /></button>
             <button onClick={exportCsv} className="flex items-center gap-1 px-2.5 py-2 rounded-lg bg-secondary border border-border text-xs"><Download className="h-3.5 w-3.5" /> CSV</button>
-            <button onClick={addContact} className="flex items-center gap-1 px-2.5 py-2 rounded-lg bg-secondary border border-border text-xs"><Plus className="h-3.5 w-3.5" /> Contact</button>
+            <button onClick={() => setDialog({ kind: 'add' })} className="flex items-center gap-1 px-2.5 py-2 rounded-lg bg-secondary border border-border text-xs"><Plus className="h-3.5 w-3.5" /> Contact</button>
             <button onClick={() => setShowImport(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium"><Upload className="h-4 w-4" /> Importer</button>
           </div>
 
@@ -225,8 +223,8 @@ export default function ContactsPage() {
           {selected.size > 0 && (
             <div className="mb-3 bg-primary/5 border border-primary/25 rounded-lg px-3 py-2 flex items-center gap-2 flex-wrap text-xs">
               <span className="font-medium text-foreground">{selected.size} sélectionné(s)</span>
-              <button onClick={() => bulkTag(true)} disabled={busy} className="px-2 py-1 rounded bg-secondary border border-border">+ Tag</button>
-              <button onClick={() => bulkTag(false)} disabled={busy} className="px-2 py-1 rounded bg-secondary border border-border">− Tag</button>
+              <button onClick={() => setDialog({ kind: 'tag', add: true })} disabled={busy} className="px-2 py-1 rounded bg-secondary border border-border">+ Tag</button>
+              <button onClick={() => setDialog({ kind: 'tag', add: false })} disabled={busy} className="px-2 py-1 rounded bg-secondary border border-border">− Tag</button>
               <button onClick={bulkOptOut} disabled={busy} className="px-2 py-1 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400">Désinscrire</button>
               <button onClick={bulkDelete} disabled={busy} className="px-2 py-1 rounded bg-destructive/10 text-destructive">Supprimer</button>
               <button onClick={() => setSelected(new Set())} className="ml-auto text-muted-foreground hover:text-foreground">Désélectionner</button>
@@ -282,7 +280,7 @@ export default function ContactsPage() {
         <div>
           <input ref={optOutFileRef} type="file" accept=".csv,.txt,.xlsx" className="hidden" onChange={e => { onOptOutFile(e.target.files?.[0]); e.target.value = ''; }} />
           <div className="flex items-center gap-2 mb-3">
-            <button onClick={() => { const p = prompt('Numéro à désinscrire :'); if (p) WaContactsService.addOptOut(p).then(load).catch((e) => showToast({ type: 'error', message: e.message })); }}
+            <button onClick={() => setDialog({ kind: 'optout' })}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium"><UserX className="h-4 w-4" /> Ajouter</button>
             <button onClick={() => optOutFileRef.current?.click()} disabled={busy} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-secondary border border-border text-sm"><Upload className="h-3.5 w-3.5" /> Importer une liste</button>
             <span className="text-xs text-muted-foreground ml-auto">Vérifié avant chaque envoi (import, mots-clés STOP, dernier contrôle avant envoi).</span>
@@ -310,7 +308,177 @@ export default function ContactsPage() {
           </div>
         </div>
       )}
+
+      {dialog?.kind === 'add' && (
+        <AddContactDialog allTags={allTags} onClose={() => setDialog(null)}
+          onSubmit={async (phone, name, tags) => { await addContact(phone, name, tags); setDialog(null); }} />
+      )}
+      {dialog?.kind === 'tag' && (
+        <TagDialog add={dialog.add} count={selected.size} allTags={allTags} onClose={() => setDialog(null)}
+          onSubmit={async (tag) => { await bulkTag(dialog.add, tag); setDialog(null); }} />
+      )}
+      {dialog?.kind === 'segment' && (
+        <NameDialog title="Enregistrer le segment" label="Nom du segment" placeholder="ex. Clients Casablanca"
+          hint={`${filtered.length} contact(s) correspondent au filtre actuel.`}
+          submitLabel="Enregistrer" onClose={() => setDialog(null)}
+          onSubmit={async (name) => { await saveSegment(name); setDialog(null); }} />
+      )}
+      {dialog?.kind === 'optout' && (
+        <NameDialog title="Désinscrire un numéro" label="Numéro de téléphone" placeholder="ex. 0612345678"
+          hint="Ce numéro ne recevra plus jamais de message, campagnes comprises."
+          submitLabel="Désinscrire" validate={(v) => normalizePhone(v) ? null : 'Numéro invalide'}
+          onClose={() => setDialog(null)}
+          onSubmit={async (phone) => { await WaContactsService.addOptOut(phone, 'manual'); await load(); setDialog(null); }} />
+      )}
     </div>
+  );
+}
+
+/* ── Small dialogs (replace browser prompts) ───────────────────────────────── */
+function MiniDialog({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onMouseDown={onClose}>
+      <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-sm" onMouseDown={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border/60">
+          <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+          <button onClick={onClose} className="p-1 rounded hover:bg-secondary"><X className="h-4 w-4" /></button>
+        </div>
+        <div className="p-4">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function AddContactDialog({ allTags, onClose, onSubmit }: {
+  allTags: string[]; onClose: () => void;
+  onSubmit: (phone: string, name: string, tags: string[]) => Promise<void>;
+}) {
+  const { showToast } = useToast();
+  const [phone, setPhone] = useState('');
+  const [name, setName] = useState('');
+  const [tags, setTags] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const submit = async () => {
+    if (!normalizePhone(phone)) { showToast({ type: 'error', message: 'Numéro invalide (ex. 0612345678)' }); return; }
+    setBusy(true);
+    try { await onSubmit(phone, name.trim(), tags); }
+    catch (e: any) { showToast({ type: 'error', message: e?.message || 'Échec' }); }
+    finally { setBusy(false); }
+  };
+  return (
+    <MiniDialog title="Ajouter un contact" onClose={onClose}>
+      <div className="space-y-3">
+        <div>
+          <label className="block text-[11px] text-muted-foreground mb-1">Numéro de téléphone *</label>
+          <input autoFocus value={phone} onChange={e => setPhone(e.target.value)} onKeyDown={e => e.key === 'Enter' && submit()}
+            placeholder="0612345678" className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border" />
+        </div>
+        <div>
+          <label className="block text-[11px] text-muted-foreground mb-1">Nom</label>
+          <input value={name} onChange={e => setName(e.target.value)} onKeyDown={e => e.key === 'Enter' && submit()}
+            placeholder="Ahmed Benali" className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border" />
+        </div>
+        {allTags.length > 0 && (
+          <div>
+            <label className="block text-[11px] text-muted-foreground mb-1">Tags</label>
+            <div className="flex flex-wrap gap-1.5">
+              {allTags.map(t => (
+                <button key={t} onClick={() => setTags(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])}
+                  className={`px-2 py-0.5 rounded-full text-xs border ${tags.includes(t) ? 'bg-primary text-primary-foreground border-primary' : 'bg-secondary border-border text-muted-foreground'}`}>
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        <button onClick={submit} disabled={busy}
+          className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50">
+          {busy ? <Loader className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Ajouter
+        </button>
+      </div>
+    </MiniDialog>
+  );
+}
+
+function TagDialog({ add, count, allTags, onClose, onSubmit }: {
+  add: boolean; count: number; allTags: string[]; onClose: () => void;
+  onSubmit: (tag: string) => Promise<void>;
+}) {
+  const { showToast } = useToast();
+  const [tag, setTag] = useState('');
+  const [busy, setBusy] = useState(false);
+  const submit = async (t?: string) => {
+    const v = (t ?? tag).trim();
+    if (!v) return;
+    setBusy(true);
+    try { await onSubmit(v); }
+    catch (e: any) { showToast({ type: 'error', message: e?.message || 'Échec' }); }
+    finally { setBusy(false); }
+  };
+  return (
+    <MiniDialog title={add ? `Ajouter un tag à ${count} contact(s)` : `Retirer un tag de ${count} contact(s)`} onClose={onClose}>
+      <div className="space-y-3">
+        {add && (
+          <input autoFocus value={tag} onChange={e => setTag(e.target.value)} onKeyDown={e => e.key === 'Enter' && submit()}
+            placeholder="ex. promo-aout" className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border" />
+        )}
+        {allTags.length > 0 && (
+          <div>
+            <p className="text-[11px] text-muted-foreground mb-1">{add ? 'Ou choisissez un tag existant :' : 'Choisissez le tag à retirer :'}</p>
+            <div className="flex flex-wrap gap-1.5">
+              {allTags.map(t => (
+                <button key={t} onClick={() => submit(t)} disabled={busy}
+                  className="px-2 py-0.5 rounded-full text-xs border bg-secondary border-border text-muted-foreground hover:bg-primary/10 hover:border-primary/40">
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {add && (
+          <button onClick={() => submit()} disabled={busy || !tag.trim()}
+            className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50">
+            {busy ? <Loader className="h-4 w-4 animate-spin" /> : <Tag className="h-4 w-4" />} Appliquer
+          </button>
+        )}
+      </div>
+    </MiniDialog>
+  );
+}
+
+function NameDialog({ title, label, placeholder, hint, submitLabel, validate, onClose, onSubmit }: {
+  title: string; label: string; placeholder: string; hint?: string; submitLabel: string;
+  validate?: (v: string) => string | null;
+  onClose: () => void; onSubmit: (value: string) => Promise<void>;
+}) {
+  const { showToast } = useToast();
+  const [value, setValue] = useState('');
+  const [busy, setBusy] = useState(false);
+  const submit = async () => {
+    const v = value.trim();
+    if (!v) return;
+    const err = validate?.(v);
+    if (err) { showToast({ type: 'error', message: err }); return; }
+    setBusy(true);
+    try { await onSubmit(v); }
+    catch (e: any) { showToast({ type: 'error', message: e?.message || 'Échec' }); }
+    finally { setBusy(false); }
+  };
+  return (
+    <MiniDialog title={title} onClose={onClose}>
+      <div className="space-y-3">
+        <div>
+          <label className="block text-[11px] text-muted-foreground mb-1">{label}</label>
+          <input autoFocus value={value} onChange={e => setValue(e.target.value)} onKeyDown={e => e.key === 'Enter' && submit()}
+            placeholder={placeholder} className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border" />
+        </div>
+        {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
+        <button onClick={submit} disabled={busy || !value.trim()}
+          className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50">
+          {busy ? <Loader className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} {submitLabel}
+        </button>
+      </div>
+    </MiniDialog>
   );
 }
 
