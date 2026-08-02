@@ -138,7 +138,8 @@ export class WhatsappService {
       from: e.payload?.from || '',
       body: e.payload?.body || '',
       created_at: e.created_at,
-    }));
+      // drop anonymized senders (@lid, channels…) logged before the runner filtered them
+    })).filter((r: WaInbound) => r.from && !r.from.includes('@'));
   }
 
   /** Today's queue health: sent so far, still queued, failed today. */
