@@ -162,9 +162,28 @@ async function processOutbox() {
   }
 }
 
+// retention: purge old rows so the tables don't grow forever.
+// events (acks, inbound, status) after 30 days; test/manual outbox after 90.
+// campaign outbox rows are kept — they back the campaign stats.
+async function purgeOld() {
+  const days = (n) => new Date(Date.now() - n * 86400_000).toISOString();
+  await db.from('wa_events').delete()
+    .eq('session_id', CFG.sessionId).lt('created_at', days(30));
+  await db.from('wa_outbox').delete()
+    .eq('session_id', CFG.sessionId).is('campaign_id', null)
+    .in('status', ['sent', 'failed', 'cancelled']).lt('created_at', days(90));
+}
+
 async function loop() {
+  let lastPurge = 0;
   while (running) {
-    try { await heartbeat(); await processOutbox(); }
+    try {
+      await heartbeat(); await processOutbox();
+      if (Date.now() - lastPurge > 6 * 3600_000) {
+        lastPurge = Date.now();
+        purgeOld().catch(e => log('purge error:', e && e.message));
+      }
+    }
     catch (e) { log('loop error:', e && e.message); }
     await sleep(CFG.pollMs);
   }
@@ -243,7 +262,9 @@ async function main() {
   const STOP_WORDS = /^\s*(stop|arret|arrêt|arreter|arrêter|desinscription|désinscription|desabonner|désabonner|unsubscribe|no)\s*[.!]?\s*$/i;
   client.on('message', async (m) => {
     try {
-      if (m.fromMe || m.from === 'status@broadcast' || String(m.from).endsWith('@g.us')) return;
+      // only direct chats from real numbers (@c.us) — skips groups (@g.us),
+      // status, channels/newsletters and anonymized @lid senders
+      if (m.fromMe || !String(m.from).endsWith('@c.us')) return;
       const phone = '+' + String(m.from).replace(/@c\.us$/, '');
       await emit('inbound', { from: phone, body: m.body || '', type: m.type });
       // auto opt-out: a STOP-like reply immediately blocks all future sends
