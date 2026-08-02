@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   FileText, Plus, Loader, Trash2, Save, X, Image as ImageIcon,
-  Link2, Eye, Variable,
+  Link2, Eye, Variable, Send,
 } from 'lucide-react';
 import { WaCampaignsService, renderMessage, extractVars, type WaTemplate } from '../../utils/supabaseWaCampaigns';
+import { WhatsappService } from '../../utils/supabaseWhatsapp';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
 
@@ -11,7 +12,7 @@ const SAMPLE = { name: 'Ahmed', phone: '+212612345678', custom: { ville: 'Casabl
 const VAR_CHIPS = ['{{name}}', '{{phone}}', '{{ville}}'];
 
 export default function StudioPage() {
-  const { isAdmin, isSuperAdmin } = useAuth();
+  const { isAdmin, isSuperAdmin, currentUser } = useAuth();
   const { showToast } = useToast();
 
   const [templates, setTemplates] = useState<WaTemplate[]>([]);
@@ -19,6 +20,8 @@ export default function StudioPage() {
   const [editing, setEditing] = useState<Partial<WaTemplate> | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [testPhone, setTestPhone] = useState(() => localStorage.getItem('wa_test_phone') || '');
+  const [testing, setTesting] = useState(false);
   const bodyRef = React.useRef<HTMLTextAreaElement>(null);
 
   const load = async () => {
@@ -62,6 +65,20 @@ export default function StudioPage() {
       load();
     } catch (e: any) { showToast({ type: 'error', message: e?.message || 'Échec' }); }
     finally { setSaving(false); }
+  };
+
+  const sendTest = async () => {
+    if (!editing) return;
+    if (!testPhone.trim()) { showToast({ type: 'error', message: 'Entrez votre numéro pour recevoir le test' }); return; }
+    setTesting(true);
+    try {
+      const session = await WhatsappService.ensureSession();
+      const body = renderMessage(editing.body || '', SAMPLE, { label: editing.cta_label, url: editing.cta_url });
+      await WhatsappService.sendTest(session.id, testPhone, body, currentUser?.username || null, editing.media_url || null);
+      localStorage.setItem('wa_test_phone', testPhone);
+      showToast({ type: 'success', message: 'Test en file — vous le recevrez dans quelques secondes' });
+    } catch (e: any) { showToast({ type: 'error', message: e?.message || 'Échec du test' }); }
+    finally { setTesting(false); }
   };
 
   const remove = async (t: WaTemplate) => {
@@ -185,7 +202,16 @@ export default function StudioPage() {
                 </div>
               </div>
             </div>
-            <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border/60">
+            <div className="flex items-center gap-2 px-4 py-3 border-t border-border/60 flex-wrap">
+              <div className="flex items-center gap-1.5 mr-auto">
+                <input value={testPhone} onChange={e => setTestPhone(e.target.value)} placeholder="Votre numéro"
+                  className="w-36 px-2 py-1.5 text-sm rounded bg-secondary border border-border" />
+                <button onClick={sendTest} disabled={testing}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary border border-border text-sm disabled:opacity-50"
+                  title="Recevoir ce message sur votre WhatsApp, variables remplies avec le contact exemple">
+                  {testing ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} M'envoyer un test
+                </button>
+              </div>
               <button onClick={() => setEditing(null)} className="px-3 py-1.5 rounded-lg bg-secondary border border-border text-sm">Annuler</button>
               <button onClick={save} disabled={saving} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50">
                 {saving ? <Loader className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Enregistrer

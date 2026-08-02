@@ -1,17 +1,17 @@
 {
   "name": "stocky-wa-runner",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "OpenWA runner for Stocky WhatsApp marketing — polls Supabase, drives one WhatsApp Web session, sends with humanized delays, reports status/events.",
+  "description": "WhatsApp runner for Stocky marketing — polls Supabase, drives one WhatsApp Web session with whatsapp-web.js, sends with humanized delays, reports status/events.",
   "type": "commonjs",
   "main": "runner.js",
   "scripts": {
     "start": "node runner.js"
   },
   "dependencies": {
-    "@open-wa/wa-automate": "^4.72.0",
     "@supabase/supabase-js": "^2.49.1",
-    "qrcode": "^1.5.4"
+    "qrcode": "^1.5.4",
+    "whatsapp-web.js": "^1.26.0"
   },
   "engines": {
     "node": ">=18"

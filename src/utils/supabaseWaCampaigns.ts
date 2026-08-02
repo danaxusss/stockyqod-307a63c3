@@ -194,6 +194,36 @@ export class WaCampaignsService {
     await (supabase as any).from('wa_campaigns').update({ status: 'cancelled' }).eq('id', campaignId);
   }
 
+  /**
+   * Fix statuses the runner never maintains: 'scheduled' → 'running' once
+   * sending has actually started, and either → 'done' once nothing is queued.
+   * Returns the campaigns with corrected statuses.
+   */
+  static async syncStatuses(campaigns: WaCampaign[]): Promise<WaCampaign[]> {
+    const active = campaigns.filter(c => c.status === 'running' || c.status === 'scheduled');
+    if (!active.length) return campaigns;
+    const { data } = await (supabase as any).from('wa_outbox')
+      .select('campaign_id, status').in('campaign_id', active.map(c => c.id));
+    const agg = new Map<string, { queued: number; started: boolean; total: number }>();
+    for (const r of (data || []) as { campaign_id: string; status: string }[]) {
+      const a = agg.get(r.campaign_id) || { queued: 0, started: false, total: 0 };
+      a.total++;
+      if (r.status === 'pending' || r.status === 'sending') a.queued++;
+      if (r.status === 'sent' || r.status === 'failed' || r.status === 'blocked') a.started = true;
+      agg.set(r.campaign_id, a);
+    }
+    const flips = new Map<string, WaCampaign['status']>();
+    for (const c of active) {
+      const a = agg.get(c.id);
+      if (!a || !a.total) continue;
+      if (a.queued === 0) flips.set(c.id, 'done');
+      else if (c.status === 'scheduled' && a.started) flips.set(c.id, 'running');
+    }
+    await Promise.all(Array.from(flips, ([id, status]) =>
+      (supabase as any).from('wa_campaigns').update({ status }).eq('id', id)));
+    return campaigns.map(c => flips.has(c.id) ? { ...c, status: flips.get(c.id)! } : c);
+  }
+
   static async stats(campaignId: string): Promise<CampaignStats> {
     const { data } = await (supabase as any).from('wa_outbox').select('status, ack').eq('campaign_id', campaignId);
     const rows = (data || []) as { status: string; ack: number }[];
@@ -204,7 +234,6 @@ export class WaCampaignsService {
       else if (r.status === 'failed') s.failed++;
       else if (r.status === 'blocked') s.blocked++;
     }
-    // mark done when nothing is queued anymore
     return s;
   }
 }

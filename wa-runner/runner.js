@@ -9,6 +9,10 @@
  *  • Re-checks the opt-out list at the last mile before every send.
  *  • Reports acks (sent/delivered/read) and inbound messages into `wa_events`.
  *
+ * Engine: whatsapp-web.js (free, MIT, actively maintained). Unlike open-wa it
+ * sends to any number that is on WhatsApp — including numbers that are not in
+ * the phone's contacts — via getNumberId(), which is what marketing needs.
+ *
  * Config comes from config.json (copied from config.example.json) or env vars.
  * Nothing here trusts the network for auth — it uses the Supabase service key,
  * so keep config.json on the machine only.
@@ -18,7 +22,7 @@ const fs = require('fs');
 const path = require('path');
 const QRCode = require('qrcode');
 const { createClient } = require('@supabase/supabase-js');
-const wa = require('@open-wa/wa-automate');
+const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 
 // ── config ──────────────────────────────────────────────────────────────────
 function loadConfig() {
@@ -31,6 +35,11 @@ function loadConfig() {
     sessionId: process.env.WA_SESSION_ID || cfg.sessionId,
     companyId: process.env.WA_COMPANY_ID || cfg.companyId,
     pollMs: Number(process.env.WA_POLL_MS || cfg.pollMs || 5000),
+    // Show the browser window (helps first-time pairing on some machines).
+    headless: cfg.headless === undefined ? true : !!cfg.headless,
+    // Optional explicit path to chrome.exe. If empty, whatsapp-web.js uses the
+    // Chromium that ships with its puppeteer dependency.
+    executablePath: process.env.WA_CHROME_PATH || cfg.executablePath || undefined,
   };
 }
 const CFG = loadConfig();
@@ -51,8 +60,8 @@ function gaussianDelayMs(meanSec, stdSec) {
   const sec = Math.max(8, meanSec + z * stdSec);
   return Math.round(sec * 1000);
 }
-// WhatsApp chatId from an E.164 phone (+2126… → 2126…@c.us).
-const toChatId = (phone) => phone.replace(/[^\d]/g, '') + '@c.us';
+// Digits only, no leading + (+2126… → 2126…), for getNumberId().
+const toDigits = (phone) => String(phone).replace(/[^\d]/g, '');
 
 async function getSession() {
   const { data, error } = await db.from('wa_sessions').select('*').eq('id', CFG.sessionId).single();
@@ -89,9 +98,11 @@ async function isOptedOut(phone) {
 
 // ── send loop ───────────────────────────────────────────────────────────────
 let client = null;
+let clientReady = false;
 let running = true;
 
 async function processOutbox() {
+  if (!clientReady) return;
   const s = await getSession();
   if (s.paused || s.status !== 'connected') return;
   if (inQuietHours(s.quiet_start, s.quiet_end)) return;
@@ -116,11 +127,29 @@ async function processOutbox() {
   }
 
   try {
-    const chatId = toChatId(job.to_phone);
-    let res;
-    if (job.media_url) res = await client.sendImage(chatId, job.media_url, 'file', job.body || '');
-    else res = await client.sendText(chatId, job.body);
-    const msgId = typeof res === 'string' ? res : (res && res._serialized) || null;
+    // Resolve the number on WhatsApp. Works for non-contacts too; returns null
+    // when the number simply isn't registered on WhatsApp.
+    const numberId = await client.getNumberId(toDigits(job.to_phone));
+    if (!numberId) throw new Error('Number not registered on WhatsApp');
+    const chatId = numberId._serialized;
+
+    let sent;
+    if (job.media_url) {
+      const media = await MessageMedia.fromUrl(job.media_url, { unsafeMime: true });
+      sent = await client.sendMessage(chatId, media, { caption: job.body || '' });
+    } else {
+      sent = await client.sendMessage(chatId, job.body);
+    }
+
+    // With whatsapp-web.js, a resolved sendMessage() means the message was
+    // accepted — a real failure throws and is caught below. The message id is
+    // only used later to correlate acks, so extract it best-effort and never
+    // fail the send just because the id shape differs across library versions.
+    const rawId = sent && sent.id;
+    const msgId = !rawId ? null
+      : (typeof rawId === 'string' ? rawId
+        : (rawId._serialized || rawId.id || null));
+
     await db.from('wa_outbox').update({ status: 'sent', sent_at: new Date().toISOString(), wa_message_id: msgId, last_error: null }).eq('id', job.id);
     log(`sent → ${job.to_phone}`);
     // humanized pause before the next one
@@ -145,55 +174,92 @@ async function loop() {
 async function main() {
   log('Starting Stocky WA runner for session', CFG.sessionId);
   await patchSession({ status: 'pairing', qr_data_url: null });
-  try {
-    client = await wa.create({
-      sessionId: `stocky_${CFG.sessionId}`,
-      multiDevice: true,
-      headless: true,
-      qrTimeout: 0,
-      authTimeout: 60,
-      cacheEnabled: false,
-      disableSpins: true,
-      qrLogSkip: true,
-      sessionDataPath: path.join(__dirname, '.sessions'),
-      catchQR: async (base64Qr) => {
-        // base64Qr is already a data URL from open-wa; store it for the UI
-        try {
-          const dataUrl = base64Qr.startsWith('data:') ? base64Qr : `data:image/png;base64,${base64Qr}`;
-          await patchSession({ status: 'pairing', qr_data_url: dataUrl });
-          log('QR published — scan it from the Connection Center.');
-        } catch (e) { log('QR publish error:', e && e.message); }
-      },
-    });
 
-    client.onAck(async (msg) => {
-      try {
-        const id = msg.id && (msg.id._serialized || msg.id);
-        if (id) await db.from('wa_outbox').update({ ack: msg.ack }).eq('wa_message_id', id);
-        await emit('ack', { message_id: id, ack: msg.ack });
-      } catch { /* */ }
-    });
-    client.onMessage(async (m) => {
-      try {
-        if (m.fromMe || m.isGroupMsg) return;
-        const phone = '+' + String(m.from).replace(/@c\.us$/, '');
-        await emit('inbound', { from: phone, body: m.body || '', type: m.type });
-      } catch { /* */ }
-    });
-    client.onStateChanged(async (state) => {
-      log('state:', state);
-      if (state === 'CONNECTED') await patchSession({ status: 'connected', qr_data_url: null });
-      if (['UNPAIRED', 'UNPAIRED_IDLE', 'CONFLICT'].includes(state)) {
-        await patchSession({ status: 'disconnected' });
-        await emit('disconnected', { state });
-      }
-    });
+  const puppeteerOpts = {
+    headless: CFG.headless,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  };
+  if (CFG.executablePath) puppeteerOpts.executablePath = CFG.executablePath;
 
-    const info = await client.getHostDevice().catch(() => null);
-    const phone = info && info.id && info.id.user ? '+' + info.id.user : null;
+  client = new Client({
+    // LocalAuth persists the linked session under .sessions/ so the QR only has
+    // to be scanned once. clientId keeps multiple runners isolated on one PC.
+    authStrategy: new LocalAuth({
+      clientId: `stocky_${CFG.sessionId}`,
+      dataPath: path.join(__dirname, '.sessions'),
+    }),
+    puppeteer: puppeteerOpts,
+    takeoverOnConflict: true,
+    takeoverTimeoutMs: 10000,
+  });
+
+  client.on('qr', async (qr) => {
+    try {
+      const dataUrl = await QRCode.toDataURL(qr, { margin: 1, width: 320 });
+      await patchSession({ status: 'pairing', qr_data_url: dataUrl });
+      log('QR published — scan it from the Connection Center.');
+    } catch (e) { log('QR publish error:', e && e.message); }
+  });
+
+  client.on('authenticated', () => log('authenticated — session saved.'));
+  client.on('auth_failure', async (m) => {
+    log('auth failure:', m);
+    await patchSession({ status: 'disconnected' }).catch(() => {});
+    await emit('disconnected', { reason: 'auth_failure', detail: String(m) });
+  });
+
+  client.on('ready', async () => {
+    clientReady = true;
+    const wid = client.info && client.info.wid;
+    const digits = wid ? String(wid.user || '').replace(/[^\d]/g, '') : '';
+    const phone = digits ? '+' + digits : null;
     await patchSession({ status: 'connected', phone_number: phone, qr_data_url: null });
     await emit('connected', { phone });
     log('Connected as', phone || '(unknown)');
+  });
+
+  client.on('change_state', (state) => log('state:', state));
+
+  client.on('disconnected', async (reason) => {
+    clientReady = false;
+    log('disconnected:', reason);
+    await patchSession({ status: 'disconnected' }).catch(() => {});
+    await emit('disconnected', { reason: String(reason) });
+    // whatsapp-web.js tears down the browser on disconnect; exit so the .bat /
+    // process manager can restart us and re-establish the session.
+    process.exit(1);
+  });
+
+  // ack: 1 = sent(server), 2 = delivered, 3 = read, 4 = played (voice)
+  client.on('message_ack', async (msg, ack) => {
+    try {
+      const id = msg.id && (msg.id._serialized || String(msg.id));
+      if (id) await db.from('wa_outbox').update({ ack }).eq('wa_message_id', id);
+      await emit('ack', { message_id: id, ack });
+    } catch { /* */ }
+  });
+
+  // inbound messages (ignore our own and group traffic)
+  const STOP_WORDS = /^\s*(stop|arret|arrêt|arreter|arrêter|desinscription|désinscription|desabonner|désabonner|unsubscribe|no)\s*[.!]?\s*$/i;
+  client.on('message', async (m) => {
+    try {
+      if (m.fromMe || m.from === 'status@broadcast' || String(m.from).endsWith('@g.us')) return;
+      const phone = '+' + String(m.from).replace(/@c\.us$/, '');
+      await emit('inbound', { from: phone, body: m.body || '', type: m.type });
+      // auto opt-out: a STOP-like reply immediately blocks all future sends
+      if (m.body && STOP_WORDS.test(m.body)) {
+        await db.from('wa_opt_outs').upsert(
+          { company_id: CFG.companyId, phone, reason: 'stop-reply' },
+          { onConflict: 'company_id,phone' }
+        );
+        await emit('opt_out', { phone, via: 'stop-reply', body: m.body });
+        log(`opt-out (STOP) ← ${phone}`);
+      }
+    } catch { /* */ }
+  });
+
+  try {
+    await client.initialize();
     loop();
   } catch (e) {
     log('fatal:', e && e.message);
@@ -202,6 +268,12 @@ async function main() {
   }
 }
 
-process.on('SIGINT', async () => { running = false; log('Shutting down…'); await patchSession({ status: 'disconnected' }).catch(() => {}); process.exit(0); });
+process.on('SIGINT', async () => {
+  running = false;
+  log('Shutting down…');
+  try { if (client) await client.destroy(); } catch { /* */ }
+  await patchSession({ status: 'disconnected' }).catch(() => {});
+  process.exit(0);
+});
 
 main();

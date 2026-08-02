@@ -37,12 +37,13 @@ export default function CampaignsPage() {
   const [editing, setEditing] = useState<Partial<WaCampaign> | null>(null);
   const [detail, setDetail] = useState<WaCampaign | null>(null);
 
-  const loadCampaigns = async () => setCampaigns(await WaCampaignsService.listCampaigns());
+  const loadCampaigns = async () =>
+    setCampaigns(await WaCampaignsService.syncStatuses(await WaCampaignsService.listCampaigns()));
 
   const load = async () => {
     try {
       const [cs, ss, sg, tp, ct, oo] = await Promise.all([
-        WaCampaignsService.listCampaigns(),
+        WaCampaignsService.listCampaigns().then(l => WaCampaignsService.syncStatuses(l)),
         WhatsappService.listSessions(),
         WaContactsService.listSegments(),
         WaCampaignsService.listTemplates(),
@@ -359,7 +360,7 @@ function Detail({ campaign, currentUser, onClose, onEdit, onChanged }: {
   const refresh = async () => {
     try {
       const [fresh, s] = await Promise.all([WaCampaignsService.getCampaign(c.id), WaCampaignsService.stats(c.id)]);
-      if (fresh) setC(fresh);
+      if (fresh) setC((await WaCampaignsService.syncStatuses([fresh]))[0]);
       setStats(s);
     } catch { /* ignore transient */ }
   };
