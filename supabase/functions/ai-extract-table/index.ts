@@ -1,24 +1,91 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { corsHeaders, json, clientIp, guard } from "../_shared/security.ts";
-
 // ai-extract-table — generic AI-OCR: image of a document → structured JSON.
-// Companion to parse-bank-statement (which stays specialized for statements).
-// Deploy: supabase functions deploy ai-extract-table
+// Companion to parse-bank-statement (which stays specialised for statements).
+//
+// SELF-CONTAINED ON PURPOSE: no imports from ../_shared/, so this file can be
+// pasted straight into the Supabase dashboard (Edge Functions → Deploy new
+// function) by anyone without a local CLI. Deploying with the CLI also works:
+//   npx supabase functions deploy ai-extract-table
 //
 // kinds:
 //   "table"   → any tabular document  → { title, columns, rows }
 //   "invoice" → supplier invoice      → header fields + line items
 
-// Each call spends AI credits, so cap per-IP usage. A 30-page PDF is 30 calls,
-// hence the hourly budget rather than a per-minute one.
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+
+// ── CORS ────────────────────────────────────────────────────────────────────
+const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "")
+  .split(",").map((o) => o.trim()).filter(Boolean);
+
+function corsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get("origin") || "";
+  let allow = "*";
+  if (ALLOWED_ORIGINS.length) {
+    allow = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  }
+  return {
+    "Access-Control-Allow-Origin": allow,
+    "Access-Control-Allow-Headers":
+      "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    ...(ALLOWED_ORIGINS.length ? { Vary: "Origin" } : {}),
+  };
+}
+
+function json(req: Request, data: unknown, status = 200, extra: Record<string, string> = {}) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders(req), "Content-Type": "application/json", ...extra },
+  });
+}
+
+function clientIp(req: Request): string {
+  const xff = req.headers.get("x-forwarded-for");
+  if (xff) return xff.split(",")[0].trim();
+  return req.headers.get("cf-connecting-ip") || req.headers.get("x-real-ip") || "unknown";
+}
+
+// ── Rate limiting ───────────────────────────────────────────────────────────
+// Counters live in Postgres (migration 20260803120000_rate_limiting.sql) so
+// they are shared across isolates. Fails OPEN: if the limiter is unavailable
+// — including when that migration hasn't been applied — conversions keep
+// working rather than the tool going dark.
 const LIMITS = {
   burst: { max: 12,  window: 60 },            // 12 / min — normal page-by-page use
   hour:  { max: 120, window: 60 * 60 },       // ~4 large documents per hour
   day:   { max: 600, window: 24 * 60 * 60 },
 };
-const MAX_IMAGE_BYTES = 12 * 1024 * 1024;     // ~9 MB of base64 payload
+const MAX_IMAGE_BYTES = 12 * 1024 * 1024;     // ~9 MB of decoded image
 
-// Vision-capable models, tried in order (same chain as parse-bank-statement).
+async function overLimit(ip: string): Promise<{ blocked: boolean; message?: string; retryAfter?: number }> {
+  try {
+    const db = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      { auth: { persistSession: false } },
+    );
+    const checks: [string, { max: number; window: number }, string][] = [
+      ["ai-extract:burst", LIMITS.burst, "Trop de pages à la fois. Patientez une minute."],
+      ["ai-extract:hour",  LIMITS.hour,  "Quota horaire de conversion atteint."],
+      ["ai-extract:day",   LIMITS.day,   "Quota journalier de conversion atteint."],
+    ];
+    for (const [bucket, cfg, message] of checks) {
+      const { data, error } = await db.rpc("check_rate_limit", {
+        p_bucket: bucket, p_identifier: ip, p_max: cfg.max, p_window_seconds: cfg.window,
+      });
+      if (error) throw error;
+      if (data && data.allowed === false) {
+        console.warn(`[rate-limit] blocked ${bucket} ip=${ip} count=${data.count}`);
+        return { blocked: true, message, retryAfter: data.retry_after };
+      }
+    }
+  } catch (e) {
+    console.error("[rate-limit] check failed (allowing request):", (e as Error)?.message);
+  }
+  return { blocked: false };
+}
+
+// ── Prompts ─────────────────────────────────────────────────────────────────
 const VISION_MODELS = [
   "google/gemini-2.0-flash-exp:free",
   "meta-llama/llama-3.2-90b-vision-instruct:free",
@@ -63,16 +130,11 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders(req) });
 
   try {
-    const ip = clientIp(req);
-    const blocked = await guard(req, [
-      { bucket: "ai-extract:burst", id: ip, max: LIMITS.burst.max, window: LIMITS.burst.window,
-        message: "Trop de pages à la fois. Patientez une minute." },
-      { bucket: "ai-extract:hour", id: ip, max: LIMITS.hour.max, window: LIMITS.hour.window,
-        message: "Quota horaire de conversion atteint." },
-      { bucket: "ai-extract:day", id: ip, max: LIMITS.day.max, window: LIMITS.day.window,
-        message: "Quota journalier de conversion atteint." },
-    ]);
-    if (blocked) return blocked;
+    const limit = await overLimit(clientIp(req));
+    if (limit.blocked) {
+      return json(req, { error: limit.message, retry_after: limit.retryAfter }, 429,
+        { "Retry-After": String(limit.retryAfter ?? 60) });
+    }
 
     const { image_base64, mime, kind } = await req.json();
     if (!image_base64) {
@@ -87,7 +149,10 @@ serve(async (req) => {
     }
 
     const apiKey = Deno.env.get("OPENROUTER_API_KEY");
-    if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
+    if (!apiKey) {
+      // Explicit, actionable: this is a configuration problem, not a bad file.
+      return json(req, { error: "OPENROUTER_API_KEY n'est pas configuré dans les secrets Supabase." }, 500);
+    }
 
     const dataUrl = image_base64.startsWith("data:")
       ? image_base64
@@ -118,8 +183,8 @@ serve(async (req) => {
       });
 
       if (!resp.ok) { lastErr = `${model}: ${resp.status} ${await resp.text()}`; continue; }
-      const json = await resp.json();
-      const content: string = json?.choices?.[0]?.message?.content || "";
+      const out = await resp.json();
+      const content: string = out?.choices?.[0]?.message?.content || "";
       const cleaned = content.replace(/```json/gi, "").replace(/```/g, "").trim();
       let parsed: any;
       try { parsed = JSON.parse(cleaned); }
@@ -133,7 +198,7 @@ serve(async (req) => {
 
     // lastErr can contain upstream provider detail — log it, don't return it.
     console.error("[ai-extract-table] all models failed:", lastErr);
-    return json(req, { error: "Extraction échouée : le document n'a pas pu être lu." }, 502);
+    return json(req, { error: "Extraction échouée : le document n'a pas pu être lu (modèles IA indisponibles ou page illisible)." }, 502);
   } catch (e) {
     console.error("[ai-extract-table] error:", (e as Error)?.message);
     return json(req, { error: "Erreur inattendue" }, 500);
