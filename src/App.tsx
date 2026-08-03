@@ -79,6 +79,7 @@ const WhatsappContactsPage = React.lazy(() => import('./pages/whatsapp/ContactsP
 const WhatsappStudioPage = React.lazy(() => import('./pages/whatsapp/StudioPage'));
 const WhatsappCampaignsPage = React.lazy(() => import('./pages/whatsapp/CampaignsPage'));
 const WhatsappAnalyticsPage = React.lazy(() => import('./pages/whatsapp/AnalyticsPage'));
+const ConverterPage = React.lazy(() => import('./pages/tools/ConverterPage'));
 const TasksLayout = React.lazy(() => import('./tasks/TasksLayout'));
 const TasksDashboard = React.lazy(() => import('./tasks/pages/Dashboard'));
 const TasksList = React.lazy(() => import('./tasks/pages/SalesTasks'));
@@ -164,6 +165,7 @@ function AppContent() {
             <Route path="/whatsapp/studio" element={<WhatsappStudioPage />} />
             <Route path="/whatsapp/campaigns" element={<WhatsappCampaignsPage />} />
             <Route path="/whatsapp/analytics" element={<WhatsappAnalyticsPage />} />
+            <Route path="/tools/converter" element={<ConverterPage />} />
             <Route path="/share/:token" element={<PublicSharePage />} />
             <Route path="/admin/statistics" element={<StatisticsPage />} />
             <Route path="/admin/settings" element={<CompanySettingsPage />} />
