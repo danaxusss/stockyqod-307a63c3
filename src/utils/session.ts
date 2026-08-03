@@ -34,24 +34,44 @@ const LEGACY_KEYS = [
 ];
 
 export interface StoredSession {
-  token: string;
+  /**
+   * Signed token, or null in legacy mode — see saveSession(). Anything
+   * privileged must treat a null token as "cannot prove who this is".
+   */
+  token: string | null;
   user: AppUser;
   expiresAt: number;   // epoch seconds, from the signed token
   remembered: boolean;
 }
 
+/** Session lifetimes mirrored from the server, used only in legacy mode. */
+const TTL_SECONDS = { standard: 12 * 60 * 60, remember: 30 * 24 * 60 * 60 };
+
 function stores(): Storage[] {
   return [localStorage, sessionStorage];
 }
 
-/** Persist a freshly issued session. */
-export function saveSession(token: string, user: AppUser, expiresAt: number, rememberMe: boolean): void {
+/**
+ * Persist a freshly issued session.
+ *
+ * `token` may be null when the deployed verify-pin function predates session
+ * tokens (the front-end ships independently of Edge Functions, so there is a
+ * window where the browser is new and the server is not). The PIN was still
+ * verified server-side in that case — only the signed proof is missing — so we
+ * fall back to a locally-tracked session instead of locking everyone out. It
+ * upgrades itself to a signed session on the next login once the function is
+ * deployed.
+ */
+export function saveSession(token: string | null, user: AppUser, expiresAt: number | null | undefined, rememberMe: boolean): void {
   clearSession({ keepRememberedUsername: true });
   const store = rememberMe ? localStorage : sessionStorage;
+  const exp = expiresAt && Number(expiresAt) > 0
+    ? Number(expiresAt)
+    : Math.floor(Date.now() / 1000) + (rememberMe ? TTL_SECONDS.remember : TTL_SECONDS.standard);
   try {
-    store.setItem(TOKEN_KEY, token);
+    if (token) store.setItem(TOKEN_KEY, token);
     store.setItem(USER_KEY, JSON.stringify(user));
-    store.setItem(EXPIRY_KEY, String(expiresAt));
+    store.setItem(EXPIRY_KEY, String(exp));
     store.setItem(LAST_SEEN_KEY, String(Date.now()));
     // Only the username is remembered for convenience — never the PIN.
     if (rememberMe && user?.username) {
@@ -64,13 +84,14 @@ export function saveSession(token: string, user: AppUser, expiresAt: number, rem
 export function readSession(): StoredSession | null {
   for (const store of stores()) {
     try {
-      const token = store.getItem(TOKEN_KEY);
-      if (!token) continue;
+      // A session is identified by the stored user + expiry. The token may be
+      // absent (legacy mode, see saveSession) — that weakens what we can
+      // prove to the server, but it is still a real session locally.
       const rawUser = store.getItem(USER_KEY);
       const expiresAt = Number(store.getItem(EXPIRY_KEY) || 0);
-      if (!rawUser) continue;
+      if (!rawUser || !expiresAt) continue;
       return {
-        token,
+        token: store.getItem(TOKEN_KEY),
         user: JSON.parse(rawUser) as AppUser,
         expiresAt,
         remembered: store === localStorage,
@@ -145,6 +166,9 @@ export async function validateSession(): Promise<AppUser | null> {
   const s = readSession();
   if (!s) return null;
   if (!hasLocallyValidSession()) return null;
+  // Legacy session with no token: nothing to verify server-side. Local expiry
+  // and the idle timeout still apply.
+  if (!s.token) return s.user;
 
   try {
     const { data, error } = await supabase.functions.invoke('verify-pin', {

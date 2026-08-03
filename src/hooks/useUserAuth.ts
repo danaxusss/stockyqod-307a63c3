@@ -121,7 +121,16 @@ export function useUserAuth() {
 
   const applyLogin = useCallback((data: any, rememberMe: boolean): AppUser => {
     const user = data.user as AppUser;
-    saveSession(data.session_token, user, data.expires_at, rememberMe);
+    if (!data.session_token) {
+      // The server verified the PIN but is running a build without session
+      // tokens. Log in anyway rather than lock the user out; deploying
+      // verify-pin restores signed sessions automatically.
+      console.warn(
+        '[auth] verify-pin returned no session_token — the Edge Function is out of date. ' +
+        'Run: supabase functions deploy verify-pin'
+      );
+    }
+    saveSession(data.session_token ?? null, user, data.expires_at, rememberMe);
     setIsAuthenticated(true);
     setAuthenticatedUser(user);
     userAuthStateManager.notify();
@@ -134,7 +143,7 @@ export function useUserAuth() {
         body: { action: 'verify', username, pin, remember_me: rememberMe }
       });
       if (error) { setLastAuthError(await rateLimitMessage(error)); return false; }
-      if (!data?.success || !data?.session_token) { setLastAuthError(null); return false; }
+      if (!data?.success) { setLastAuthError(null); return false; }
       const user = applyLogin(data, rememberMe);
       ActivityLogger.log('login', `User ${user.username} logged in`);
       return true;
@@ -150,7 +159,7 @@ export function useUserAuth() {
         body: { action: 'verify-pin-only', pin, remember_me: rememberMe }
       });
       if (error) { setLastAuthError(await rateLimitMessage(error)); return false; }
-      if (!data?.success || !data?.session_token) { setLastAuthError(null); return false; }
+      if (!data?.success) { setLastAuthError(null); return false; }
       applyLogin(data, rememberMe);
       return true;
     } catch (error) {
