@@ -182,8 +182,10 @@ export default function ConverterPage() {
                 {p.status === 'running' && <span className="flex items-center gap-1 text-primary"><Loader className="h-3 w-3 animate-spin" /> analyse IA…</span>}
                 {p.status === 'ok' && <span className="flex items-center gap-1 text-emerald-700 dark:text-emerald-400"><Check className="h-3 w-3" /> extraite</span>}
                 {p.status === 'error' && (
-                  <span className="flex items-center gap-1 text-red-600 dark:text-red-400 min-w-0">
-                    <AlertTriangle className="h-3 w-3 shrink-0" /><span className="truncate" title={p.error}>{p.error}</span>
+                  <span className="flex items-start gap-1 text-red-600 dark:text-red-400 min-w-0">
+                    <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5" />
+                    {/* full text, wrapped — the reason is the whole point */}
+                    <span className="break-words">{p.error}</span>
                   </span>
                 )}
               </div>
@@ -193,11 +195,14 @@ export default function ConverterPage() {
                 <RefreshCw className="h-3.5 w-3.5" /> Réessayer les {failedCount} page(s) en échec
               </button>
             )}
-            {phase === 'done' && failedCount > 0 && def.fn === 'ai-extract-table' && (
-              <p className="text-[11px] text-amber-600 dark:text-amber-400">
-                Si toutes les pages échouent avec « non trouvée » : la fonction <code className="font-mono">ai-extract-table</code> n'est pas déployée
-                (<code className="font-mono">supabase functions deploy ai-extract-table</code>).
-              </p>
+            {phase === 'done' && failedCount === pages.length && (
+              <div className="text-[11px] text-amber-600 dark:text-amber-400 space-y-0.5">
+                <p className="font-medium">Toutes les pages ont échoué — causes les plus fréquentes :</p>
+                <p>• La fonction <code className="font-mono">{def.fn}</code> n'est pas déployée :
+                  <code className="font-mono"> npx supabase functions deploy {def.fn}</code></p>
+                <p>• Le secret <code className="font-mono">OPENROUTER_API_KEY</code> n'est pas configuré côté Supabase</p>
+                <p>• Les modèles IA gratuits sont momentanément saturés — réessayez dans quelques minutes</p>
+              </div>
             )}
           </div>
         )}
