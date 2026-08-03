@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { AppUser } from '../types';
 import { supabase } from '@/integrations/supabase/client';
 import { ActivityLogger } from '../utils/activityLogger';
+import { setLastAuthError, rateLimitMessage } from '../utils/authError';
 
 const AUTH_STORAGE_KEY = 'inventory_user_authenticated';
 const AUTH_TIME_KEY = 'inventory_user_auth_time';
@@ -117,7 +118,8 @@ export function useUserAuth() {
       const { data, error } = await supabase.functions.invoke('verify-pin', {
         body: { action: 'verify', username, pin }
       });
-      if (error || !data?.success) return false;
+      if (error) { setLastAuthError(await rateLimitMessage(error)); return false; }
+      if (!data?.success) { setLastAuthError(null); return false; }
       const user = data.user as AppUser;
       localStorage.setItem(AUTH_STORAGE_KEY, 'true');
       localStorage.setItem(AUTH_TIME_KEY, Date.now().toString());
@@ -142,7 +144,8 @@ export function useUserAuth() {
       const { data, error } = await supabase.functions.invoke('verify-pin', {
         body: { action: 'verify-pin-only', pin }
       });
-      if (error || !data?.success) return false;
+      if (error) { setLastAuthError(await rateLimitMessage(error)); return false; }
+      if (!data?.success) { setLastAuthError(null); return false; }
       const user = data.user as AppUser;
       localStorage.setItem(AUTH_STORAGE_KEY, 'true');
       localStorage.setItem(AUTH_TIME_KEY, Date.now().toString());

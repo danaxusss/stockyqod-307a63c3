@@ -4,6 +4,7 @@ import { StorageManager } from '../utils/storage';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserAuth } from './useUserAuth';
 import { setCompanyContext } from '../utils/supabaseCompanyFilter';
+import { setLastAuthError, rateLimitMessage } from '../utils/authError';
 import { SupabaseCompaniesService } from '../utils/supabaseCompanies';
 import { deriveRoleFlags } from '../lib/permissions';
 
@@ -240,6 +241,8 @@ export function useAuth() {
       const { data, error } = await supabase.functions.invoke('verify-pin', {
         body: { action: 'verify-pin-only', pin }
       });
+
+      if (error) setLastAuthError(await rateLimitMessage(error));
 
       if (!error && data?.success) {
         const user = data.user as AppUser;

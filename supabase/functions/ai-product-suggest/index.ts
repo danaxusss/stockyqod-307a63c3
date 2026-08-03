@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { clientIp, guard } from "../_shared/security.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -42,10 +43,28 @@ async function callOpenRouter(
   });
 }
 
+// Chat costs AI credits per message — cap per-IP usage.
+const LIMITS = {
+  burst: { max: 15,   window: 60 },
+  hour:  { max: 150,  window: 60 * 60 },
+  day:   { max: 1000, window: 24 * 60 * 60 },
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
+    const ip = clientIp(req);
+    const blocked = await guard(req, [
+      { bucket: "ai-chat:burst", id: ip, max: LIMITS.burst.max, window: LIMITS.burst.window,
+        message: "Vous écrivez trop vite. Patientez quelques secondes." },
+      { bucket: "ai-chat:hour", id: ip, max: LIMITS.hour.max, window: LIMITS.hour.window,
+        message: "Quota horaire de l'assistant atteint." },
+      { bucket: "ai-chat:day", id: ip, max: LIMITS.day.max, window: LIMITS.day.window,
+        message: "Quota journalier de l'assistant atteint." },
+    ]);
+    if (blocked) return blocked;
+
     const body = await req.json();
     const { messages, company_id, username } = body;
 
