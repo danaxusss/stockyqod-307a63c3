@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { clientIp, guard, rateLimit } from "../_shared/security.ts";
+import { verifySessionLive } from "../_shared/session.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -47,7 +48,7 @@ serve(async (req) => {
     if (blocked) return blocked;
 
     const body = await req.json();
-    const { action, admin_user_id, ...payload } = body;
+    const { action, admin_user_id, session_token, ...payload } = body;
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -57,17 +58,29 @@ serve(async (req) => {
       return jsonResponse({ error: "action is required" }, 400);
     }
 
-    // Verify the caller is a superadmin by their UUID (no PIN needed — UUID is not guessable)
-    if (!admin_user_id) {
-      return jsonResponse({ error: "admin_user_id is required" }, 401);
-    }
-    const { data: adminUser, error: adminErr } = await supabase
-      .from("app_users")
-      .select("id, is_superadmin")
-      .eq("id", admin_user_id)
-      .maybeSingle();
+    // Authorization. Preferred: a server-signed session token, which the
+    // browser cannot forge. Legacy: a bare admin_user_id — accepted only while
+    // clients update, because a UUID is a bearer credential that leaks through
+    // logs and referrers. Either way the superadmin flag is re-read from the
+    // database, never taken from the caller.
+    let adminUser: { id: string; is_superadmin: boolean } | null = null;
 
-    if (adminErr || !adminUser || !adminUser.is_superadmin) {
+    if (session_token) {
+      const live = await verifySessionLive(supabase, session_token);
+      if (live) adminUser = live.user as any;
+    } else if (admin_user_id) {
+      console.warn("[admin-users] legacy admin_user_id auth used — send session_token instead");
+      const { data } = await supabase
+        .from("app_users")
+        .select("id, is_superadmin")
+        .eq("id", admin_user_id)
+        .maybeSingle();
+      adminUser = data as any;
+    } else {
+      return jsonResponse({ error: "session_token is required" }, 401);
+    }
+
+    if (!adminUser || !adminUser.is_superadmin) {
       // Only FAILED authorizations consume this budget, so a busy legitimate
       // admin is never locked out while UUID-guessing is cut off quickly.
       const v = await rateLimit("admin-users:authfail", ip, 10, 15 * 60, true);

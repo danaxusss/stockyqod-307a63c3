@@ -7,6 +7,7 @@ import { SupabaseCompaniesService } from '../utils/supabaseCompanies';
 import { AppUser, Company } from '../types';
 import { useToast } from '../context/ToastContext';
 import { takeLastAuthError } from '../utils/authError';
+import { getRememberedUsername, forgetRememberedUsername } from '../utils/session';
 
 interface LoginModalProps {
   roleType: 'user' | 'admin';
@@ -17,8 +18,10 @@ interface LoginModalProps {
 
 export function LoginModal({ roleType, isInitialGate = false, onClose, onLoginSuccess }: LoginModalProps) {
   const [pin, setPin] = useState('');
-  const [username, setUsername] = useState('');
-  const [selectedUsername, setSelectedUsername] = useState('');
+  // Pre-fill the name from the last "remember me" login (never the PIN).
+  const [username, setUsername] = useState(() => getRememberedUsername() ?? '');
+  const [selectedUsername, setSelectedUsername] = useState(() => getRememberedUsername() ?? '');
+  const [rememberMe, setRememberMe] = useState(() => !!getRememberedUsername());
   const [availableUsers, setAvailableUsers] = useState<AppUser[]>([]);
   const [companiesMap, setCompaniesMap] = useState<Record<string, string>>({});
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
@@ -82,31 +85,34 @@ export function LoginModal({ roleType, isInitialGate = false, onClose, onLoginSu
         const attemptLogin = async () => {
           let success = false;
           if (username.trim()) {
-            success = await adminLoginWithUsername(username.trim(), pin);
+            success = await adminLoginWithUsername(username.trim(), pin, rememberMe);
           } else {
-            success = await adminLogin(pin);
+            success = await adminLogin(pin, rememberMe);
           }
           if (success) {
+            if (!rememberMe) forgetRememberedUsername();
             onLoginSuccess?.();
             onClose();
           } else {
             setError(takeLastAuthError() ?? (username.trim() ? 'Nom d\'utilisateur ou PIN invalide' : 'PIN invalide'));
             setPin('');
-            setUsername('');
+            // Keep the typed name when it will be remembered anyway.
+            if (!rememberMe) setUsername('');
           }
           setIsLoading(false);
         };
         attemptLogin();
       } else {
         const attemptUserLogin = async () => {
-          const success = await userLoginWithCredentials(selectedUsername.trim(), pin);
+          const success = await userLoginWithCredentials(selectedUsername.trim(), pin, rememberMe);
           if (success) {
+            if (!rememberMe) forgetRememberedUsername();
             onLoginSuccess?.();
             onClose();
           } else {
             setError(takeLastAuthError() ?? 'Nom d\'utilisateur ou PIN invalide');
             setPin('');
-            setSelectedUsername('');
+            if (!rememberMe) setSelectedUsername('');
           }
           setIsLoading(false);
         };
@@ -250,6 +256,24 @@ export function LoginModal({ roleType, isInitialGate = false, onClose, onLoginSu
               </button>
             </div>
           </div>
+
+          <label className="flex items-start gap-2.5 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={rememberMe}
+              onChange={e => setRememberMe(e.target.checked)}
+              disabled={isLoading}
+              className="mt-0.5 h-4 w-4 rounded border-border accent-[hsl(var(--primary))] disabled:opacity-50"
+            />
+            <span className="text-sm text-foreground leading-tight">
+              Rester connecté
+              <span className="block text-xs text-muted-foreground">
+                {rememberMe
+                  ? 'Cet appareil restera connecté 30 jours. À éviter sur un poste partagé.'
+                  : 'La session se ferme quand vous quittez le navigateur.'}
+              </span>
+            </span>
+          </label>
 
           {error && (
             <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-xl">

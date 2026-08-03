@@ -3,11 +3,10 @@ import { AppUser } from '../types';
 import { supabase } from '@/integrations/supabase/client';
 import { ActivityLogger } from '../utils/activityLogger';
 import { setLastAuthError, rateLimitMessage } from '../utils/authError';
-
-const AUTH_STORAGE_KEY = 'inventory_user_authenticated';
-const AUTH_TIME_KEY = 'inventory_user_auth_time';
-const USER_DATA_KEY = 'inventory_authenticated_user';
-const AUTH_DURATION = 24 * 60 * 60 * 1000; // 24 hours
+import {
+  saveSession, readSession, clearSession, validateSession,
+  hasLocallyValidSession, touchSession, remainingMs,
+} from '../utils/session';
 
 const USER_AUTH_CHANGE_EVENT = 'user-auth-state-change';
 
@@ -27,36 +26,17 @@ class UserAuthStateManager {
 
 const userAuthStateManager = new UserAuthStateManager();
 
+// A session now exists only if a server-signed token is present and neither
+// its expiry nor the idle timeout has passed. The old scheme trusted an
+// `authenticated=true` flag plus a timestamp, both of which the user could
+// simply write in devtools.
 function checkAuthenticationStatus(): boolean {
-  try {
-    const isAuth = localStorage.getItem(AUTH_STORAGE_KEY) === 'true';
-    const authTime = localStorage.getItem(AUTH_TIME_KEY);
-    
-    if (!isAuth || !authTime) return false;
-
-    const authTimestamp = parseInt(authTime);
-    if (Date.now() - authTimestamp > AUTH_DURATION) {
-      localStorage.removeItem(AUTH_STORAGE_KEY);
-      localStorage.removeItem(AUTH_TIME_KEY);
-      localStorage.removeItem(USER_DATA_KEY);
-      return false;
-    }
-
-    return true;
-  } catch {
-    return false;
-  }
+  return hasLocallyValidSession();
 }
 
 export function useUserAuth() {
   const [isAuthenticated, setIsAuthenticated] = useState(() => checkAuthenticationStatus());
-  const [authenticatedUser, setAuthenticatedUser] = useState<AppUser | null>(() => {
-    const stored = localStorage.getItem(USER_DATA_KEY);
-    if (stored) {
-      try { return JSON.parse(stored); } catch { return null; }
-    }
-    return null;
-  });
+  const [authenticatedUser, setAuthenticatedUser] = useState<AppUser | null>(() => readSession()?.user ?? null);
   const [forceUpdate, setForceUpdate] = useState(0);
 
   const triggerUpdate = useCallback(() => {
@@ -66,8 +46,7 @@ export function useUserAuth() {
   useEffect(() => {
     const unsubscribe = userAuthStateManager.subscribe(() => {
       setIsAuthenticated(checkAuthenticationStatus());
-      const stored = localStorage.getItem(USER_DATA_KEY);
-      try { setAuthenticatedUser(stored ? JSON.parse(stored) : null); } catch { setAuthenticatedUser(null); }
+      setAuthenticatedUser(readSession()?.user ?? null);
       triggerUpdate();
     });
     return () => { unsubscribe(); };
@@ -83,11 +62,11 @@ export function useUserAuth() {
   }, [triggerUpdate]);
 
   useEffect(() => {
+    // Keeps tabs in sync: logging out in one tab logs out the others.
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === AUTH_STORAGE_KEY || e.key === AUTH_TIME_KEY || e.key === USER_DATA_KEY) {
+      if (e.key === null || e.key.startsWith('stocky_session') || e.key === 'inventory_authenticated_user') {
         setIsAuthenticated(checkAuthenticationStatus());
-        const stored = localStorage.getItem(USER_DATA_KEY);
-        setAuthenticatedUser(stored ? JSON.parse(stored) : null);
+        setAuthenticatedUser(readSession()?.user ?? null);
         triggerUpdate();
       }
     };
@@ -106,97 +85,107 @@ export function useUserAuth() {
     return () => clearInterval(interval);
   }, [isAuthenticated]);
 
-  const login = useCallback(async (): Promise<void> => {
-    localStorage.setItem(AUTH_STORAGE_KEY, 'true');
-    localStorage.setItem(AUTH_TIME_KEY, Date.now().toString());
-    setIsAuthenticated(true);
-    userAuthStateManager.notify();
+  // Confirm with the server that the stored token is genuine and still valid,
+  // and refresh the cached user so revoked rights apply immediately. Runs once
+  // on mount and then hourly.
+  useEffect(() => {
+    let cancelled = false;
+    const check = async () => {
+      if (!readSession()) return;
+      const fresh = await validateSession();
+      if (cancelled) return;
+      if (!fresh) {
+        setIsAuthenticated(false);
+        setAuthenticatedUser(null);
+        userAuthStateManager.notify();
+      } else {
+        setAuthenticatedUser(fresh);
+      }
+    };
+    check();
+    const id = setInterval(check, 60 * 60 * 1000);
+    return () => { cancelled = true; clearInterval(id); };
   }, []);
 
-  const loginWithCredentials = useCallback(async (username: string, pin: string): Promise<boolean> => {
+  // Activity refreshes the idle clock.
+  useEffect(() => {
+    const onActivity = () => touchSession();
+    const events: (keyof WindowEventMap)[] = ['click', 'keydown', 'focus'];
+    events.forEach(e => window.addEventListener(e, onActivity));
+    document.addEventListener('visibilitychange', onActivity);
+    return () => {
+      events.forEach(e => window.removeEventListener(e, onActivity));
+      document.removeEventListener('visibilitychange', onActivity);
+    };
+  }, []);
+
+  const applyLogin = useCallback((data: any, rememberMe: boolean): AppUser => {
+    const user = data.user as AppUser;
+    saveSession(data.session_token, user, data.expires_at, rememberMe);
+    setIsAuthenticated(true);
+    setAuthenticatedUser(user);
+    userAuthStateManager.notify();
+    return user;
+  }, []);
+
+  const loginWithCredentials = useCallback(async (username: string, pin: string, rememberMe = false): Promise<boolean> => {
     try {
       const { data, error } = await supabase.functions.invoke('verify-pin', {
-        body: { action: 'verify', username, pin }
+        body: { action: 'verify', username, pin, remember_me: rememberMe }
       });
       if (error) { setLastAuthError(await rateLimitMessage(error)); return false; }
-      if (!data?.success) { setLastAuthError(null); return false; }
-      const user = data.user as AppUser;
-      localStorage.setItem(AUTH_STORAGE_KEY, 'true');
-      localStorage.setItem(AUTH_TIME_KEY, Date.now().toString());
-      localStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
-      // Store PIN in sessionStorage for admin operations (cleared on tab close)
-      if (user.is_admin || user.is_superadmin) {
-        sessionStorage.setItem('inventory_admin_pin', pin);
-      }
-      setIsAuthenticated(true);
-      setAuthenticatedUser(user);
-      userAuthStateManager.notify();
+      if (!data?.success || !data?.session_token) { setLastAuthError(null); return false; }
+      const user = applyLogin(data, rememberMe);
       ActivityLogger.log('login', `User ${user.username} logged in`);
       return true;
     } catch (error) {
       console.error('Login with credentials failed:', error);
       return false;
     }
-  }, []);
+  }, [applyLogin]);
 
-  const loginWithPin = useCallback(async (pin: string): Promise<boolean> => {
+  const loginWithPin = useCallback(async (pin: string, rememberMe = false): Promise<boolean> => {
     try {
       const { data, error } = await supabase.functions.invoke('verify-pin', {
-        body: { action: 'verify-pin-only', pin }
+        body: { action: 'verify-pin-only', pin, remember_me: rememberMe }
       });
       if (error) { setLastAuthError(await rateLimitMessage(error)); return false; }
-      if (!data?.success) { setLastAuthError(null); return false; }
-      const user = data.user as AppUser;
-      localStorage.setItem(AUTH_STORAGE_KEY, 'true');
-      localStorage.setItem(AUTH_TIME_KEY, Date.now().toString());
-      localStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
-      if (user.is_admin || user.is_superadmin) {
-        sessionStorage.setItem('inventory_admin_pin', pin);
-      }
-      setIsAuthenticated(true);
-      setAuthenticatedUser(user);
-      userAuthStateManager.notify();
+      if (!data?.success || !data?.session_token) { setLastAuthError(null); return false; }
+      applyLogin(data, rememberMe);
       return true;
     } catch (error) {
       console.error('PIN login failed:', error);
       return false;
     }
-  }, []);
+  }, [applyLogin]);
 
   const logout = useCallback((): void => {
     ActivityLogger.log('logout', 'User logged out');
-    localStorage.removeItem(AUTH_STORAGE_KEY);
-    localStorage.removeItem(AUTH_TIME_KEY);
-    localStorage.removeItem(USER_DATA_KEY);
-    sessionStorage.removeItem('inventory_admin_pin');
+    clearSession();
     setIsAuthenticated(false);
     setAuthenticatedUser(null);
     userAuthStateManager.notify();
   }, []);
 
-  const getRemainingTime = useCallback((): number => {
-    const authTime = localStorage.getItem(AUTH_TIME_KEY);
-    if (!authTime) return 0;
-    return Math.max(0, AUTH_DURATION - (Date.now() - parseInt(authTime)));
-  }, []);
+  const getRemainingTime = useCallback((): number => remainingMs(), []);
 
   const getSessionInfo = useCallback(() => {
-    const authTime = localStorage.getItem(AUTH_TIME_KEY);
-    if (!authTime) return null;
-    const remaining = getRemainingTime();
+    const s = readSession();
+    if (!s) return null;
+    const remaining = remainingMs();
     return {
-      loginTime: new Date(parseInt(authTime)),
+      loginTime: new Date(s.expiresAt * 1000 - (s.remembered ? 30 * 24 : 12) * 60 * 60 * 1000),
       remainingTime: remaining,
       hoursRemaining: Math.floor(remaining / (60 * 60 * 1000)),
       minutesRemaining: Math.floor((remaining % (60 * 60 * 1000)) / (60 * 1000)),
-      isExpired: remaining <= 0
+      isExpired: remaining <= 0,
+      remembered: s.remembered,
     };
-  }, [getRemainingTime]);
+  }, []);
 
   return {
     isAuthenticated,
     authenticatedUser,
-    login,
     loginWithCredentials,
     loginWithPin,
     logout,

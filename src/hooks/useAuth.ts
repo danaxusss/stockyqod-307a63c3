@@ -5,6 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useUserAuth } from './useUserAuth';
 import { setCompanyContext } from '../utils/supabaseCompanyFilter';
 import { setLastAuthError, rateLimitMessage } from '../utils/authError';
+import { saveSession } from '../utils/session';
 import { SupabaseCompaniesService } from '../utils/supabaseCompanies';
 import { deriveRoleFlags } from '../lib/permissions';
 
@@ -235,42 +236,22 @@ export function useAuth() {
     setAuthReady(true);
   }, []);
 
-  const login = useCallback(async (pin: string): Promise<boolean> => {
+  const login = useCallback(async (pin: string, rememberMe = false): Promise<boolean> => {
     try {
-      // Try to authenticate via edge function (PIN only)
+      // Authentication happens server-side only. The previous local fallback
+      // ("if the typed PIN matches the one cached in localStorage, grant
+      // admin") was a full authentication bypass: anyone could write that key
+      // from devtools and log in as admin. It is deliberately gone.
       const { data, error } = await supabase.functions.invoke('verify-pin', {
-        body: { action: 'verify-pin-only', pin }
+        body: { action: 'verify-pin-only', pin, remember_me: rememberMe }
       });
 
       if (error) setLastAuthError(await rateLimitMessage(error));
 
-      if (!error && data?.success) {
+      if (!error && data?.success && data?.session_token) {
         const user = data.user as AppUser;
-        if (user.is_admin || user.is_superadmin) {
-          sessionStorage.setItem('inventory_admin_pin', pin);
-          localStorage.setItem('inventory_authenticated_user', JSON.stringify(user));
-        }
+        saveSession(data.session_token, user, data.expires_at, rememberMe);
         await loadUserData(user);
-        authStateManager.notify();
-        return true;
-      }
-
-      // Fallback: old admin PIN
-      const storedPin = StorageManager.getAdminPin();
-      if (storedPin && pin === storedPin) {
-        const tempAdminUser: AppUser = {
-          id: 'temp-admin',
-          username: 'admin',
-          pin: '',
-          is_admin: true,
-          can_create_quote: true,
-          allowed_stock_locations: [],
-          allowed_brands: [],
-          price_display_type: 'normal',
-          created_at: new Date(),
-          updated_at: new Date()
-        };
-        await loadUserData(tempAdminUser);
         authStateManager.notify();
         return true;
       }
@@ -282,18 +263,17 @@ export function useAuth() {
     }
   }, [loadUserData]);
 
-  const loginWithUsername = useCallback(async (username: string, pin: string): Promise<boolean> => {
+  const loginWithUsername = useCallback(async (username: string, pin: string, rememberMe = false): Promise<boolean> => {
     try {
       const { data, error } = await supabase.functions.invoke('verify-pin', {
-        body: { action: 'verify', username, pin }
+        body: { action: 'verify', username, pin, remember_me: rememberMe }
       });
 
-      if (!error && data?.success) {
+      if (error) setLastAuthError(await rateLimitMessage(error));
+
+      if (!error && data?.success && data?.session_token) {
         const user = data.user as AppUser;
-        if (user.is_admin || user.is_superadmin) {
-          sessionStorage.setItem('inventory_admin_pin', pin);
-          localStorage.setItem('inventory_authenticated_user', JSON.stringify(user));
-        }
+        saveSession(data.session_token, user, data.expires_at, rememberMe);
         await loadUserData(user);
         authStateManager.notify();
         return true;
