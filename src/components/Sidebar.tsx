@@ -6,7 +6,7 @@ import {
   BarChart3, Users, ShoppingCart, LucideIcon, X,
   RotateCcw, Sun, Moon, Upload, FileX, BookMarked, Home, Images, ClipboardList,
   Wallet, ListTodo, Archive, Contact as ContactIcon, LayoutDashboard, MessageCircle,
-  Megaphone, FileText,
+  Megaphone, FileSpreadsheet,
 } from 'lucide-react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useTheme } from '../hooks/useTheme';
@@ -162,6 +162,13 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps = {}
           : [{ to: '/tasks', icon: ListTodo, label: 'Tâches' }]),
         { to: '/tasks/archive', icon: Archive, label: 'Archives' },
         { to: '/tasks/contacts', icon: ContactIcon, label: 'Contacts' },
+      ],
+    }] : []),
+    ...((isAdmin || isSuperAdmin) ? [{
+      id: 'tools',
+      label: 'Outils',
+      items: [
+        { to: '/tools/converter', icon: FileSpreadsheet, label: 'Convertisseur PDF → Excel' },
       ],
     }] : []),
     ...((isAdmin || isSuperAdmin) ? [{
