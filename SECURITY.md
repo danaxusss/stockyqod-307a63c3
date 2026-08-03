@@ -59,7 +59,72 @@ utilisateurs : il suffisait donc de deviner *n'importe quel* PIN. Un PIN à
 
 ---
 
-## 2. Clés et secrets — CORRECT
+## 2. Connexion et sessions — DURCI
+
+### Failles corrigées
+
+**a) Contournement complet de l'authentification.** La connexion comportait un
+repli local : si le code saisi correspondait à un PIN mis en cache dans
+`localStorage` (`inventory_admin_pin`), l'utilisateur obtenait les droits
+**administrateur** sans aucune vérification serveur. N'importe qui pouvait donc
+écrire cette clé depuis la console du navigateur puis se connecter en admin. Ce
+repli est supprimé : l'authentification est désormais **exclusivement**
+serveur.
+
+**b) Élévation de privilèges.** L'objet utilisateur — incluant `is_admin` et
+`is_superadmin` — était conservé dans `localStorage`, et l'application s'y
+fiait. Un utilisateur standard pouvait éditer ces champs et se retrouver traité
+comme super-administrateur.
+
+**c) Session inexpirable.** L'état de connexion était un simple drapeau
+`authenticated=true` accompagné d'un horodatage, tous deux modifiables : il
+suffisait de réécrire l'horodatage pour prolonger indéfiniment une session.
+
+**d) PIN en clair dans le navigateur.** Le code PIN était stocké tel quel
+(`sessionStorage`, et `localStorage` via la synchronisation) — lisible par
+toute personne ayant accès au poste. Plus aucun code ne met un PIN en cache.
+
+### Le mécanisme retenu : jetons signés côté serveur
+
+À la connexion, le serveur émet un jeton **signé en HMAC-SHA256** avec un
+secret qui ne quitte jamais le serveur (`SESSION_SECRET`). Il contient
+l'identifiant, les rôles, la société et l'expiration.
+
+Le navigateur peut **lire** ces informations, mais ne peut ni les modifier ni
+en fabriquer : toute altération invalide la signature. Les opérations
+sensibles vérifient le jeton **et relisent l'utilisateur en base**, de sorte
+qu'un droit révoqué s'applique immédiatement plutôt qu'à l'expiration.
+
+**Vérifié par des tests** (13 cas, même API WebCrypto qu'en production) :
+signature valide acceptée ; charge utile modifiée rejetée ; jeton signé avec un
+autre secret rejeté ; signature retirée rejetée ; jeton expiré rejeté ;
+**expiration prolongée par le client rejetée** ; entrées malformées rejetées
+sans exception ; rotation du secret invalidant toutes les sessions.
+
+### « Rester connecté »
+
+| | Case décochée | Case cochée |
+|---|---|---|
+| Stockage | `sessionStorage` | `localStorage` |
+| Durée | 12 heures | 30 jours |
+| Fermeture du navigateur | session perdue | session conservée |
+
+L'expiration réelle est **inscrite dans le jeton signé** : la modifier côté
+navigateur ne prolonge rien, le serveur refuse. S'y ajoute une déconnexion
+automatique après **8 heures d'inactivité**, quel que soit le mode.
+
+Seul le **nom d'utilisateur** est mémorisé pour le pré-remplissage — jamais le
+PIN. La case indique clairement le compromis (« à éviter sur un poste
+partagé »).
+
+> ℹ️ Ce durcissement protège les opérations passant par les fonctions Edge. Il
+> ne referme pas l'accès direct à la base décrit au point 4 : tant que les
+> politiques RLS restent permissives, la clé publique permet de contourner
+> l'application elle-même.
+
+---
+
+## 3. Clés et secrets — CORRECT
 
 - Aucune clé API n'est présente dans le dépôt (vérifié sur l'ensemble des
   fichiers suivis : aucun JWT, aucune clé `sk-…`).
@@ -77,7 +142,7 @@ utilisateurs : il suffisait donc de deviner *n'importe quel* PIN. Un PIN à
 
 ---
 
-## 3. ⚠️ Limite connue : les politiques RLS sont permissives
+## 4. ⚠️ Limite connue : les politiques RLS sont permissives
 
 **C'est le point de sécurité le plus important de ce document, et il n'est pas
 corrigé par cette modification — volontairement.**
@@ -113,7 +178,7 @@ Dites-moi laquelle vous voulez engager et je la prépare séparément.
 
 ---
 
-## 4. Déploiement
+## 5. Déploiement
 
 ```bash
 # 1. Appliquer la migration (éditeur SQL Supabase ou CLI)
@@ -137,6 +202,10 @@ supabase functions deploy task-reminders
 # en avertissement — le planificateur ne casse donc jamais en silence.
 supabase secrets set CRON_SECRET="$(openssl rand -hex 32)"
 
+# Signe les jetons de session. À définir AVANT la mise en production :
+# le changer déconnecte tout le monde (utile en cas de compromission).
+supabase secrets set SESSION_SECRET="$(openssl rand -hex 32)"
+
 # Verrouille le CORS sur votre domaine (sinon "*" est conservé).
 supabase secrets set ALLOWED_ORIGINS="https://votre-domaine.app"
 ```
@@ -149,7 +218,7 @@ x-cron-secret: <valeur du secret>
 
 ---
 
-## 5. Surveillance
+## 6. Surveillance
 
 Les blocages sont journalisés dans les logs des fonctions :
 
@@ -157,6 +226,8 @@ Les blocages sont journalisés dans les logs des fonctions :
 - `[verify-pin] failed login user=… ip=…` — échec d'authentification
 - `[admin-users] unauthorized attempt ip=…` — tentative d'accès admin
 - `[security] CRON_SECRET not set` — secret à configurer
+- `[admin-users] legacy admin_user_id auth used` — un client envoie encore
+  l'ancienne autorisation par UUID au lieu du jeton signé
 
 Une répétition de `failed login` depuis une même IP indique une attaque en
 cours : bloquez l'IP côté Supabase et faites changer les PIN concernés.

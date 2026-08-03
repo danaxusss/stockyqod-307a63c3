@@ -9,12 +9,21 @@ const STORAGE_KEYS = {
 };
 
 export class StorageManager {
-  static setAdminPin(pin: string): void {
-    localStorage.setItem(STORAGE_KEYS.ADMIN_PIN, pin);
+  /**
+   * No-op, kept so existing callers (sync) don't break.
+   *
+   * This used to write the admin PIN into localStorage in plain text, where
+   * any script or anyone at the machine could read it — and the login flow
+   * trusted it, so writing this key from devtools granted admin access.
+   * Authentication is now server-side only; nothing may cache a PIN.
+   */
+  static setAdminPin(_pin: string): void {
+    // Remove any PIN cached by an older build still sitting in this browser.
+    try { localStorage.removeItem(STORAGE_KEYS.ADMIN_PIN); } catch { /* */ }
   }
 
-  static getAdminPin(): string | null {
-    return localStorage.getItem(STORAGE_KEYS.ADMIN_PIN);
+  static getAdminPin(): null {
+    return null;
   }
 
   static setVersion(version: string): void {
@@ -76,7 +85,6 @@ export class StorageManager {
   // Get all storage info for debugging
   static getStorageInfo() {
     return {
-      adminPin: this.getAdminPin(),
       version: this.getVersion(),
       role: this.getRole(),
       hasNewData: this.getHasNewData(),

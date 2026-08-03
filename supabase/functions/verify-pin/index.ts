@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
-import { corsHeaders, json, clientIp, guard } from "../_shared/security.ts";
+import { corsHeaders, json, clientIp, guard, timingSafeEqual } from "../_shared/security.ts";
+import { issueSession, verifySessionLive } from "../_shared/session.ts";
 
 // PBKDF2-based hashing using Web Crypto API (no Worker needed)
 const ITERATIONS = 100000;
@@ -58,14 +59,26 @@ async function verifyPin(pin: string, stored: string): Promise<boolean> {
     // Can't verify bcrypt here; treat as needing re-hash via plain match
     return false;
   }
-  return stored === pin;
+  // Constant-time: a plain `===` on secrets can leak the value via timing.
+  return timingSafeEqual(stored, pin);
+}
+
+/** Shape returned to the client on success — never includes the PIN. */
+async function successPayload(req: Request, user: any, rememberMe: boolean) {
+  const { pin: _drop, ...safeUser } = user;
+  const { token, expires_at } = await issueSession(user, rememberMe);
+  // session_token is signed server-side: the browser can read these claims but
+  // cannot alter them, so privileged endpoints can trust it (unlike the old
+  // localStorage user object).
+  return json(req, { success: true, user: safeUser, session_token: token, expires_at });
 }
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders(req) });
 
   try {
-    const { action, username, pin, userId, newPin } = await req.json();
+    const { action, username, pin, userId, newPin, remember_me, session_token } = await req.json();
+    const rememberMe = remember_me === true;
     const ip = clientIp(req);
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -109,8 +122,7 @@ serve(async (req) => {
       }
 
       if (isValid) {
-        const { pin: _, ...safeUser } = user;
-        return json(req, { success: true, user: safeUser });
+        return await successPayload(req, user, rememberMe);
       }
 
       console.warn(`[verify-pin] failed login user=${username} ip=${ip}`);
@@ -162,13 +174,26 @@ serve(async (req) => {
             const hashed = await hashPin(pin);
             await supabase.from("app_users").update({ pin: hashed }).eq("id", user.id);
           }
-          const { pin: _, ...safeUser } = user;
-          return json(req, { success: true, user: safeUser });
+          return await successPayload(req, user, rememberMe);
         }
       }
 
       console.warn(`[verify-pin] failed any-user PIN attempt ip=${ip}`);
       return json(req, { success: false });
+    }
+
+    // Called on app start / periodically: confirms the stored token is genuine
+    // and still valid, and returns fresh user data so revoked rights apply at
+    // once instead of lingering until the token expires.
+    if (action === "validate-session") {
+      const blocked = await guard(req, [
+        { bucket: "verify-pin:validate", id: ip, max: 120, window: 60 },
+      ]);
+      if (blocked) return blocked;
+
+      const live = await verifySessionLive(supabase, session_token);
+      if (!live) return json(req, { valid: false });
+      return json(req, { valid: true, user: live.user, expires_at: live.claims.exp });
     }
 
     return json(req, { error: "Invalid action" }, 400);
