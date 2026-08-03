@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+import { throwEdgeError } from './edgeError';
 import { BankService, type ParsedStatement } from './supabaseBank';
 
 // ─── Conversion catalogue ────────────────────────────────────────────────────
@@ -94,7 +95,7 @@ export async function extractPage(kind: ConversionKind, imageDataUrl: string): P
   const { data, error } = await supabase.functions.invoke('ai-extract-table', {
     body: { image_base64: imageDataUrl, mime: 'image/jpeg', kind },
   });
-  if (error) throw new Error(error.message || 'Échec de l\'analyse');
+  if (error) await throwEdgeError(error, 'ai-extract-table');
   if ((data as any)?.error) throw new Error((data as any).error);
   return (data as any).data;
 }
