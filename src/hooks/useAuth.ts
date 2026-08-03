@@ -248,9 +248,15 @@ export function useAuth() {
 
       if (error) setLastAuthError(await rateLimitMessage(error));
 
-      if (!error && data?.success && data?.session_token) {
+      if (!error && data?.success) {
         const user = data.user as AppUser;
-        saveSession(data.session_token, user, data.expires_at, rememberMe);
+        if (!data.session_token) {
+          console.warn(
+            '[auth] verify-pin returned no session_token — the Edge Function is out of date. ' +
+            'Run: supabase functions deploy verify-pin'
+          );
+        }
+        saveSession(data.session_token ?? null, user, data.expires_at, rememberMe);
         await loadUserData(user);
         authStateManager.notify();
         return true;
@@ -271,9 +277,15 @@ export function useAuth() {
 
       if (error) setLastAuthError(await rateLimitMessage(error));
 
-      if (!error && data?.success && data?.session_token) {
+      if (!error && data?.success) {
         const user = data.user as AppUser;
-        saveSession(data.session_token, user, data.expires_at, rememberMe);
+        if (!data.session_token) {
+          console.warn(
+            '[auth] verify-pin returned no session_token — the Edge Function is out of date. ' +
+            'Run: supabase functions deploy verify-pin'
+          );
+        }
+        saveSession(data.session_token ?? null, user, data.expires_at, rememberMe);
         await loadUserData(user);
         authStateManager.notify();
         return true;
