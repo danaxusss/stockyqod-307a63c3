@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import webpush from 'npm:web-push@3.6.7';
+import { clientIp, guard, checkCronSecret } from '../_shared/security.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -14,6 +15,22 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
+    // Nothing in the app calls this — only the scheduler does. Requiring a
+    // secret stops strangers triggering reminder blasts. If CRON_SECRET isn't
+    // set yet the call is allowed but logged, so scheduling never breaks
+    // silently; set the secret to close the door.
+    const cron = checkCronSecret(req);
+    if (!cron.ok) {
+      console.warn(`[task-reminders] rejected call with bad/missing secret ip=${clientIp(req)}`);
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const blocked = await guard(req, [
+      { bucket: 'task-reminders:ip', id: clientIp(req), max: 12, window: 60 },
+    ]);
+    if (blocked) return blocked;
+
     const VAPID_PUBLIC_KEY = Deno.env.get('VAPID_PUBLIC_KEY');
     const VAPID_PRIVATE_KEY = Deno.env.get('VAPID_PRIVATE_KEY');
     const VAPID_SUBJECT = Deno.env.get('VAPID_SUBJECT') || 'mailto:admin@example.com';

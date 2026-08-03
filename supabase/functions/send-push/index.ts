@@ -1,5 +1,15 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import webpush from 'npm:web-push@3.6.7';
+import { clientIp, guard } from '../_shared/security.ts';
+
+// verify_jwt is false for this function (the browser calls it), so rate limits
+// are the only thing standing between a stranger and push-spamming every user.
+const LIMITS = {
+  burst: { max: 30,  window: 60 },
+  hour:  { max: 300, window: 60 * 60 },
+};
+// One call must not be able to blast the entire user base.
+const MAX_RECIPIENTS = 500;
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -20,6 +30,12 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
+    const blocked = await guard(req, [
+      { bucket: 'send-push:ip', id: clientIp(req), max: LIMITS.burst.max, window: LIMITS.burst.window },
+      { bucket: 'send-push:ip:hour', id: clientIp(req), max: LIMITS.hour.max, window: LIMITS.hour.window },
+    ]);
+    if (blocked) return blocked;
+
     const VAPID_PUBLIC_KEY = Deno.env.get('VAPID_PUBLIC_KEY');
     const VAPID_PRIVATE_KEY = Deno.env.get('VAPID_PRIVATE_KEY');
     const VAPID_SUBJECT = Deno.env.get('VAPID_SUBJECT') || 'mailto:admin@example.com';
@@ -31,7 +47,7 @@ Deno.serve(async (req) => {
     const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
     const payload = (await req.json()) as PushPayload;
-    const userIds = Array.from(new Set((payload.user_ids || []).filter(Boolean)));
+    const userIds = Array.from(new Set((payload.user_ids || []).filter(Boolean))).slice(0, MAX_RECIPIENTS);
     if (!userIds.length) {
       return new Response(JSON.stringify({ success: true, sent: 0 }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }

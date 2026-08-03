@@ -6,6 +6,7 @@ import { SupabaseUsersService } from '../utils/supabaseUsers';
 import { SupabaseCompaniesService } from '../utils/supabaseCompanies';
 import { AppUser, Company } from '../types';
 import { useToast } from '../context/ToastContext';
+import { takeLastAuthError } from '../utils/authError';
 
 interface LoginModalProps {
   roleType: 'user' | 'admin';
@@ -89,7 +90,7 @@ export function LoginModal({ roleType, isInitialGate = false, onClose, onLoginSu
             onLoginSuccess?.();
             onClose();
           } else {
-            setError(username.trim() ? 'Nom d\'utilisateur ou PIN invalide' : 'PIN invalide');
+            setError(takeLastAuthError() ?? (username.trim() ? 'Nom d\'utilisateur ou PIN invalide' : 'PIN invalide'));
             setPin('');
             setUsername('');
           }
@@ -103,7 +104,7 @@ export function LoginModal({ roleType, isInitialGate = false, onClose, onLoginSu
             onLoginSuccess?.();
             onClose();
           } else {
-            setError('Nom d\'utilisateur ou PIN invalide');
+            setError(takeLastAuthError() ?? 'Nom d\'utilisateur ou PIN invalide');
             setPin('');
             setSelectedUsername('');
           }

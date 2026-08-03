@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { clientIp, guard, rateLimit } from "../_shared/security.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -36,6 +37,15 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
+    // Caps admin API abuse and, critically, stops anyone grinding admin_user_id
+    // values to find a valid superadmin UUID.
+    const ip = clientIp(req);
+    const blocked = await guard(req, [
+      { bucket: "admin-users:ip", id: ip, max: 60, window: 60 },
+      { bucket: "admin-users:ip:hour", id: ip, max: 600, window: 60 * 60 },
+    ]);
+    if (blocked) return blocked;
+
     const body = await req.json();
     const { action, admin_user_id, ...payload } = body;
 
@@ -58,6 +68,11 @@ serve(async (req) => {
       .maybeSingle();
 
     if (adminErr || !adminUser || !adminUser.is_superadmin) {
+      // Only FAILED authorizations consume this budget, so a busy legitimate
+      // admin is never locked out while UUID-guessing is cut off quickly.
+      const v = await rateLimit("admin-users:authfail", ip, 10, 15 * 60, true);
+      console.warn(`[admin-users] unauthorized attempt ip=${ip} count=${v.count}`);
+      if (!v.allowed) return jsonResponse({ error: "Too many attempts" }, 429);
       return jsonResponse({ error: "Unauthorized: superadmin access required" }, 403);
     }
 

@@ -1,10 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { corsHeaders, json, clientIp, guard } from "../_shared/security.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+const LIMITS = {
+  burst: { max: 12,  window: 60 },
+  hour:  { max: 120, window: 60 * 60 },
+  day:   { max: 600, window: 24 * 60 * 60 },
 };
+const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
 
 // Vision-capable models, tried in order.
 const VISION_MODELS = [
@@ -36,14 +38,26 @@ Règles:
 - Renvoie UNIQUEMENT le JSON.`;
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders(req) });
 
   try {
+    const ip = clientIp(req);
+    const blocked = await guard(req, [
+      { bucket: "parse-bank:burst", id: ip, max: LIMITS.burst.max, window: LIMITS.burst.window,
+        message: "Trop de pages à la fois. Patientez une minute." },
+      { bucket: "parse-bank:hour", id: ip, max: LIMITS.hour.max, window: LIMITS.hour.window,
+        message: "Quota horaire d'analyse atteint." },
+      { bucket: "parse-bank:day", id: ip, max: LIMITS.day.max, window: LIMITS.day.window,
+        message: "Quota journalier d'analyse atteint." },
+    ]);
+    if (blocked) return blocked;
+
     const { image_base64, mime } = await req.json();
     if (!image_base64) {
-      return new Response(JSON.stringify({ error: "image_base64 required" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return json(req, { error: "image_base64 required" }, 400);
+    }
+    if (typeof image_base64 !== "string" || image_base64.length > MAX_IMAGE_BYTES) {
+      return json(req, { error: "Image trop volumineuse" }, 413);
     }
 
     const apiKey = Deno.env.get("OPENROUTER_API_KEY");
@@ -85,19 +99,15 @@ serve(async (req) => {
       try { parsed = JSON.parse(cleaned); }
       catch { const m = cleaned.match(/\{[\s\S]*\}/); if (m) { try { parsed = JSON.parse(m[0]); } catch { /* */ } } }
       if (parsed && Array.isArray(parsed.lines)) {
-        return new Response(JSON.stringify({ model, data: parsed }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        return json(req, { model, data: parsed });
       }
       lastErr = `${model}: réponse non parsable`;
     }
 
-    return new Response(JSON.stringify({ error: `Extraction échouée. ${lastErr}` }), {
-      status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    console.error("[parse-bank-statement] all models failed:", lastErr);
+    return json(req, { error: "Extraction échouée : le relevé n'a pas pu être lu." }, 502);
   } catch (e) {
-    return new Response(JSON.stringify({ error: String((e as Error)?.message || e) }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    console.error("[parse-bank-statement] error:", (e as Error)?.message);
+    return json(req, { error: "Erreur inattendue" }, 500);
   }
 });
