@@ -1,13 +1,13 @@
 import React, { useMemo, useRef, useState } from 'react';
 import {
   FileSpreadsheet, Loader, Upload, X, Check, AlertTriangle, RefreshCw,
-  Download, FileText, Sparkles, ChevronLeft,
+  Download, FileText, Sparkles, ChevronLeft, Stethoscope,
 } from 'lucide-react';
 import {
   CONVERSIONS, fileToPageImages, extractPage, isModuleLoadError,
-  mergeBank, mergeTables, mergeInvoices,
+  mergeBank, mergeTables, mergeInvoices, checkConverterFunctions,
   exportBankExcel, exportTableExcel, exportInvoiceExcel,
-  type ConversionKind, type TableResult, type InvoiceResult,
+  type ConversionKind, type TableResult, type InvoiceResult, type HealthReport,
 } from '../../utils/converter';
 import { hardReloadApp } from '../../utils/appReload';
 import type { ParsedStatement } from '../../utils/supabaseBank';
@@ -29,6 +29,8 @@ export default function ConverterPage() {
   const [pages, setPages] = useState<PageState[]>([]);
   const [staleBuild, setStaleBuild] = useState(false);
   const [reloading, setReloading] = useState(false);
+  const [health, setHealth] = useState<HealthReport[] | null>(null);
+  const [checking, setChecking] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const def = CONVERSIONS.find(c => c.kind === kind)!;
@@ -102,6 +104,12 @@ export default function ConverterPage() {
 
   const retryFailed = () => extractAll(images, pages);
 
+  const runHealthCheck = async () => {
+    setChecking(true);
+    try { setHealth(await checkConverterFunctions()); }
+    finally { setChecking(false); }
+  };
+
   const exportExcel = async () => {
     if (!merged || !file) return;
     const base = file.name.replace(/\.[^.]+$/, '');
@@ -121,10 +129,16 @@ export default function ConverterPage() {
     <div className="max-w-5xl mx-auto py-6 px-3">
       <div className="flex items-center gap-2 mb-4">
         <div className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10"><FileSpreadsheet className="h-5 w-5 text-primary" /></div>
-        <div>
+        <div className="flex-1 min-w-0">
           <h1 className="text-lg font-bold text-foreground leading-tight">Convertisseur de documents</h1>
           <p className="text-xs text-muted-foreground">PDF ou scan → Excel, lecture par IA (même clé que l'assistant)</p>
         </div>
+        <button onClick={runHealthCheck} disabled={checking}
+          className="shrink-0 flex items-center gap-1.5 px-2.5 py-2 rounded-lg bg-secondary border border-border text-xs disabled:opacity-60"
+          title="Vérifier que les fonctions IA sont déployées">
+          {checking ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Stethoscope className="h-3.5 w-3.5" />}
+          Diagnostic
+        </button>
       </div>
 
       {/* type picker */}
@@ -229,17 +243,52 @@ export default function ConverterPage() {
               </button>
             )}
             {phase === 'done' && failedCount === pages.length && (
-              <div className="text-[11px] text-amber-600 dark:text-amber-400 space-y-0.5">
-                <p className="font-medium">Toutes les pages ont échoué — causes les plus fréquentes :</p>
-                <p>• La fonction <code className="font-mono">{def.fn}</code> n'est pas déployée :
-                  <code className="font-mono"> npx supabase functions deploy {def.fn}</code></p>
-                <p>• Le secret <code className="font-mono">OPENROUTER_API_KEY</code> n'est pas configuré côté Supabase</p>
-                <p>• Les modèles IA gratuits sont momentanément saturés — réessayez dans quelques minutes</p>
+              <div className="text-[11px] text-amber-600 dark:text-amber-400 space-y-1">
+                <p className="font-medium">Toutes les pages ont échoué.</p>
+                <button onClick={runHealthCheck} disabled={checking}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/15 border border-amber-500/40 text-xs font-medium disabled:opacity-60">
+                  {checking ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Stethoscope className="h-3.5 w-3.5" />}
+                  Diagnostiquer
+                </button>
               </div>
             )}
           </div>
         )}
       </div>
+
+      {health && (
+        <div className="mb-4 bg-card border border-border/60 rounded-lg p-3">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+              <Stethoscope className="h-4 w-4 text-primary" /> Diagnostic
+            </h2>
+            <button onClick={() => setHealth(null)} className="p-1 rounded hover:bg-secondary"><X className="h-3.5 w-3.5" /></button>
+          </div>
+          <ul className="space-y-1 text-xs">
+            {health.map(h => (
+              <li key={h.fn} className="flex items-start gap-2">
+                {h.state === 'ok'
+                  ? <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                  : <AlertTriangle className="h-3.5 w-3.5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />}
+                <span className="min-w-0">
+                  <code className="font-mono text-[11px]">{h.fn}</code>
+                  <span className={`ml-1.5 ${h.state === 'ok' ? 'text-muted-foreground' : 'text-red-600 dark:text-red-400'}`}>{h.detail}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+          {health.some(h => h.state !== 'ok') && (
+            <div className="mt-2 pt-2 border-t border-border/60 text-[11px] text-muted-foreground space-y-1">
+              <p className="font-medium text-foreground">Déployer sans installer d'outil :</p>
+              <p>1. Tableau de bord Supabase → <b>Edge Functions</b> → <b>Deploy a new function</b></p>
+              <p>2. Nommer la fonction exactement comme ci-dessus</p>
+              <p>3. Coller le contenu de <code className="font-mono">supabase/functions/&lt;nom&gt;/index.ts</code> puis déployer</p>
+              <p className="pt-1">Ou en ligne de commande :
+                <code className="font-mono"> npx supabase functions deploy &lt;nom&gt;</code></p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* preview + export */}
       {phase === 'done' && merged && (
