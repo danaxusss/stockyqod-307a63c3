@@ -37,6 +37,38 @@ export const CONVERSIONS: ConversionDef[] = [
   },
 ];
 
+// ─── Lazy loading of the PDF engine ─────────────────────────────────────────
+/** True when the browser failed to fetch a lazily-imported chunk. */
+export function isModuleLoadError(e: unknown): boolean {
+  const msg = String((e as Error)?.message || e || '');
+  return /Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed/i.test(msg);
+}
+
+/**
+ * pdfjs is loaded on demand (it is ~0.5 MB plus a 1.2 MB worker). That fetch
+ * can fail for reasons unrelated to the file being converted: a tab left open
+ * across a deploy, a stale service worker, or a flaky mobile connection.
+ * Retry once after a short pause, then surface a message that says what to do
+ * rather than a raw bundler error.
+ */
+async function loadPdfjs(): Promise<any> {
+  try {
+    return await import('pdfjs-dist');
+  } catch (first) {
+    if (!isModuleLoadError(first)) throw first;
+    await new Promise(r => setTimeout(r, 800));
+    try {
+      return await import('pdfjs-dist');
+    } catch (second) {
+      throw new Error(
+        "Le module de lecture PDF n'a pas pu être chargé. " +
+        "L'application a probablement été mise à jour depuis l'ouverture de cette page — " +
+        "utilisez « Recharger l'application » ci-dessous."
+      );
+    }
+  }
+}
+
 // ─── File → page images ──────────────────────────────────────────────────────
 /** Render every page of a PDF (or pass through an image) as JPEG data URLs. */
 export async function fileToPageImages(
@@ -55,7 +87,7 @@ export async function fileToPageImages(
     return [dataUrl];
   }
 
-  const pdfjs = await import('pdfjs-dist');
+  const pdfjs = await loadPdfjs();
   pdfjs.GlobalWorkerOptions.workerSrc = new URL(
     'pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url,
   ).toString();

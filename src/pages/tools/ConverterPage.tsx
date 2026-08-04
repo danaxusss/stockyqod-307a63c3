@@ -4,11 +4,12 @@ import {
   Download, FileText, Sparkles, ChevronLeft,
 } from 'lucide-react';
 import {
-  CONVERSIONS, fileToPageImages, extractPage,
+  CONVERSIONS, fileToPageImages, extractPage, isModuleLoadError,
   mergeBank, mergeTables, mergeInvoices,
   exportBankExcel, exportTableExcel, exportInvoiceExcel,
   type ConversionKind, type TableResult, type InvoiceResult,
 } from '../../utils/converter';
+import { hardReloadApp } from '../../utils/appReload';
 import type { ParsedStatement } from '../../utils/supabaseBank';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
@@ -26,6 +27,8 @@ export default function ConverterPage() {
   const [renderProgress, setRenderProgress] = useState({ done: 0, total: 0 });
   const [images, setImages] = useState<string[]>([]);
   const [pages, setPages] = useState<PageState[]>([]);
+  const [staleBuild, setStaleBuild] = useState(false);
+  const [reloading, setReloading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const def = CONVERSIONS.find(c => c.kind === kind)!;
@@ -77,6 +80,7 @@ export default function ConverterPage() {
 
   const convert = async () => {
     if (!file) return;
+    setStaleBuild(false);
     try {
       setPhase('rendering');
       const imgs = await fileToPageImages(file, (done, total) => setRenderProgress({ done, total }));
@@ -85,7 +89,13 @@ export default function ConverterPage() {
       setPages(states);
       await extractAll(imgs, states);
     } catch (e: any) {
-      showToast({ type: 'error', message: e?.message || 'Échec de la lecture du fichier' });
+      // The PDF engine is fetched on demand, so a page left open across a
+      // deploy fails here rather than at load time. Offer the actual remedy.
+      if (isModuleLoadError(e) || /module de lecture PDF/.test(String(e?.message))) {
+        setStaleBuild(true);
+      } else {
+        showToast({ type: 'error', message: e?.message || 'Échec de la lecture du fichier' });
+      }
       setPhase('pick');
     }
   };
@@ -129,6 +139,29 @@ export default function ConverterPage() {
           </button>
         ))}
       </div>
+
+      {staleBuild && (
+        <div className="mb-4 bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 text-sm text-amber-700 dark:text-amber-400">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="font-medium">Le module de lecture PDF n'a pas pu être chargé.</p>
+              <p className="text-xs mt-0.5">
+                Cette page a été ouverte avant une mise à jour de l'application. Rechargez pour
+                récupérer la dernière version — votre fichier devra être resélectionné.
+              </p>
+              <button
+                onClick={async () => { setReloading(true); await hardReloadApp(); }}
+                disabled={reloading}
+                className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 border border-amber-500/40 text-xs font-medium disabled:opacity-60"
+              >
+                {reloading ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                Recharger l'application
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* upload + convert */}
       <div className="bg-card border border-border/60 rounded-lg p-4 mb-4">
