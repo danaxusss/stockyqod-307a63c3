@@ -4,15 +4,12 @@ import {
   Download, FileText, Sparkles, ChevronLeft, Stethoscope, Settings2,
 } from 'lucide-react';
 import {
-  CONVERSIONS, fileToPageImages, extractPage, isModuleLoadError,
-  mergeBank, mergeTables, mergeInvoices, checkConverterFunctions,
-  exportBankExcel, exportTableExcel, exportInvoiceExcel,
+  CONVERTER_FN, fileToPageImages, extractPage, isModuleLoadError,
+  mergeTables, checkConverterFunctions, exportTableExcel,
   listVisionModels, getPreferredModel, setPreferredModel,
-  type ConversionKind, type TableResult, type InvoiceResult, type HealthReport,
-  type VisionModel,
+  type TableResult, type HealthReport, type VisionModel,
 } from '../../utils/converter';
 import { hardReloadApp } from '../../utils/appReload';
-import type { ParsedStatement } from '../../utils/supabaseBank';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
 
@@ -23,7 +20,6 @@ export default function ConverterPage() {
   const { isAdmin, isSuperAdmin } = useAuth();
   const { showToast } = useToast();
 
-  const [kind, setKind] = useState<ConversionKind>('bank');
   const [file, setFile] = useState<File | null>(null);
   const [phase, setPhase] = useState<Phase>('pick');
   const [renderProgress, setRenderProgress] = useState({ done: 0, total: 0 });
@@ -40,17 +36,13 @@ export default function ConverterPage() {
   const [loadingModels, setLoadingModels] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const def = CONVERSIONS.find(c => c.kind === kind)!;
   const okPages = pages.filter(p => p.status === 'ok');
   const failedCount = pages.filter(p => p.status === 'error').length;
 
-  const merged = useMemo(() => {
-    if (!okPages.length) return null;
-    const results = okPages.map(p => p.result);
-    if (kind === 'bank') return mergeBank(results as ParsedStatement[]);
-    if (kind === 'invoice') return mergeInvoices(results as InvoiceResult[]);
-    return mergeTables(results as TableResult[]);
-  }, [okPages, kind]); // eslint-disable-line react-hooks/exhaustive-deps
+  const merged = useMemo(
+    () => okPages.length ? mergeTables(okPages.map(p => p.result as TableResult)) : null,
+    [okPages],
+  );
 
   const reset = () => {
     setFile(null); setImages([]); setPages([]); setPhase('pick');
@@ -73,7 +65,7 @@ export default function ConverterPage() {
       next[i] = { status: 'running' };
       setPages([...next]);
       try {
-        const result = await extractPage(kind, imgs[i], model || null);
+        const result = await extractPage(imgs[i], model || null);
         next[i] = { status: 'ok', result };
       } catch (e: any) {
         next[i] = { status: 'error', error: e?.message || 'Échec' };
@@ -135,9 +127,7 @@ export default function ConverterPage() {
     if (!merged || !file) return;
     const base = file.name.replace(/\.[^.]+$/, '');
     try {
-      if (kind === 'bank') await exportBankExcel(merged as ParsedStatement, `${base}.xlsx`);
-      else if (kind === 'invoice') await exportInvoiceExcel(merged as InvoiceResult, `${base}.xlsx`);
-      else await exportTableExcel(merged as TableResult, `${base}.xlsx`);
+      await exportTableExcel(merged, `${base}.xlsx`);
       showToast({ type: 'success', message: 'Fichier Excel téléchargé' });
     } catch (e: any) { showToast({ type: 'error', message: e?.message || 'Échec de l\'export' }); }
   };
@@ -213,41 +203,10 @@ export default function ConverterPage() {
         </div>
       )}
 
-      {/* type picker */}
-      <div className="grid sm:grid-cols-3 gap-2 mb-4">
-        {CONVERSIONS.map(c => (
-          <button key={c.kind} onClick={() => { if (!busy) { setKind(c.kind); setPages([]); setImages([]); setPhase('pick'); } }}
-            className={`text-left rounded-lg border p-3 transition-colors ${kind === c.kind ? 'border-primary bg-primary/5' : 'border-border/60 bg-card hover:border-primary/40'}`}>
-            <div className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
-              {kind === c.kind && <Check className="h-3.5 w-3.5 text-primary" />}{c.label}
-            </div>
-            <p className="text-[11px] text-muted-foreground mt-1">{c.description}</p>
-          </button>
-        ))}
+      <div className="mb-4 bg-primary/5 border border-primary/20 rounded-lg px-3 py-2 text-xs text-muted-foreground">
+        Relevés bancaires, factures, listes de prix, inventaires — le convertisseur lit
+        n'importe quel document contenant un tableau et le restitue en Excel.
       </div>
-
-      {staleBuild && (
-        <div className="mb-4 bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 text-sm text-amber-700 dark:text-amber-400">
-          <div className="flex items-start gap-2">
-            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-            <div className="flex-1 min-w-0">
-              <p className="font-medium">Le module de lecture PDF n'a pas pu être chargé.</p>
-              <p className="text-xs mt-0.5">
-                Cette page a été ouverte avant une mise à jour de l'application. Rechargez pour
-                récupérer la dernière version — votre fichier devra être resélectionné.
-              </p>
-              <button
-                onClick={async () => { setReloading(true); await hardReloadApp(); }}
-                disabled={reloading}
-                className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 border border-amber-500/40 text-xs font-medium disabled:opacity-60"
-              >
-                {reloading ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                Recharger l'application
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* upload + convert */}
       <div className="bg-card border border-border/60 rounded-lg p-4 mb-4">
@@ -374,9 +333,7 @@ export default function ConverterPage() {
             </button>
           </div>
           <div className="overflow-x-auto max-h-[480px] overflow-y-auto">
-            {kind === 'bank' && <BankPreview s={merged as ParsedStatement} />}
-            {kind === 'table' && <TablePreview t={merged as TableResult} />}
-            {kind === 'invoice' && <InvoicePreview inv={merged as InvoiceResult} />}
+            <TablePreview t={merged} />
           </div>
         </div>
       )}
@@ -384,56 +341,7 @@ export default function ConverterPage() {
   );
 }
 
-/* ── previews ─────────────────────────────────────────────────────────────── */
-const num = (v: number | null | undefined) =>
-  v == null ? '' : v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-function BankPreview({ s }: { s: ParsedStatement }) {
-  return (
-    <div>
-      <div className="px-3 py-2 text-xs text-muted-foreground border-b border-border/40 flex gap-4 flex-wrap">
-        {s.bank_name && <span className="font-medium text-foreground">{s.bank_name}</span>}
-        {s.rib && <span>RIB {s.rib}</span>}
-        {(s.period_start || s.period_end) && <span>{s.period_start || '?'} → {s.period_end || '?'}</span>}
-        {s.opening_balance != null && <span>Initial : <b>{num(s.opening_balance)}</b></span>}
-        {s.closing_balance != null && <span>Final : <b>{num(s.closing_balance)}</b></span>}
-      </div>
-      <table className="w-full text-xs">
-        <thead className="sticky top-0 bg-secondary/80">
-          <tr className="text-muted-foreground">
-            <th className="text-left font-medium px-3 py-1.5 w-24">Date</th>
-            <th className="text-left font-medium px-3 py-1.5">Libellé</th>
-            <th className="text-left font-medium px-3 py-1.5 w-24">Réf.</th>
-            <th className="text-right font-medium px-3 py-1.5 w-24">Débit</th>
-            <th className="text-right font-medium px-3 py-1.5 w-24">Crédit</th>
-            <th className="text-right font-medium px-3 py-1.5 w-24">Solde</th>
-          </tr>
-        </thead>
-        <tbody>
-          {s.lines.map((l, i) => (
-            <tr key={i} className="border-b border-border/30">
-              <td className="px-3 py-1">{l.date}</td>
-              <td className="px-3 py-1">{l.label}</td>
-              <td className="px-3 py-1 text-muted-foreground">{l.reference || ''}</td>
-              <td className="px-3 py-1 text-right text-red-600 dark:text-red-400">{l.debit ? num(l.debit) : ''}</td>
-              <td className="px-3 py-1 text-right text-emerald-700 dark:text-emerald-400">{l.credit ? num(l.credit) : ''}</td>
-              <td className="px-3 py-1 text-right">{num(l.balance)}</td>
-            </tr>
-          ))}
-        </tbody>
-        <tfoot>
-          <tr className="font-semibold bg-secondary/40">
-            <td className="px-3 py-1.5" colSpan={3}>{s.lines.length} opérations</td>
-            <td className="px-3 py-1.5 text-right">{num(s.lines.reduce((t, l) => t + (l.debit || 0), 0))}</td>
-            <td className="px-3 py-1.5 text-right">{num(s.lines.reduce((t, l) => t + (l.credit || 0), 0))}</td>
-            <td />
-          </tr>
-        </tfoot>
-      </table>
-    </div>
-  );
-}
-
+/* ── preview ─────────────────────────────────────────────────────────────── */
 function TablePreview({ t }: { t: TableResult }) {
   return (
     <table className="w-full text-xs">
@@ -450,40 +358,5 @@ function TablePreview({ t }: { t: TableResult }) {
         ))}
       </tbody>
     </table>
-  );
-}
-
-function InvoicePreview({ inv }: { inv: InvoiceResult }) {
-  return (
-    <div>
-      <div className="px-3 py-2 text-xs text-muted-foreground border-b border-border/40 flex gap-4 flex-wrap">
-        {inv.supplier && <span className="font-medium text-foreground">{inv.supplier}</span>}
-        {inv.invoice_number && <span>N° {inv.invoice_number}</span>}
-        {inv.invoice_date && <span>{inv.invoice_date}</span>}
-        {inv.total_ht != null && <span>HT : <b>{num(inv.total_ht)}</b></span>}
-        {inv.total_tva != null && <span>TVA : <b>{num(inv.total_tva)}</b></span>}
-        {inv.total_ttc != null && <span>TTC : <b>{num(inv.total_ttc)}</b></span>}
-      </div>
-      <table className="w-full text-xs">
-        <thead className="sticky top-0 bg-secondary/80">
-          <tr className="text-muted-foreground">
-            <th className="text-left font-medium px-3 py-1.5">Description</th>
-            <th className="text-right font-medium px-3 py-1.5 w-20">Qté</th>
-            <th className="text-right font-medium px-3 py-1.5 w-28">PU</th>
-            <th className="text-right font-medium px-3 py-1.5 w-28">Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          {inv.lines.map((l, i) => (
-            <tr key={i} className="border-b border-border/30">
-              <td className="px-3 py-1">{l.description}</td>
-              <td className="px-3 py-1 text-right">{l.quantity ?? ''}</td>
-              <td className="px-3 py-1 text-right">{num(l.unit_price)}</td>
-              <td className="px-3 py-1 text-right">{num(l.total)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
   );
 }
