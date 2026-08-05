@@ -136,6 +136,60 @@ Règles:
 - N'invente rien: si une valeur est illisible, mets null (ou 0 pour un montant).
 - Renvoie UNIQUEMENT le JSON.`;
 
+// ── Response parsing ────────────────────────────────────────────────────────
+// Models wrap JSON in prose or code fences, sometimes echo the schema from the
+// prompt before answering, and occasionally nest the payload. A single greedy
+// {...} match handles none of that, so gather every plausible candidate and
+// keep the first that actually validates.
+function jsonCandidates(text: string): any[] {
+  const out: any[] = [];
+  const push = (raw: string) => {
+    const t = raw.trim();
+    if (!t.startsWith("{")) return;
+    try { out.push(JSON.parse(t)); } catch { /* not this one */ }
+  };
+
+  const cleaned = text.replace(/```json/gi, "```").trim();
+  push(cleaned);
+  for (const m of cleaned.matchAll(/```([\s\S]*?)```/g)) push(m[1]);
+
+  // balanced-brace scan: yields each complete top-level object separately,
+  // so an echoed schema doesn't swallow the real answer.
+  let depth = 0, start = -1, inStr = false, esc = false;
+  for (let i = 0; i < cleaned.length; i++) {
+    const ch = cleaned[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === "\\") esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') { inStr = true; continue; }
+    if (ch === "{") { if (depth === 0) start = i; depth++; }
+    else if (ch === "}") { depth--; if (depth === 0 && start >= 0) { push(cleaned.slice(start, i + 1)); start = -1; } }
+  }
+  return out;
+}
+
+/**
+ * Find the row array whatever the model decided to call it, at the top level
+ * or one level down. Strict key matching was rejecting perfectly good answers.
+ */
+function findArray(obj: any, names: string[]): any[] | null {
+  if (!obj || typeof obj !== "object") return null;
+  for (const n of names) if (Array.isArray(obj[n])) return obj[n];
+  for (const v of Object.values(obj)) {
+    if (v && typeof v === "object" && !Array.isArray(v)) {
+      for (const n of names) if (Array.isArray((v as any)[n])) return (v as any)[n];
+    }
+  }
+  return null;
+}
+
+const LINE_KEYS = ["lines", "items", "operations", "transactions", "ecritures",
+  "écritures", "entries", "rows", "mouvements", "line_items"];
+const ROW_KEYS = ["rows", "data", "lines", "items", "values"];
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders(req) });
 
@@ -200,7 +254,7 @@ serve(async (req) => {
         },
         // No response_format: several vision models reject it outright. The
         // parser below already handles fenced or prose-wrapped JSON.
-        body: JSON.stringify({ model, messages, temperature: 0 }),
+        body: JSON.stringify({ model, messages, temperature: 0, max_tokens: 8000 }),
       });
 
       if (!resp.ok) {
@@ -210,15 +264,18 @@ serve(async (req) => {
       }
       const json = await resp.json();
       const content: string = json?.choices?.[0]?.message?.content || "";
-      const cleaned = content.replace(/```json/gi, "").replace(/```/g, "").trim();
-      let parsed: any;
-      try { parsed = JSON.parse(cleaned); }
-      catch { const m = cleaned.match(/\{[\s\S]*\}/); if (m) { try { parsed = JSON.parse(m[0]); } catch { /* */ } } }
-      if (parsed && Array.isArray(parsed.lines)) {
+      // Accept the operations array under any of the usual names, at the top
+      // level or nested — insisting on exactly "lines" rejected good answers.
+      let parsed: any = null;
+      for (const cand of jsonCandidates(content)) {
+        const lines = findArray(cand, LINE_KEYS);
+        if (lines) { parsed = { ...cand, lines }; break; }
+      }
+      if (parsed) {
         lastGoodModel = model;
         return json(req, { model, data: parsed });
       }
-      attempts.push({ model, status: "réponse non exploitable" });
+      attempts.push({ model, status: "aucun tableau exploitable dans la réponse" });
       lastErr = `${model}: réponse non parsable`;
     }
 
