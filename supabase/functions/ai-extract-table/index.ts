@@ -86,12 +86,40 @@ async function overLimit(ip: string): Promise<{ blocked: boolean; message?: stri
 }
 
 // ── Prompts ─────────────────────────────────────────────────────────────────
-const VISION_MODELS = [
+// Vision models, tried in order.
+//
+// Strategy: best-quality paid model first, free models as a safety net.
+// OpenRouter answers 402 when the account is out of credit and 404 when a
+// model id no longer exists — either way the loop falls through to the next
+// entry, so conversions keep working on the free tier once the balance runs
+// out, just less accurately.
+//
+// Several OpenAI ids are listed newest-first because availability changes;
+// an id that does not exist simply 404s and costs one quick round-trip.
+// Override the whole list with the VISION_MODELS secret (comma-separated) to
+// pin an exact model without redeploying.
+const DEFAULT_VISION_MODELS = [
+  // ── preferred: paid, strongest document reading ──
+  "openai/gpt-5.1",
+  "openai/gpt-5",
+  "openai/gpt-4.1",
+  "openai/gpt-4o",
+  // ── fallback: free tier (needs the data-sharing policy enabled) ──
   "google/gemini-2.0-flash-exp:free",
-  "meta-llama/llama-3.2-90b-vision-instruct:free",
-  "qwen/qwen-2.5-vl-72b-instruct:free",
-  "google/gemini-flash-1.5",
+  "meta-llama/llama-3.2-11b-vision-instruct:free",
+  "qwen/qwen2.5-vl-72b-instruct:free",
+  // ── last resort: cheap paid models ──
+  "openai/gpt-4o-mini",
+  "google/gemini-2.0-flash-001",
 ];
+const VISION_MODELS = (Deno.env.get("VISION_MODELS") || "")
+  .split(",").map((m) => m.trim()).filter(Boolean);
+const MODELS = VISION_MODELS.length ? VISION_MODELS : DEFAULT_VISION_MODELS;
+
+// A multi-page document would otherwise re-probe dead model ids on every
+// single page. Remember what worked and try it first next time; the isolate
+// stays warm across the pages of one document.
+let lastGoodModel: string | null = null;
 
 const PROMPTS: Record<string, string> = {
   table: `Tu extrais des tableaux depuis l'image d'un document. Renvoie un JSON STRICT (aucun texte hors JSON):
@@ -170,7 +198,12 @@ serve(async (req) => {
     ];
 
     let lastErr = "";
-    for (const model of VISION_MODELS) {
+    const attempts: { model: string; status: number | string }[] = [];
+    const ordered = lastGoodModel
+      ? [lastGoodModel, ...MODELS.filter((m) => m !== lastGoodModel)]
+      : MODELS;
+
+    for (const model of ordered) {
       const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -179,10 +212,16 @@ serve(async (req) => {
           "HTTP-Referer": "https://stockyqod.app",
           "X-Title": "Stocky QOD",
         },
-        body: JSON.stringify({ model, messages, temperature: 0, response_format: { type: "json_object" } }),
+        // No response_format: several vision models reject it outright. The
+        // parser below already handles fenced or prose-wrapped JSON.
+        body: JSON.stringify({ model, messages, temperature: 0 }),
       });
 
-      if (!resp.ok) { lastErr = `${model}: ${resp.status} ${await resp.text()}`; continue; }
+      if (!resp.ok) {
+        attempts.push({ model, status: resp.status });
+        lastErr = `${model}: ${resp.status} ${await resp.text()}`;
+        continue;
+      }
       const out = await resp.json();
       const content: string = out?.choices?.[0]?.message?.content || "";
       const cleaned = content.replace(/```json/gi, "").replace(/```/g, "").trim();
@@ -191,14 +230,21 @@ serve(async (req) => {
       catch { const m = cleaned.match(/\{[\s\S]*\}/); if (m) { try { parsed = JSON.parse(m[0]); } catch { /* */ } } }
       const valid = parsed && (kind === "invoice" ? Array.isArray(parsed.lines) : Array.isArray(parsed.rows));
       if (valid) {
+        lastGoodModel = model;
         return json(req, { model, data: parsed });
       }
+      attempts.push({ model, status: "réponse non exploitable" });
       lastErr = `${model}: réponse non parsable`;
     }
 
     // lastErr can contain upstream provider detail — log it, don't return it.
     console.error("[ai-extract-table] all models failed:", lastErr);
-    return json(req, { error: "Extraction échouée : le document n'a pas pu être lu (modèles IA indisponibles ou page illisible)." }, 502);
+    // Upstream bodies can leak configuration, so only model + status
+    // are returned — enough to tell "model gone" from "no credits".
+    return json(req, {
+      error: `Aucun modèle IA n'a pu lire ce document.`,
+      attempts,
+    }, 502);
   } catch (e) {
     console.error("[ai-extract-table] error:", (e as Error)?.message);
     return json(req, { error: "Erreur inattendue" }, 500);
