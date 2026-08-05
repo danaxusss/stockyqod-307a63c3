@@ -1,13 +1,15 @@
 import React, { useMemo, useRef, useState } from 'react';
 import {
   FileSpreadsheet, Loader, Upload, X, Check, AlertTriangle, RefreshCw,
-  Download, FileText, Sparkles, ChevronLeft, Stethoscope,
+  Download, FileText, Sparkles, ChevronLeft, Stethoscope, Settings2,
 } from 'lucide-react';
 import {
   CONVERSIONS, fileToPageImages, extractPage, isModuleLoadError,
   mergeBank, mergeTables, mergeInvoices, checkConverterFunctions,
   exportBankExcel, exportTableExcel, exportInvoiceExcel,
+  listVisionModels, getPreferredModel, setPreferredModel,
   type ConversionKind, type TableResult, type InvoiceResult, type HealthReport,
+  type VisionModel,
 } from '../../utils/converter';
 import { hardReloadApp } from '../../utils/appReload';
 import type { ParsedStatement } from '../../utils/supabaseBank';
@@ -31,6 +33,11 @@ export default function ConverterPage() {
   const [reloading, setReloading] = useState(false);
   const [health, setHealth] = useState<HealthReport[] | null>(null);
   const [checking, setChecking] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [model, setModel] = useState<string>(() => getPreferredModel());
+  const [models, setModels] = useState<VisionModel[] | null>(null);
+  const [modelsError, setModelsError] = useState<string | null>(null);
+  const [loadingModels, setLoadingModels] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const def = CONVERSIONS.find(c => c.kind === kind)!;
@@ -66,7 +73,7 @@ export default function ConverterPage() {
       next[i] = { status: 'running' };
       setPages([...next]);
       try {
-        const result = await extractPage(kind, imgs[i]);
+        const result = await extractPage(kind, imgs[i], model || null);
         next[i] = { status: 'ok', result };
       } catch (e: any) {
         next[i] = { status: 'error', error: e?.message || 'Échec' };
@@ -110,6 +117,20 @@ export default function ConverterPage() {
     finally { setChecking(false); }
   };
 
+  const loadModels = async () => {
+    setLoadingModels(true); setModelsError(null);
+    try { setModels(await listVisionModels()); }
+    catch (e: any) { setModelsError(e?.message || 'Liste indisponible'); }
+    finally { setLoadingModels(false); }
+  };
+
+  const openSettings = () => {
+    setShowSettings(s => !s);
+    if (!models && !loadingModels) loadModels();
+  };
+
+  const chooseModel = (id: string) => { setModel(id); setPreferredModel(id); };
+
   const exportExcel = async () => {
     if (!merged || !file) return;
     const base = file.name.replace(/\.[^.]+$/, '');
@@ -133,6 +154,11 @@ export default function ConverterPage() {
           <h1 className="text-lg font-bold text-foreground leading-tight">Convertisseur de documents</h1>
           <p className="text-xs text-muted-foreground">PDF ou scan → Excel, lecture par IA (même clé que l'assistant)</p>
         </div>
+        <button onClick={openSettings}
+          className={`shrink-0 flex items-center gap-1.5 px-2.5 py-2 rounded-lg border text-xs ${showSettings ? 'bg-primary/10 border-primary/40' : 'bg-secondary border-border'}`}
+          title="Choisir le modèle IA">
+          <Settings2 className="h-3.5 w-3.5" /> Modèle
+        </button>
         <button onClick={runHealthCheck} disabled={checking}
           className="shrink-0 flex items-center gap-1.5 px-2.5 py-2 rounded-lg bg-secondary border border-border text-xs disabled:opacity-60"
           title="Vérifier que les fonctions IA sont déployées">
@@ -140,6 +166,52 @@ export default function ConverterPage() {
           Diagnostic
         </button>
       </div>
+
+      {showSettings && (
+        <div className="mb-4 bg-card border border-border/60 rounded-lg p-3">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+              <Settings2 className="h-4 w-4 text-primary" /> Modèle IA
+            </h2>
+            <div className="flex items-center gap-1">
+              <button onClick={loadModels} disabled={loadingModels} className="p-1 rounded hover:bg-secondary disabled:opacity-50" title="Actualiser la liste">
+                <RefreshCw className={`h-3.5 w-3.5 ${loadingModels ? 'animate-spin' : ''}`} />
+              </button>
+              <button onClick={() => setShowSettings(false)} className="p-1 rounded hover:bg-secondary"><X className="h-3.5 w-3.5" /></button>
+            </div>
+          </div>
+
+          <select value={model} onChange={e => chooseModel(e.target.value)}
+            className="w-full px-2 py-2 text-sm rounded-lg bg-secondary border border-border">
+            <option value="">Automatique (essaie les meilleurs, puis les gratuits)</option>
+            {models?.filter(m => !m.free).length ? (
+              <optgroup label="Payants — meilleure lecture">
+                {models.filter(m => !m.free).map(m => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </optgroup>
+            ) : null}
+            {models?.filter(m => m.free).length ? (
+              <optgroup label="Gratuits">
+                {models.filter(m => m.free).map(m => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </optgroup>
+            ) : null}
+          </select>
+
+          <div className="mt-1.5 text-[11px] text-muted-foreground space-y-0.5">
+            {loadingModels && <p className="flex items-center gap-1"><Loader className="h-3 w-3 animate-spin" /> Chargement des modèles disponibles…</p>}
+            {modelsError && <p className="text-red-600 dark:text-red-400">{modelsError}</p>}
+            {models && !loadingModels && (
+              <p>{models.length} modèle(s) capables de lire des images sur votre compte OpenRouter.</p>
+            )}
+            {model
+              ? <p>Modèle imposé : <code className="font-mono">{model}</code>. En cas d'échec, les autres sont essayés en secours.</p>
+              : <p>Les modèles payants nécessitent du crédit OpenRouter ; sans crédit, les gratuits prennent le relais automatiquement.</p>}
+          </div>
+        </div>
+      )}
 
       {/* type picker */}
       <div className="grid sm:grid-cols-3 gap-2 mb-4">
