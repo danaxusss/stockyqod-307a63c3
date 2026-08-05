@@ -58,8 +58,15 @@ export async function describeEdgeError(error: unknown, fnName: string): Promise
       message = serverMessage || "L'IA n'a pas pu lire ce document (modèles indisponibles ou page illisible).";
       break;
     default:
+      // No status at all means the browser never got a readable response.
+      // In practice that is a function which isn't deployed (or crashes on
+      // boot): Supabase answers without CORS headers, so the browser blocks
+      // the reply and supabase-js reports a transport failure rather than a
+      // 404. Name the likely cause instead of saying "unreachable".
       message = serverMessage
-        || (status ? `Échec (HTTP ${status}).` : "Échec de l'analyse (fonction injoignable).");
+        || (status
+          ? `Échec (HTTP ${status}).`
+          : `La fonction « ${fnName} » ne répond pas — elle n'est probablement pas déployée.`);
   }
 
   // A body message is more specific than our generic text — prefer it, except

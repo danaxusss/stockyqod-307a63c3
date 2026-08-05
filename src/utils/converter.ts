@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import { throwEdgeError } from './edgeError';
+import { throwEdgeError, describeEdgeError } from './edgeError';
 import { BankService, type ParsedStatement } from './supabaseBank';
 
 // ─── Conversion catalogue ────────────────────────────────────────────────────
@@ -130,6 +130,48 @@ export async function extractPage(kind: ConversionKind, imageDataUrl: string): P
   if (error) await throwEdgeError(error, 'ai-extract-table');
   if ((data as any)?.error) throw new Error((data as any).error);
   return (data as any).data;
+}
+
+// ─── Deployment check ───────────────────────────────────────────────────────
+export type FnHealth = 'ok' | 'missing' | 'error';
+
+export interface HealthReport { fn: string; state: FnHealth; detail: string }
+
+/**
+ * Is this Edge Function actually deployed?
+ *
+ * We send a deliberately invalid body. A deployed function rejects it with a
+ * readable HTTP status (400) — which proves it is alive. A function that isn't
+ * deployed produces a reply the browser blocks (no CORS headers), so
+ * supabase-js reports a transport failure with no status at all. That absence
+ * is the signal we key on.
+ */
+export async function checkFunction(fn: string): Promise<HealthReport> {
+  try {
+    const { error } = await supabase.functions.invoke(fn, { body: {} });
+    if (!error) return { fn, state: 'ok', detail: 'Déployée et joignable.' };
+
+    const d = await describeEdgeError(error, fn);
+    if (d.status === null) {
+      return { fn, state: 'missing', detail: "Ne répond pas — probablement pas déployée." };
+    }
+    if (d.status === 400) {
+      // It answered "you sent nothing useful" — exactly what we wanted.
+      return { fn, state: 'ok', detail: 'Déployée et joignable.' };
+    }
+    if (d.status === 500 && /OPENROUTER_API_KEY/i.test(d.serverMessage || '')) {
+      return { fn, state: 'error', detail: "Déployée, mais le secret OPENROUTER_API_KEY manque." };
+    }
+    return { fn, state: 'ok', detail: `Déployée (a répondu ${d.status}).` };
+  } catch (e: any) {
+    return { fn, state: 'missing', detail: e?.message || 'Injoignable.' };
+  }
+}
+
+/** Check every function the converter relies on. */
+export async function checkConverterFunctions(): Promise<HealthReport[]> {
+  const names = Array.from(new Set(CONVERSIONS.map(c => c.fn)));
+  return Promise.all(names.map(checkFunction));
 }
 
 // ─── Merge multi-page results ────────────────────────────────────────────────
