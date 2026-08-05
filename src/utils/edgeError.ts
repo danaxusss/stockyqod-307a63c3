@@ -28,6 +28,15 @@ export async function describeEdgeError(error: unknown, fnName: string): Promise
       const body = await ctx.clone().json();
       if (typeof body?.error === 'string') serverMessage = body.error;
       if (typeof body?.retry_after === 'number') retryAfter = body.retry_after;
+      // Per-model outcomes from the AI functions: 404 everywhere means the
+      // model ids are gone, 402 means no credits, 400 means a rejected
+      // request. Appending them turns a dead end into a next step.
+      if (Array.isArray(body?.attempts) && body.attempts.length) {
+        const detail = body.attempts
+          .map((a: any) => `${a.model} → ${a.status}`)
+          .join(' · ');
+        serverMessage = `${serverMessage || 'Échec'} (${detail})`;
+      }
     }
   } catch { /* body absent, already read, or not JSON */ }
 
