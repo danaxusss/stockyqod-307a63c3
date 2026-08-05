@@ -119,17 +119,47 @@ export interface InvoiceResult {
   lines: { description: string; quantity: number | null; unit_price: number | null; total: number | null }[];
 }
 
-export async function extractPage(kind: ConversionKind, imageDataUrl: string): Promise<any> {
+export async function extractPage(kind: ConversionKind, imageDataUrl: string, model?: string | null): Promise<any> {
   if (kind === 'bank') {
-    const { data } = await BankService.parseScan(imageDataUrl, 'image/jpeg');
+    const { data } = await BankService.parseScan(imageDataUrl, 'image/jpeg', model);
     return data;
   }
   const { data, error } = await supabase.functions.invoke('ai-extract-table', {
-    body: { image_base64: imageDataUrl, mime: 'image/jpeg', kind },
+    body: { image_base64: imageDataUrl, mime: 'image/jpeg', kind, model: model || undefined },
   });
   if (error) await throwEdgeError(error, 'ai-extract-table');
   if ((data as any)?.error) throw new Error((data as any).error);
   return (data as any).data;
+}
+
+// ─── Model selection ────────────────────────────────────────────────────────
+export interface VisionModel { id: string; name: string; free: boolean; prompt_price: number }
+
+const MODEL_PREF_KEY = 'stocky_converter_model';
+
+/** Empty string = automatic (the server's own preference order). */
+export function getPreferredModel(): string {
+  try { return localStorage.getItem(MODEL_PREF_KEY) || ''; } catch { return ''; }
+}
+export function setPreferredModel(id: string): void {
+  try {
+    if (id) localStorage.setItem(MODEL_PREF_KEY, id);
+    else localStorage.removeItem(MODEL_PREF_KEY);
+  } catch { /* storage unavailable */ }
+}
+
+/**
+ * Live list of image-capable models from OpenRouter, via the edge function so
+ * the API key stays server-side. Hard-coded ids go stale; this always shows
+ * what actually exists on the account today.
+ */
+export async function listVisionModels(): Promise<VisionModel[]> {
+  const { data, error } = await supabase.functions.invoke('ai-extract-table', {
+    body: { action: 'list-models' },
+  });
+  if (error) await throwEdgeError(error, 'ai-extract-table');
+  if ((data as any)?.error) throw new Error((data as any).error);
+  return ((data as any).models || []) as VisionModel[];
 }
 
 // ─── Deployment check ───────────────────────────────────────────────────────

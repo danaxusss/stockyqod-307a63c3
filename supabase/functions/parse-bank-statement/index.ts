@@ -146,7 +146,8 @@ serve(async (req) => {
         { "Retry-After": String(limit.retryAfter ?? 60) });
     }
 
-    const { image_base64, mime } = await req.json();
+    const body = await req.json();
+    const { image_base64, mime, model: requestedModel } = body;
     if (!image_base64) {
       return json(req, { error: "image_base64 required" }, 400);
     }
@@ -176,8 +177,16 @@ serve(async (req) => {
 
     let lastErr = "";
     const attempts: { model: string; status: number | string }[] = [];
-    const ordered = lastGoodModel
-      ? [lastGoodModel, ...MODELS.filter((m) => m !== lastGoodModel)]
+    // Order: the model chosen in the UI, then whatever last worked in
+    // this isolate, then the configured chain. A caller-supplied id is
+    // length- and charset-checked before it reaches the API call.
+    const picked = typeof requestedModel === "string"
+      && requestedModel.length <= 100
+      && /^[\w.\/:-]+$/.test(requestedModel)
+      ? requestedModel : null;
+    const head = [picked, lastGoodModel].filter(Boolean) as string[];
+    const ordered = head.length
+      ? [...new Set([...head, ...MODELS])]
       : MODELS;
 
     for (const model of ordered) {

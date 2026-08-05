@@ -154,6 +154,40 @@ Règles:
 - Renvoie UNIQUEMENT le JSON.`,
 };
 
+/**
+ * Ask OpenRouter which models exist right now and keep the ones that can read
+ * images. Hard-coding ids goes stale — they get retired without warning — so
+ * the UI offers a live list instead of guesses.
+ */
+async function listVisionModels(apiKey: string) {
+  const resp = await fetch("https://openrouter.ai/api/v1/models", {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+  if (!resp.ok) throw new Error(`models list: ${resp.status}`);
+  const out = await resp.json();
+
+  return (out?.data || [])
+    .filter((m: any) => {
+      // newer schema lists modalities explicitly; older one uses a string
+      const mods = m?.architecture?.input_modalities;
+      if (Array.isArray(mods)) return mods.includes("image");
+      return typeof m?.architecture?.modality === "string"
+        && m.architecture.modality.includes("image");
+    })
+    .map((m: any) => {
+      const prompt = Number(m?.pricing?.prompt ?? 0);
+      const completion = Number(m?.pricing?.completion ?? 0);
+      return {
+        id: m.id as string,
+        name: (m.name || m.id) as string,
+        free: prompt === 0 && completion === 0,
+        // rough per-page cost signal for the UI, not a billing figure
+        prompt_price: prompt,
+      };
+    })
+    .sort((a: any, b: any) => Number(a.free) - Number(b.free) || a.name.localeCompare(b.name));
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders(req) });
 
@@ -164,7 +198,24 @@ serve(async (req) => {
         { "Retry-After": String(limit.retryAfter ?? 60) });
     }
 
-    const { image_base64, mime, kind } = await req.json();
+    const body = await req.json();
+    const { image_base64, mime, kind, model: requestedModel, action } = body;
+
+    const apiKeyEarly = Deno.env.get("OPENROUTER_API_KEY");
+
+    // Model picker in the UI asks for the live catalogue.
+    if (action === "list-models") {
+      if (!apiKeyEarly) {
+        return json(req, { error: "OPENROUTER_API_KEY n'est pas configuré dans les secrets Supabase." }, 500);
+      }
+      try {
+        return json(req, { models: await listVisionModels(apiKeyEarly) });
+      } catch (e) {
+        console.error("[ai-extract-table] model list failed:", (e as Error)?.message);
+        return json(req, { error: "Impossible de récupérer la liste des modèles." }, 502);
+      }
+    }
+
     if (!image_base64) {
       return json(req, { error: "image_base64 required" }, 400);
     }
@@ -199,8 +250,16 @@ serve(async (req) => {
 
     let lastErr = "";
     const attempts: { model: string; status: number | string }[] = [];
-    const ordered = lastGoodModel
-      ? [lastGoodModel, ...MODELS.filter((m) => m !== lastGoodModel)]
+    // Order: the model chosen in the UI, then whatever last worked in
+    // this isolate, then the configured chain. A caller-supplied id is
+    // length- and charset-checked before it reaches the API call.
+    const picked = typeof requestedModel === "string"
+      && requestedModel.length <= 100
+      && /^[\w.\/:-]+$/.test(requestedModel)
+      ? requestedModel : null;
+    const head = [picked, lastGoodModel].filter(Boolean) as string[];
+    const ordered = head.length
+      ? [...new Set([...head, ...MODELS])]
       : MODELS;
 
     for (const model of ordered) {
