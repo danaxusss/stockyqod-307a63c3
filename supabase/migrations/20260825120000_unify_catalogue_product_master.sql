@@ -201,4 +201,3 @@ GRANT EXECUTE ON FUNCTION public.update_catalogue_product_master(uuid, jsonb)
 GRANT EXECUTE ON FUNCTION public.create_catalogue_product_master(
   uuid, text, uuid, text, numeric, numeric, text, boolean, integer
 ) TO anon, authenticated;
-
