@@ -80,6 +80,8 @@ const WhatsappStudioPage = React.lazy(() => import('./pages/whatsapp/StudioPage'
 const WhatsappCampaignsPage = React.lazy(() => import('./pages/whatsapp/CampaignsPage'));
 const WhatsappAnalyticsPage = React.lazy(() => import('./pages/whatsapp/AnalyticsPage'));
 const ConverterPage = React.lazy(() => import('./pages/tools/ConverterPage'));
+const KioskPage = React.lazy(() => import('./pages/kiosk/KioskPage'));
+const KioskAdminPage = React.lazy(() => import('./pages/kiosk/KioskAdminPage'));
 const TasksLayout = React.lazy(() => import('./tasks/TasksLayout'));
 const TasksDashboard = React.lazy(() => import('./tasks/pages/Dashboard'));
 const TasksList = React.lazy(() => import('./tasks/pages/SalesTasks'));
@@ -101,7 +103,7 @@ function PageLoader() {
 
 function AppContent() {
   const { activeLoginModalRole, openLoginModal } = useAppContext();
-  const { canCreateQuote, isAdmin, isCompta, isSuperAdmin, isFacturation, isPaie, isStock, isTasks, isTasksOnly } = useAuth();
+  const { canCreateQuote, isAdmin, isCompta, isSuperAdmin, isFacturation, isManager, isPaie, isStock, isTasks, isTasksOnly } = useAuth();
   const isAccounting = isSuperAdmin || isAdmin || isCompta;
   const { isAuthenticated: isUserAuthenticated } = useUserAuth();
 
@@ -110,6 +112,16 @@ function AppContent() {
   const handleAdminLoginSuccess = () => {
     openLoginModal(null);
   };
+
+  // A kiosk is a standalone, public tablet experience even when a Stocky
+  // administrator happens to be signed in on the same device.
+  if (window.location.pathname.startsWith('/kiosk/')) {
+    return (
+      <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-400" /></div>}>
+        <Routes><Route path="/kiosk/:token" element={<KioskPage />} /></Routes>
+      </Suspense>
+    );
+  }
 
   if (!isUserAuthenticated) {
     // Allow public pages without auth (shared quotes + delivery tracking)
@@ -154,6 +166,9 @@ function AppContent() {
                 <Route path="/quote-cart/:quoteId" element={<QuoteCartPage />} />
                 <Route path="/quotes-history" element={<QuotesHistoryPage />} />
               </>
+            )}
+            {(canCreateQuote() || isAdmin || isSuperAdmin || isFacturation || isManager) && (
+              <Route path="/kiosk-admin" element={<KioskAdminPage />} />
             )}
             <Route path="/clients" element={<ClientsPage />} />
             <Route path="/products" element={<ProductsPage />} />

@@ -7,6 +7,7 @@ import {
   RotateCcw, Sun, Moon, Upload, FileX, BookMarked, Home, Images, ClipboardList,
   Wallet, ListTodo, Archive, Contact as ContactIcon, LayoutDashboard, MessageCircle,
   Megaphone, FileSpreadsheet,
+  MonitorSmartphone,
 } from 'lucide-react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useTheme } from '../hooks/useTheme';
@@ -66,7 +67,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps = {}
   const [isSyncing, setIsSyncing] = useState(false);
 
   const { theme, toggle: toggleTheme } = useTheme();
-  const { isAdmin, isSuperAdmin, isFacturation, isPaie, isTasks, isTasksOnly, tasksRole, companyName, currentUser, canCreateQuote, logout: adminLogout } = useAuth();
+  const { isAdmin, isSuperAdmin, isFacturation, isManager, isPaie, isTasks, isTasksOnly, tasksRole, companyName, currentUser, canCreateQuote, logout: adminLogout } = useAuth();
   const { isAuthenticated: isUserAuthenticated, authenticatedUser, logout: userLogout } = useUserAuth();
   const { syncInfo, syncData } = useAppContext();
   const { showToast } = useToast();
@@ -112,12 +113,15 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps = {}
         { to: '/catalogue', icon: BookMarked, label: 'Catalogue' },
       ],
     },
-    ...(canCreateQuote() ? [{
+    ...((canCreateQuote() || isAdmin || isSuperAdmin || isFacturation || isManager) ? [{
       id: 'commercial',
       label: 'Commercial',
       items: [
-        { to: '/quote-cart', icon: ShoppingCart, label: 'Nouveau Devis' },
-        { to: '/quotes-history', icon: FileText, label: 'Historique Devis' },
+        ...(canCreateQuote() ? [
+          { to: '/quote-cart', icon: ShoppingCart, label: 'Nouveau Devis' },
+          { to: '/quotes-history', icon: FileText, label: 'Historique Devis' },
+        ] : []),
+        { to: '/kiosk-admin', icon: MonitorSmartphone, label: 'Demandes Kiosque' },
       ],
     }] : []),
     ...((isFacturation || isSuperAdmin) ? [{
