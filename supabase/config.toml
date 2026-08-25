@@ -1,5 +1,8 @@
 project_id = "hraxkydlctyoflcilgnz"
 
+[functions.kiosk]
+verify_jwt = false
+
 [functions.send-push]
 verify_jwt = false
 

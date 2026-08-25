@@ -123,7 +123,7 @@ export async function verifySessionLive(
   if (!claims) return null;
   const { data: user, error } = await db
     .from("app_users")
-    .select("id, username, is_admin, is_superadmin, company_id")
+    .select("id, username, custom_seller_name, is_admin, is_superadmin, new_role, company_id, can_create_quote")
     .eq("id", claims.uid)
     .maybeSingle();
   if (error || !user) return null;
