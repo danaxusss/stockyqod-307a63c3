@@ -230,6 +230,7 @@ export type Database = {
           brand: string
           buyprice: number
           created_at: string
+          image: string | null
           name: string
           price: number
           provider: string
@@ -243,6 +244,7 @@ export type Database = {
           brand?: string
           buyprice?: number
           created_at?: string
+          image?: string | null
           name: string
           price?: number
           provider?: string
@@ -256,6 +258,7 @@ export type Database = {
           brand?: string
           buyprice?: number
           created_at?: string
+          image?: string | null
           name?: string
           price?: number
           provider?: string

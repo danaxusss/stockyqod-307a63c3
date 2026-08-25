@@ -13,9 +13,11 @@ export interface CatalogueProduct {
   family_id: string | null;
   ref: string;
   designation: string;
+  brand: string;
   price: number | null;
   price_pro: number | null;
   image: string | null;
+  stock_levels: Record<string, number>;
   hidden: boolean;
   sort_order: number;
 }
@@ -28,6 +30,30 @@ export interface ImportReport { families: number; products: number }
 export const normRef = (s: string) => (s || '').toUpperCase().replace(/[\s\-_.]/g, '');
 const safeName = (s: string) => normRef(s).replace(/[^A-Z0-9]/g, '') || 'X';
 const r2 = (n: number) => Math.round(n * 100) / 100;
+const MASTER_BATCH = 200;
+
+type MasterProduct = {
+  barcode: string;
+  name: string;
+  brand: string;
+  price: number;
+  reseller_price: number;
+  image: string | null;
+  stock_levels: Record<string, number> | null;
+};
+
+async function loadMasterProducts(refs: string[]): Promise<Map<string, MasterProduct>> {
+  const byRef = new Map<string, MasterProduct>();
+  const uniqueRefs = Array.from(new Set(refs.filter(Boolean)));
+  for (let i = 0; i < uniqueRefs.length; i += MASTER_BATCH) {
+    const { data, error } = await (supabase as any).from('products')
+      .select('barcode, name, brand, price, reseller_price, image, stock_levels')
+      .in('barcode', uniqueRefs.slice(i, i + MASTER_BATCH));
+    if (error) throw error;
+    for (const row of data || []) byRef.set(row.barcode, row as MasterProduct);
+  }
+  return byRef;
+}
 
 function scoped(table: string) {
   const { companyId, bypassFilter } = getCompanyContext();
@@ -75,35 +101,82 @@ export class CatalogueService {
   // ── Products ──────────────────────────────────────────────────────────────
   static async listProducts(): Promise<CatalogueProduct[]> {
     const { companyId, bypassFilter } = getCompanyContext();
-    const out: CatalogueProduct[] = [];
+    const settings: any[] = [];
     const PAGE = 1000;
     for (let from = 0; ; from += PAGE) {
       let q = (supabase as any).from('catalog_products')
-        .select('id, family_id, ref, designation, price, price_pro, image, hidden, sort_order')
+        .select('id, company_id, family_id, ref, designation, price, price_pro, image, hidden, sort_order')
         .order('sort_order').order('ref').range(from, from + PAGE - 1);
       if (!bypassFilter && companyId) q = q.eq('company_id', companyId);
       const { data, error } = await q;
       if (error) throw error;
-      out.push(...((data || []) as CatalogueProduct[]));
+      settings.push(...(data || []));
       if (!data || data.length < PAGE) break;
     }
-    return out;
+
+    const masters = await loadMasterProducts(settings.map(row => row.ref));
+    return settings.map(row => {
+      const master = masters.get(row.ref);
+      return {
+        id: row.id,
+        company_id: row.company_id,
+        family_id: row.family_id,
+        ref: row.ref,
+        designation: master?.name ?? row.designation ?? row.ref,
+        brand: master?.brand ?? '',
+        price: master ? Number(master.price) : row.price == null ? null : Number(row.price),
+        price_pro: master ? Number(master.reseller_price) : row.price_pro == null ? null : Number(row.price_pro),
+        image: master?.image ?? row.image ?? null,
+        stock_levels: (master?.stock_levels || {}) as Record<string, number>,
+        hidden: !!row.hidden,
+        sort_order: Number(row.sort_order) || 0,
+      };
+    });
   }
 
   static async updateProduct(id: string, patch: Partial<CatalogueProduct>): Promise<void> {
-    const { error } = await (supabase as any).from('catalog_products').update(patch).eq('id', id);
+    const safePatch = Object.fromEntries(Object.entries(patch).filter(([key]) =>
+      ['designation', 'brand', 'price', 'price_pro', 'image', 'family_id', 'hidden', 'sort_order'].includes(key)));
+    const { error } = await (supabase.rpc as any)('update_catalogue_product_master', {
+      p_catalog_id: id,
+      p_patch: safePatch,
+    });
     if (error) throw error;
   }
 
   static async createProduct(p: Partial<CatalogueProduct>): Promise<CatalogueProduct> {
     const { companyId } = getCompanyContext();
-    const { data, error } = await (supabase as any).from('catalog_products').insert({
-      company_id: companyId, ref: (p.ref || '').trim(), designation: p.designation || '',
-      price: p.price ?? null, price_pro: p.price_pro ?? null, family_id: p.family_id ?? null,
-      hidden: !!p.hidden, sort_order: p.sort_order ?? 0,
-    }).select().single();
+    if (!companyId) throw new Error('Aucune société sélectionnée');
+    const ref = (p.ref || '').trim();
+    if (!ref) throw new Error('Référence obligatoire');
+    const { data, error } = await (supabase.rpc as any)('create_catalogue_product_master', {
+      p_company_id: companyId,
+      p_ref: ref,
+      p_family_id: p.family_id ?? null,
+      p_designation: p.designation || ref,
+      p_price: p.price ?? 0,
+      p_price_pro: p.price_pro ?? 0,
+      p_image: p.image ?? null,
+      p_hidden: !!p.hidden,
+      p_sort_order: p.sort_order ?? 0,
+    });
     if (error) throw error;
-    return data as CatalogueProduct;
+    const row = Array.isArray(data) ? data[0] : data;
+    const master = (await loadMasterProducts([ref])).get(ref);
+    return {
+      id: row.id,
+      company_id: row.company_id,
+      family_id: row.family_id,
+      ref,
+      designation: master?.name ?? row.designation,
+      brand: master?.brand ?? '',
+      price: master ? Number(master.price) : Number(row.price || 0),
+      price_pro: master ? Number(master.reseller_price) : Number(row.price_pro || 0),
+      image: master?.image ?? row.image ?? null,
+      stock_levels: (master?.stock_levels || {}) as Record<string, number>,
+      hidden: !!row.hidden,
+      sort_order: Number(row.sort_order) || 0,
+    };
   }
 
   static async deleteProducts(ids: string[]): Promise<void> {
@@ -173,7 +246,8 @@ export class CatalogueService {
     const round = (n: number) => opts.roundInt ? Math.round(n) : r2(n);
 
     const rows: { id: string; patch: Partial<CatalogueProduct> }[] = [];
-    for (const p of targets) {
+    const uniqueTargets = Array.from(new Map(targets.map(p => [p.ref, p])).values());
+    for (const p of uniqueTargets) {
       if (field === 'pro_from_ttc') {
         if (p.price == null) continue;
         if (opts.keepExisting && p.price_pro != null) continue;
@@ -192,10 +266,7 @@ export class CatalogueService {
     }
     for (let i = 0; i < rows.length; i += 100) {
       const batch = rows.slice(i, i + 100);
-      const res = await Promise.all(batch.map(r =>
-        (supabase as any).from('catalog_products').update(r.patch).eq('id', r.id)));
-      const bad = res.find((x: any) => x.error);
-      if (bad?.error) throw new Error(bad.error.message);
+      await Promise.all(batch.map(r => this.updateProduct(r.id, r.patch)));
       onProgress?.(Math.min(i + 100, rows.length), rows.length);
     }
     return rows.length;
@@ -222,17 +293,44 @@ export class CatalogueService {
 
     onProgress('Lecture du catalogue existant…', 8);
     const current = await this.listProducts();
-    const haveRef = new Set(current.map(p => normRef(p.ref)));
+    const haveRef = new Set(current.map(p => p.ref));
+    const seedProducts = Array.from(new Map(seed.products.map(sp => [String(sp.r || '').trim(), sp])).entries())
+      .filter(([ref]) => ref && !haveRef.has(ref));
 
-    const rows = seed.products
-      .filter(sp => !haveRef.has(normRef(sp.r)))
-      .map(sp => ({
+    let masters = await loadMasterProducts(seedProducts.map(([ref]) => ref));
+    const missingMasters = seedProducts.filter(([ref]) => !masters.has(ref)).map(([ref, sp]) => ({
+      barcode: ref,
+      name: sp.d || ref,
+      brand: '',
+      image: sp.i ?? null,
+      techsheet: '',
+      price: sp.p ?? 0,
+      buyprice: 0,
+      reseller_price: sp.pp ?? 0,
+      provider: '',
+      stock_levels: {},
+    }));
+    for (let i = 0; i < missingMasters.length; i += 200) {
+      const { error } = await (supabase as any).from('products')
+        .upsert(missingMasters.slice(i, i + 200), { onConflict: 'barcode', ignoreDuplicates: true });
+      if (error) throw new Error(`Produits Stocky: ${error.message}`);
+    }
+    if (missingMasters.length) masters = await loadMasterProducts(seedProducts.map(([ref]) => ref));
+
+    const rows = seedProducts.map(([ref, sp]) => {
+      const master = masters.get(ref);
+      return {
         company_id: companyId,
         family_id: sp.f ? byName.get(sp.f)?.id ?? null : null,
-        ref: sp.r, designation: sp.d || sp.r,
-        price: sp.p ?? null, price_pro: sp.pp ?? null,
-        image: sp.i ?? null, hidden: !!sp.h, sort_order: sp.s ?? 0,
-      }));
+        ref,
+        designation: master?.name ?? (sp.d || ref),
+        price: master?.price ?? sp.p ?? 0,
+        price_pro: master?.reseller_price ?? sp.pp ?? 0,
+        image: master?.image ?? sp.i ?? null,
+        hidden: !!sp.h,
+        sort_order: sp.s ?? 0,
+      };
+    });
 
     for (let i = 0; i < rows.length; i += 250) {
       const { error } = await (supabase as any).from('catalog_products').insert(rows.slice(i, i + 250));

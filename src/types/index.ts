@@ -2,6 +2,7 @@ export interface Product {
   barcode: string;
   name: string;
   brand: string;
+  image?: string | null;
   techsheet: string;
   price: number;
   buyprice: number;

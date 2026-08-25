@@ -10,11 +10,13 @@ export interface BackupData {
 // Tables in FK-safe restore order
 const BACKUP_TABLES = [
   'companies',
+  'catalog_families',
   'company_settings',
   'app_users',
   'clients',
   'document_counters',
   'products',
+  'catalog_products',
   'product_name_overrides',
   'quote_templates',
   'technical_sheets',
@@ -37,7 +39,7 @@ async function fetchAllRows(table: string): Promise<unknown[]> {
   const rows: unknown[] = [];
   let from = 0;
   while (true) {
-    const { data, error } = await (supabase.from(table) as any)
+    const { data, error } = await (supabase as any).from(table)
       .select('*')
       .range(from, from + PAGE - 1);
     if (error) throw new Error(`${table}: ${error.message}`);
@@ -100,8 +102,9 @@ export class BackupService {
       const CHUNK = 200;
       for (let j = 0; j < rows.length; j += CHUNK) {
         const chunk = rows.slice(j, j + CHUNK);
-        const { error } = await (supabase.from(table) as any)
-          .upsert(chunk, { onConflict: 'id' });
+        const onConflict = table === 'products' ? 'barcode' : 'id';
+        const { error } = await (supabase as any).from(table)
+          .upsert(chunk, { onConflict });
         if (error) errors += chunk.length;
         else upserted += chunk.length;
       }

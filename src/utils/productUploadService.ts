@@ -23,14 +23,27 @@ export class ProductUploadService {
 
     // Load existing barcodes to determine new vs existing products (and keep the
     // previous stock_levels so we can log a reconciling ledger movement after import)
-    const { data: existingProducts } = await supabase.from('products').select('barcode, brand, provider, stock_levels');
-    const existingMap = new Map<string, { brand: string; provider: string }>();
+    const existingProducts: Array<{
+      barcode: string;
+      brand: string;
+      provider: string;
+      image: string | null;
+      stock_levels: unknown;
+    }> = [];
+    const EXISTING_PAGE = 1000;
+    for (let from = 0; ; from += EXISTING_PAGE) {
+      const { data, error } = await supabase.from('products')
+        .select('barcode, brand, provider, image, stock_levels')
+        .range(from, from + EXISTING_PAGE - 1);
+      if (error) throw new Error(`Unable to load existing products: ${error.message}`);
+      existingProducts.push(...(data || []));
+      if (!data || data.length < EXISTING_PAGE) break;
+    }
+    const existingMap = new Map<string, { brand: string; provider: string; image: string | null }>();
     const oldStockByBarcode = new Map<string, Record<string, number>>();
-    if (existingProducts) {
-      for (const p of existingProducts) {
-        existingMap.set(p.barcode, { brand: p.brand, provider: p.provider });
-        oldStockByBarcode.set(p.barcode, ((p as any).stock_levels || {}) as Record<string, number>);
-      }
+    for (const p of existingProducts) {
+      existingMap.set(p.barcode, { brand: p.brand, provider: p.provider, image: p.image });
+      oldStockByBarcode.set(p.barcode, (p.stock_levels || {}) as Record<string, number>);
     }
 
     const validProducts: Product[] = [];
@@ -62,6 +75,7 @@ export class ProductUploadService {
         barcode: String(product.barcode).trim(),
         name: String(product.name).trim(),
         brand,
+        image: existing?.image ?? product.image ?? null,
         techsheet: String(product.techsheet || '').trim(),
         price: Number(product.price) || 0,
         buyprice: Number(product.buyprice) || 0,
@@ -86,6 +100,7 @@ export class ProductUploadService {
         barcode: p.barcode,
         name: p.name,
         brand: p.brand,
+        image: p.image ?? null,
         techsheet: p.techsheet,
         price: p.price,
         buyprice: p.buyprice,
@@ -219,6 +234,7 @@ export class ProductUploadService {
           barcode: row.barcode,
           name: row.name,
           brand: row.brand,
+          image: row.image,
           techsheet: row.techsheet,
           price: Number(row.price),
           buyprice: Number(row.buyprice),

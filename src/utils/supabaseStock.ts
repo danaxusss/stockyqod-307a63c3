@@ -31,7 +31,7 @@ export class StockService {
   static async getProducts(): Promise<Product[]> {
     const { data, error } = await supabase
       .from('products')
-      .select('barcode, name, brand, price, buyprice, reseller_price, provider, stock_levels, updated_at')
+      .select('barcode, name, brand, image, price, buyprice, reseller_price, provider, stock_levels, updated_at')
       .order('name', { ascending: true });
     if (error) throw error;
     return (data || []).map((p: any) => ({

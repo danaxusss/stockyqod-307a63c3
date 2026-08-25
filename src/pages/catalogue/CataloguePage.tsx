@@ -480,8 +480,8 @@ export default function CataloguePage() {
                           </button>
                         </td>
                         <td className="px-2 py-1.5">
-                          <input value={val('ref') || ''} onChange={ev => edit(p.id, 'ref', ev.target.value)}
-                            className="w-full px-1.5 py-1 text-xs font-mono rounded bg-secondary border border-border" />
+                          <input value={val('ref') || ''} readOnly title="Identifiant produit partagé avec Stocky"
+                            className="w-full px-1.5 py-1 text-xs font-mono rounded bg-muted border border-border text-muted-foreground cursor-not-allowed" />
                         </td>
                         <td className="px-2 py-1.5">
                           <input value={val('designation') || ''} onChange={ev => edit(p.id, 'designation', ev.target.value)}
