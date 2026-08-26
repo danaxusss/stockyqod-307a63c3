@@ -3,7 +3,7 @@ import {
   Package, RefreshCw, LogOut, Shield, FileText, User, Cloud, CloudOff,
   Settings, UserCheck, ShoppingBag, BookOpen, Building2, ChevronDown,
   Truck, Receipt, Calculator, BarChart3, Users, ShoppingCart, LucideIcon,
-  RotateCcw, Sun, Moon, Upload, FileX, BookMarked, Boxes, ArrowLeftRight, TrendingUp,
+  RotateCcw, Sun, Moon, Upload, FileX, BookMarked, Boxes, ArrowLeftRight, TrendingUp, Images,
 } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { Link, useLocation, NavLink } from 'react-router-dom';
@@ -250,6 +250,7 @@ export function Header() {
                 { to: '/products', icon: ShoppingBag, label: 'Produits' },
                 { to: '/clients', icon: UserCheck, label: 'Clients' },
                 { to: '/sheets', icon: BookOpen, label: 'Fiches Techniques' },
+                { to: '/photos', icon: Images, label: 'Galerie Photos' },
                 { to: '/catalogue', icon: BookMarked, label: 'Catalogue' },
               ]}
             />

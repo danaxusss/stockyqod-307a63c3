@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { Package, ArrowLeft, Copy, MapPin, DollarSign, ShoppingCart, Home, AlertCircle, Users, Building, TrendingUp, Search, Calculator, Plus, Paperclip, Upload, Download, Trash2, Loader, FileText, X, Images } from 'lucide-react';
+import { Package, ArrowLeft, Copy, MapPin, DollarSign, ShoppingCart, Home, AlertCircle, Users, Building, TrendingUp, Search, Calculator, Plus, Paperclip, Upload, Download, Trash2, Loader, FileText, X, Images, ImageOff, ImagePlus } from 'lucide-react';
 import { Product, TechnicalSheet, StockLocation } from '../types';
 import { useAppContext } from '../context/AppContext';
 import { searchStateManager } from '../utils/searchStateManager';
@@ -11,12 +11,13 @@ import { QuoteManager } from '../utils/quoteManager';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { useProductOverrides } from '../hooks/useProductOverrides';
+import { resolveProductImageUrl, uploadPrimaryProductImage } from '../utils/productImages';
 
 export function ProductDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { canAccessStockLocation, canAccessBrand, canCreateQuote, getDisplayPrice, getPriceDisplayType, isAdmin: isAdminUser } = useAuth();
-  const { state } = useAppContext();
+  const { canAccessStockLocation, canAccessBrand, canCreateQuote, getDisplayPrice, getPriceDisplayType, isAdmin: isAdminUser, isStock, companyId, currentUser } = useAuth();
+  const { state, syncData } = useAppContext();
   const [product, setProduct] = useState<Product | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -25,8 +26,10 @@ export function ProductDetail() {
     const saved = localStorage.getItem('inventory_margin_percentage');
     return saved ? parseInt(saved) : 30;
   });
-  const [isUploading, setIsUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isSheetUploading, setIsSheetUploading] = useState(false);
+  const sheetFileInputRef = useRef<HTMLInputElement>(null);
+  const [isImageUploading, setIsImageUploading] = useState(false);
+  const imageFileInputRef = useRef<HTMLInputElement>(null);
   
   // Linked sheets state
   const [linkedSheets, setLinkedSheets] = useState<TechnicalSheet[]>([]);
@@ -186,7 +189,7 @@ export function ProductDetail() {
     const file = event.target.files?.[0];
     if (!file || !product) return;
     if (file.size > 50 * 1024 * 1024) { showToast({ type: 'error', message: 'Fichier trop volumineux (max 50 Mo)' }); return; }
-    setIsUploading(true);
+    setIsSheetUploading(true);
     try {
       const sheetId = crypto.randomUUID();
       const ext = file.name.split('.').pop() || 'pdf';
@@ -208,8 +211,42 @@ export function ProductDetail() {
       console.error('Upload error:', err);
       showToast({ type: 'error', message: 'Erreur lors du téléchargement' });
     } finally {
-      setIsUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+      setIsSheetUploading(false);
+      if (sheetFileInputRef.current) sheetFileInputRef.current.value = '';
+    }
+  };
+
+  const handlePrimaryImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !product) return;
+    if (!companyId) {
+      showToast({ type: 'error', message: 'Aucune société associée' });
+      if (imageFileInputRef.current) imageFileInputRef.current.value = '';
+      return;
+    }
+    if (product.image && !window.confirm('Ce produit possède déjà une image. Voulez-vous la remplacer ?')) {
+      if (imageFileInputRef.current) imageFileInputRef.current.value = '';
+      return;
+    }
+
+    setIsImageUploading(true);
+    try {
+      const storagePath = await uploadPrimaryProductImage({
+        product,
+        file,
+        companyId,
+        createdBy: currentUser?.username,
+        replaceExisting: !!product.image,
+      });
+      setProduct(current => current ? { ...current, image: storagePath } : current);
+      await Promise.all([syncData(true), loadLinkedPhotos()]);
+      showToast({ type: 'success', message: product.image ? 'Image produit remplacée' : 'Image produit ajoutée' });
+    } catch (uploadError) {
+      const message = uploadError instanceof Error ? uploadError.message : 'Erreur lors de l’import de l’image';
+      showToast({ type: 'error', message });
+    } finally {
+      setIsImageUploading(false);
+      if (imageFileInputRef.current) imageFileInputRef.current.value = '';
     }
   };
 
@@ -320,6 +357,52 @@ export function ProductDetail() {
         </div>
 
         <div className="p-5">
+          {/* Canonical product image shared by Stocky, catalogue and quote exports */}
+          <div className="mb-5 flex flex-col sm:flex-row gap-4 items-start rounded-xl border border-border bg-secondary/20 p-4">
+            <div className="w-full sm:w-44 aspect-square rounded-xl border border-border bg-background overflow-hidden flex items-center justify-center shrink-0">
+              {product.image ? (
+                <img
+                  src={resolveProductImageUrl(product.image) || ''}
+                  alt={product.name}
+                  className="w-full h-full object-contain"
+                />
+              ) : (
+                <div className="text-center text-muted-foreground px-4">
+                  <ImageOff className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                  <p className="text-xs">Aucune image</p>
+                </div>
+              )}
+            </div>
+            <div className="min-w-0 flex-1 pt-1">
+              <h2 className="text-sm font-semibold text-foreground">Image principale du produit</h2>
+              <p className="text-xs text-muted-foreground mt-1 max-w-xl">
+                Cette image carrée est partagée par la liste Stocky, le catalogue, le kiosque et les exports de devis.
+              </p>
+              {isStock && (
+                <>
+                  <input
+                    ref={imageFileInputRef}
+                    type="file"
+                    accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                    onChange={handlePrimaryImageUpload}
+                    className="hidden"
+                    id="product-image-upload"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => imageFileInputRef.current?.click()}
+                    disabled={isImageUploading || !companyId}
+                    className="mt-3 inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-sm disabled:opacity-50"
+                  >
+                    {isImageUploading ? <Loader className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+                    {isImageUploading ? 'Import en cours…' : product.image ? 'Remplacer l’image' : 'Ajouter une image'}
+                  </button>
+                  <p className="text-[11px] text-muted-foreground mt-1.5">JPG, PNG ou WebP · maximum 10 Mo</p>
+                </>
+              )}
+            </div>
+          </div>
+
           {/* Quick Info Bar */}
           <div className="grid grid-cols-3 gap-3 mb-5">
             <div className="text-center p-3 bg-primary/10 rounded-lg">
@@ -483,11 +566,11 @@ export function ProductDetail() {
                 )}
 
                 {/* Upload new sheet */}
-                <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+                <input ref={sheetFileInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
                   onChange={handleUploadAndLink} className="hidden" id="techsheet-upload" />
                 <label htmlFor="techsheet-upload"
-                  className={`inline-flex items-center gap-1.5 px-4 py-2 bg-accent hover:bg-accent/80 text-foreground rounded-lg text-sm transition-colors cursor-pointer ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}>
-                  {isUploading ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2 bg-accent hover:bg-accent/80 text-foreground rounded-lg text-sm transition-colors cursor-pointer ${isSheetUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                  {isSheetUploading ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
                   <span>Ajouter une nouvelle fiche</span>
                 </label>
               </div>
@@ -518,7 +601,7 @@ export function ProductDetail() {
                     <img
                       src={supabase.storage.from('product-photos').getPublicUrl(photo.storage_path).data.publicUrl}
                       alt={photo.title || photo.file_name}
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-contain"
                       loading="lazy"
                     />
                   </a>

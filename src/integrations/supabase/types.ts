@@ -224,6 +224,76 @@ export type Database = {
         }
         Relationships: []
       }
+      product_photo_products: {
+        Row: {
+          barcode: string
+          id: string
+          photo_id: string
+          product_name: string
+        }
+        Insert: {
+          barcode: string
+          id?: string
+          photo_id: string
+          product_name?: string
+        }
+        Update: {
+          barcode?: string
+          id?: string
+          photo_id?: string
+          product_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_photo_products_photo_id_fkey"
+            columns: ["photo_id"]
+            isOneToOne: false
+            referencedRelation: "product_photos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_photos: {
+        Row: {
+          company_id: string | null
+          created_at: string
+          created_by: string | null
+          file_name: string
+          file_size: number | null
+          id: string
+          storage_path: string
+          title: string
+        }
+        Insert: {
+          company_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          file_name: string
+          file_size?: number | null
+          id?: string
+          storage_path: string
+          title?: string
+        }
+        Update: {
+          company_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          file_name?: string
+          file_size?: number | null
+          id?: string
+          storage_path?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_photos_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       products: {
         Row: {
           barcode: string

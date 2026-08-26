@@ -4,6 +4,7 @@ import autoTable from 'jspdf-autotable';
 import { Quote } from '../types';
 import { CompanySettings, QuoteStyle } from './companySettings';
 import { getQuoteItemBarcode, getQuoteItemBrand, getQuoteItemName } from './quoteItemDisplay';
+import { loadCurrentProductImages, resolveProductImageUrl } from './productImages';
 
 async function generateQRDataUrl(text: string): Promise<string | null> {
   try {
@@ -155,10 +156,10 @@ export class PdfExportService {
       showCompanyEmail: true, showCompanyWebsite: false, showCompanyICE: true,
       showClientICE: true, showTVA: true, showTVABreakdown: true, showNotes: true,
       showPaymentTerms: true, showValidityDate: true, printTTCOnly: false,
-      printColumns: { showBrand: true, showBarcode: true, showUnitPrice: true, showDiscount: true },
+      printColumns: { showImage: false, showBrand: true, showBarcode: true, showUnitPrice: true, showDiscount: true },
     };
 
-    const printCols = fields.printColumns || { showBrand: true, showBarcode: true, showUnitPrice: true, showDiscount: true };
+    const printCols = fields.printColumns || { showImage: false, showBrand: true, showBarcode: true, showUnitPrice: true, showDiscount: true };
 
     const tvaRate = settings?.tva_rate ?? 20;
     const companyName = settings?.company_name || 'Mon Entreprise';
@@ -1033,10 +1034,27 @@ export class PdfExportService {
     const isBL = documentType === 'bl';
     const isBC = documentType === 'bon_commande';
     const tvaDivisor = 1 + tvaRate / 100;
+    const showProductImages = printCols.showImage === true && !isBL && !isBC;
+
+    let quoteItemImages: Array<string | null> = quote.items.map(() => null);
+    if (showProductImages) {
+      let currentImages = new Map<string, string | null>();
+      try {
+        currentImages = await loadCurrentProductImages(quote.items.map(item => item.product?.barcode || ''));
+      } catch {
+        // Fall back to the product snapshot stored in the quote.
+      }
+      quoteItemImages = await Promise.all(quote.items.map(item => {
+        const image = currentImages.get(item.product?.barcode) ?? item.product?.image ?? null;
+        const url = resolveProductImageUrl(image);
+        return url ? loadImageAsBase64(url) : Promise.resolve(null);
+      }));
+    }
 
     let tableHeaders: string[][];
     let tableBody: string[][];
     let itemColumnStyles: Record<number, any>;
+    let productImageColumnIndex: number | null = null;
 
     const showBLPrices = blShowPrices ?? settings?.bl_show_prices ?? true;
 
@@ -1118,6 +1136,10 @@ export class PdfExportService {
       const showDiscountCol = (printCols.showDiscount !== false) && hasDiscount;
 
       const headerCols: string[] = [];
+      if (showProductImages) {
+        productImageColumnIndex = 0;
+        headerCols.push('IMAGE');
+      }
       if (showBrand) headerCols.push('Marque');
       if (showBarcode) headerCols.push('REF');
       headerCols.push('DESCRIPTION');
@@ -1130,6 +1152,7 @@ export class PdfExportService {
       tableBody = quote.items.map(item => {
         const discount = item.discount ?? 0;
         const row: string[] = [];
+        if (showProductImages) row.push('');
         if (showBrand) row.push(getQuoteItemBrand(item) || '');
         if (showBarcode) row.push(getQuoteItemBarcode(item) || '');
         row.push(getQuoteItemName(item));
@@ -1153,6 +1176,7 @@ export class PdfExportService {
       // Build column styles dynamically
       const colStyles: Record<number, any> = {};
       let ci = 0;
+      if (showProductImages) { colStyles[ci] = { cellWidth: 18, halign: 'center', valign: 'middle' }; ci++; }
       if (showBrand) { colStyles[ci] = { cellWidth: 18, halign: 'center' }; ci++; }
       if (showBarcode) { colStyles[ci] = { cellWidth: 24, halign: 'center' }; ci++; }
       colStyles[ci] = { cellWidth: 'auto' }; ci++;
@@ -1191,6 +1215,39 @@ export class PdfExportService {
       },
       alternateRowStyles: { fillColor: tableAltRow },
       columnStyles: itemColumnStyles,
+      didParseCell: (data) => {
+        if (data.section === 'body' && productImageColumnIndex !== null && data.column.index === productImageColumnIndex) {
+          data.cell.styles.minCellHeight = 18;
+        }
+      },
+      didDrawCell: (data) => {
+        if (data.section !== 'body' || productImageColumnIndex === null || data.column.index !== productImageColumnIndex) return;
+        const imageData = quoteItemImages[data.row.index];
+        if (!imageData) return;
+
+        const boxSize = Math.max(1, Math.min(14, data.cell.width - 3, data.cell.height - 3));
+        const boxX = data.cell.x + (data.cell.width - boxSize) / 2;
+        const boxY = data.cell.y + (data.cell.height - boxSize) / 2;
+        doc.setDrawColor(225, 225, 225);
+        doc.rect(boxX, boxY, boxSize, boxSize);
+
+        try {
+          const properties = doc.getImageProperties(imageData);
+          const scale = Math.min(boxSize / properties.width, boxSize / properties.height);
+          const imageWidth = properties.width * scale;
+          const imageHeight = properties.height * scale;
+          doc.addImage(
+            imageData,
+            'AUTO',
+            boxX + (boxSize - imageWidth) / 2,
+            boxY + (boxSize - imageHeight) / 2,
+            imageWidth,
+            imageHeight,
+          );
+        } catch {
+          // Ignore an individual invalid image and continue rendering the document.
+        }
+      },
       didDrawPage: (data) => {
         drawPageDecorations();
         const pageCount = doc.getNumberOfPages();
