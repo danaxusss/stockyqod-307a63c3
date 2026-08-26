@@ -6,6 +6,7 @@ import {
   Save, Search, Settings2, ShoppingCart, Trash2, UserRound, X,
 } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
+import { useAuth } from '../../hooks/useAuth';
 import {
   KioskService, type KioskAdminProduct, type KioskAdminProfile, type KioskCompanyOption,
   type KioskFamily, type KioskRequestDetail, type KioskRequestItem, type KioskRequestStatus,
@@ -60,6 +61,7 @@ const userLabel = (user?: KioskUserOption | null) =>
 
 export default function KioskAdminPage() {
   const navigate = useNavigate();
+  const { logout } = useAuth();
   const { showToast } = useToast();
   const [tab, setTab] = useState<Tab>('requests');
   const [loading, setLoading] = useState(true);
@@ -186,10 +188,16 @@ export default function KioskAdminPage() {
     setEditingProfile(profile ? { ...profile } : EMPTY_PROFILE(companies[0]?.id || ''));
   };
 
+  const requiresReconnect = /Reconnectez-vous|Authentication required/i.test(error);
+  const reconnect = () => {
+    logout();
+    navigate('/', { replace: true });
+  };
+
   if (loading) return <PageState><Loader2 className="h-8 w-8 animate-spin text-primary" /><p>Chargement des demandes kiosque…</p></PageState>;
 
   if (error && !requests.length && !profiles.length) {
-    return <PageState><MonitorSmartphone className="h-10 w-10 text-muted-foreground" /><h1 className="text-xl font-bold">Module kiosque indisponible</h1><p className="max-w-lg text-center text-muted-foreground">{error}</p><button onClick={() => window.location.reload()} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">Réessayer</button></PageState>;
+    return <PageState><MonitorSmartphone className="h-10 w-10 text-muted-foreground" /><h1 className="text-xl font-bold">Module kiosque indisponible</h1><p className="max-w-lg text-center text-muted-foreground">{error}</p><button onClick={requiresReconnect ? reconnect : () => window.location.reload()} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">{requiresReconnect ? 'Se reconnecter' : 'Réessayer'}</button></PageState>;
   }
 
   return (
