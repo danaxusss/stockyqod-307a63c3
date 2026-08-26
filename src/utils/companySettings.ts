@@ -2,6 +2,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { getCompanyContext } from './supabaseCompanyFilter';
 
 export interface PrintColumns {
+  showImage: boolean;
   showBrand: boolean;
   showBarcode: boolean;
   showUnitPrice: boolean;
@@ -35,6 +36,7 @@ export interface QuoteStyle {
 }
 
 const DEFAULT_PRINT_COLUMNS: PrintColumns = {
+  showImage: false,
   showBrand: true,
   showBarcode: true,
   showUnitPrice: true,

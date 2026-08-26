@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Images, Upload, Search, Link2, Trash2, Download, X, Loader, CheckSquare, Square, ChevronLeft, ChevronRight, ZoomIn } from 'lucide-react';
+import { Images, Upload, Search, Link2, Trash2, Download, X, Loader, CheckSquare, Square, ChevronLeft, ChevronRight, ZoomIn, AlertTriangle, ImagePlus } from 'lucide-react';
 import { zipSync } from 'fflate';
 import { useLocation } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -9,31 +9,12 @@ import { useUserAuth } from '../hooks/useUserAuth';
 import { useAppContext } from '../context/AppContext';
 import { useEscapeKey } from '../hooks/useShortcuts';
 import { ProductPhoto, Product } from '../types';
-
-const MAX_PX = 600;
-const JPEG_Q = 0.82;
-
-function compressImage(file: File): Promise<File> {
-  return new Promise(resolve => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      let { width: w, height: h } = img;
-      if (w <= MAX_PX && h <= MAX_PX) { resolve(file); return; }
-      if (w > h) { h = Math.round(h * MAX_PX / w); w = MAX_PX; }
-      else       { w = Math.round(w * MAX_PX / h); h = MAX_PX; }
-      const canvas = document.createElement('canvas');
-      canvas.width = w; canvas.height = h;
-      canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
-      canvas.toBlob(blob => {
-        resolve(blob ? new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' }) : file);
-      }, 'image/jpeg', JPEG_Q);
-    };
-    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
-    img.src = url;
-  });
-}
+import {
+  analyzeProductImageFiles,
+  PRODUCT_IMAGE_BATCH_LIMIT,
+  type ProductImageBatchAnalysis,
+  uploadPrimaryProductImage,
+} from '../utils/productImages';
 
 function getPublicUrl(storagePath: string) {
   return supabase.storage.from('product-photos').getPublicUrl(storagePath).data.publicUrl;
@@ -44,7 +25,7 @@ export default function ProductPhotosPage() {
   const { companyId: adminCompanyId, currentUser } = useAuth();
   const { authenticatedUser } = useUserAuth();
   const companyId = adminCompanyId || authenticatedUser?.company_id || null;
-  const { state } = useAppContext();
+  const { state, syncData } = useAppContext();
 
   const [gridCols, setGridCols] = useState<6 | 9 | 12>(6);
   const [pageSize, setPageSize] = useState<50 | 100 | 200 | 500>(100);
@@ -59,6 +40,8 @@ export default function ProductPhotosPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [batchAnalysis, setBatchAnalysis] = useState<ProductImageBatchAnalysis | null>(null);
+  const [existingImageMode, setExistingImageMode] = useState<'skip' | 'replace'>('skip');
 
   // Lightbox
   const [lightbox, setLightbox] = useState<ProductPhoto | null>(null);
@@ -108,61 +91,75 @@ export default function ProductPhotosPage() {
   const safePage = Math.min(page, totalPages);
   const paginated = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
 
-  // Bulk import
-  const handleBulkFiles = async (files: FileList | null) => {
+  // Product image import: the file name (without extension) must equal the exact barcode/reference.
+  const handleBulkFiles = (files: FileList | null) => {
     if (!files || files.length === 0) return;
     if (!companyId) { showToast({ type: 'error', message: 'Aucune société associée' }); return; }
+    const analysis = analyzeProductImageFiles(Array.from(files), state.products);
+    setExistingImageMode('skip');
+    setBatchAnalysis(analysis);
+    if (bulkFileInputRef.current) bulkFileInputRef.current.value = '';
+  };
+
+  const closeBatchAnalysis = () => {
+    if (isUploading) return;
+    setBatchAnalysis(null);
+    setUploadProgress(0);
+  };
+
+  const confirmBulkImport = async () => {
+    if (!batchAnalysis || !companyId) return;
+    const toUpload = existingImageMode === 'replace'
+      ? batchAnalysis.candidates
+      : batchAnalysis.newImages;
+    if (toUpload.length === 0) {
+      showToast({ type: 'warning', message: 'Aucune nouvelle image à importer avec les options sélectionnées' });
+      return;
+    }
+
     setIsUploading(true);
     setUploadProgress(0);
     let ok = 0, fail = 0;
-    const arr = Array.from(files);
-    for (let i = 0; i < arr.length; i++) {
-      const file = arr[i];
+    for (let i = 0; i < toUpload.length; i++) {
+      const candidate = toUpload[i];
       try {
-        if (file.size > 20 * 1024 * 1024) { fail++; continue; }
-        const compressed = await compressImage(file);
-        const photoId = crypto.randomUUID();
-        const storagePath = `${companyId}/${photoId}.jpg`;
-        const title = file.name.replace(/\.[^/.]+$/, '');
-        const { error: uploadError } = await supabase.storage
-          .from('product-photos')
-          .upload(storagePath, compressed, { upsert: true, contentType: 'image/jpeg' });
-        if (uploadError) { console.error('Upload error:', uploadError); fail++; continue; }
-        const { error: insertError } = await (supabase as any).from('product_photos').insert({
-          id: photoId,
-          company_id: companyId,
-          title,
-          storage_path: storagePath,
-          file_name: compressed.name,
-          file_size: compressed.size,
-          created_by: currentUser?.username,
+        await uploadPrimaryProductImage({
+          product: candidate.product,
+          file: candidate.file,
+          companyId,
+          createdBy: currentUser?.username,
+          replaceExisting: candidate.replacesExisting && existingImageMode === 'replace',
         });
-        if (insertError) { console.error('Insert error:', insertError); fail++; continue; }
         ok++;
-      } catch { fail++; }
-      setUploadProgress(Math.round(((i + 1) / arr.length) * 100));
+      } catch (error) {
+        console.error(`Image upload failed for ${candidate.product.barcode}:`, error);
+        fail++;
+      }
+      setUploadProgress(Math.round(((i + 1) / toUpload.length) * 100));
     }
+    const skippedExisting = existingImageMode === 'skip' ? batchAnalysis.replacements.length : 0;
     showToast({
       type: fail > 0 ? 'warning' : 'success',
-      message: `${ok} photo(s) importée(s)${fail > 0 ? `, ${fail} erreur(s)` : ''}`,
+      message: `${ok} image(s) produit importée(s)${skippedExisting ? `, ${skippedExisting} existante(s) ignorée(s)` : ''}${fail > 0 ? `, ${fail} erreur(s)` : ''}`,
     });
     setIsUploading(false);
     setUploadProgress(0);
-    if (bulkFileInputRef.current) bulkFileInputRef.current.value = '';
-    fetchPhotos();
+    setBatchAnalysis(null);
+    await Promise.all([fetchPhotos(), syncData(true)]);
   };
 
   const handleDelete = async (photo: ProductPhoto) => {
     if (!confirm(`Supprimer "${photo.title || photo.file_name}" ?`)) return;
     try {
       await supabase.storage.from('product-photos').remove([photo.storage_path]);
+      await (supabase as any).from('products').update({ image: null }).eq('image', photo.storage_path);
       await (supabase as any).from('product_photo_products').delete().eq('photo_id', photo.id);
       const { error } = await (supabase as any).from('product_photos').delete().eq('id', photo.id);
       if (error) throw error;
       showToast({ type: 'success', message: 'Photo supprimée' });
       if (lightbox?.id === photo.id) setLightbox(null);
       setSelected(prev => { const s = new Set(prev); s.delete(photo.id); return s; });
-      fetchPhotos();
+      await Promise.allSettled([fetchPhotos(), syncData(true)]);
     } catch {
       showToast({ type: 'error', message: 'Erreur lors de la suppression' });
     }
@@ -217,6 +214,7 @@ export default function ProductPhotosPage() {
     for (const photo of toDelete) {
       try {
         await supabase.storage.from('product-photos').remove([photo.storage_path]);
+        await (supabase as any).from('products').update({ image: null }).eq('image', photo.storage_path);
         await (supabase as any).from('product_photo_products').delete().eq('photo_id', photo.id);
         const { error } = await (supabase as any).from('product_photos').delete().eq('id', photo.id);
         if (error) throw error;
@@ -230,7 +228,7 @@ export default function ProductPhotosPage() {
       message: `${ok} photo(s) supprimée(s)${fail > 0 ? `, ${fail} erreur(s)` : ''}`,
     });
     setIsDeleting(false);
-    fetchPhotos();
+    await Promise.allSettled([fetchPhotos(), syncData(true)]);
   };
 
   // Lightbox nav
@@ -255,9 +253,10 @@ export default function ProductPhotosPage() {
   const closeLinkModal = () => { setLinkModal(null); setLinkSearch(''); setPendingLinks(new Set()); };
 
   useEscapeKey(() => {
+    if (batchAnalysis && !isUploading) { closeBatchAnalysis(); return; }
     if (lightbox) { setLightbox(null); return; }
     if (linkModal) closeLinkModal();
-  }, !!(lightbox || linkModal));
+  }, !!(batchAnalysis || lightbox || linkModal));
 
   // Product link search — show up to 30 results, keep already-linked ones visible (marked)
   useEffect(() => {
@@ -388,17 +387,22 @@ export default function ProductPhotosPage() {
             style={{ boxShadow: 'var(--shadow-glow)' }}
           >
             {isUploading ? <Loader className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-            {isUploading ? `Import... ${uploadProgress}%` : 'Importer'}
+            {isUploading ? `Import... ${uploadProgress}%` : 'Importer par code-barres'}
           </button>
           <input
             ref={bulkFileInputRef}
             type="file"
-            accept="image/*"
+            accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
             multiple
             className="hidden"
             onChange={e => handleBulkFiles(e.target.files)}
           />
         </div>
+      </div>
+
+      <div className="mb-4 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
+        Import produit : nommez chaque fichier avec le code-barres exact, par exemple <span className="font-mono text-foreground">123456789.jpg</span>.
+        Maximum {PRODUCT_IMAGE_BATCH_LIMIT} images par lot et 10 Mo par fichier.
       </div>
 
       {/* Search */}
@@ -445,7 +449,7 @@ export default function ProductPhotosPage() {
                 <img
                   src={getPublicUrl(photo.storage_path)}
                   alt={photo.title || photo.file_name}
-                  className="w-full h-full object-cover cursor-pointer transition-opacity group-hover:opacity-85"
+                  className="w-full h-full object-contain cursor-pointer transition-opacity group-hover:opacity-85"
                   onClick={() => openLightbox(photo)}
                   loading="lazy"
                 />
@@ -505,6 +509,89 @@ export default function ProductPhotosPage() {
               disabled={safePage === totalPages}
               className="px-2 py-1.5 text-xs rounded-lg border border-border disabled:opacity-40 hover:bg-accent transition-colors"
             >»</button>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk import review */}
+      {batchAnalysis && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-start justify-center pt-8 px-4">
+          <div className="w-full max-w-xl bg-card border border-border rounded-xl shadow-xl max-h-[88vh] flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-secondary/50">
+              <div className="flex items-center gap-2">
+                <ImagePlus className="h-4 w-4 text-primary" />
+                <div>
+                  <p className="text-sm font-semibold">Vérifier l'import d'images</p>
+                  <p className="text-[11px] text-muted-foreground">Correspondance exacte entre nom de fichier et code-barres Stocky</p>
+                </div>
+              </div>
+              <button onClick={closeBatchAnalysis} disabled={isUploading} className="p-1 rounded text-muted-foreground hover:text-foreground disabled:opacity-40">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4 overflow-y-auto">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="rounded-lg bg-emerald-500/10 p-2.5"><p className="text-[11px] text-muted-foreground">Nouvelles</p><p className="text-xl font-bold text-emerald-600">{batchAnalysis.newImages.length}</p></div>
+                <div className="rounded-lg bg-amber-500/10 p-2.5"><p className="text-[11px] text-muted-foreground">À remplacer</p><p className="text-xl font-bold text-amber-600">{batchAnalysis.replacements.length}</p></div>
+                <div className="rounded-lg bg-destructive/10 p-2.5"><p className="text-[11px] text-muted-foreground">Non trouvées</p><p className="text-xl font-bold text-destructive">{batchAnalysis.unmatched.length}</p></div>
+                <div className="rounded-lg bg-secondary p-2.5"><p className="text-[11px] text-muted-foreground">Ignorées</p><p className="text-xl font-bold text-foreground">{batchAnalysis.invalid.length + batchAnalysis.duplicates.length + batchAnalysis.overflow.length}</p></div>
+              </div>
+
+              {batchAnalysis.replacements.length > 0 && (
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+                  <div className="flex gap-2">
+                    <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium">{batchAnalysis.replacements.length} produit(s) ont déjà une image</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Le remplacement met immédiatement à jour Stocky, le catalogue et les prochains exports.</p>
+                      <div className="mt-3 grid sm:grid-cols-2 gap-2">
+                        <label className={`flex gap-2 rounded-lg border p-2.5 cursor-pointer ${existingImageMode === 'skip' ? 'border-primary bg-primary/5' : 'border-border'}`}>
+                          <input type="radio" name="existing-mode" checked={existingImageMode === 'skip'} onChange={() => setExistingImageMode('skip')} />
+                          <span><span className="block text-xs font-medium">Conserver les images</span><span className="block text-[11px] text-muted-foreground">Ignorer les produits déjà illustrés</span></span>
+                        </label>
+                        <label className={`flex gap-2 rounded-lg border p-2.5 cursor-pointer ${existingImageMode === 'replace' ? 'border-amber-500 bg-amber-500/5' : 'border-border'}`}>
+                          <input type="radio" name="existing-mode" checked={existingImageMode === 'replace'} onChange={() => setExistingImageMode('replace')} />
+                          <span><span className="block text-xs font-medium">Remplacer</span><span className="block text-[11px] text-muted-foreground">Utiliser les nouveaux fichiers</span></span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {(batchAnalysis.unmatched.length > 0 || batchAnalysis.invalid.length > 0 || batchAnalysis.duplicates.length > 0 || batchAnalysis.overflow.length > 0) && (
+                <div className="rounded-lg border border-border p-3 text-xs">
+                  <p className="font-medium text-foreground mb-2">Fichiers qui ne seront pas importés</p>
+                  <div className="max-h-32 overflow-y-auto space-y-1 text-muted-foreground">
+                    {batchAnalysis.unmatched.map(file => <p key={`unmatched-${file.name}`}><span className="font-mono text-foreground">{file.name}</span> — produit introuvable dans Stocky</p>)}
+                    {batchAnalysis.invalid.map(({ file, reason }) => <p key={`invalid-${file.name}`}><span className="font-mono text-foreground">{file.name}</span> — {reason}</p>)}
+                    {batchAnalysis.duplicates.map(file => <p key={`duplicate-${file.name}`}><span className="font-mono text-foreground">{file.name}</span> — code-barres dupliqué dans ce lot</p>)}
+                    {batchAnalysis.overflow.map(file => <p key={`overflow-${file.name}`}><span className="font-mono text-foreground">{file.name}</span> — au-delà de la limite de {PRODUCT_IMAGE_BATCH_LIMIT}</p>)}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="px-4 py-3 border-t border-border bg-background/50">
+              {isUploading && (
+                <div className="mb-2 h-1.5 rounded-full bg-secondary overflow-hidden">
+                  <div className="h-full bg-primary transition-all" style={{ width: `${uploadProgress}%` }} />
+                </div>
+              )}
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs text-muted-foreground">
+                  {batchAnalysis.newImages.length + (existingImageMode === 'replace' ? batchAnalysis.replacements.length : 0)} image(s) seront importées
+                </p>
+                <div className="flex gap-2">
+                  <button onClick={closeBatchAnalysis} disabled={isUploading} className="px-3 py-2 text-sm rounded-lg border border-border hover:bg-accent disabled:opacity-40">Annuler</button>
+                  <button onClick={confirmBulkImport} disabled={isUploading || (batchAnalysis.newImages.length + (existingImageMode === 'replace' ? batchAnalysis.replacements.length : 0) === 0)} className="flex items-center gap-2 px-3 py-2 text-sm rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40">
+                    {isUploading ? <Loader className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                    {isUploading ? `${uploadProgress}%` : 'Lancer l’import'}
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -603,7 +690,7 @@ export default function ProductPhotosPage() {
               <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
                 {/* Thumbnail */}
                 <img src={getPublicUrl(linkModal.storage_path)} alt={linkModal.title}
-                  className="w-14 h-14 object-cover rounded-lg border border-border" />
+                  className="w-14 h-14 object-contain rounded-lg border border-border bg-secondary/30" />
 
                 {/* Existing links */}
                 {(linkModal.product_photo_products || []).length > 0 && (

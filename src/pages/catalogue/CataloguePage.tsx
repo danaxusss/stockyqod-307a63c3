@@ -9,6 +9,8 @@ import { CompanySettingsService } from '../../utils/companySettings';
 import { getCompanyContext } from '../../utils/supabaseCompanyFilter';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
+import { Link } from 'react-router-dom';
+import { uploadPrimaryProductImage } from '../../utils/productImages';
 
 const fmt = (n: number | null) => n == null ? '—' : new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(n);
 type VisFilter = 'all' | 'visible' | 'hidden' | 'nophoto';
@@ -124,8 +126,17 @@ export default function CataloguePage() {
   const onPhoto = async (file?: File) => {
     const p = photoTarget.current;
     if (!file || !p) return;
+    if (p.image && !window.confirm('Ce produit possède déjà une image. Voulez-vous la remplacer ?')) return;
     try {
-      const path = await CatalogueService.setPhoto(p, file);
+      const { companyId } = getCompanyContext();
+      if (!companyId) throw new Error('Aucune société associée');
+      const path = await uploadPrimaryProductImage({
+        product: { barcode: p.ref, name: p.designation, image: p.image },
+        file,
+        companyId,
+        createdBy: currentUser?.username,
+        replaceExisting: !!p.image,
+      });
       patch(p.id, { image: path });
       showToast({ type: 'success', message: 'Photo mise à jour' });
     } catch (e: any) { showToast({ type: 'error', message: e?.message || 'Échec' }); }
@@ -255,10 +266,13 @@ export default function CataloguePage() {
           <div className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10"><BookImage className="h-5 w-5 text-primary" /></div>
           <div>
             <h1 className="text-lg font-bold text-foreground leading-tight">Catalogue</h1>
-            <p className="text-xs text-muted-foreground">{products.length} produits · {families.length} familles · liste indépendante de Stocky</p>
+            <p className="text-xs text-muted-foreground">{products.length} produits · {families.length} familles · données produits partagées avec Stocky</p>
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <Link to="/photos" className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border bg-secondary text-sm hover:bg-accent">
+            <Upload className="h-3.5 w-3.5" /> Importer images
+          </Link>
           <button onClick={() => setShowCalc(v => !v)}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm ${showCalc ? 'bg-primary/10 border-primary/30 text-primary' : 'bg-secondary border-border'}`}>
             <Calculator className="h-3.5 w-3.5" /> % Prix

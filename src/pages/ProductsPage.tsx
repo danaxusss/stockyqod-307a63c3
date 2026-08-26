@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Package, Search, Edit, Check, X, Loader, SortAsc, SortDesc, ChevronLeft, ChevronRight, Filter, Paperclip, ShoppingCart, Images, Info } from 'lucide-react';
+import { Package, Search, Edit, Check, X, Loader, SortAsc, SortDesc, ChevronLeft, ChevronRight, Filter, Paperclip, ShoppingCart, Images, Info, Eye, ImageOff, Building, Tag } from 'lucide-react';
 import { Product, StockLocation } from '../types';
 import { useAppContext } from '../context/AppContext';
 import { StockLocationsService } from '../utils/supabaseStockLocations';
@@ -10,6 +10,8 @@ import { useToast } from '../context/ToastContext';
 import { useQuoteCart } from '../hooks/useQuoteCart';
 import { useAuth } from '../hooks/useAuth';
 import { useProductOverrides } from '../hooks/useProductOverrides';
+import { resolveProductImageUrl } from '../utils/productImages';
+import { useEscapeKey } from '../hooks/useShortcuts';
 
 const PRODUCTS_PER_PAGE = 20;
 type SortField = 'name' | 'brand' | 'price' | 'buyprice' | 'provider';
@@ -35,8 +37,11 @@ export default function ProductsPage() {
   const [photoCounts, setPhotoCounts] = useState<Record<string, number>>({});
   const [qtyMap, setQtyMap] = useState<Record<string, number>>({});
   const [stockLocations, setStockLocations] = useState<StockLocation[]>([]);
+  const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
 
   const products = state.products || [];
+
+  useEscapeKey(() => setQuickViewProduct(null), !!quickViewProduct);
 
   // Fetch sheet + photo counts
   useEffect(() => {
@@ -201,6 +206,7 @@ export default function ProductsPage() {
               <table className="w-full">
                 <thead className="bg-secondary">
                   <tr>
+                    <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Image</th>
                     <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Code</th>
                     {([
                       ['name', 'Nom'],
@@ -226,6 +232,20 @@ export default function ProductsPage() {
                     const hasPhotos = (photoCounts[product.barcode] || 0) > 0;
                     return (
                       <tr key={product.barcode} className="hover:bg-accent/50">
+                        <td className="px-3 py-2">
+                          <button
+                            type="button"
+                            onClick={() => setQuickViewProduct(product)}
+                            className="w-11 h-11 aspect-square rounded-lg border border-border bg-secondary/30 overflow-hidden flex items-center justify-center hover:border-primary/60 transition-colors"
+                            title="Aperçu rapide"
+                          >
+                            {product.image ? (
+                              <img src={resolveProductImageUrl(product.image) || ''} alt={product.name} className="w-full h-full object-contain" loading="lazy" />
+                            ) : (
+                              <ImageOff className="h-4 w-4 text-muted-foreground/50" />
+                            )}
+                          </button>
+                        </td>
                         <td className="px-3 py-2 text-[11px] text-muted-foreground font-mono">{product.barcode}</td>
                         <td className="px-3 py-2">
                           {isEditing ? (
@@ -326,6 +346,9 @@ export default function ProductsPage() {
                             </div>
                           ) : (
                             <div className="flex items-center space-x-1">
+                              <button onClick={() => setQuickViewProduct(product)} className="p-1 text-muted-foreground hover:bg-accent rounded" title="Aperçu rapide">
+                                <Eye className="h-3.5 w-3.5" />
+                              </button>
                               <Link to={`/product/${encodeURIComponent(product.barcode)}`} className="p-1 text-muted-foreground hover:bg-accent rounded" title="Fiche produit">
                                 <Info className="h-3.5 w-3.5" />
                               </Link>
@@ -373,6 +396,85 @@ export default function ProductsPage() {
           </>
         )}
       </div>
+
+      {quickViewProduct && (() => {
+        const quickTotalStock = Object.values(quickViewProduct.stock_levels || {}).reduce((sum, value) => sum + (Number(value) || 0), 0);
+        const quickImageUrl = resolveProductImageUrl(quickViewProduct.image);
+        return (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onMouseDown={event => { if (event.target === event.currentTarget) setQuickViewProduct(null); }}>
+            <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-card border border-border rounded-2xl shadow-2xl">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+                <div>
+                  <p className="text-xs text-muted-foreground">Aperçu rapide</p>
+                  <h2 className="text-base font-semibold text-foreground line-clamp-1">{quickViewProduct.name}</h2>
+                </div>
+                <button onClick={() => setQuickViewProduct(null)} className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent" title="Fermer">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="p-4 grid md:grid-cols-[240px_1fr] gap-5">
+                <div className="w-full aspect-square rounded-xl border border-border bg-secondary/20 overflow-hidden flex items-center justify-center">
+                  {quickImageUrl ? (
+                    <img src={quickImageUrl} alt={quickViewProduct.name} className="w-full h-full object-contain" />
+                  ) : (
+                    <div className="text-center text-muted-foreground"><ImageOff className="h-12 w-12 mx-auto opacity-40" /><p className="text-xs mt-2">Aucune image</p></div>
+                  )}
+                </div>
+
+                <div className="min-w-0 space-y-4">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="rounded-lg bg-secondary/60 p-3">
+                      <p className="text-[11px] text-muted-foreground">Code-barres</p>
+                      <p className="text-sm font-mono font-medium break-all">{quickViewProduct.barcode}</p>
+                    </div>
+                    <div className="rounded-lg bg-emerald-500/10 p-3">
+                      <p className="text-[11px] text-muted-foreground">Stock total</p>
+                      <p className="text-lg font-bold text-emerald-600">{quickTotalStock}</p>
+                    </div>
+                    <div className="rounded-lg bg-secondary/60 p-3">
+                      <p className="text-[11px] text-muted-foreground flex items-center gap-1"><Tag className="h-3 w-3" /> Marque</p>
+                      <p className="text-sm font-medium truncate">{quickViewProduct.brand || '—'}</p>
+                    </div>
+                    <div className="rounded-lg bg-secondary/60 p-3">
+                      <p className="text-[11px] text-muted-foreground flex items-center gap-1"><Building className="h-3 w-3" /> Fournisseur</p>
+                      <p className="text-sm font-medium truncate">{quickViewProduct.provider || '—'}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="rounded-lg border border-border p-2"><p className="text-[10px] text-muted-foreground">Achat</p><p className="text-sm font-semibold">{formatCurrency(quickViewProduct.buyprice)}</p></div>
+                    <div className="rounded-lg border border-border p-2"><p className="text-[10px] text-muted-foreground">Vente</p><p className="text-sm font-semibold">{formatCurrency(quickViewProduct.price)}</p></div>
+                    <div className="rounded-lg border border-border p-2"><p className="text-[10px] text-muted-foreground">Revendeur</p><p className="text-sm font-semibold">{formatCurrency(quickViewProduct.reseller_price)}</p></div>
+                  </div>
+
+                  {Object.keys(quickViewProduct.stock_levels || {}).length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-foreground mb-1.5">Stock par emplacement</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {Object.entries(quickViewProduct.stock_levels || {}).map(([location, quantity]) => (
+                          <span key={location} className="px-2 py-1 rounded-md bg-primary/10 text-primary text-xs">{location.replace(/_/g, ' ')} · {Number(quantity) || 0}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <Link to={`/product/${encodeURIComponent(quickViewProduct.barcode)}`} className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-border hover:bg-accent text-sm">
+                      <Info className="h-4 w-4" /> Fiche complète
+                    </Link>
+                    {canCreateQuote() && (
+                      <button onClick={() => { handleAddToCart(quickViewProduct); setQuickViewProduct(null); }} className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-sm">
+                        <ShoppingCart className="h-4 w-4" /> Ajouter au devis
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Stats */}
       {filtered.length > 0 && (

@@ -343,7 +343,7 @@ function CompanySettingsTab() {
 
   const handlePrintColumnToggle = (col: keyof PrintColumns) => {
     if (!settings) return;
-    const current = settings.quote_visible_fields.printColumns || { showBrand: true, showBarcode: true, showUnitPrice: true, showDiscount: true };
+    const current = settings.quote_visible_fields.printColumns || { showImage: false, showBrand: true, showBarcode: true, showUnitPrice: true, showDiscount: true };
     setSettings({
       ...settings,
       quote_visible_fields: {
@@ -717,8 +717,9 @@ function CompanySettingsTab() {
         </h2>
         <div className="mb-4">
           <p className="text-xs font-medium text-foreground mb-2">Colonnes du tableau produits (devis, facture, proforma...)</p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
             {([
+              { key: 'showImage', label: 'Image produit' },
               { key: 'showBrand', label: 'Marque' },
               { key: 'showBarcode', label: 'REF / Code-barres' },
               { key: 'showUnitPrice', label: 'Prix unitaire HT' },
