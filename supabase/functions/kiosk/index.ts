@@ -33,6 +33,15 @@ function text(value: unknown, max: number): string {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
 }
 
+function isValidEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value);
+}
+
+function isValidPhone(value: string): boolean {
+  const digits = value.replace(/\D/g, "").length;
+  return /^\+?[0-9\s().-]{7,24}$/.test(value) && digits >= 7 && digits <= 15;
+}
+
 function stringArray(value: unknown, maxItems = 500): string[] {
   if (!Array.isArray(value)) return [];
   return Array.from(new Set(value.map(v => text(v, 200)).filter(Boolean))).slice(0, maxItems);
@@ -165,11 +174,20 @@ serve(async (req) => {
       const customerPhone = text(customer.phone, 40);
       const customerEmail = text(customer.email, 160);
       const customerNote = text(customer.note, 500);
-      if (customerName.length < 2 || customerPhone.length < 5) {
-        return json(req, { error: "Name and phone are required" }, 400);
-      }
-      if (customerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)) {
-        return json(req, { error: "Invalid email address" }, 400);
+      const deferContact = body.defer_contact === true;
+      if (!deferContact) {
+        if (customerName.length < 2 || !customerPhone) {
+          return json(req, { error: "Name and phone are required" }, 400);
+        }
+        if (!isValidPhone(customerPhone)) {
+          return json(req, { error: "Invalid phone number" }, 400);
+        }
+        if (kiosk.require_email === true && !customerEmail) {
+          return json(req, { error: "Email is required" }, 400);
+        }
+        if (customerEmail && !isValidEmail(customerEmail)) {
+          return json(req, { error: "Invalid email address" }, 400);
+        }
       }
       if (!Array.isArray(body.items) || body.items.length < 1 || body.items.length > 100) {
         return json(req, { error: "A request must contain 1 to 100 products" }, 400);
@@ -183,11 +201,12 @@ serve(async (req) => {
       }
       const { data, error } = await supabase.rpc("create_kiosk_request", {
         p_profile_id: kiosk.id,
-        p_customer_name: customerName,
-        p_customer_phone: customerPhone,
-        p_customer_email: customerEmail || null,
+        p_customer_name: deferContact ? "" : customerName,
+        p_customer_phone: deferContact ? "" : customerPhone,
+        p_customer_email: deferContact ? null : customerEmail || null,
         p_customer_note: customerNote || null,
         p_items: items,
+        p_contact_details_pending: deferContact,
       });
       if (error) throw error;
       const created = Array.isArray(data) ? data[0] : data;
@@ -330,7 +349,7 @@ serve(async (req) => {
       const status = text(body.status, 30);
       const search = text(body.search, 100).replace(/[,%_]/g, " ");
       let query = supabase.from("kiosk_requests").select(
-        "*, kiosk_profile:kiosk_profiles!kiosk_requests_kiosk_profile_id_fkey(name), assigned_company:companies!kiosk_requests_assigned_company_id_fkey(name), assigned_user:app_users!kiosk_requests_assigned_user_id_fkey(username, custom_seller_name), kiosk_request_items(count)",
+        "*, kiosk_profile:kiosk_profiles!kiosk_requests_kiosk_profile_id_fkey(name, require_email), assigned_company:companies!kiosk_requests_assigned_company_id_fkey(name), assigned_user:app_users!kiosk_requests_assigned_user_id_fkey(username, custom_seller_name), kiosk_request_items(count)",
         { count: "exact" },
       );
       if (!staff.is_superadmin) {
@@ -354,7 +373,10 @@ serve(async (req) => {
     let currentRequest: Record<string, unknown> | null = null;
     if (["admin_get_request", "admin_update_request", "admin_convert_request"].includes(action)) {
       if (!UUID_RE.test(requestId)) return json(req, { error: "Invalid request" }, 400);
-      const { data, error } = await supabase.from("kiosk_requests").select("*").eq("id", requestId).maybeSingle();
+      const { data, error } = await supabase.from("kiosk_requests")
+        .select("*, kiosk_profile:kiosk_profiles!kiosk_requests_kiosk_profile_id_fkey(name, require_email)")
+        .eq("id", requestId)
+        .maybeSingle();
       if (error) throw error;
       if (!data || !canAccessRequest(staff, data)) return json(req, { error: "Kiosk request not found" }, 404);
       currentRequest = data;
@@ -420,6 +442,9 @@ serve(async (req) => {
 
     if (action === "admin_convert_request") {
       if (!staff.can_create_quote && !isCompanyReviewer(staff)) return json(req, { error: "Quote creation access required" }, 403);
+      if (currentRequest?.contact_details_pending === true) {
+        return json(req, { error: "Complete customer details before creating the quote" }, 400);
+      }
       const { data, error } = await supabase.rpc("convert_kiosk_request", {
         p_request_id: requestId,
         p_actor_user_id: staff.id,
@@ -433,7 +458,11 @@ serve(async (req) => {
     return json(req, { error: "Invalid action" }, 400);
   } catch (error) {
     console.error("kiosk error:", error);
-    const message = error instanceof Error ? error.message : "Unexpected kiosk error";
+    const message = error instanceof Error
+      ? error.message
+      : typeof (error as { message?: unknown })?.message === "string"
+        ? String((error as { message: string }).message)
+        : "Unexpected kiosk error";
     return json(req, { error: message }, 500);
   }
 });
