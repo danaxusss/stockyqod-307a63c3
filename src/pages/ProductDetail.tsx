@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { Package, ArrowLeft, Copy, MapPin, DollarSign, ShoppingCart, Home, AlertCircle, Users, Building, TrendingUp, Search, Calculator, Plus, Paperclip, Upload, Download, Trash2, Loader, FileText, X, Images, ImageOff, ImagePlus } from 'lucide-react';
+import { Package, ArrowLeft, Copy, MapPin, DollarSign, ShoppingCart, Home, AlertCircle, Users, Building, TrendingUp, Search, Calculator, Plus, Paperclip, Upload, Download, Trash2, Loader, FileText, X, Images, ImagePlus } from 'lucide-react';
 import { Product, TechnicalSheet, StockLocation } from '../types';
 import { useAppContext } from '../context/AppContext';
 import { searchStateManager } from '../utils/searchStateManager';
@@ -12,6 +12,12 @@ import { useAuth } from '../hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { useProductOverrides } from '../hooks/useProductOverrides';
 import { resolveProductImageUrl, uploadPrimaryProductImage } from '../utils/productImages';
+
+const KIOSK_CATEGORIES: Array<{ value: NonNullable<Product['kiosk_category']>; label: string }> = [
+  { value: 'utensils', label: 'Ustensiles' },
+  { value: 'furniture', label: 'Mobilier' },
+  { value: 'equipment', label: 'Équipement' },
+];
 
 export function ProductDetail() {
   const { id } = useParams<{ id: string }>();
@@ -250,6 +256,21 @@ export function ProductDetail() {
     }
   };
 
+  const updateKioskCategory = async (value: Product['kiosk_category']) => {
+    if (!product || !isStock) return;
+    const previous = product.kiosk_category || null;
+    setProduct(current => current ? { ...current, kiosk_category: value } : current);
+    const { error: categoryError } = await supabase.from('products')
+      .update({ kiosk_category: value })
+      .eq('barcode', product.barcode);
+    if (categoryError) {
+      setProduct(current => current ? { ...current, kiosk_category: previous } : current);
+      showToast({ type: 'error', title: 'Classement impossible', message: categoryError.message });
+      return;
+    }
+    showToast({ type: 'success', message: 'Type kiosque mis à jour' });
+  };
+
   const handleBackToSearch = () => navigate('/search');
   const handleBackNavigation = () => { if (cameFromSearch) navigate('/search'); else navigate(-1); };
 
@@ -368,8 +389,8 @@ export function ProductDetail() {
                 />
               ) : (
                 <div className="text-center text-muted-foreground px-4">
-                  <ImageOff className="h-10 w-10 mx-auto mb-2 opacity-50" />
-                  <p className="text-xs">Aucune image</p>
+                  <img src={`${import.meta.env.BASE_URL || '/'}stocky-logo.png`} alt="Stocky" className="mx-auto h-16 w-28 object-contain opacity-35" />
+                  <p className="mt-2 text-xs">Image à ajouter</p>
                 </div>
               )}
             </div>
@@ -378,6 +399,14 @@ export function ProductDetail() {
               <p className="text-xs text-muted-foreground mt-1 max-w-xl">
                 Cette image carrée est partagée par la liste Stocky, le catalogue, le kiosque et les exports de devis.
               </p>
+              <label className="mt-3 block max-w-xs">
+                <span className="mb-1 block text-[11px] font-medium text-muted-foreground">Type de produit pour le kiosque</span>
+                <select value={product.kiosk_category || ''} onChange={event => updateKioskCategory((event.target.value || null) as Product['kiosk_category'])} disabled={!isStock}
+                  className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground disabled:opacity-60">
+                  <option value="">Non classé</option>
+                  {KIOSK_CATEGORIES.map(category => <option key={category.value} value={category.value}>{category.label}</option>)}
+                </select>
+              </label>
               {isStock && (
                 <>
                   <input

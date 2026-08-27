@@ -30,6 +30,10 @@ class AuthStateManager {
 
 const authStateManager = new AuthStateManager();
 
+export function isAllowedByList(allowedValues: string[] | null | undefined, value: string): boolean {
+  return !allowedValues?.length || allowedValues.includes(value);
+}
+
 export function useAuth() {
   const [role, setRole] = useState<UserRole>(() => StorageManager.getRole());
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
@@ -119,7 +123,7 @@ export function useAuth() {
 
     const permissions: UserPermissions = {
       canCreateQuote: user.can_create_quote,
-      allowedStockLocations: user.allowed_stock_locations,
+      allowedStockLocations: user.allowed_stock_locations || [],
       priceDisplayType: user.price_display_type,
       isAdmin: flags.isAdmin,
       isSuperAdmin: flags.isSuperAdmin,
@@ -194,6 +198,8 @@ export function useAuth() {
         const restoredTasksOnly = user.tasks_only === true;
         const recomputedPermissions: UserPermissions = {
           ...permissions,
+          allowedStockLocations: permissions.allowedStockLocations || user.allowed_stock_locations || [],
+          allowedBrands: permissions.allowedBrands || user.allowed_brands || [],
           isPaie: permissions.isPaie ??
             (freshFlags?.isPaie ?? (user.is_superadmin || user.is_admin || user.is_compta || false)),
           tasksRole: permissions.tasksRole ?? restoredTasksRole,
@@ -324,17 +330,11 @@ export function useAuth() {
   }, [userPermissions]);
 
   const canAccessStockLocation = useCallback((location: string): boolean => {
-    if (!userPermissions || userPermissions.allowedStockLocations.length === 0) {
-      return true; // No restrictions
-    }
-    return userPermissions.allowedStockLocations.includes(location);
+    return isAllowedByList(userPermissions?.allowedStockLocations, location);
   }, [userPermissions]);
 
   const canAccessBrand = useCallback((brand: string): boolean => {
-    if (!userPermissions || !userPermissions.allowedBrands || userPermissions.allowedBrands.length === 0) {
-      return true; // No restrictions
-    }
-    return userPermissions.allowedBrands.includes(brand);
+    return isAllowedByList(userPermissions?.allowedBrands, brand);
   }, [userPermissions]);
 
   const getPriceDisplayType = useCallback((): 'normal' | 'reseller' | 'buy' | 'calculated' => {

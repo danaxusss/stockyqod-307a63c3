@@ -9,7 +9,7 @@ import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../hooks/useAuth';
 import {
   KioskService, type KioskAdminProduct, type KioskAdminProfile, type KioskCompanyOption,
-  type KioskFamily, type KioskRequestDetail, type KioskRequestItem, type KioskRequestStatus,
+  type KioskRequestDetail, type KioskRequestItem, type KioskRequestStatus,
   type KioskRequestSummary, type KioskUserOption,
 } from '../../utils/kioskService';
 
@@ -432,7 +432,6 @@ function ProfileEditor({ profile: initial, companies, users, isSuperadmin, onClo
   onClose: () => void; onSaved: (profile: KioskAdminProfile) => void;
 }) {
   const [profile, setProfile] = useState(initial);
-  const [families, setFamilies] = useState<KioskFamily[]>([]);
   const [brands, setBrands] = useState<string[]>([]);
   const [loadingOptions, setLoadingOptions] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -444,14 +443,14 @@ function ProfileEditor({ profile: initial, companies, users, isSuperadmin, onClo
     if (!profile.company_id) return;
     setLoadingOptions(true);
     KioskService.companyOptions(profile.company_id)
-      .then(data => { setFamilies(data.families); setBrands(data.brands); })
+      .then(data => setBrands(data.brands))
       .catch(err => setError(err instanceof Error ? err.message : 'Options indisponibles'))
       .finally(() => setLoadingOptions(false));
   }, [profile.company_id]);
 
-  const toggleArray = (key: 'visible_family_ids' | 'visible_brands', value: string) => {
-    const current = profile[key];
-    patch({ [key]: current.includes(value) ? current.filter(item => item !== value) : [...current, value] });
+  const toggleBrand = (value: string) => {
+    const current = profile.visible_brands;
+    patch({ visible_brands: current.includes(value) ? current.filter(item => item !== value) : [...current, value] });
   };
   const save = async () => {
     if (!profile.company_id || !profile.name.trim()) { setError('La société et le nom sont obligatoires.'); return; }
@@ -464,7 +463,7 @@ function ProfileEditor({ profile: initial, companies, users, isSuperadmin, onClo
   return (
     <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-0 sm:p-5" onMouseDown={event => { if (event.currentTarget === event.target) onClose(); }}>
       <div className="flex h-full w-full max-w-4xl flex-col overflow-hidden bg-background shadow-2xl sm:h-[92vh] sm:rounded-2xl">
-        <div className="flex items-center justify-between border-b px-5 py-4"><div><h2 className="text-xl font-bold">{profile.id ? 'Réglages du kiosque' : 'Nouveau kiosque'}</h2><p className="text-sm text-muted-foreground">Le lien public ne révèle que les produits autorisés ci-dessous.</p></div><button onClick={onClose} className="rounded-lg p-2 hover:bg-accent"><X className="h-5 w-5" /></button></div>
+        <div className="flex items-center justify-between border-b px-5 py-4"><div><h2 className="text-xl font-bold">{profile.id ? 'Réglages du kiosque' : 'Nouveau kiosque'}</h2><p className="text-sm text-muted-foreground">Le kiosque utilise la liste complète des produits Stocky.</p></div><button onClick={onClose} className="rounded-lg p-2 hover:bg-accent"><X className="h-5 w-5" /></button></div>
         <div className="flex-1 space-y-6 overflow-y-auto p-5 md:p-6">
           {error && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
           <Section title="Identité & accueil" icon={<MonitorSmartphone className="h-4 w-4" />}>
@@ -478,8 +477,8 @@ function ProfileEditor({ profile: initial, companies, users, isSuperadmin, onClo
           </Section>
 
           <Section title="Produits visibles" icon={<Search className="h-4 w-4" />}>
-            <p className="text-sm text-muted-foreground">Laissez une liste vide pour inclure toutes les valeurs. Ces filtres sont appliqués sur le serveur, y compris lors de l’envoi.</p>
-            {loadingOptions ? <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Chargement des familles et marques…</div> : <div className="grid gap-5 md:grid-cols-2"><ChoiceList title="Familles" values={families.map(f => ({ value: f.id, label: f.name }))} selected={profile.visible_family_ids} onToggle={value => toggleArray('visible_family_ids', value)} /><ChoiceList title="Marques" values={brands.map(brand => ({ value: brand, label: brand }))} selected={profile.visible_brands} onToggle={value => toggleArray('visible_brands', value)} /></div>}
+            <p className="text-sm text-muted-foreground">Tous les produits Stocky sont inclus. Laissez la liste des marques vide pour toutes les afficher. Les types kiosque (ustensiles, mobilier, équipement) se définissent depuis la liste ou la fiche produit.</p>
+            {loadingOptions ? <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Chargement des marques…</div> : <ChoiceList title="Marques" values={brands.map(value => ({ value, label: value }))} selected={profile.visible_brands} onToggle={toggleBrand} />}
             <Field label="Produits mis en avant (codes-barres, un par ligne — maximum 24)"><textarea rows={4} value={profile.featured_barcodes.join('\n')} onChange={e => patch({ featured_barcodes: e.target.value.split(/[,\n]/).map(value => value.trim()).filter(Boolean).slice(0, 24) })} className="field py-2 font-mono text-xs" placeholder="6112345678901" /></Field>
           </Section>
         </div>

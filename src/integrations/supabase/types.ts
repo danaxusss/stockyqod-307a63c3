@@ -301,6 +301,7 @@ export type Database = {
           buyprice: number
           created_at: string
           image: string | null
+          kiosk_category: string | null
           name: string
           price: number
           provider: string
@@ -315,6 +316,7 @@ export type Database = {
           buyprice?: number
           created_at?: string
           image?: string | null
+          kiosk_category?: string | null
           name: string
           price?: number
           provider?: string
@@ -329,6 +331,7 @@ export type Database = {
           buyprice?: number
           created_at?: string
           image?: string | null
+          kiosk_category?: string | null
           name?: string
           price?: number
           provider?: string

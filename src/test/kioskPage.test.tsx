@@ -27,12 +27,12 @@ function mockKiosk() {
       price_mode: 'retail', require_email: true, show_availability: true,
       inactivity_timeout_seconds: 180,
     },
-    families: [{ id: 'family-1', name: 'Outillage', sort_order: 0 }],
+    brands: ['Stocky'],
   });
   service.listPublicProducts.mockResolvedValue({
     products: [{
       barcode: '611000000001', name: 'Perceuse de test', brand: 'Stocky', image: null,
-      family_id: 'family-1', family_name: 'Outillage', price: 799, available: true,
+      kiosk_category: 'equipment', price: 799, available: true,
     }],
     total: 1, page: 0, page_size: 30,
   });
@@ -100,6 +100,27 @@ describe('KioskPage', () => {
       { name: '', phone: '', email: '', note: '' },
       [{ barcode: '611000000001', quantity: 1 }],
       true,
+    ));
+  });
+
+  it('filters the full Stocky product list by kiosk type, brand, and availability', async () => {
+    mockKiosk();
+    renderKiosk();
+    expect(await screen.findByRole('heading', { name: 'Bienvenue chez Stocky' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Commencer/i }));
+    expect(await screen.findByText('Perceuse de test')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Équipement' }));
+    await waitFor(() => expect(service.listPublicProducts).toHaveBeenLastCalledWith(
+      TOKEN,
+      expect.objectContaining({ category: 'equipment', page: 0, pageSize: 48 }),
+    ));
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Stocky' } });
+    fireEvent.click(screen.getByLabelText('Disponibles uniquement'));
+    await waitFor(() => expect(service.listPublicProducts).toHaveBeenLastCalledWith(
+      TOKEN,
+      expect.objectContaining({ category: 'equipment', brand: 'Stocky', onlyAvailable: true }),
     ));
   });
 });

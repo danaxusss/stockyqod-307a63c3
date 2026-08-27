@@ -19,7 +19,6 @@ type KioskProfile = {
   company_id: string;
   public_token: string;
   enabled: boolean;
-  visible_family_ids: string[];
   visible_brands: string[];
   featured_barcodes: string[];
   [key: string]: unknown;
@@ -127,26 +126,28 @@ serve(async (req) => {
       const kiosk = profile as KioskProfile & Record<string, unknown>;
 
       if (action === "public_profile") {
-        let familyQuery = supabase.from("catalog_families")
-          .select("id, name, sort_order")
-          .eq("company_id", kiosk.company_id)
-          .order("sort_order")
-          .order("name");
-        if (kiosk.visible_family_ids?.length) familyQuery = familyQuery.in("id", kiosk.visible_family_ids);
-        const { data: families, error } = await familyQuery;
+        const { data: brandRows, error } = await supabase.rpc("kiosk_product_brands", {
+          p_profile_id: kiosk.id,
+        });
         if (error) throw error;
-        return json(req, { profile: publicProfile(kiosk), families: families || [] });
+        return json(req, {
+          profile: publicProfile(kiosk),
+          brands: (brandRows || []).map((row: Record<string, unknown>) => row.brand),
+        });
       }
 
       if (action === "public_catalog") {
         const search = text(body.search, 100);
-        const familyId = UUID_RE.test(text(body.family_id, 80)) ? text(body.family_id, 80) : null;
+        const category = ["utensils", "furniture", "equipment"].includes(body.category) ? body.category : null;
+        const brand = text(body.brand, 200) || null;
         const page = Math.max(0, Math.floor(Number(body.page) || 0));
-        const pageSize = Math.min(60, Math.max(12, Math.floor(Number(body.page_size) || 30)));
-        const { data, error } = await supabase.rpc("kiosk_catalog_search", {
+        const pageSize = Math.min(72, Math.max(12, Math.floor(Number(body.page_size) || 48)));
+        const { data, error } = await supabase.rpc("kiosk_product_search", {
           p_profile_id: kiosk.id,
           p_search: search,
-          p_family_id: familyId,
+          p_category: category,
+          p_brand: brand,
+          p_only_available: body.only_available === true,
           p_offset: page * pageSize,
           p_limit: pageSize,
         });
@@ -158,8 +159,7 @@ serve(async (req) => {
             name: row.name,
             brand: row.brand,
             image: row.image,
-            family_id: row.family_id,
-            family_name: row.family_name,
+            kiosk_category: row.kiosk_category,
             price: row.display_price,
             available: row.available,
           })),
@@ -265,14 +265,9 @@ serve(async (req) => {
       if (!canManageProfiles(staff)) return json(req, { error: "Profile management access required" }, 403);
       const companyId = text(body.company_id, 80);
       if (!UUID_RE.test(companyId) || !canUseCompany(staff, companyId)) return json(req, { error: "Company access denied" }, 403);
-      const [familiesResult, brandsResult] = await Promise.all([
-        supabase.from("catalog_families").select("id, name, sort_order").eq("company_id", companyId).order("sort_order").order("name"),
-        supabase.rpc("kiosk_company_brands", { p_company_id: companyId }),
-      ]);
-      if (familiesResult.error) throw familiesResult.error;
+      const brandsResult = await supabase.rpc("kiosk_company_brands", { p_company_id: companyId });
       if (brandsResult.error) throw brandsResult.error;
       return json(req, {
-        families: familiesResult.data || [],
         brands: (brandsResult.data || []).map((row: Record<string, unknown>) => row.brand),
       });
     }
@@ -316,7 +311,7 @@ serve(async (req) => {
         show_availability: input.show_availability === true,
         inactivity_timeout_seconds: timeout,
         default_assignee_id: assigneeId,
-        visible_family_ids: stringArray(input.visible_family_ids).filter(v => UUID_RE.test(v)),
+        visible_family_ids: [],
         visible_brands: stringArray(input.visible_brands),
         featured_barcodes: stringArray(input.featured_barcodes, 24),
       };

@@ -3,6 +3,7 @@ export interface Product {
   name: string;
   brand: string;
   image?: string | null;
+  kiosk_category?: 'utensils' | 'furniture' | 'equipment' | null;
   techsheet: string;
   price: number;
   buyprice: number;
