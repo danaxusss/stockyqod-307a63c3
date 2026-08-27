@@ -6,6 +6,7 @@ const FUNCTION_NAME = 'kiosk';
 
 export type KioskLanguage = 'fr' | 'en' | 'ar';
 export type KioskPriceMode = 'retail' | 'reseller';
+export type KioskCategory = 'utensils' | 'furniture' | 'equipment';
 export type KioskRequestStatus = 'new' | 'assigned' | 'reviewing' | 'prepared' | 'contacted' | 'converted' | 'rejected';
 
 export interface KioskPublicProfile {
@@ -24,19 +25,12 @@ export interface KioskPublicProfile {
   inactivity_timeout_seconds: number;
 }
 
-export interface KioskFamily {
-  id: string;
-  name: string;
-  sort_order: number;
-}
-
 export interface KioskProduct {
   barcode: string;
   name: string;
   brand: string;
   image: string | null;
-  family_id: string | null;
-  family_name: string | null;
+  kiosk_category: KioskCategory | null;
   price: number | null;
   available: boolean;
 }
@@ -161,19 +155,22 @@ export class KioskService {
     return new URL(`kiosk/${token}`, base).toString();
   }
 
-  static async loadPublic(token: string): Promise<{ profile: KioskPublicProfile; families: KioskFamily[] }> {
+  static async loadPublic(token: string): Promise<{ profile: KioskPublicProfile; brands: string[] }> {
     return invoke({ action: 'public_profile', token });
   }
 
   static async listPublicProducts(token: string, options: {
     search?: string;
-    familyId?: string | null;
+    category?: KioskCategory | null;
+    brand?: string | null;
+    onlyAvailable?: boolean;
     page?: number;
     pageSize?: number;
   } = {}): Promise<{ products: KioskProduct[]; total: number; page: number; page_size: number }> {
     return invoke({
       action: 'public_catalog', token,
-      search: options.search || '', family_id: options.familyId || null,
+      search: options.search || '', category: options.category || null,
+      brand: options.brand || null, only_available: options.onlyAvailable === true,
       page: options.page || 0, page_size: options.pageSize || 30,
     });
   }
@@ -196,7 +193,7 @@ export class KioskService {
     return invoke({ action: 'admin_bootstrap' }, true);
   }
 
-  static async companyOptions(companyId: string): Promise<{ families: KioskFamily[]; brands: string[] }> {
+  static async companyOptions(companyId: string): Promise<{ brands: string[] }> {
     return invoke({ action: 'admin_company_options', company_id: companyId }, true);
   }
 

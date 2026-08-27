@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 import {
-  ArrowLeft, Check, ChevronRight, Expand, ImageOff, Loader2,
+  ArrowLeft, Check, ChevronRight, Expand, Loader2,
   Minus, Package, Plus, RotateCcw, Search, ShoppingCart, UserRound, WifiOff, X,
 } from 'lucide-react';
 import {
-  KioskService, type KioskLanguage, type KioskProduct, type KioskPublicProfile,
-  type KioskFamily,
+  KioskService, type KioskCategory, type KioskLanguage, type KioskProduct, type KioskPublicProfile,
 } from '../../utils/kioskService';
 
 type Stage = 'welcome' | 'catalog' | 'review' | 'submitted';
@@ -28,6 +27,8 @@ const copy = {
     idleTitle: 'Toujours là ?', idleText: 'Cette session sera effacée dans quelques secondes pour protéger vos informations.', stay: 'Continuer',
     offline: 'Connexion interrompue — votre sélection reste affichée.', loading: 'Chargement du kiosque…', unavailable: 'Ce kiosque est indisponible.',
     privacy: 'Vos coordonnées servent uniquement au traitement de cette demande de devis.',
+    categories: 'Type de produit', utensils: 'Ustensiles', furniture: 'Mobilier', equipment: 'Équipement',
+    allBrands: 'Toutes les marques', availableOnly: 'Disponibles uniquement', clearFilters: 'Réinitialiser les filtres',
   },
   en: {
     start: 'Start', details: 'Your details', name: 'Full name', phone: 'Phone', email: 'Email',
@@ -44,6 +45,8 @@ const copy = {
     idleTitle: 'Still there?', idleText: 'This session will be cleared in a few seconds to protect your information.', stay: 'Continue',
     offline: 'Connection lost — your selection is still displayed.', loading: 'Loading kiosk…', unavailable: 'This kiosk is unavailable.',
     privacy: 'Your contact details are used only to process this quote request.',
+    categories: 'Product type', utensils: 'Utensils', furniture: 'Furniture', equipment: 'Equipment',
+    allBrands: 'All brands', availableOnly: 'Available only', clearFilters: 'Reset filters',
   },
   ar: {
     start: 'ابدأ', details: 'معلوماتك', name: 'الاسم الكامل', phone: 'الهاتف', email: 'البريد الإلكتروني',
@@ -60,6 +63,8 @@ const copy = {
     idleTitle: 'هل ما زلت هنا؟', idleText: 'سيتم مسح هذه الجلسة خلال ثوانٍ لحماية معلوماتك.', stay: 'متابعة',
     offline: 'انقطع الاتصال — ما زال اختيارك ظاهراً.', loading: 'جارٍ تحميل الكشك…', unavailable: 'هذا الكشك غير متاح.',
     privacy: 'تُستخدم معلومات الاتصال فقط لمعالجة طلب عرض السعر.',
+    categories: 'نوع المنتج', utensils: 'أدوات', furniture: 'أثاث', equipment: 'معدات',
+    allBrands: 'كل العلامات التجارية', availableOnly: 'المتوفر فقط', clearFilters: 'إعادة ضبط الفلاتر',
   },
 } as const;
 
@@ -78,7 +83,7 @@ const isValidPhone = (value: string) => {
 export default function KioskPage() {
   const { token = '' } = useParams();
   const [profile, setProfile] = useState<KioskPublicProfile | null>(null);
-  const [families, setFamilies] = useState<KioskFamily[]>([]);
+  const [brands, setBrands] = useState<string[]>([]);
   const [stage, setStage] = useState<Stage>('welcome');
   const [customer, setCustomer] = useState({ name: '', phone: '', email: '', note: '' });
   const [deferContact, setDeferContact] = useState(false);
@@ -88,7 +93,9 @@ export default function KioskPage() {
   const [page, setPage] = useState(0);
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
-  const [familyId, setFamilyId] = useState<string | null>(null);
+  const [category, setCategory] = useState<KioskCategory | null>(null);
+  const [brand, setBrand] = useState('');
+  const [onlyAvailable, setOnlyAvailable] = useState(false);
   const [cart, setCart] = useState<Record<string, CartLine>>({});
   const [selectedProduct, setSelectedProduct] = useState<KioskProduct | null>(null);
   const [loading, setLoading] = useState(true);
@@ -117,7 +124,9 @@ export default function KioskPage() {
     setDeferContact(false);
     setCart({});
     setQuery('');
-    setFamilyId(null);
+    setCategory(null);
+    setBrand('');
+    setOnlyAvailable(false);
     setSelectedProduct(null);
     setRequestNumber('');
     setIdleWarning(false);
@@ -150,7 +159,7 @@ export default function KioskPage() {
       .then(data => {
         if (cancelled) return;
         setProfile(data.profile);
-        setFamilies(data.families);
+        setBrands(data.brands || []);
       })
       .catch(error => { if (!cancelled) setFatalError(error instanceof Error ? error.message : 'Kiosk unavailable'); })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -167,7 +176,7 @@ export default function KioskPage() {
     let cancelled = false;
     setCatalogLoading(true);
     setPage(0);
-    KioskService.listPublicProducts(token, { search: debouncedQuery, familyId, page: 0, pageSize: 30 })
+    KioskService.listPublicProducts(token, { search: debouncedQuery, category, brand, onlyAvailable, page: 0, pageSize: 48 })
       .then(data => {
         if (cancelled) return;
         setProducts(data.products);
@@ -176,7 +185,7 @@ export default function KioskPage() {
       .catch(error => { if (!cancelled) setFatalError(error instanceof Error ? error.message : 'Catalogue unavailable'); })
       .finally(() => { if (!cancelled) setCatalogLoading(false); });
     return () => { cancelled = true; };
-  }, [debouncedQuery, familyId, profile, stage, token]);
+  }, [brand, category, debouncedQuery, onlyAvailable, profile, stage, token]);
 
   useEffect(() => {
     armIdleReset();
@@ -223,7 +232,7 @@ export default function KioskPage() {
     setCatalogLoading(true);
     try {
       const data = await KioskService.listPublicProducts(token, {
-        search: debouncedQuery, familyId, page: nextPage, pageSize: 30,
+        search: debouncedQuery, category, brand, onlyAvailable, page: nextPage, pageSize: 48,
       });
       setProducts(current => [...current, ...data.products]);
       setPage(nextPage);
@@ -309,7 +318,26 @@ export default function KioskPage() {
               <div className="relative flex-1"><Search className="absolute start-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" /><input value={query} onChange={e => setQuery(e.target.value)} placeholder={t.search} className="h-14 w-full rounded-2xl border-2 border-slate-200 bg-slate-50 ps-12 pe-12 text-lg outline-none focus:bg-white focus:border-[var(--kiosk-accent)]" />{query && <button onClick={() => setQuery('')} className="absolute end-2 top-1/2 h-10 w-10 -translate-y-1/2 flex items-center justify-center"><X className="h-5 w-5" /></button>}</div>
               <button onClick={requestFullscreen} className="hidden sm:flex h-12 w-12 rounded-xl border border-slate-200 items-center justify-center"><Expand className="h-5 w-5" /></button>
             </div>
-            <div className="mx-auto max-w-[1600px] overflow-x-auto px-4 pb-3"><div className="flex gap-2 min-w-max"><FamilyButton active={!familyId} label={t.all} onClick={() => setFamilyId(null)} accent={accent} />{families.map(family => <FamilyButton key={family.id} active={familyId === family.id} label={family.name} onClick={() => setFamilyId(family.id)} accent={accent} />)}</div></div>
+            <div className="mx-auto max-w-[1600px] px-4 pb-4">
+              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">{t.categories}</p>
+              <div className="overflow-x-auto"><div className="flex min-w-max gap-2">
+                <FilterButton active={!category} label={t.all} onClick={() => setCategory(null)} accent={accent} />
+                <FilterButton active={category === 'utensils'} label={t.utensils} onClick={() => setCategory('utensils')} accent={accent} />
+                <FilterButton active={category === 'furniture'} label={t.furniture} onClick={() => setCategory('furniture')} accent={accent} />
+                <FilterButton active={category === 'equipment'} label={t.equipment} onClick={() => setCategory('equipment')} accent={accent} />
+              </div></div>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                <select aria-label={t.allBrands} value={brand} onChange={event => setBrand(event.target.value)} className="min-h-12 flex-1 rounded-xl border-2 border-slate-200 bg-white px-4 text-base font-semibold outline-none focus:border-[var(--kiosk-accent)]">
+                  <option value="">{t.allBrands}</option>
+                  {brands.map(value => <option key={value} value={value}>{value}</option>)}
+                </select>
+                <label className="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border-2 border-slate-200 bg-white px-4 font-semibold">
+                  <input type="checkbox" checked={onlyAvailable} onChange={event => setOnlyAvailable(event.target.checked)} className="h-5 w-5" />
+                  {t.availableOnly}
+                </label>
+                {(category || brand || onlyAvailable) && <button onClick={() => { setCategory(null); setBrand(''); setOnlyAvailable(false); }} className="min-h-12 rounded-xl px-4 text-sm font-bold text-slate-500 active:bg-slate-100">{t.clearFilters}</button>}
+              </div>
+            </div>
           </header>
 
           <main className="mx-auto max-w-[1600px] p-4 md:p-6">
@@ -318,7 +346,7 @@ export default function KioskPage() {
               <div className="rounded-3xl border-2 border-dashed border-slate-200 bg-white py-24 text-center"><Search className="mx-auto h-12 w-12 text-slate-300" /><p className="mt-4 text-xl font-semibold text-slate-500">{t.noProducts}</p></div>
             ) : (
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
-                {products.map(product => <ProductCard key={product.barcode} product={product} quantity={cart[product.barcode]?.quantity || 0} showPrice={profile.show_prices} showAvailability={profile.show_availability} t={t} accent={accent} onOpen={() => setSelectedProduct(product)} onChange={delta => changeQuantity(product, delta)} />)}
+                {products.map(product => <ProductCard key={product.barcode} product={product} quantity={cart[product.barcode]?.quantity || 0} showPrice={profile.show_prices} showAvailability={profile.show_availability} placeholderLogo={profile.logo_url} t={t} accent={accent} onOpen={() => setSelectedProduct(product)} onChange={delta => changeQuantity(product, delta)} />)}
               </div>
             )}
             {products.length < totalProducts && <button onClick={loadMore} disabled={catalogLoading} className="mx-auto mt-8 flex min-h-14 min-w-52 items-center justify-center rounded-2xl border-2 border-slate-300 bg-white px-8 text-lg font-bold disabled:opacity-50">{catalogLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : t.loadMore}</button>}
@@ -333,7 +361,7 @@ export default function KioskPage() {
           <button onClick={() => setStage('catalog')} className="mb-6 min-h-12 inline-flex items-center gap-2 rounded-xl bg-white border border-slate-200 px-4 font-semibold"><ArrowLeft className="h-5 w-5" /> {t.back}</button>
           <h1 className="text-3xl md:text-4xl font-black">{t.review}</h1>
           <div className="mt-8 space-y-3">
-            {cartLines.map(line => <ReviewLine key={line.product.barcode} line={line} showPrice={profile.show_prices} accent={accent} onSet={quantity => setQuantity(line.product, quantity)} />)}
+            {cartLines.map(line => <ReviewLine key={line.product.barcode} line={line} showPrice={profile.show_prices} placeholderLogo={profile.logo_url} accent={accent} onSet={quantity => setQuantity(line.product, quantity)} />)}
           </div>
           {!cartLines.length && <div className="mt-8 rounded-2xl bg-white p-12 text-center text-lg text-slate-500">{t.empty}</div>}
           <section className="mt-8 rounded-3xl border border-slate-200 bg-white p-5 md:p-7">
@@ -371,7 +399,7 @@ export default function KioskPage() {
         </main>
       )}
 
-      {selectedProduct && <ProductDialog product={selectedProduct} quantity={cart[selectedProduct.barcode]?.quantity || 0} showPrice={profile.show_prices} showAvailability={profile.show_availability} t={t} accent={accent} onClose={() => setSelectedProduct(null)} onChange={delta => changeQuantity(selectedProduct, delta)} />}
+      {selectedProduct && <ProductDialog product={selectedProduct} quantity={cart[selectedProduct.barcode]?.quantity || 0} showPrice={profile.show_prices} showAvailability={profile.show_availability} placeholderLogo={profile.logo_url} t={t} accent={accent} onClose={() => setSelectedProduct(null)} onChange={delta => changeQuantity(selectedProduct, delta)} />}
 
       {idleWarning && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/65 p-5 backdrop-blur-sm">
@@ -390,27 +418,27 @@ function KioskInput({ label, value, onChange, required, disabled, inputMode, aut
   return <label className="block"><span className="mb-2 block text-base font-bold">{label}{required && <span className="text-red-500"> *</span>}</span><input autoFocus={autoFocus} disabled={disabled} inputMode={inputMode} type={inputMode === 'email' ? 'email' : 'text'} value={value} onChange={e => onChange(e.target.value)} className="h-16 w-full rounded-2xl border-2 border-slate-200 bg-white px-5 text-xl outline-none focus:border-[var(--kiosk-accent)] disabled:cursor-not-allowed disabled:bg-slate-100" /></label>;
 }
 
-function FamilyButton({ active, label, onClick, accent }: { active: boolean; label: string; onClick: () => void; accent: string }) {
+function FilterButton({ active, label, onClick, accent }: { active: boolean; label: string; onClick: () => void; accent: string }) {
   return <button onClick={onClick} className={`min-h-12 rounded-xl border-2 px-5 text-base font-bold transition active:scale-95 ${active ? 'text-white' : 'border-slate-200 bg-white text-slate-700'}`} style={active ? { backgroundColor: accent, borderColor: accent } : undefined}>{label}</button>;
 }
 
-function ProductImage({ image, name }: { image: string | null; name: string }) {
+function ProductImage({ image, name, placeholderLogo }: { image: string | null; name: string; placeholderLogo?: string | null }) {
   const url = KioskService.imageUrl(image);
-  return <div className="aspect-square w-full overflow-hidden rounded-2xl bg-white border border-slate-100 flex items-center justify-center">{url ? <img src={url} alt={name} loading="lazy" className="h-full w-full object-contain p-3" /> : <ImageOff className="h-12 w-12 text-slate-200" />}</div>;
+  return <div className="aspect-square w-full overflow-hidden rounded-2xl bg-white border border-slate-100 flex items-center justify-center">{url ? <img src={url} alt={name} loading="lazy" className="h-full w-full object-contain p-3" /> : placeholderLogo ? <img src={placeholderLogo} alt="" className="h-1/2 w-1/2 object-contain opacity-30 grayscale" /> : <img src={`${import.meta.env.BASE_URL || '/'}stocky-logo.png`} alt="" className="h-1/2 w-1/2 object-contain opacity-25 grayscale" />}</div>;
 }
 
-function ProductCard({ product, quantity, showPrice, showAvailability, t, accent, onOpen, onChange }: { product: KioskProduct; quantity: number; showPrice: boolean; showAvailability: boolean; t: KioskCopy; accent: string; onOpen: () => void; onChange: (delta: number) => void }) {
-  return <article className="rounded-3xl border border-slate-200 bg-white p-2.5 shadow-sm flex flex-col"><button onClick={onOpen} className="text-start"><ProductImage image={product.image} name={product.name} /><div className="px-1 pt-3"><p className="min-h-5 truncate text-xs font-bold uppercase tracking-wide text-slate-400">{product.brand || product.family_name || '—'}</p><h2 className="mt-1 line-clamp-2 min-h-12 text-base sm:text-lg font-bold leading-snug">{product.name}</h2><p className="mt-1 truncate font-mono text-xs text-slate-400">{product.barcode}</p>{showAvailability && <p className={`mt-2 text-xs font-bold ${product.available ? 'text-emerald-600' : 'text-amber-600'}`}>{product.available ? t.available : t.onRequest}</p>}{showPrice && <p className="mt-2 text-lg font-black" style={{ color: accent }}>{fmt(product.price || 0)} DH</p>}</div></button><div className="mt-auto pt-3">{quantity > 0 ? <QuantityStepper quantity={quantity} onMinus={() => onChange(-1)} onPlus={() => onChange(1)} accent={accent} /> : <button onClick={() => onChange(1)} className="min-h-12 w-full rounded-xl text-base font-bold text-white" style={{ backgroundColor: accent }}><Plus className="inline h-5 w-5 me-1" />{t.add}</button>}</div></article>;
+function ProductCard({ product, quantity, showPrice, showAvailability, placeholderLogo, t, accent, onOpen, onChange }: { product: KioskProduct; quantity: number; showPrice: boolean; showAvailability: boolean; placeholderLogo?: string | null; t: KioskCopy; accent: string; onOpen: () => void; onChange: (delta: number) => void }) {
+  return <article className="rounded-3xl border border-slate-200 bg-white p-2.5 shadow-sm flex flex-col"><button onClick={onOpen} className="text-start"><ProductImage image={product.image} name={product.name} placeholderLogo={placeholderLogo} /><div className="px-1 pt-3"><p className="min-h-5 truncate text-xs font-bold uppercase tracking-wide text-slate-400">{product.brand || '—'}</p><h2 className="mt-1 line-clamp-2 min-h-12 text-base sm:text-lg font-bold leading-snug">{product.name}</h2><p className="mt-1 truncate font-mono text-xs text-slate-400">{product.barcode}</p>{showAvailability && <p className={`mt-2 text-xs font-bold ${product.available ? 'text-emerald-600' : 'text-amber-600'}`}>{product.available ? t.available : t.onRequest}</p>}{showPrice && <p className="mt-2 text-lg font-black" style={{ color: accent }}>{fmt(product.price || 0)} DH</p>}</div></button><div className="mt-auto pt-3">{quantity > 0 ? <QuantityStepper quantity={quantity} onMinus={() => onChange(-1)} onPlus={() => onChange(1)} accent={accent} /> : <button onClick={() => onChange(1)} className="min-h-12 w-full rounded-xl text-base font-bold text-white" style={{ backgroundColor: accent }}><Plus className="inline h-5 w-5 me-1" />{t.add}</button>}</div></article>;
 }
 
 function QuantityStepper({ quantity, onMinus, onPlus, accent }: { quantity: number; onMinus: () => void; onPlus: () => void; accent: string }) {
   return <div className="grid min-h-12 grid-cols-[48px_1fr_48px] overflow-hidden rounded-xl border-2" style={{ borderColor: accent }}><button onClick={onMinus} className="flex items-center justify-center bg-white"><Minus className="h-5 w-5" /></button><span className="flex items-center justify-center text-lg font-black text-white" style={{ backgroundColor: accent }}>{quantity}</span><button onClick={onPlus} className="flex items-center justify-center bg-white"><Plus className="h-5 w-5" /></button></div>;
 }
 
-function ReviewLine({ line, showPrice, accent, onSet }: { line: CartLine; showPrice: boolean; accent: string; onSet: (quantity: number) => void }) {
-  return <div className="grid grid-cols-[88px_1fr] gap-4 rounded-2xl border border-slate-200 bg-white p-3 sm:grid-cols-[100px_1fr_auto] sm:items-center"><ProductImage image={line.product.image} name={line.product.name} /><div><p className="text-xs font-bold uppercase text-slate-400">{line.product.brand}</p><h2 className="mt-1 text-lg font-bold">{line.product.name}</h2><p className="mt-1 font-mono text-xs text-slate-400">{line.product.barcode}</p>{showPrice && <p className="mt-2 font-black" style={{ color: accent }}>{fmt((line.product.price || 0) * line.quantity)} DH</p>}</div><div className="col-span-2 sm:col-span-1 sm:w-44"><div className="grid h-14 grid-cols-[52px_1fr_52px] overflow-hidden rounded-xl border-2" style={{ borderColor: accent }}><button onClick={() => onSet(line.quantity - 1)} className="flex items-center justify-center"><Minus className="h-5 w-5" /></button><input type="number" min={1} max={999} value={line.quantity} onChange={e => onSet(Number(e.target.value) || 1)} className="w-full text-center text-xl font-black text-white outline-none" style={{ backgroundColor: accent }} /><button onClick={() => onSet(line.quantity + 1)} className="flex items-center justify-center"><Plus className="h-5 w-5" /></button></div></div></div>;
+function ReviewLine({ line, showPrice, placeholderLogo, accent, onSet }: { line: CartLine; showPrice: boolean; placeholderLogo?: string | null; accent: string; onSet: (quantity: number) => void }) {
+  return <div className="grid grid-cols-[88px_1fr] gap-4 rounded-2xl border border-slate-200 bg-white p-3 sm:grid-cols-[100px_1fr_auto] sm:items-center"><ProductImage image={line.product.image} name={line.product.name} placeholderLogo={placeholderLogo} /><div><p className="text-xs font-bold uppercase text-slate-400">{line.product.brand}</p><h2 className="mt-1 text-lg font-bold">{line.product.name}</h2><p className="mt-1 font-mono text-xs text-slate-400">{line.product.barcode}</p>{showPrice && <p className="mt-2 font-black" style={{ color: accent }}>{fmt((line.product.price || 0) * line.quantity)} DH</p>}</div><div className="col-span-2 sm:col-span-1 sm:w-44"><div className="grid h-14 grid-cols-[52px_1fr_52px] overflow-hidden rounded-xl border-2" style={{ borderColor: accent }}><button onClick={() => onSet(line.quantity - 1)} className="flex items-center justify-center"><Minus className="h-5 w-5" /></button><input type="number" min={1} max={999} value={line.quantity} onChange={e => onSet(Number(e.target.value) || 1)} className="w-full text-center text-xl font-black text-white outline-none" style={{ backgroundColor: accent }} /><button onClick={() => onSet(line.quantity + 1)} className="flex items-center justify-center"><Plus className="h-5 w-5" /></button></div></div></div>;
 }
 
-function ProductDialog({ product, quantity, showPrice, showAvailability, t, accent, onClose, onChange }: { product: KioskProduct; quantity: number; showPrice: boolean; showAvailability: boolean; t: KioskCopy; accent: string; onClose: () => void; onChange: (delta: number) => void }) {
-  return <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm" onClick={onClose}><section className="relative max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white p-5 shadow-2xl" onClick={e => e.stopPropagation()}><button onClick={onClose} className="absolute end-4 top-4 z-10 h-12 w-12 rounded-full bg-white/95 shadow flex items-center justify-center"><X className="h-6 w-6" /></button><div className="grid gap-6 sm:grid-cols-2"><ProductImage image={product.image} name={product.name} /><div className="flex flex-col"><p className="text-sm font-bold uppercase tracking-wide text-slate-400">{product.brand}</p><h2 className="mt-2 text-3xl font-black leading-tight">{product.name}</h2><p className="mt-3 font-mono text-sm text-slate-400">{product.barcode}</p>{showAvailability && <p className={`mt-4 font-bold ${product.available ? 'text-emerald-600' : 'text-amber-600'}`}>{product.available ? t.available : t.onRequest}</p>}{showPrice && <p className="mt-4 text-3xl font-black" style={{ color: accent }}>{fmt(product.price || 0)} DH</p>}<div className="mt-auto pt-8">{quantity ? <QuantityStepper quantity={quantity} onMinus={() => onChange(-1)} onPlus={() => onChange(1)} accent={accent} /> : <button onClick={() => onChange(1)} className="min-h-14 w-full rounded-2xl text-lg font-bold text-white" style={{ backgroundColor: accent }}><Plus className="inline h-5 w-5 me-2" />{t.add}</button>}</div></div></div></section></div>;
+function ProductDialog({ product, quantity, showPrice, showAvailability, placeholderLogo, t, accent, onClose, onChange }: { product: KioskProduct; quantity: number; showPrice: boolean; showAvailability: boolean; placeholderLogo?: string | null; t: KioskCopy; accent: string; onClose: () => void; onChange: (delta: number) => void }) {
+  return <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm" onClick={onClose}><section className="relative max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white p-5 shadow-2xl" onClick={e => e.stopPropagation()}><button onClick={onClose} className="absolute end-4 top-4 z-10 h-12 w-12 rounded-full bg-white/95 shadow flex items-center justify-center"><X className="h-6 w-6" /></button><div className="grid gap-6 sm:grid-cols-2"><ProductImage image={product.image} name={product.name} placeholderLogo={placeholderLogo} /><div className="flex flex-col"><p className="text-sm font-bold uppercase tracking-wide text-slate-400">{product.brand}</p><h2 className="mt-2 text-3xl font-black leading-tight">{product.name}</h2><p className="mt-3 font-mono text-sm text-slate-400">{product.barcode}</p>{showAvailability && <p className={`mt-4 font-bold ${product.available ? 'text-emerald-600' : 'text-amber-600'}`}>{product.available ? t.available : t.onRequest}</p>}{showPrice && <p className="mt-4 text-3xl font-black" style={{ color: accent }}>{fmt(product.price || 0)} DH</p>}<div className="mt-auto pt-8">{quantity ? <QuantityStepper quantity={quantity} onMinus={() => onChange(-1)} onPlus={() => onChange(1)} accent={accent} /> : <button onClick={() => onChange(1)} className="min-h-14 w-full rounded-2xl text-lg font-bold text-white" style={{ backgroundColor: accent }}><Plus className="inline h-5 w-5 me-2" />{t.add}</button>}</div></div></div></section></div>;
 }

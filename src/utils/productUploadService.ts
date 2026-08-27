@@ -28,21 +28,22 @@ export class ProductUploadService {
       brand: string;
       provider: string;
       image: string | null;
+      kiosk_category: Product['kiosk_category'];
       stock_levels: unknown;
     }> = [];
     const EXISTING_PAGE = 1000;
     for (let from = 0; ; from += EXISTING_PAGE) {
       const { data, error } = await supabase.from('products')
-        .select('barcode, brand, provider, image, stock_levels')
+        .select('barcode, brand, provider, image, kiosk_category, stock_levels')
         .range(from, from + EXISTING_PAGE - 1);
       if (error) throw new Error(`Unable to load existing products: ${error.message}`);
       existingProducts.push(...(data || []));
       if (!data || data.length < EXISTING_PAGE) break;
     }
-    const existingMap = new Map<string, { brand: string; provider: string; image: string | null }>();
+    const existingMap = new Map<string, { brand: string; provider: string; image: string | null; kiosk_category: Product['kiosk_category'] }>();
     const oldStockByBarcode = new Map<string, Record<string, number>>();
     for (const p of existingProducts) {
-      existingMap.set(p.barcode, { brand: p.brand, provider: p.provider, image: p.image });
+      existingMap.set(p.barcode, { brand: p.brand, provider: p.provider, image: p.image, kiosk_category: p.kiosk_category as Product['kiosk_category'] });
       oldStockByBarcode.set(p.barcode, (p.stock_levels || {}) as Record<string, number>);
     }
 
@@ -76,6 +77,7 @@ export class ProductUploadService {
         name: String(product.name).trim(),
         brand,
         image: existing?.image ?? product.image ?? null,
+        kiosk_category: existing?.kiosk_category ?? product.kiosk_category ?? null,
         techsheet: String(product.techsheet || '').trim(),
         price: Number(product.price) || 0,
         buyprice: Number(product.buyprice) || 0,
@@ -101,6 +103,7 @@ export class ProductUploadService {
         name: p.name,
         brand: p.brand,
         image: p.image ?? null,
+        kiosk_category: p.kiosk_category ?? null,
         techsheet: p.techsheet,
         price: p.price,
         buyprice: p.buyprice,
@@ -235,6 +238,7 @@ export class ProductUploadService {
           name: row.name,
           brand: row.brand,
           image: row.image,
+          kiosk_category: row.kiosk_category as Product['kiosk_category'],
           techsheet: row.techsheet,
           price: Number(row.price),
           buyprice: Number(row.buyprice),

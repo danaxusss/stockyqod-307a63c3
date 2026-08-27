@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Package, Search, Edit, Check, X, Loader, SortAsc, SortDesc, ChevronLeft, ChevronRight, Filter, Paperclip, ShoppingCart, Images, Info, Eye, ImageOff, Building, Tag } from 'lucide-react';
+import { Package, Search, Edit, Check, X, Loader, SortAsc, SortDesc, ChevronLeft, ChevronRight, Filter, Paperclip, ShoppingCart, Info, Eye, Building, Tag } from 'lucide-react';
 import { Product, StockLocation } from '../types';
 import { useAppContext } from '../context/AppContext';
 import { StockLocationsService } from '../utils/supabaseStockLocations';
@@ -16,17 +16,28 @@ import { useEscapeKey } from '../hooks/useShortcuts';
 const PRODUCTS_PER_PAGE = 20;
 type SortField = 'name' | 'brand' | 'price' | 'buyprice' | 'provider';
 type SortOrder = 'asc' | 'desc';
+type KioskCategory = NonNullable<Product['kiosk_category']>;
+
+const KIOSK_CATEGORIES: Array<{ value: KioskCategory; label: string }> = [
+  { value: 'utensils', label: 'Ustensiles' },
+  { value: 'furniture', label: 'Mobilier' },
+  { value: 'equipment', label: 'Équipement' },
+];
+
+const kioskCategoryLabel = (value?: Product['kiosk_category']) =>
+  KIOSK_CATEGORIES.find(category => category.value === value)?.label || 'Non classé';
 
 export default function ProductsPage() {
   const navigate = useNavigate();
   const { state } = useAppContext();
   const { showToast } = useToast();
   const { addToCart } = useQuoteCart();
-  const { canCreateQuote, getPriceDisplayType } = useAuth();
+  const { canCreateQuote, getPriceDisplayType, isStock } = useAuth();
   const { getOriginalName, getAllNames, getDisplayName } = useProductOverrides();
   const [searchQuery, setSearchQuery] = useState('');
   const [brandFilter, setBrandFilter] = useState('');
   const [providerFilter, setProviderFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [sortField, setSortField] = useState<SortField>('name');
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
@@ -34,7 +45,7 @@ export default function ProductsPage() {
   const [editForm, setEditForm] = useState<Partial<Product>>({});
   const [isSaving, setIsSaving] = useState(false);
   const [sheetCounts, setSheetCounts] = useState<Record<string, number>>({});
-  const [photoCounts, setPhotoCounts] = useState<Record<string, number>>({});
+  const [localCategories, setLocalCategories] = useState<Record<string, Product['kiosk_category']>>({});
   const [qtyMap, setQtyMap] = useState<Record<string, number>>({});
   const [stockLocations, setStockLocations] = useState<StockLocation[]>([]);
   const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
@@ -43,28 +54,31 @@ export default function ProductsPage() {
 
   useEscapeKey(() => setQuickViewProduct(null), !!quickViewProduct);
 
-  // Fetch sheet + photo counts
+  // Technical-sheet badges remain useful; gallery links are intentionally not
+  // repeated here now that the canonical product image is shown in the first column.
   useEffect(() => {
     const fetchCounts = async () => {
       try {
-        const [{ data: sheetData }, { data: photoData }] = await Promise.all([
-          supabase.from('technical_sheet_products').select('product_barcode'),
-          (supabase as any).from('product_photo_products').select('barcode'),
-        ]);
+        const { data: sheetData } = await supabase.from('technical_sheet_products').select('product_barcode');
         if (sheetData) {
           const counts: Record<string, number> = {};
           sheetData.forEach((row: any) => { counts[row.product_barcode] = (counts[row.product_barcode] || 0) + 1; });
           setSheetCounts(counts);
         }
-        if (photoData) {
-          const counts: Record<string, number> = {};
-          photoData.forEach((row: any) => { counts[row.barcode] = (counts[row.barcode] || 0) + 1; });
-          setPhotoCounts(counts);
-        }
       } catch { /* ignore */ }
     };
     fetchCounts();
   }, []);
+
+  useEffect(() => {
+    setLocalCategories(current => {
+      const next = { ...current };
+      products.forEach(product => {
+        if (!(product.barcode in next)) next[product.barcode] = product.kiosk_category || null;
+      });
+      return next;
+    });
+  }, [products]);
 
   useEffect(() => {
     StockLocationsService.getStockLocations().then(setStockLocations).catch(() => {});
@@ -89,6 +103,7 @@ export default function ProductsPage() {
     const normalizedProviderFilter = providerFilter.toLowerCase().trim();
     if (normalizedBrandFilter) list = list.filter(p => getAllNames('brand', p.brand || '').some(name => name.toLowerCase() === normalizedBrandFilter));
     if (normalizedProviderFilter) list = list.filter(p => getAllNames('provider', p.provider || '').some(name => name.toLowerCase() === normalizedProviderFilter));
+    if (categoryFilter) list = list.filter(p => (localCategories[p.barcode] ?? p.kiosk_category ?? null) === categoryFilter);
     list.sort((a, b) => {
       const aV = a[sortField] ?? '';
       const bV = b[sortField] ?? '';
@@ -97,7 +112,7 @@ export default function ProductsPage() {
       return 0;
     });
     return list;
-  }, [products, searchQuery, brandFilter, providerFilter, sortField, sortOrder, getAllNames]);
+  }, [products, searchQuery, brandFilter, providerFilter, categoryFilter, localCategories, sortField, sortOrder, getAllNames]);
 
   const totalPages = Math.ceil(filtered.length / PRODUCTS_PER_PAGE);
   const startIdx = (currentPage - 1) * PRODUCTS_PER_PAGE;
@@ -143,6 +158,18 @@ export default function ProductsPage() {
     showToast({ type: 'success', message: `${product.name} ajouté au devis` });
   };
 
+  const setKioskCategory = async (product: Product, value: Product['kiosk_category']) => {
+    const previous = localCategories[product.barcode] ?? product.kiosk_category ?? null;
+    setLocalCategories(current => ({ ...current, [product.barcode]: value }));
+    const { error } = await supabase.from('products').update({ kiosk_category: value }).eq('barcode', product.barcode);
+    if (error) {
+      setLocalCategories(current => ({ ...current, [product.barcode]: previous }));
+      showToast({ type: 'error', title: 'Classement impossible', message: error.message });
+      return;
+    }
+    showToast({ type: 'success', message: `${product.name} classé : ${kioskCategoryLabel(value)}` });
+  };
+
   const getSortIcon = (field: SortField) => {
     if (sortField !== field) return null;
     return sortOrder === 'asc' ? <SortAsc className="h-3 w-3" /> : <SortDesc className="h-3 w-3" />;
@@ -165,7 +192,7 @@ export default function ProductsPage() {
             </div>
           </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2.5">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
             <input type="text" value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setCurrentPage(1); }}
@@ -182,10 +209,15 @@ export default function ProductsPage() {
             <option value="">Tous les fournisseurs</option>
             {providers.map(p => <option key={p} value={p}>{getDisplayName('provider', p)}</option>)}
           </select>
+          <select value={categoryFilter} onChange={e => { setCategoryFilter(e.target.value); setCurrentPage(1); }}
+            className="px-2.5 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground">
+            <option value="">Tous les types kiosque</option>
+            {KIOSK_CATEGORIES.map(category => <option key={category.value} value={category.value}>{category.label}</option>)}
+          </select>
         </div>
-        {(searchQuery || brandFilter || providerFilter) && (
+        {(searchQuery || brandFilter || providerFilter || categoryFilter) && (
           <div className="mt-2">
-            <button onClick={() => { setSearchQuery(''); setBrandFilter(''); setProviderFilter(''); }}
+            <button onClick={() => { setSearchQuery(''); setBrandFilter(''); setProviderFilter(''); setCategoryFilter(''); }}
               className="flex items-center space-x-1 px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground">
               <X className="h-3 w-3" /><span>Effacer filtres</span>
             </button>
@@ -220,6 +252,7 @@ export default function ProductsPage() {
                         <div className="flex items-center space-x-1"><span>{label}</span>{getSortIcon(field)}</div>
                       </th>
                     ))}
+                    <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Type kiosque</th>
                     <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Stock</th>
                     <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Actions</th>
                   </tr>
@@ -229,7 +262,7 @@ export default function ProductsPage() {
                     const isEditing = editingBarcode === product.barcode;
                     const totalStock = Object.values(product.stock_levels || {}).reduce((s: number, v: any) => s + (Number(v) || 0), 0);
                     const hasSheets = (sheetCounts[product.barcode] || 0) > 0;
-                    const hasPhotos = (photoCounts[product.barcode] || 0) > 0;
+                    const kioskCategory = localCategories[product.barcode] ?? product.kiosk_category ?? null;
                     return (
                       <tr key={product.barcode} className="hover:bg-accent/50">
                         <td className="px-3 py-2">
@@ -242,7 +275,7 @@ export default function ProductsPage() {
                             {product.image ? (
                               <img src={resolveProductImageUrl(product.image) || ''} alt={product.name} className="w-full h-full object-contain" loading="lazy" />
                             ) : (
-                              <ImageOff className="h-4 w-4 text-muted-foreground/50" />
+                              <img src={`${import.meta.env.BASE_URL || '/'}stocky-logo.png`} alt="Stocky" className="w-8 h-8 object-contain opacity-35" />
                             )}
                           </button>
                         </td>
@@ -264,12 +297,6 @@ export default function ProductsPage() {
                                 <button onClick={() => navigate('/sheets')} title={`${sheetCounts[product.barcode]} fiche(s) technique(s)`}
                                   className="p-0.5 hover:bg-primary/10 rounded transition-colors">
                                   <Paperclip className="h-3 w-3 text-primary shrink-0" />
-                                </button>
-                              )}
-                              {hasPhotos && (
-                                <button onClick={() => navigate(`/photos?barcode=${encodeURIComponent(product.barcode)}`)} title={`${photoCounts[product.barcode]} photo(s)`}
-                                  className="p-0.5 hover:bg-primary/10 rounded transition-colors">
-                                  <Images className="h-3 w-3 text-primary shrink-0" />
                                 </button>
                               )}
                             </div>
@@ -308,6 +335,17 @@ export default function ProductsPage() {
                                 <span className="text-muted-foreground text-[10px] ml-1">(ex: {getOriginalName('provider', product.provider)})</span>
                               )}
                             </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          {isStock ? (
+                            <select value={kioskCategory || ''} onChange={event => setKioskCategory(product, (event.target.value || null) as Product['kiosk_category'])}
+                              className="min-w-28 rounded-md border border-input bg-background px-2 py-1 text-[11px] text-foreground">
+                              <option value="">Non classé</option>
+                              {KIOSK_CATEGORIES.map(category => <option key={category.value} value={category.value}>{category.label}</option>)}
+                            </select>
+                          ) : (
+                            <span className="rounded-full bg-secondary px-2 py-1 text-[10px] text-muted-foreground">{kioskCategoryLabel(kioskCategory)}</span>
                           )}
                         </td>
                         <td className="px-3 py-2">
@@ -418,7 +456,7 @@ export default function ProductsPage() {
                   {quickImageUrl ? (
                     <img src={quickImageUrl} alt={quickViewProduct.name} className="w-full h-full object-contain" />
                   ) : (
-                    <div className="text-center text-muted-foreground"><ImageOff className="h-12 w-12 mx-auto opacity-40" /><p className="text-xs mt-2">Aucune image</p></div>
+                    <div className="text-center text-muted-foreground"><img src={`${import.meta.env.BASE_URL || '/'}stocky-logo.png`} alt="Stocky" className="mx-auto h-20 w-32 object-contain opacity-35" /><p className="text-xs mt-2">Image à ajouter</p></div>
                   )}
                 </div>
 
