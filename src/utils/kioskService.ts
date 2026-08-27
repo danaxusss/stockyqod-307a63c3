@@ -105,12 +105,13 @@ export interface KioskRequestSummary {
   customer_name: string;
   customer_phone: string;
   customer_email: string | null;
+  contact_details_pending: boolean;
   status: KioskRequestStatus;
   total_amount: number;
   quote_id: string | null;
   submitted_at: string;
   created_at: string;
-  kiosk_profile?: { name: string };
+  kiosk_profile?: { name: string; require_email?: boolean };
   assigned_company?: { name: string };
   assigned_user?: { username: string; custom_seller_name: string | null } | null;
   kiosk_request_items?: Array<{ count: number }>;
@@ -182,8 +183,8 @@ export class KioskService {
     phone: string;
     email?: string;
     note?: string;
-  }, items: Array<{ barcode: string; quantity: number }>): Promise<{ request_id: string; request_number: string }> {
-    return invoke({ action: 'public_submit', token, customer, items });
+  }, items: Array<{ barcode: string; quantity: number }>, deferContact = false): Promise<{ request_id: string; request_number: string }> {
+    return invoke({ action: 'public_submit', token, customer, items, defer_contact: deferContact });
   }
 
   static async adminBootstrap(): Promise<{

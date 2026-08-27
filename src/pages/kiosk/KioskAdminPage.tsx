@@ -59,6 +59,19 @@ const dateTime = (value: string) => new Intl.DateTimeFormat('fr-MA', {
 const userLabel = (user?: KioskUserOption | null) =>
   user?.custom_seller_name?.trim() || user?.username || 'Non assigné';
 
+const validPhone = (value: string) => {
+  const normalized = value.trim();
+  const digitCount = normalized.replace(/\D/g, '').length;
+  return /^\+?[0-9\s().-]{7,24}$/.test(normalized) && digitCount >= 7 && digitCount <= 15;
+};
+
+const hasCompleteContact = (request: Pick<KioskRequestSummary, 'customer_name' | 'customer_phone' | 'customer_email' | 'kiosk_profile'>) => (
+  request.customer_name.trim().length >= 2
+  && validPhone(request.customer_phone)
+  && (!request.customer_email || /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(request.customer_email.trim()))
+  && (!request.kiosk_profile?.require_email || !!request.customer_email?.trim())
+);
+
 export default function KioskAdminPage() {
   const navigate = useNavigate();
   const { logout } = useAuth();
@@ -147,8 +160,12 @@ export default function KioskAdminPage() {
 
   const saveRequest = async (request = selectedRequest, notify = true) => {
     if (!request) return false;
-    if (!request.customer_name.trim() || !request.customer_phone.trim() || !request.items.length) {
-      showToast({ type: 'error', title: 'Informations manquantes', message: 'Le nom, le téléphone et au moins un produit sont obligatoires.' });
+    if (!request.items.length) {
+      showToast({ type: 'error', title: 'Informations manquantes', message: 'Ajoutez au moins un produit à la demande.' });
+      return false;
+    }
+    if (!request.contact_details_pending && !hasCompleteContact(request)) {
+      showToast({ type: 'error', title: 'Coordonnées invalides', message: 'Vérifiez le nom, le téléphone et l’adresse e-mail du client.' });
       return false;
     }
     setSavingRequest(true);
@@ -169,6 +186,10 @@ export default function KioskAdminPage() {
 
   const convertRequest = async () => {
     if (!selectedRequest || selectedRequest.quote_id) return;
+    if (selectedRequest.contact_details_pending || !hasCompleteContact(selectedRequest)) {
+      showToast({ type: 'error', title: 'Coordonnées à compléter', message: 'Complétez et vérifiez les coordonnées du client avant de créer le devis.' });
+      return;
+    }
     if (!window.confirm('Enregistrer les modifications et créer un devis brouillon à partir de cette demande ?')) return;
     const saved = await saveRequest(selectedRequest, false);
     if (!saved) return;
@@ -277,7 +298,7 @@ function RequestsPanel({ requests, total, page, search, status, loading, onSearc
             {requests.map(request => (
               <tr key={request.id} className="hover:bg-muted/30">
                 <td className="px-4 py-3"><button onClick={() => onOpen(request.id)} className="font-semibold text-primary hover:underline">{request.request_number}</button><div className="mt-1 text-xs text-muted-foreground">{dateTime(request.submitted_at)}</div></td>
-                <td className="px-4 py-3"><div className="font-medium">{request.customer_name}</div><div className="text-xs text-muted-foreground">{request.customer_phone}</div></td>
+                <td className="px-4 py-3">{request.contact_details_pending ? <><span className="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">Coordonnées à compléter</span><div className="mt-1 text-xs text-muted-foreground">Le client les fournira plus tard</div></> : <><div className="font-medium">{request.customer_name}</div><div className="text-xs text-muted-foreground">{request.customer_phone}</div></>}</td>
                 <td className="px-4 py-3">{request.kiosk_profile?.name || '—'}<div className="text-xs text-muted-foreground">{request.kiosk_request_items?.[0]?.count || 0} produit(s)</div></td>
                 <td className="px-4 py-3">{request.assigned_company?.name || '—'}<div className="text-xs text-muted-foreground">{request.assigned_user?.custom_seller_name || request.assigned_user?.username || 'Non assigné'}</div></td>
                 <td className="px-4 py-3 text-right font-semibold">{money(request.total_amount)} DH</td>
@@ -344,6 +365,11 @@ function RequestEditor({ request, loading, companies, users, isSuperadmin, canAs
   }, [converted, productSearch, request?.assigned_company_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const patch = (values: Partial<KioskRequestDetail>) => request && onChange({ ...request, ...values });
+  const patchContact = (values: Partial<Pick<KioskRequestDetail, 'customer_name' | 'customer_phone' | 'customer_email'>>) => {
+    if (!request) return;
+    const next = { ...request, ...values };
+    onChange({ ...next, contact_details_pending: !hasCompleteContact(next) });
+  };
   const patchItem = (index: number, values: Partial<KioskRequestItem>) => {
     if (!request) return;
     patch({ items: request.items.map((item, i) => i === index ? { ...item, ...values } : item) });
@@ -370,8 +396,9 @@ function RequestEditor({ request, loading, companies, users, isSuperadmin, canAs
               <div className="mb-6 flex flex-col justify-between gap-2 sm:flex-row"><div><h2 className="text-2xl font-bold">{request.request_number}</h2><p className="text-sm text-muted-foreground">Reçue le {dateTime(request.submitted_at)}</p></div>{converted && <div className="rounded-lg bg-green-50 px-3 py-2 text-sm font-semibold text-green-700">Devis déjà créé</div>}</div>
 
               <fieldset disabled={converted} className="space-y-6 disabled:opacity-75">
+                {request.contact_details_pending && <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900"><strong className="block">Coordonnées client à compléter</strong><span className="mt-1 block">La demande peut être modifiée et enregistrée, mais le devis ne pourra être créé qu’après validation du nom, du téléphone et de l’e-mail requis.</span></div>}
                 <Section title="Client" icon={<UserRound className="h-4 w-4" />}>
-                  <div className="grid gap-4 md:grid-cols-2"><Field label="Nom complet"><input value={request.customer_name} onChange={e => patch({ customer_name: e.target.value })} className="field" /></Field><Field label="Téléphone"><input value={request.customer_phone} onChange={e => patch({ customer_phone: e.target.value })} className="field" /></Field><Field label="E-mail"><input value={request.customer_email || ''} onChange={e => patch({ customer_email: e.target.value })} className="field" /></Field><Field label="Statut"><select value={request.status} onChange={e => patch({ status: e.target.value as KioskRequestStatus })} className="field">{Object.entries(STATUS_LABELS).filter(([value]) => value !== 'converted').map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field></div>
+                  <div className="grid gap-4 md:grid-cols-2"><Field label="Nom complet"><input value={request.customer_name} onChange={e => patchContact({ customer_name: e.target.value })} className="field" /></Field><Field label="Téléphone"><input value={request.customer_phone} onChange={e => patchContact({ customer_phone: e.target.value })} className="field" /></Field><Field label={`E-mail${request.kiosk_profile?.require_email ? ' (obligatoire)' : ''}`}><input value={request.customer_email || ''} onChange={e => patchContact({ customer_email: e.target.value })} className="field" /></Field><Field label="Statut"><select value={request.status} onChange={e => patch({ status: e.target.value as KioskRequestStatus })} className="field">{Object.entries(STATUS_LABELS).filter(([value]) => value !== 'converted').map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field></div>
                   <Field label="Note du client"><textarea rows={2} value={request.customer_note || ''} onChange={e => patch({ customer_note: e.target.value })} className="field py-2" /></Field>
                 </Section>
 
@@ -390,7 +417,7 @@ function RequestEditor({ request, loading, companies, users, isSuperadmin, canAs
             </div>
             <div className="flex flex-col-reverse gap-3 border-t bg-card p-4 sm:flex-row sm:justify-end md:px-6">
               <button onClick={onClose} className="h-11 rounded-lg border px-5 text-sm font-medium">Fermer</button>
-              {!converted && <><button onClick={onSave} disabled={saving} className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border px-5 text-sm font-semibold disabled:opacity-50"><Save className="h-4 w-4" />Enregistrer</button><button onClick={onConvert} disabled={saving || request.status === 'rejected' || !request.items.length} className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-5 text-sm font-semibold text-primary-foreground disabled:opacity-50">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackagePlus className="h-4 w-4" />}Créer le devis</button></>}
+              {!converted && <><button onClick={onSave} disabled={saving} className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border px-5 text-sm font-semibold disabled:opacity-50"><Save className="h-4 w-4" />Enregistrer</button><button onClick={onConvert} disabled={saving || request.status === 'rejected' || !request.items.length || request.contact_details_pending} className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-5 text-sm font-semibold text-primary-foreground disabled:opacity-50">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackagePlus className="h-4 w-4" />}Créer le devis</button></>}
               {converted && <button onClick={() => window.location.assign(`/quote-cart/${request.quote_id}`)} className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-5 text-sm font-semibold text-primary-foreground"><ExternalLink className="h-4 w-4" />Ouvrir le devis</button>}
             </div>
           </>

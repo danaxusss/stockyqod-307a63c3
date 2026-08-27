@@ -9,7 +9,7 @@ import {
   type KioskFamily,
 } from '../../utils/kioskService';
 
-type Stage = 'welcome' | 'details' | 'catalog' | 'review' | 'submitted';
+type Stage = 'welcome' | 'catalog' | 'review' | 'submitted';
 type CartLine = { product: KioskProduct; quantity: number };
 
 const copy = {
@@ -20,6 +20,9 @@ const copy = {
     confirm: 'Envoyer la demande', back: 'Retour au catalogue', requestSent: 'Demande envoyée',
     requestMessage: 'Un conseiller vérifiera votre sélection avant de préparer le devis.', requestNumber: 'Numéro de demande',
     reset: 'Nouvelle demande', required: 'Veuillez renseigner votre nom et votre téléphone.', emailRequired: "L'adresse e-mail est obligatoire.",
+    invalidPhone: 'Veuillez saisir un numéro de téléphone valide.', invalidEmail: 'Veuillez saisir une adresse e-mail valide.',
+    contactPrompt: 'Indiquez vos coordonnées avant l’envoi, ou demandez à un conseiller de les compléter avec vous.',
+    detailsLater: 'Je renseignerai mes coordonnées plus tard', detailsLaterHelp: 'La demande sera enregistrée, mais un conseiller devra compléter vos coordonnées avant de créer le devis.',
     empty: 'Votre sélection est vide.', noProducts: 'Aucun produit ne correspond à votre recherche.', loadMore: 'Afficher plus',
     available: 'Disponible', onRequest: 'Sur demande', total: 'Total indicatif', nonBinding: "Cette demande n'est pas encore un devis. Les prix et disponibilités seront confirmés par un conseiller.",
     idleTitle: 'Toujours là ?', idleText: 'Cette session sera effacée dans quelques secondes pour protéger vos informations.', stay: 'Continuer',
@@ -33,6 +36,9 @@ const copy = {
     confirm: 'Send request', back: 'Back to catalogue', requestSent: 'Request sent',
     requestMessage: 'A sales representative will review your selection before preparing the quote.', requestNumber: 'Request number',
     reset: 'New request', required: 'Please enter your name and phone number.', emailRequired: 'Email is required.',
+    invalidPhone: 'Please enter a valid phone number.', invalidEmail: 'Please enter a valid email address.',
+    contactPrompt: 'Enter your contact details before sending, or ask a sales representative to complete them with you.',
+    detailsLater: 'I will provide my details later', detailsLaterHelp: 'The request will be saved, but a sales representative must complete your details before creating the quote.',
     empty: 'Your selection is empty.', noProducts: 'No products match your search.', loadMore: 'Show more',
     available: 'Available', onRequest: 'On request', total: 'Estimated total', nonBinding: 'This is not a final quote. Prices and availability will be confirmed by a sales representative.',
     idleTitle: 'Still there?', idleText: 'This session will be cleared in a few seconds to protect your information.', stay: 'Continue',
@@ -46,6 +52,9 @@ const copy = {
     confirm: 'إرسال الطلب', back: 'العودة إلى الكتالوج', requestSent: 'تم إرسال الطلب',
     requestMessage: 'سيراجع مستشار المبيعات اختيارك قبل إعداد عرض السعر.', requestNumber: 'رقم الطلب',
     reset: 'طلب جديد', required: 'يرجى إدخال الاسم ورقم الهاتف.', emailRequired: 'البريد الإلكتروني مطلوب.',
+    invalidPhone: 'يرجى إدخال رقم هاتف صالح.', invalidEmail: 'يرجى إدخال بريد إلكتروني صالح.',
+    contactPrompt: 'أدخل معلومات الاتصال قبل الإرسال، أو اطلب من مستشار المبيعات إكمالها معك.',
+    detailsLater: 'سأضيف معلومات الاتصال لاحقاً', detailsLaterHelp: 'سيتم حفظ الطلب، لكن يجب على مستشار المبيعات إكمال معلوماتك قبل إنشاء عرض السعر.',
     empty: 'اختيارك فارغ.', noProducts: 'لا توجد منتجات مطابقة.', loadMore: 'عرض المزيد',
     available: 'متوفر', onRequest: 'حسب الطلب', total: 'المجموع التقديري', nonBinding: 'هذا ليس عرض سعر نهائياً. سيتم تأكيد الأسعار والتوفر من طرف المستشار.',
     idleTitle: 'هل ما زلت هنا؟', idleText: 'سيتم مسح هذه الجلسة خلال ثوانٍ لحماية معلوماتك.', stay: 'متابعة',
@@ -57,6 +66,14 @@ const copy = {
 type KioskCopy = Record<keyof typeof copy.fr, string>;
 
 const fmt = (value: number) => new Intl.NumberFormat('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const PHONE_RE = /^\+?[0-9\s().-]{7,24}$/;
+
+const isValidPhone = (value: string) => {
+  const normalized = value.trim();
+  const digitCount = normalized.replace(/\D/g, '').length;
+  return PHONE_RE.test(normalized) && digitCount >= 7 && digitCount <= 15;
+};
 
 export default function KioskPage() {
   const { token = '' } = useParams();
@@ -64,6 +81,7 @@ export default function KioskPage() {
   const [families, setFamilies] = useState<KioskFamily[]>([]);
   const [stage, setStage] = useState<Stage>('welcome');
   const [customer, setCustomer] = useState({ name: '', phone: '', email: '', note: '' });
+  const [deferContact, setDeferContact] = useState(false);
   const [formError, setFormError] = useState('');
   const [products, setProducts] = useState<KioskProduct[]>([]);
   const [totalProducts, setTotalProducts] = useState(0);
@@ -96,6 +114,7 @@ export default function KioskPage() {
   const resetSession = useCallback(() => {
     clearIdleTimers();
     setCustomer({ name: '', phone: '', email: '', note: '' });
+    setDeferContact(false);
     setCart({});
     setQuery('');
     setFamilyId(null);
@@ -198,19 +217,6 @@ export default function KioskPage() {
     changeQuantity(product, Math.min(999, Math.max(0, value)) - current);
   };
 
-  const continueToCatalog = () => {
-    if (customer.name.trim().length < 2 || customer.phone.trim().length < 5) {
-      setFormError(t.required);
-      return;
-    }
-    if (profile?.require_email && !customer.email.trim()) {
-      setFormError(t.emailRequired);
-      return;
-    }
-    setFormError('');
-    setStage('catalog');
-  };
-
   const loadMore = async () => {
     if (catalogLoading || products.length >= totalProducts) return;
     const nextPage = page + 1;
@@ -230,11 +236,33 @@ export default function KioskPage() {
 
   const submit = async () => {
     if (!cartLines.length || submitting) return;
+    if (!deferContact) {
+      if (customer.name.trim().length < 2 || !customer.phone.trim()) {
+        setFormError(t.required);
+        return;
+      }
+      if (!isValidPhone(customer.phone)) {
+        setFormError(t.invalidPhone);
+        return;
+      }
+      if (profile?.require_email && !customer.email.trim()) {
+        setFormError(t.emailRequired);
+        return;
+      }
+      if (customer.email.trim() && !EMAIL_RE.test(customer.email.trim())) {
+        setFormError(t.invalidEmail);
+        return;
+      }
+    }
+    setFormError('');
     setSubmitting(true);
     try {
-      const result = await KioskService.submit(token, customer, cartLines.map(line => ({
+      const submissionCustomer = deferContact
+        ? { name: '', phone: '', email: '', note: customer.note }
+        : customer;
+      const result = await KioskService.submit(token, submissionCustomer, cartLines.map(line => ({
         barcode: line.product.barcode, quantity: line.quantity,
-      })));
+      })), deferContact);
       setRequestNumber(result.request_number);
       setStage('submitted');
     } catch (error) {
@@ -266,27 +294,9 @@ export default function KioskPage() {
           <p className="mb-3 text-lg font-semibold tracking-wide text-slate-500">{profile.company_name}</p>
           <h1 className="max-w-3xl text-4xl md:text-6xl font-black tracking-tight">{profile.greeting_title}</h1>
           <p className="mt-5 max-w-2xl text-xl md:text-2xl leading-relaxed text-slate-600">{profile.greeting_message}</p>
-          <button onClick={() => setStage('details')} className="mt-12 min-h-16 min-w-64 rounded-2xl px-10 text-xl font-bold text-white shadow-xl active:scale-[0.98] transition" style={{ backgroundColor: accent }}>
+          <button onClick={() => setStage('catalog')} className="mt-12 min-h-16 min-w-64 rounded-2xl px-10 text-xl font-bold text-white shadow-xl active:scale-[0.98] transition" style={{ backgroundColor: accent }}>
             {t.start} <ChevronRight className="inline h-6 w-6 ms-2" />
           </button>
-        </main>
-      )}
-
-      {stage === 'details' && (
-        <main className="min-h-screen flex items-center justify-center p-5 md:p-10">
-          <section className="w-full max-w-2xl rounded-3xl bg-white p-6 md:p-10 shadow-xl border border-slate-200">
-            <button onClick={() => setStage('welcome')} className="mb-7 min-h-12 inline-flex items-center gap-2 rounded-xl px-3 text-slate-600 active:bg-slate-100"><ArrowLeft className="h-5 w-5" /> {t.start}</button>
-            <div className="flex items-center gap-4 mb-8"><div className="h-14 w-14 rounded-2xl flex items-center justify-center text-white" style={{ backgroundColor: accent }}><UserRound className="h-7 w-7" /></div><h1 className="text-3xl font-black">{t.details}</h1></div>
-            <div className="space-y-5">
-              <KioskInput label={t.name} value={customer.name} onChange={name => setCustomer(c => ({ ...c, name }))} required autoFocus />
-              <KioskInput label={t.phone} value={customer.phone} onChange={phone => setCustomer(c => ({ ...c, phone }))} required inputMode="tel" />
-              <KioskInput label={t.email} value={customer.email} onChange={email => setCustomer(c => ({ ...c, email }))} required={profile.require_email} inputMode="email" />
-              <label className="block"><span className="mb-2 block text-base font-bold">{t.note}</span><textarea value={customer.note} onChange={e => setCustomer(c => ({ ...c, note: e.target.value.slice(0, 500) }))} rows={3} className="w-full rounded-2xl border-2 border-slate-200 bg-white px-5 py-4 text-lg outline-none focus:border-[var(--kiosk-accent)]" /></label>
-            </div>
-            {formError && <p className="mt-5 rounded-xl bg-red-50 p-4 font-semibold text-red-700">{formError}</p>}
-            <p className="mt-5 text-sm leading-relaxed text-slate-500">{t.privacy}</p>
-            <button onClick={continueToCatalog} className="mt-7 min-h-16 w-full rounded-2xl px-6 text-xl font-bold text-white active:scale-[0.99]" style={{ backgroundColor: accent }}>{t.continue}</button>
-          </section>
         </main>
       )}
 
@@ -294,7 +304,7 @@ export default function KioskPage() {
         <div className="min-h-screen pb-28">
           <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
             <div className="mx-auto flex max-w-[1600px] items-center gap-3 px-4 py-3">
-              <button onClick={() => setStage('details')} className="h-12 w-12 shrink-0 rounded-xl border border-slate-200 flex items-center justify-center"><ArrowLeft className="h-5 w-5" /></button>
+              <button onClick={() => setStage('welcome')} className="h-12 w-12 shrink-0 rounded-xl border border-slate-200 flex items-center justify-center"><ArrowLeft className="h-5 w-5" /></button>
               {profile.logo_url ? <img src={profile.logo_url} alt="" className="hidden sm:block h-10 w-28 object-contain" /> : <Package className="hidden sm:block h-8 w-8" style={{ color: accent }} />}
               <div className="relative flex-1"><Search className="absolute start-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" /><input value={query} onChange={e => setQuery(e.target.value)} placeholder={t.search} className="h-14 w-full rounded-2xl border-2 border-slate-200 bg-slate-50 ps-12 pe-12 text-lg outline-none focus:bg-white focus:border-[var(--kiosk-accent)]" />{query && <button onClick={() => setQuery('')} className="absolute end-2 top-1/2 h-10 w-10 -translate-y-1/2 flex items-center justify-center"><X className="h-5 w-5" /></button>}</div>
               <button onClick={requestFullscreen} className="hidden sm:flex h-12 w-12 rounded-xl border border-slate-200 items-center justify-center"><Expand className="h-5 w-5" /></button>
@@ -322,11 +332,24 @@ export default function KioskPage() {
         <main className="mx-auto min-h-screen max-w-5xl p-4 pb-32 md:p-8">
           <button onClick={() => setStage('catalog')} className="mb-6 min-h-12 inline-flex items-center gap-2 rounded-xl bg-white border border-slate-200 px-4 font-semibold"><ArrowLeft className="h-5 w-5" /> {t.back}</button>
           <h1 className="text-3xl md:text-4xl font-black">{t.review}</h1>
-          <p className="mt-2 text-lg text-slate-500">{customer.name} · {customer.phone}</p>
           <div className="mt-8 space-y-3">
             {cartLines.map(line => <ReviewLine key={line.product.barcode} line={line} showPrice={profile.show_prices} accent={accent} onSet={quantity => setQuantity(line.product, quantity)} />)}
           </div>
           {!cartLines.length && <div className="mt-8 rounded-2xl bg-white p-12 text-center text-lg text-slate-500">{t.empty}</div>}
+          <section className="mt-8 rounded-3xl border border-slate-200 bg-white p-5 md:p-7">
+            <div className="flex items-center gap-4"><div className="h-12 w-12 shrink-0 rounded-2xl flex items-center justify-center text-white" style={{ backgroundColor: accent }}><UserRound className="h-6 w-6" /></div><div><h2 className="text-2xl font-black">{t.details}</h2><p className="mt-1 text-slate-500">{t.contactPrompt}</p></div></div>
+            <label className="mt-6 flex cursor-pointer items-start gap-3 rounded-2xl border-2 border-slate-200 bg-slate-50 p-4">
+              <input type="checkbox" checked={deferContact} onChange={event => { setDeferContact(event.target.checked); setFormError(''); }} className="mt-1 h-6 w-6 shrink-0" />
+              <span><span className="block text-base font-bold">{t.detailsLater}</span><span className="mt-1 block text-sm leading-relaxed text-slate-500">{t.detailsLaterHelp}</span></span>
+            </label>
+            <div className={`mt-6 grid gap-5 md:grid-cols-2 ${deferContact ? 'opacity-45' : ''}`}>
+              <KioskInput label={t.name} value={customer.name} onChange={name => { setCustomer(c => ({ ...c, name })); setFormError(''); }} required={!deferContact} disabled={deferContact} autoFocus={!deferContact} />
+              <KioskInput label={t.phone} value={customer.phone} onChange={phone => { setCustomer(c => ({ ...c, phone })); setFormError(''); }} required={!deferContact} disabled={deferContact} inputMode="tel" />
+              <KioskInput label={t.email} value={customer.email} onChange={email => { setCustomer(c => ({ ...c, email })); setFormError(''); }} required={!deferContact && profile.require_email} disabled={deferContact} inputMode="email" />
+            </div>
+            <label className="mt-5 block"><span className="mb-2 block text-base font-bold">{t.note}</span><textarea value={customer.note} onChange={e => setCustomer(c => ({ ...c, note: e.target.value.slice(0, 500) }))} rows={3} className="w-full rounded-2xl border-2 border-slate-200 bg-white px-5 py-4 text-lg outline-none focus:border-[var(--kiosk-accent)]" /></label>
+            <p className="mt-5 text-sm leading-relaxed text-slate-500">{t.privacy}</p>
+          </section>
           {formError && <p className="mt-5 rounded-xl bg-red-50 p-4 font-semibold text-red-700">{formError}</p>}
           <div className="mt-8 rounded-2xl bg-white border border-slate-200 p-5">
             {profile.show_prices && <div className="flex items-center justify-between text-xl font-black"><span>{t.total}</span><span>{fmt(cartTotal)} DH</span></div>}
@@ -363,8 +386,8 @@ function KioskCentered({ children }: { children: ReactNode }) {
   return <main className="min-h-screen flex flex-col items-center justify-center gap-4 bg-slate-50 p-6 text-center text-slate-600">{children}</main>;
 }
 
-function KioskInput({ label, value, onChange, required, inputMode, autoFocus }: { label: string; value: string; onChange: (value: string) => void; required?: boolean; inputMode?: 'text' | 'tel' | 'email'; autoFocus?: boolean }) {
-  return <label className="block"><span className="mb-2 block text-base font-bold">{label}{required && <span className="text-red-500"> *</span>}</span><input autoFocus={autoFocus} inputMode={inputMode} value={value} onChange={e => onChange(e.target.value)} className="h-16 w-full rounded-2xl border-2 border-slate-200 bg-white px-5 text-xl outline-none focus:border-[var(--kiosk-accent)]" /></label>;
+function KioskInput({ label, value, onChange, required, disabled, inputMode, autoFocus }: { label: string; value: string; onChange: (value: string) => void; required?: boolean; disabled?: boolean; inputMode?: 'text' | 'tel' | 'email'; autoFocus?: boolean }) {
+  return <label className="block"><span className="mb-2 block text-base font-bold">{label}{required && <span className="text-red-500"> *</span>}</span><input autoFocus={autoFocus} disabled={disabled} inputMode={inputMode} type={inputMode === 'email' ? 'email' : 'text'} value={value} onChange={e => onChange(e.target.value)} className="h-16 w-full rounded-2xl border-2 border-slate-200 bg-white px-5 text-xl outline-none focus:border-[var(--kiosk-accent)] disabled:cursor-not-allowed disabled:bg-slate-100" /></label>;
 }
 
 function FamilyButton({ active, label, onClick, accent }: { active: boolean; label: string; onClick: () => void; accent: string }) {
