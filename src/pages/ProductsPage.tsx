@@ -1,5 +1,6 @@
 // @ts-nocheck
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, Link } from 'react-router-dom';
 import { Package, Search, Edit, Check, X, Loader, SortAsc, SortDesc, ChevronLeft, ChevronRight, Filter, Paperclip, ShoppingCart, Info, Eye, Building, Tag } from 'lucide-react';
 import { Product, StockLocation } from '../types';
@@ -53,6 +54,15 @@ export default function ProductsPage() {
   const products = state.products || [];
 
   useEscapeKey(() => setQuickViewProduct(null), !!quickViewProduct);
+
+  useEffect(() => {
+    if (!quickViewProduct) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [quickViewProduct]);
 
   // Technical-sheet badges remain useful; gallery links are intentionally not
   // repeated here now that the canonical product image is shown in the first column.
@@ -435,16 +445,16 @@ export default function ProductsPage() {
         )}
       </div>
 
-      {quickViewProduct && (() => {
+      {quickViewProduct && createPortal((() => {
         const quickTotalStock = Object.values(quickViewProduct.stock_levels || {}).reduce((sum, value) => sum + (Number(value) || 0), 0);
         const quickImageUrl = resolveProductImageUrl(quickViewProduct.image);
         return (
-          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onMouseDown={event => { if (event.target === event.currentTarget) setQuickViewProduct(null); }}>
-            <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-card border border-border rounded-2xl shadow-2xl">
+          <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onMouseDown={event => { if (event.target === event.currentTarget) setQuickViewProduct(null); }}>
+            <div role="dialog" aria-modal="true" aria-labelledby="quick-view-title" className="w-full max-w-2xl max-h-[90dvh] overflow-y-auto bg-card border border-border rounded-2xl shadow-2xl">
               <div className="flex items-center justify-between px-4 py-3 border-b border-border">
                 <div>
                   <p className="text-xs text-muted-foreground">Aperçu rapide</p>
-                  <h2 className="text-base font-semibold text-foreground line-clamp-1">{quickViewProduct.name}</h2>
+                  <h2 id="quick-view-title" className="text-base font-semibold text-foreground line-clamp-1">{quickViewProduct.name}</h2>
                 </div>
                 <button onClick={() => setQuickViewProduct(null)} className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent" title="Fermer">
                   <X className="h-4 w-4" />
@@ -512,7 +522,7 @@ export default function ProductsPage() {
             </div>
           </div>
         );
-      })()}
+      })(), document.body)}
 
       {/* Stats */}
       {filtered.length > 0 && (

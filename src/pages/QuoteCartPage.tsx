@@ -30,7 +30,10 @@ import {
   Truck,
   AlertCircle,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Image as ImageIcon,
+  Stamp,
+  ReceiptText
 } from 'lucide-react';
 import { Quote, QuoteItem, CustomerInfo, Product, Provider } from '../types';
 import { StockLocationsService } from '../utils/supabaseStockLocations';
@@ -107,6 +110,7 @@ export function QuoteCartPage() {
   const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null);
   const [useStamp, setUseStamp] = useState(false);
   const [printTTCOnly, setPrintTTCOnly] = useState(false);
+  const [includeProductImages, setIncludeProductImages] = useState(false);
 
   // Product search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -226,6 +230,7 @@ export function QuoteCartPage() {
     CompanySettingsService.getSettings(companyId || undefined).then(s => {
       setCompanySettings(s);
       if (s?.use_stamp !== undefined) setUseStamp(s.use_stamp);
+      setIncludeProductImages(s?.quote_visible_fields?.printColumns?.showImage === true);
     }).catch(console.error);
   }, [companyId]);
 
@@ -809,7 +814,7 @@ export function QuoteCartPage() {
         techSheetsExpiryLabel = techSheetsExpiry === 'never' ? 'permanent' : `${techSheetsExpiry} jours`;
       }
 
-      await PdfExportService.exportQuoteToPdf(quoteData, freshSettings || companySettings, techSheetsUrl, techSheetsExpiryLabel, useStamp, 'quote', undefined, printTTCOnly);
+      await PdfExportService.exportQuoteToPdf(quoteData, freshSettings || companySettings, techSheetsUrl, techSheetsExpiryLabel, useStamp, 'quote', undefined, printTTCOnly, includeProductImages);
       showToast({
         type: 'success',
         title: 'Export réussi',
@@ -887,7 +892,7 @@ export function QuoteCartPage() {
     const freshSettings = await CompanySettingsService.getSettings(quoteCompanyId || undefined).catch(() => companySettings);
     try {
       const quoteData: Quote = { id: quote?.id || crypto.randomUUID(), quoteNumber, commandNumber: commandNumber || undefined, createdAt: quote?.createdAt || new Date(), updatedAt: new Date(), status, customer, items, totalAmount, notes, notes2: notes2 || undefined, quote_date: quoteDate || undefined };
-      await PdfExportService.exportQuoteToPdf(quoteData, freshSettings || companySettings, undefined, undefined, useStamp, 'quote', undefined, printTTCOnly);
+      await PdfExportService.exportQuoteToPdf(quoteData, freshSettings || companySettings, undefined, undefined, useStamp, 'quote', undefined, printTTCOnly, includeProductImages);
     } catch { /* continue */ }
     setIsExporting(false);
 
@@ -1668,32 +1673,32 @@ export function QuoteCartPage() {
         </div>
       )}
 
-      {/* Stamp Toggle */}
-      {companySettings?.stamp_url && (
-        <div className="glass rounded-xl shadow-lg p-3">
-          <label className="flex items-center space-x-2 text-sm text-foreground cursor-pointer">
-            <input
-              type="checkbox"
-              checked={useStamp}
-              onChange={(e) => setUseStamp(e.target.checked)}
-              className="rounded border-input"
-            />
-            <span>🔏 Apposer le tampon sur le devis</span>
+      {/* PDF display options */}
+      <div className="glass rounded-xl shadow-lg p-2.5">
+        <div className={`grid grid-cols-1 gap-2 ${companySettings?.stamp_url ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
+          <label className={`flex min-h-14 cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 transition-colors ${includeProductImages ? 'border-violet-500/50 bg-violet-500/10 text-violet-700 dark:text-violet-300' : 'border-border bg-background/50 text-foreground hover:bg-accent'}`}>
+            <input type="checkbox" checked={includeProductImages} onChange={(e) => setIncludeProductImages(e.target.checked)} className="sr-only" />
+            <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${includeProductImages ? 'bg-violet-500 text-white' : 'bg-muted text-muted-foreground'}`}><ImageIcon className="h-4 w-4" /></span>
+            <span className="min-w-0"><span className="block text-sm font-semibold">Images produits</span><span className="block truncate text-[11px] opacity-75">{includeProductImages ? 'Colonne incluse' : 'Sans images'}</span></span>
+            <span className={`ml-auto h-2.5 w-2.5 shrink-0 rounded-full ${includeProductImages ? 'bg-violet-500' : 'bg-muted-foreground/30'}`} aria-hidden="true" />
+          </label>
+
+          {companySettings?.stamp_url ? (
+            <label className={`flex min-h-14 cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 transition-colors ${useStamp ? 'border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-300' : 'border-border bg-background/50 text-foreground hover:bg-accent'}`}>
+              <input type="checkbox" checked={useStamp} onChange={(e) => setUseStamp(e.target.checked)} className="sr-only" />
+              <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${useStamp ? 'bg-amber-500 text-white' : 'bg-muted text-muted-foreground'}`}><Stamp className="h-4 w-4" /></span>
+              <span className="min-w-0"><span className="block text-sm font-semibold">Tampon</span><span className="block truncate text-[11px] opacity-75">{useStamp ? 'Apposé au devis' : 'Non apposé'}</span></span>
+              <span className={`ml-auto h-2.5 w-2.5 shrink-0 rounded-full ${useStamp ? 'bg-amber-500' : 'bg-muted-foreground/30'}`} aria-hidden="true" />
+            </label>
+          ) : null}
+
+          <label className={`flex min-h-14 cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 transition-colors ${printTTCOnly ? 'border-sky-500/50 bg-sky-500/10 text-sky-700 dark:text-sky-300' : 'border-border bg-background/50 text-foreground hover:bg-accent'}`}>
+            <input type="checkbox" checked={printTTCOnly} onChange={(e) => setPrintTTCOnly(e.target.checked)} className="sr-only" />
+            <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${printTTCOnly ? 'bg-sky-500 text-white' : 'bg-muted text-muted-foreground'}`}><ReceiptText className="h-4 w-4" /></span>
+            <span className="min-w-0"><span className="block text-sm font-semibold">Prix TTC uniquement</span><span className="block truncate text-[11px] opacity-75">{printTTCOnly ? 'HT et TVA masqués' : 'Détail HT et TVA'}</span></span>
+            <span className={`ml-auto h-2.5 w-2.5 shrink-0 rounded-full ${printTTCOnly ? 'bg-sky-500' : 'bg-muted-foreground/30'}`} aria-hidden="true" />
           </label>
         </div>
-      )}
-
-      {/* TTC-only Toggle */}
-      <div className="glass rounded-xl shadow-lg p-3">
-        <label className="flex items-center space-x-2 text-sm text-foreground cursor-pointer">
-          <input
-            type="checkbox"
-            checked={printTTCOnly}
-            onChange={(e) => setPrintTTCOnly(e.target.checked)}
-            className="rounded border-input"
-          />
-          <span>Afficher uniquement le prix TTC (masquer HT et TVA)</span>
-        </label>
       </div>
 
       {/* Action Buttons */}
@@ -1763,7 +1768,7 @@ export function QuoteCartPage() {
                 try {
                   const freshSettings = await CompanySettingsService.getSettings(companyId || undefined).catch(() => companySettings);
                   const quoteData: Quote = { id: quote?.id || crypto.randomUUID(), quoteNumber, commandNumber: commandNumber || undefined, createdAt: quote?.createdAt || new Date(), updatedAt: new Date(), status, customer, items, totalAmount, notes, notes2: notes2 || undefined, quote_date: quoteDate || undefined };
-                  await PdfExportService.exportQuoteToPdf(quoteData, freshSettings || companySettings, undefined, undefined, useStamp, 'quote', undefined, printTTCOnly);
+                  await PdfExportService.exportQuoteToPdf(quoteData, freshSettings || companySettings, undefined, undefined, useStamp, 'quote', undefined, printTTCOnly, includeProductImages);
                 } catch { /* continue */ }
                 setIsExporting(false);
 
