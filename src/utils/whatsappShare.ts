@@ -1,4 +1,15 @@
 const WHATSAPP_BASE_URL = 'https://api.whatsapp.com/send';
+const BLOB_URL_PATTERN = /\bblob:https?:\/\/[^\s]+/gi;
+const BLOB_URL_LINE_PATTERN = /(^|\n)[ \t]*blob:https?:\/\/[^\s]+[ \t]*(?:\n|$)/gi;
+
+export function sanitizeShareText(messageText: string): string {
+  return messageText
+    .replace(BLOB_URL_LINE_PATTERN, '$1')
+    .replace(BLOB_URL_PATTERN, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
 
 export function normalizeWhatsAppPhone(rawPhone: string): string {
   const digits = rawPhone.replace(/\D/g, '');
@@ -11,11 +22,45 @@ export function normalizeWhatsAppPhone(rawPhone: string): string {
 
 export function buildWhatsAppShareUrl(rawPhone: string, messageText: string): string {
   const phone = normalizeWhatsAppPhone(rawPhone);
-  const encodedText = messageText.replace(/\n/g, '%0a').replace(/ /g, '%20');
+  const encodedText = sanitizeShareText(messageText).replace(/\n/g, '%0a').replace(/ /g, '%20');
 
   return phone
     ? `${WHATSAPP_BASE_URL}?phone=${phone}&text=${encodedText}`
     : `${WHATSAPP_BASE_URL}?text=${encodedText}`;
+}
+
+function pdfFile(blob: Blob, filename: string): File {
+  return new File([blob], filename, { type: 'application/pdf' });
+}
+
+export function canSharePdfFile(blob: Blob, filename: string): boolean {
+  if (typeof File === 'undefined' || typeof navigator.share !== 'function' || typeof navigator.canShare !== 'function') return false;
+  try {
+    return navigator.canShare({ files: [pdfFile(blob, filename)] });
+  } catch {
+    return false;
+  }
+}
+
+export async function sharePdfFile(blob: Blob, filename: string, messageText = ''): Promise<boolean> {
+  const file = pdfFile(blob, filename);
+  if (!canSharePdfFile(blob, filename)) return false;
+
+  const text = sanitizeShareText(messageText);
+  await navigator.share({ files: [file], ...(text ? { text } : {}) });
+  return true;
+}
+
+export function downloadPdfFile(blob: Blob, filename: string): void {
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = objectUrl;
+  link.download = filename;
+  link.rel = 'noopener';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
 }
 
 export function openWhatsAppShareInNewTab(shareUrl: string): boolean {

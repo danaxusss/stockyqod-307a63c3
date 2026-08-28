@@ -54,7 +54,7 @@ import { useKeyboardSave } from '../hooks/useShortcuts';
 import { supabase } from '@/integrations/supabase/client';
 import { useProductOverrides } from '../hooks/useProductOverrides';
 import { applyQuoteItemDisplayOverride, getQuoteItemBarcode, getQuoteItemBrand, getQuoteItemName } from '../utils/quoteItemDisplay';
-import { buildWhatsAppShareUrl, openPreparingWhatsAppWindow, redirectPreparingWindowToWhatsApp, openWhatsAppShare } from '../utils/whatsappShare';
+import { buildWhatsAppShareUrl, canSharePdfFile, downloadPdfFile, openPreparingWhatsAppWindow, redirectPreparingWindowToWhatsApp, openWhatsAppShare, sharePdfFile } from '../utils/whatsappShare';
 import { SupabaseDocumentsService } from '../utils/supabaseDocuments';
 
 const ITEMS_PER_PAGE = 40;
@@ -150,7 +150,9 @@ export function QuoteCartPage() {
   // WhatsApp recipient popup
   const [showWaRecipientModal, setShowWaRecipientModal] = useState(false);
   const [waCustomPhone, setWaCustomPhone] = useState('');
-  const [pendingWaCallback, setPendingWaCallback] = useState<((phone: string) => void) | null>(null);
+  const [isPreparingWaPdf, setIsPreparingWaPdf] = useState(false);
+  const [waPdfError, setWaPdfError] = useState('');
+  const [waPdfShare, setWaPdfShare] = useState<{ blob: Blob; filename: string; message: string } | null>(null);
 
   // Load quote data if editing
   useEffect(() => {
@@ -885,23 +887,22 @@ export function QuoteCartPage() {
     );
   }
 
-  const sendWhatsAppToPhonenumber = async (phone: string) => {
-    const waPopup = openPreparingWhatsAppWindow();
-    setIsExporting(true);
-    const quoteCompanyId = quote?.company_id || quote?.issuing_company_id || companyId;
-    const freshSettings = await CompanySettingsService.getSettings(quoteCompanyId || undefined).catch(() => companySettings);
+  const markQuoteAsSent = async () => {
+    if (!quote?.id || status === 'final') return;
     try {
-      const quoteData: Quote = { id: quote?.id || crypto.randomUUID(), quoteNumber, commandNumber: commandNumber || undefined, createdAt: quote?.createdAt || new Date(), updatedAt: new Date(), status, customer, items, totalAmount, notes, notes2: notes2 || undefined, quote_date: quoteDate || undefined };
-      await PdfExportService.exportQuoteToPdf(quoteData, freshSettings || companySettings, undefined, undefined, useStamp, 'quote', undefined, printTTCOnly, includeProductImages);
-    } catch { /* continue */ }
-    setIsExporting(false);
+      await SupabaseQuotesService.updateQuoteStatus(quote.id, 'pending');
+      setStatus('pending' as any);
+      showToast({ type: 'success', title: 'Statut mis à jour', message: 'Le devis est maintenant marqué comme "Envoyé".' });
+    } catch { /* ignore */ }
+  };
 
-    const tvaRate = freshSettings?.tva_rate ?? companySettings?.tva_rate ?? 20;
+  const buildQuoteWhatsAppMessage = (settings: CompanySettings | null) => {
+    const tvaRate = settings?.tva_rate ?? companySettings?.tva_rate ?? 20;
     const totalHT = totalAmount / (1 + tvaRate / 100);
     const totalTVA = totalAmount - totalHT;
-    const tpl = freshSettings?.share_templates?.whatsapp || companySettings?.share_templates?.whatsapp || DEFAULT_SHARE_TEMPLATES.whatsapp;
-    const companyName = freshSettings?.company_name?.trim() || companySettings?.company_name?.trim() || 'Restonet';
-    const msg = tpl
+    const tpl = settings?.share_templates?.whatsapp || companySettings?.share_templates?.whatsapp || DEFAULT_SHARE_TEMPLATES.whatsapp;
+    const companyName = settings?.company_name?.trim() || companySettings?.company_name?.trim() || 'Restonet';
+    return tpl
       .replace(/{client}/g, customer.fullName || '')
       .replace(/{entreprise}/g, companyName)
       .replace(/{numero}/g, quoteNumber)
@@ -911,28 +912,60 @@ export function QuoteCartPage() {
       .replace(/{tva}/g, String(tvaRate))
       .replace(/{nb_articles}/g, String(totalItems))
       .replace(/{date}/g, ExcelExportService.formatDate(quote?.createdAt || new Date()))
-      .replace(/{telephone}/g, freshSettings?.phone || companySettings?.phone || '')
-      .replace(/{email}/g, freshSettings?.email || companySettings?.email || '')
-      .replace(/{adresse}/g, freshSettings?.address || companySettings?.address || '');
+      .replace(/{telephone}/g, settings?.phone || companySettings?.phone || '')
+      .replace(/{email}/g, settings?.email || companySettings?.email || '')
+      .replace(/{adresse}/g, settings?.address || companySettings?.address || '');
+  };
 
-    const waUrl = buildWhatsAppShareUrl(phone, msg);
+  const prepareWhatsAppPdf = async () => {
+    setWaCustomPhone('');
+    setWaPdfShare(null);
+    setWaPdfError('');
+    setShowWaRecipientModal(true);
+    setIsPreparingWaPdf(true);
+    try {
+      const quoteCompanyId = quote?.company_id || quote?.issuing_company_id || companyId;
+      const freshSettings = await CompanySettingsService.getSettings(quoteCompanyId || undefined).catch(() => companySettings);
+      const quoteData: Quote = { id: quote?.id || crypto.randomUUID(), quoteNumber, commandNumber: commandNumber || undefined, createdAt: quote?.createdAt || new Date(), updatedAt: new Date(), status, customer, items, totalAmount, notes, notes2: notes2 || undefined, quote_date: quoteDate || undefined };
+      const { blob, filename } = await PdfExportService.generatePdfBlob(quoteData, freshSettings || companySettings, undefined, undefined, useStamp, 'quote', undefined, printTTCOnly, includeProductImages);
+      setWaPdfShare({ blob, filename, message: buildQuoteWhatsAppMessage(freshSettings || companySettings) });
+    } catch (error) {
+      setWaPdfError(error instanceof Error ? error.message : 'Impossible de préparer le PDF');
+    } finally {
+      setIsPreparingWaPdf(false);
+    }
+  };
+
+  const sharePreparedPdf = async () => {
+    if (!waPdfShare) return;
+    try {
+      const shared = await sharePdfFile(waPdfShare.blob, waPdfShare.filename, waPdfShare.message);
+      if (!shared) return;
+      setShowWaRecipientModal(false);
+      await markQuoteAsSent();
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
+      showToast({ type: 'error', title: 'Partage impossible', message: error instanceof Error ? error.message : 'Impossible de partager le PDF' });
+    }
+  };
+
+  const sendWhatsAppToPhonenumber = async (phone: string) => {
+    if (!waPdfShare) return;
+    const waPopup = openPreparingWhatsAppWindow();
+    downloadPdfFile(waPdfShare.blob, waPdfShare.filename);
+    const waUrl = buildWhatsAppShareUrl(phone, waPdfShare.message);
     const redirected = redirectPreparingWindowToWhatsApp(waUrl, waPopup);
     if (!redirected) {
       if (!openWhatsAppShare(waUrl)) {
-        navigator.clipboard.writeText(msg).then(() =>
+        navigator.clipboard.writeText(waPdfShare.message).then(() =>
           showToast({ type: 'success', title: 'Copié', message: 'Message copié — ouvrez WhatsApp et collez-le.' })
         ).catch(() =>
           showToast({ type: 'error', title: 'Erreur', message: 'Impossible d\'ouvrir WhatsApp.' })
         );
       }
     }
-    if (quote?.id && status !== 'final') {
-      try {
-        await SupabaseQuotesService.updateQuoteStatus(quote.id, 'pending');
-        setStatus('pending' as any);
-        showToast({ type: 'success', title: 'Statut mis à jour', message: 'Le devis est maintenant marqué comme "Envoyé".' });
-      } catch { /* ignore */ }
-    }
+    setShowWaRecipientModal(false);
+    await markQuoteAsSent();
   };
 
   return (
@@ -1748,13 +1781,12 @@ export function QuoteCartPage() {
                   showToast({ type: 'warning', title: 'Modifications non sauvegardées', message: 'Veuillez sauvegarder le devis avant de le partager.' });
                   return;
                 }
-                setWaCustomPhone('');
-                setShowWaRecipientModal(true);
+                prepareWhatsAppPdf();
               }}
-              disabled={isExporting}
+              disabled={isExporting || isPreparingWaPdf}
               className="flex-1 flex items-center justify-center space-x-1.5 px-3 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg transition-colors"
             >
-              {isExporting ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <><FileDown className="h-3 w-3" /><MessageCircle className="h-3.5 w-3.5" /></>}
+              {isExporting || isPreparingWaPdf ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <><FileDown className="h-3 w-3" /><MessageCircle className="h-3.5 w-3.5" /></>}
               <span>PDF + WhatsApp</span>
             </button>
             <button
@@ -1814,7 +1846,7 @@ export function QuoteCartPage() {
               <span>PDF + Email</span>
             </button>
           </div>
-          <p className="text-[10px] text-muted-foreground mt-1.5">📎 Le PDF sera téléchargé — joignez-le à votre message. Templates personnalisables dans Paramètres.</p>
+          <p className="text-[10px] text-muted-foreground mt-1.5">📎 Sur mobile, le PDF est partagé comme fichier. Sur ordinateur, il est téléchargé pour être joint au message.</p>
         </div>
       )}
 
@@ -1830,11 +1862,20 @@ export function QuoteCartPage() {
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <p className="text-xs text-muted-foreground">Choisissez le destinataire</p>
-            <div className="space-y-2">
+            {isPreparingWaPdf && <div className="flex items-center justify-center gap-2 rounded-lg bg-secondary/60 px-3 py-4 text-sm text-muted-foreground"><Loader className="h-4 w-4 animate-spin" />Préparation du PDF…</div>}
+            {waPdfError && <div className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-600 dark:text-red-400">{waPdfError}</div>}
+            {waPdfShare && canSharePdfFile(waPdfShare.blob, waPdfShare.filename) ? (
+              <div className="space-y-3">
+                <p className="text-xs text-muted-foreground">Le partage système va s’ouvrir. Choisissez WhatsApp puis le destinataire.</p>
+                <button onClick={sharePreparedPdf} className="w-full flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-3 py-3 text-sm font-semibold text-white hover:bg-emerald-700">
+                  <MessageCircle className="h-4 w-4" />Partager le PDF sans lien
+                </button>
+              </div>
+            ) : waPdfShare ? <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">Choisissez le destinataire. Le PDF sera téléchargé : joignez le fichier téléchargé dans WhatsApp.</p>
               {customer.phoneNumber && (
                 <button
-                  onClick={() => { setShowWaRecipientModal(false); sendWhatsAppToPhonenumber(customer.phoneNumber); }}
+                  onClick={() => sendWhatsAppToPhonenumber(customer.phoneNumber)}
                   className="w-full flex items-center justify-between px-3 py-2.5 border border-border rounded-lg hover:bg-accent text-sm text-left"
                 >
                   <span className="font-medium text-foreground">Client</span>
@@ -1850,10 +1891,10 @@ export function QuoteCartPage() {
                     onChange={e => setWaCustomPhone(e.target.value)}
                     placeholder="Ex: 0661234567"
                     className="flex-1 px-3 py-2 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring"
-                    onKeyDown={e => { if (e.key === 'Enter' && waCustomPhone.trim()) { setShowWaRecipientModal(false); sendWhatsAppToPhonenumber(waCustomPhone.trim()); } }}
+                    onKeyDown={e => { if (e.key === 'Enter' && waCustomPhone.trim()) sendWhatsAppToPhonenumber(waCustomPhone.trim()); }}
                   />
                   <button
-                    onClick={() => { if (waCustomPhone.trim()) { setShowWaRecipientModal(false); sendWhatsAppToPhonenumber(waCustomPhone.trim()); } }}
+                    onClick={() => { if (waCustomPhone.trim()) sendWhatsAppToPhonenumber(waCustomPhone.trim()); }}
                     disabled={!waCustomPhone.trim()}
                     className="px-3 py-2 text-sm bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg"
                   >
@@ -1861,7 +1902,7 @@ export function QuoteCartPage() {
                   </button>
                 </div>
               </div>
-            </div>
+            </div> : null}
             <button onClick={() => setShowWaRecipientModal(false)} className="w-full px-3 py-1.5 text-sm border border-input rounded-lg hover:bg-accent text-foreground">
               Annuler
             </button>
