@@ -38,7 +38,9 @@ describe('product image batch analysis', () => {
     expect(analysis.duplicates.map(file => file.name)).toEqual(['A-1.png']);
   });
 
-  it('enforces the bounded first-version batch limit', () => {
+  it('accepts up to 1,000 images and reports files beyond the batch limit', () => {
+    expect(PRODUCT_IMAGE_BATCH_LIMIT).toBe(1000);
+
     const files = Array.from({ length: PRODUCT_IMAGE_BATCH_LIMIT + 2 }, (_, index) => imageFile(`${index}.jpg`));
     const products = Array.from({ length: PRODUCT_IMAGE_BATCH_LIMIT + 2 }, (_, index) => product(String(index)));
     const analysis = analyzeProductImageFiles(files, products);
