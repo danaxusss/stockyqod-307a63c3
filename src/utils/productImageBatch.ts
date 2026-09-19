@@ -1,6 +1,6 @@
 import type { Product } from '../types';
 
-export const PRODUCT_IMAGE_BATCH_LIMIT = 100;
+export const PRODUCT_IMAGE_BATCH_LIMIT = 1000;
 export const PRODUCT_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 
 const IMAGE_EXTENSION = /\.(jpe?g|png|webp)$/i;
