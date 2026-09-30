@@ -109,7 +109,7 @@ export async function uploadPrimaryProductImage(args: {
 }): Promise<string> {
   const { product, file, companyId, createdBy, replaceExisting = false } = args;
   if (!companyId) throw new Error('Aucune société associée');
-  if (!isSupportedProductImage(file.name)) throw new Error('Format accepté : JPG, PNG ou WebP');
+  if (!isSupportedProductImage(file.name)) throw new Error('Format d\'image non reconnu (JPG, PNG, WEBP, GIF, BMP, SVG, AVIF… acceptés)');
   if (file.size > PRODUCT_IMAGE_MAX_BYTES) throw new Error('Image trop volumineuse (maximum 10 Mo)');
   if (product.image && !replaceExisting) throw new Error('Une image existe déjà pour ce produit');
 

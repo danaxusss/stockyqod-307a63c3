@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Images, Upload, Search, Link2, Trash2, Download, X, Loader, CheckSquare, Square, ChevronLeft, ChevronRight, ZoomIn, AlertTriangle, ImagePlus } from 'lucide-react';
+import { Images, Upload, Search, Link2, Trash2, Download, X, Loader, CheckSquare, Square, ChevronLeft, ChevronRight, ZoomIn, AlertTriangle, ImagePlus, ImageOff } from 'lucide-react';
 import { zipSync } from 'fflate';
 import { useLocation } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -36,6 +36,14 @@ export default function ProductPhotosPage() {
 
   const [photos, setPhotos] = useState<ProductPhoto[]>([]);
   const [loading, setLoading] = useState(true);
+  // Ids whose <img> failed to decode — mainly legacy/imported photos stored
+  // in a format this browser can't render inline. Shown as a "download to
+  // view" state instead of a broken image icon, everywhere the photo
+  // appears. Newly-uploaded photos always pass through compressProductImage
+  // (real JPEG output), so this is a defensive fallback for older data.
+  const [previewFailed, setPreviewFailed] = useState<Set<string>>(new Set());
+  const markPreviewFailed = (id: string) =>
+    setPreviewFailed(prev => (prev.has(id) ? prev : new Set(prev).add(id)));
   const [search, setSearch] = useState(initialSearch);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [isUploading, setIsUploading] = useState(false);
@@ -392,7 +400,7 @@ export default function ProductPhotosPage() {
           <input
             ref={bulkFileInputRef}
             type="file"
-            accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+            accept="image/*"
             multiple
             className="hidden"
             onChange={e => handleBulkFiles(e.target.files)}
@@ -446,13 +454,25 @@ export default function ProductPhotosPage() {
             const linkedCount = (photo.product_photo_products || []).length;
             return (
               <div key={photo.id} className="relative group aspect-square rounded-lg overflow-hidden border border-border/40 bg-secondary/30">
-                <img
-                  src={getPublicUrl(photo.storage_path)}
-                  alt={photo.title || photo.file_name}
-                  className="w-full h-full object-contain cursor-pointer transition-opacity group-hover:opacity-85"
-                  onClick={() => openLightbox(photo)}
-                  loading="lazy"
-                />
+                {previewFailed.has(photo.id) ? (
+                  <button
+                    onClick={() => openLightbox(photo)}
+                    className="w-full h-full flex flex-col items-center justify-center gap-1 text-muted-foreground cursor-pointer"
+                    title="Aperçu non disponible dans ce navigateur"
+                  >
+                    <ImageOff className="h-5 w-5" />
+                    <span className="text-[9px] uppercase">{photo.file_name.split('.').pop() || ''}</span>
+                  </button>
+                ) : (
+                  <img
+                    src={getPublicUrl(photo.storage_path)}
+                    alt={photo.title || photo.file_name}
+                    className="w-full h-full object-contain cursor-pointer transition-opacity group-hover:opacity-85"
+                    onClick={() => openLightbox(photo)}
+                    onError={() => markPreviewFailed(photo.id)}
+                    loading="lazy"
+                  />
+                )}
                 {/* Select checkbox */}
                 <button
                   onClick={e => { e.stopPropagation(); toggleSelect(photo.id); }}
@@ -642,11 +662,22 @@ export default function ProductPhotosPage() {
                 <ChevronLeft className="h-6 w-6" />
               </button>
             )}
-            <img
-              src={getPublicUrl(lightbox.storage_path)}
-              alt={lightbox.title}
-              className="max-h-full max-w-full object-contain rounded"
-            />
+            {previewFailed.has(lightbox.id) ? (
+              <div className="flex flex-col items-center gap-3 text-white/70">
+                <ImageOff className="h-10 w-10" />
+                <p className="text-sm text-center max-w-xs">
+                  Aperçu non disponible pour ce format dans ce navigateur.<br />
+                  Téléchargez le fichier pour le consulter.
+                </p>
+              </div>
+            ) : (
+              <img
+                src={getPublicUrl(lightbox.storage_path)}
+                alt={lightbox.title}
+                className="max-h-full max-w-full object-contain rounded"
+                onError={() => markPreviewFailed(lightbox.id)}
+              />
+            )}
             {filtered.length > 1 && (
               <button onClick={lightboxNext} className="absolute right-2 p-2 rounded-full text-white/70 hover:text-white hover:bg-white/10 transition-colors">
                 <ChevronRight className="h-6 w-6" />
@@ -689,8 +720,15 @@ export default function ProductPhotosPage() {
 
               <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
                 {/* Thumbnail */}
-                <img src={getPublicUrl(linkModal.storage_path)} alt={linkModal.title}
-                  className="w-14 h-14 object-contain rounded-lg border border-border bg-secondary/30" />
+                {previewFailed.has(linkModal.id) ? (
+                  <div className="w-14 h-14 rounded-lg border border-border bg-secondary/50 flex items-center justify-center text-muted-foreground">
+                    <ImageOff className="h-4 w-4" />
+                  </div>
+                ) : (
+                  <img src={getPublicUrl(linkModal.storage_path)} alt={linkModal.title}
+                    onError={() => markPreviewFailed(linkModal.id)}
+                    className="w-14 h-14 object-contain rounded-lg border border-border bg-secondary/30" />
+                )}
 
                 {/* Existing links */}
                 {(linkModal.product_photo_products || []).length > 0 && (
