@@ -412,7 +412,7 @@ export function ProductDetail() {
                   <input
                     ref={imageFileInputRef}
                     type="file"
-                    accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                    accept="image/*"
                     onChange={handlePrimaryImageUpload}
                     className="hidden"
                     id="product-image-upload"

@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient';
 import { getCompanyContext } from './supabaseCompanyFilter';
+import { extensionFor, mimeFor, IMAGE_EXT_RE } from './imageFormats';
 
 export interface CatalogueFamily {
   id: string;
@@ -201,9 +202,13 @@ export class CatalogueService {
   }
 
   static async setPhoto(product: CatalogueProduct, file: File): Promise<string> {
-    const path = `catalogue/${safeName(product.ref)}-${Date.now()}.jpg`;
+    // Extension/content-type follow the actual file (jpg, png, webp, bmp,
+    // gif, svg…) instead of being forced to .jpg — a mislabeled file breaks
+    // downloads and silently corrupts embedding into the printable
+    // catalogue PDF later.
+    const path = `catalogue/${safeName(product.ref)}-${Date.now()}.${extensionFor(file)}`;
     const { error } = await supabase.storage.from('product-photos')
-      .upload(path, file, { upsert: true, contentType: file.type || 'image/jpeg' });
+      .upload(path, file, { upsert: true, contentType: mimeFor(file) });
     if (error) throw error;
     await this.updateProduct(product.id, { image: path });
     return path;
@@ -217,7 +222,7 @@ export class CatalogueService {
     const byRef = new Map(products.map(p => [normRef(p.ref), p]));
     let uploaded = 0, failed = 0;
     const unmatched: string[] = [];
-    const imgs = files.filter(f => /\.(jpe?g|png|webp)$/i.test(f.name));
+    const imgs = files.filter(f => IMAGE_EXT_RE.test(f.name));
     for (let i = 0; i < imgs.length; i++) {
       const f = imgs[i];
       const p = byRef.get(normRef(f.name.replace(/\.[^.]+$/, '')));

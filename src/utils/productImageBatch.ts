@@ -1,9 +1,14 @@
 import type { Product } from '../types';
+import { IMAGE_EXT_RE } from './imageFormats';
 
 export const PRODUCT_IMAGE_BATCH_LIMIT = 1000;
 export const PRODUCT_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 
-const IMAGE_EXTENSION = /\.(jpe?g|png|webp)$/i;
+// Accepts any format the browser can decode (jpg, png, webp, gif, bmp, svg,
+// avif, ico…) rather than a narrow allowlist — see imageFormats.ts. A format
+// a specific browser can't actually render still fails cleanly later, at
+// compression time, with a clear "Image illisible" error.
+const IMAGE_EXTENSION = IMAGE_EXT_RE;
 
 export type ProductImageCandidate = {
   file: File;

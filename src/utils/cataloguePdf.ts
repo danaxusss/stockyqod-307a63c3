@@ -25,7 +25,7 @@ export interface CatalogueOptions {
 }
 
 export interface Fam extends CatalogueFamily { products: CatalogueProduct[] }
-export type ImgMap = Map<string, { data: string; w: number; h: number }>;
+export type ImgMap = Map<string, { data: string; w: number; h: number; fmt: 'PNG' | 'JPEG' }>;
 
 // ── palette / geometry (identical to pdfgen.py) ─────────────────────────────
 const RED = '#C42B2F', INK = '#16181D', GRAY = '#6B7280';
@@ -51,7 +51,6 @@ const tracked = (s: string) => s.split('').join(' ');
 const fprice = (p: number | null | undefined) =>
   p == null ? '' : p.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace(/ | /g, ' ');
 const letterOf = (n: string) => { const c = (n.trim()[0] || '#').toUpperCase(); return /^[A-Z]$/.test(c) ? c : '#'; };
-const fmtOf = (u: string) => u.startsWith('data:image/png') ? 'PNG' : u.startsWith('data:image/webp') ? 'WEBP' : 'JPEG';
 
 function font(d: jsPDF, style: 'F' | 'FB' | 'FH', size: number) {
   d.setFont('helvetica', style === 'F' ? 'normal' : 'bold');
@@ -72,10 +71,10 @@ const line = (d: jsPDF, x1: number, y1: number, x2: number, y2: number) => d.lin
 function link(d: jsPDF, x1: number, y1: number, x2: number, y2: number, page: number, top?: number) {
   try { (d as any).link(x1, Y(y2), x2 - x1, y2 - y1, { pageNumber: page, top: top != null ? Y(top) : 0 }); } catch { /* */ }
 }
-function drawImg(d: jsPDF, img: { data: string; w: number; h: number }, x: number, y: number, bw: number, bh: number) {
+function drawImg(d: jsPDF, img: { data: string; w: number; h: number; fmt: 'PNG' | 'JPEG' }, x: number, y: number, bw: number, bh: number) {
   const s = Math.min(bw / img.w, bh / img.h);
   const w = img.w * s, h = img.h * s;
-  try { d.addImage(img.data, fmtOf(img.data), x + (bw - w) / 2, Y(y + bh) + (bh - h) / 2, w, h); } catch { /* */ }
+  try { d.addImage(img.data, img.fmt, x + (bw - w) / 2, Y(y + bh) + (bh - h) / 2, w, h); } catch { /* */ }
 }
 
 // ── layout: LIST ────────────────────────────────────────────────────────────
@@ -221,7 +220,10 @@ export async function generateCataloguePdf(
   const pval = (p: CatalogueProduct) =>
     variant === 'none' ? null : (variant === 'pro' && p.price_pro != null ? p.price_pro : p.price);
 
-  const logo = opts.logoDataUrl ? await measure(opts.logoDataUrl).catch(() => null) : null;
+  // The uploaded logo can be any format too; sniff its mime from the data
+  // URL itself since we don't have the original Blob/File here.
+  const logoMime = opts.logoDataUrl?.match(/^data:([^;]+);/)?.[1] || 'image/png';
+  const logo = opts.logoDataUrl ? await normalizeForPdf(opts.logoDataUrl, logoMime).catch(() => null) : null;
   const today = new Date().toISOString().slice(0, 10);
 
   progress('Mise en page…', 5);
@@ -448,13 +450,54 @@ export async function generateCataloguePdf(
 }
 
 // ── image helpers ───────────────────────────────────────────────────────────
-function measure(dataUrl: string): Promise<{ data: string; w: number; h: number }> {
+function measureOnly(dataUrl: string): Promise<{ w: number; h: number }> {
   return new Promise((res, rej) => {
     const im = new Image();
-    im.onload = () => res({ data: dataUrl, w: im.naturalWidth || 100, h: im.naturalHeight || 100 });
+    im.onload = () => res({ w: im.naturalWidth || 100, h: im.naturalHeight || 100 });
     im.onerror = rej;
     im.src = dataUrl;
   });
+}
+
+function loadImageEl(dataUrl: string): Promise<HTMLImageElement> {
+  return new Promise((res, rej) => {
+    const im = new Image();
+    im.onload = () => res(im);
+    im.onerror = rej;
+    im.src = dataUrl;
+  });
+}
+
+/**
+ * Turn a fetched product photo into something jsPDF is guaranteed to embed.
+ *
+ * JPEG and PNG are jsPDF's two natively-reliable formats, so those pass
+ * through untouched (no re-encode, no quality loss, same behaviour as
+ * before). Anything else — webp, bmp, gif, svg, avif, ico… — is decoded by
+ * the browser's own <img> (which reliably handles all of those) and
+ * re-encoded through a canvas into a JPEG, so the catalogue PDF can include
+ * a photo regardless of which format it was originally stored in. Any
+ * transparency is flattened onto white first, since JPEG has no alpha
+ * channel.
+ */
+async function normalizeForPdf(dataUrl: string, mime: string): Promise<{ data: string; w: number; h: number; fmt: 'PNG' | 'JPEG' }> {
+  if (mime === 'image/jpeg' || mime === 'image/jpg') {
+    const { w, h } = await measureOnly(dataUrl);
+    return { data: dataUrl, w, h, fmt: 'JPEG' };
+  }
+  if (mime === 'image/png') {
+    const { w, h } = await measureOnly(dataUrl);
+    return { data: dataUrl, w, h, fmt: 'PNG' };
+  }
+  const img = await loadImageEl(dataUrl);
+  const w = img.naturalWidth || 100, h = img.naturalHeight || 100;
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(img, 0, 0, w, h);
+  return { data: canvas.toDataURL('image/jpeg', 0.88), w, h, fmt: 'JPEG' };
 }
 
 /** Fetch catalogue photos with limited concurrency → keyed by product id. */
@@ -479,9 +522,9 @@ export async function fetchCatalogueImages(
             fr.onload = () => res(fr.result as string); fr.onerror = rej;
             fr.readAsDataURL(b);
           });
-          map.set(p.id, await measure(url));
+          map.set(p.id, await normalizeForPdf(url, b.type));
         }
-      } catch { /* missing image → placeholder */ }
+      } catch { /* missing or undecodable image → placeholder */ }
       done++;
       if (done % 25 === 0 || done === withImg.length) {
         onProgress(`Photos… ${done}/${withImg.length}`, Math.round((done / withImg.length) * 100));

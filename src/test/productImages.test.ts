@@ -38,6 +38,23 @@ describe('product image batch analysis', () => {
     expect(analysis.duplicates.map(file => file.name)).toEqual(['A-1.png']);
   });
 
+  it('accepts formats beyond jpg/png/webp (bmp, gif, svg, avif…)', () => {
+    const analysis = analyzeProductImageFiles(
+      [imageFile('C-3.bmp'), imageFile('D-4.gif'), imageFile('E-5.svg'), imageFile('F-6.avif')],
+      [product('C-3'), product('D-4'), product('E-5'), product('F-6')],
+    );
+    expect(analysis.invalid).toEqual([]);
+    expect(analysis.newImages.map(item => item.product.barcode).sort()).toEqual(['C-3', 'D-4', 'E-5', 'F-6']);
+  });
+
+  it('still rejects a genuinely unsupported file, with a reason', () => {
+    const analysis = analyzeProductImageFiles(
+      [imageFile('G-7.txt')],
+      [product('G-7')],
+    );
+    expect(analysis.invalid).toEqual([{ file: expect.objectContaining({ name: 'G-7.txt' }), reason: 'format non pris en charge' }]);
+  });
+
   it('accepts up to 1,000 images and reports files beyond the batch limit', () => {
     expect(PRODUCT_IMAGE_BATCH_LIMIT).toBe(1000);
 
