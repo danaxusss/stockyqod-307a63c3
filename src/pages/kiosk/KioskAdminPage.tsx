@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../hooks/useAuth';
+import { useIsMobile } from '../../hooks/use-mobile';
 import {
   KioskService, type KioskAdminProduct, type KioskAdminProfile, type KioskCompanyOption,
   type KioskLanguage, type KioskRequestDetail, type KioskRequestItem, type KioskRequestStatus,
@@ -319,12 +320,38 @@ function RequestsPanel({ requests, total, page, search, status, loading, onSearc
   onSearch: (value: string) => void; onStatus: (value: KioskRequestStatus | 'all') => void; onPage: (page: number) => void; onOpen: (id: string) => void;
 }) {
   const pages = Math.max(1, Math.ceil(total / 50));
+  // Phones get one card per request instead of the 7-column table.
+  const isMobile = useIsMobile();
   return (
     <section className="overflow-hidden rounded-xl border bg-card shadow-sm">
       <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center">
         <div className="relative min-w-0 flex-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><input value={search} onChange={e => onSearch(e.target.value)} placeholder="Numéro, client ou téléphone…" className="h-10 w-full rounded-lg border bg-background pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-primary/30" /></div>
         <select value={status} onChange={e => onStatus(e.target.value as KioskRequestStatus | 'all')} className="h-10 rounded-lg border bg-background px-3 text-sm"><option value="all">Tous les statuts</option>{Object.entries(STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
       </div>
+      {isMobile ? (
+        <div className="divide-y">
+          {requests.map(request => (
+            <button key={request.id} onClick={() => onOpen(request.id)} className="block w-full p-4 text-left active:bg-muted/40">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-semibold text-primary">{request.request_number}</div>
+                  <div className="text-xs text-muted-foreground">{dateTime(request.submitted_at)}</div>
+                </div>
+                <StatusBadge status={request.status} />
+              </div>
+              <div className="mt-2 text-sm">
+                {request.contact_details_pending
+                  ? <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">Coordonnées à compléter</span>
+                  : <><span className="font-medium">{request.customer_name}</span> <span className="text-muted-foreground">· {request.customer_phone}</span></>}
+              </div>
+              <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+                <span className="truncate">{request.kiosk_profile?.name || '—'} · {request.kiosk_request_items?.[0]?.count || 0} produit(s) · {request.assigned_user?.custom_seller_name || request.assigned_user?.username || 'Non assigné'}</span>
+                <span className="shrink-0 text-sm font-semibold text-foreground">{money(request.total_amount)} DH</span>
+              </div>
+            </button>
+          ))}
+        </div>
+      ) : (
       <div className="overflow-x-auto">
         <table className="w-full min-w-[900px] text-left text-sm">
           <thead className="bg-muted/50 text-xs uppercase tracking-wide text-muted-foreground"><tr><th className="px-4 py-3">Demande</th><th className="px-4 py-3">Client</th><th className="px-4 py-3">Kiosque</th><th className="px-4 py-3">Attribution</th><th className="px-4 py-3 text-right">Montant</th><th className="px-4 py-3">Statut</th><th className="px-4 py-3" /></tr></thead>
@@ -343,6 +370,7 @@ function RequestsPanel({ requests, total, page, search, status, loading, onSearc
           </tbody>
         </table>
       </div>
+      )}
       {!requests.length && <div className="py-20 text-center text-muted-foreground"><ShoppingCart className="mx-auto mb-3 h-9 w-9 opacity-40" /><p>{loading ? 'Chargement…' : 'Aucune demande trouvée.'}</p></div>}
       <div className="flex items-center justify-between border-t px-4 py-3 text-sm text-muted-foreground"><span>{total} demande(s)</span><div className="flex items-center gap-2"><button disabled={page === 0} onClick={() => onPage(page - 1)} className="rounded-lg border p-2 disabled:opacity-30"><ChevronLeft className="h-4 w-4" /></button><span>{page + 1} / {pages}</span><button disabled={page + 1 >= pages} onClick={() => onPage(page + 1)} className="rounded-lg border p-2 disabled:opacity-30"><ChevronRight className="h-4 w-4" /></button></div></div>
     </section>

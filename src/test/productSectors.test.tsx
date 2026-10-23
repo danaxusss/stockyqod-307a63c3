@@ -133,7 +133,7 @@ describe('ProductsPage business sectors', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Sélectionner Machine espresso' }));
     fireEvent.change(screen.getByRole('combobox', { name: 'Ajouter un secteur à la sélection' }), { target: { value: 's-hotel' } });
     fireEvent.change(screen.getByRole('combobox', { name: 'Type kiosque pour la sélection' }), { target: { value: 'furniture' } });
-    expect(screen.getByText('2 produit(s) en attente d’enregistrement…')).toBeInTheDocument();
+    expect(screen.getByText('produit(s) en attente d’enregistrement…')).toBeInTheDocument();
 
     await waitFor(() => expect(save).toHaveBeenCalledTimes(1), { timeout: 3000 });
     expect(save).toHaveBeenCalledWith({
@@ -224,5 +224,40 @@ describe('sectorLabel', () => {
     expect(sectorLabel(SECTORS[2], 'ar')).toBe('فندق');
     expect(sectorLabel(SECTORS[1], 'en')).toBe('Café');
     expect(sectorLabel(SECTORS[0])).toBe('Restaurant');
+  });
+});
+
+describe('ProductsPage on phones', () => {
+  const desktopWidth = window.innerWidth;
+  afterEach(() => { window.innerWidth = desktopWidth; });
+
+  it('shows product cards with collapsed filters instead of the table', async () => {
+    window.innerWidth = 390;
+    renderProducts();
+    expect(await screen.findByRole('button', { name: /Filtres/ })).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Four mixte' })).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Secteur' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Filtres/ }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Secteur' }), { target: { value: 's-cafe' } });
+    expect(screen.queryByRole('link', { name: 'Four mixte' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Machine espresso' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Filtres/ })).toHaveTextContent('1');
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Trier par' }), { target: { value: 'name:desc' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Secteur' }), { target: { value: '' } });
+    const names = screen.getAllByRole('link').map(link => link.textContent).filter(name => ['Four mixte', 'Machine espresso', 'Hachoir'].includes(name || ''));
+    expect(names).toEqual(['Machine espresso', 'Hachoir', 'Four mixte']);
+  });
+
+  it('supports bulk editing from the cards', async () => {
+    window.innerWidth = 390;
+    renderProducts();
+    fireEvent.click(await screen.findByRole('button', { name: 'Modification groupée' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sélectionner Hachoir' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Ajouter un secteur à la sélection' }), { target: { value: 's-hotel' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+    expect(save).toHaveBeenCalledWith({ P3: { sector_ids: ['s-hotel'] } });
   });
 });

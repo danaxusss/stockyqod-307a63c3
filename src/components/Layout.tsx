@@ -101,7 +101,11 @@ export function Layout({ children }: LayoutProps) {
           onTouchMove={isUserAuthenticated ? handleTouchMove : undefined}
           onTouchEnd={isUserAuthenticated ? handleTouchEnd : undefined}
           style={{
-            transform: isPulling ? `translateY(${Math.min(pullDistance * 0.3, 30)}px)` : 'translateY(0)',
+            // Only transform while pulling: any transform (even translateY(0))
+            // makes every position:fixed overlay inside the page (dialogs, the
+            // bulk-edit bar…) position against <main> instead of the screen,
+            // shifting it off-screen on phones and under the floating cart.
+            transform: isPulling ? `translateY(${Math.min(pullDistance * 0.3, 30)}px)` : undefined,
             transition: isPulling ? 'none' : 'transform 0.3s ease-out',
           }}
         >

@@ -70,6 +70,8 @@ function ImageFinder() {
   const [fetchingUrl, setFetchingUrl] = useState(false);
   const [saving, setSaving] = useState(false);
   const [dragging, setDragging] = useState(false);
+  // Phones: the product list folds away so the search and results come first.
+  const [queueOpen, setQueueOpen] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const searchRequest = useRef(0);
   const savedAny = useRef(false);
@@ -270,6 +272,12 @@ function ImageFinder() {
 
       <div className="grid gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
         <aside className="flex max-h-[calc(100vh-11rem)] flex-col overflow-hidden rounded-xl border border-border bg-card lg:sticky lg:top-4">
+          <button onClick={() => setQueueOpen(open => !open)} aria-expanded={queueOpen}
+            className="flex items-center justify-between gap-2 px-3 py-2.5 text-left text-sm lg:hidden">
+            <span className="font-medium text-foreground">Liste des produits <span className="text-muted-foreground">· {queue.length}</span></span>
+            <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${queueOpen ? 'rotate-90' : ''}`} />
+          </button>
+          <div className={`${queueOpen ? 'flex' : 'hidden'} min-h-0 flex-1 flex-col border-t border-border lg:flex lg:border-t-0`}>
           <div className="space-y-2 border-b border-border p-3">
             <div className="relative"><Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" /><input value={listSearch} onChange={event => setListSearch(event.target.value)} placeholder="Filtrer : nom ou code-barres…" className="w-full rounded-lg border border-input bg-background py-1.5 pl-8 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" /></div>
             <select value={brandFilter} onChange={event => setBrandFilter(event.target.value)} className="w-full rounded-lg border border-input bg-background px-2 py-1.5 text-sm">
@@ -283,7 +291,7 @@ function ImageFinder() {
               const image = savedImages[product.barcode] || product.image;
               const active = product.barcode === current?.barcode;
               return (
-                <button key={product.barcode} onClick={() => goTo(product)} className={`flex w-full items-center gap-2.5 border-b border-border/60 px-3 py-2 text-left transition-colors ${active ? 'bg-primary/10' : 'hover:bg-accent'}`}>
+                <button key={product.barcode} onClick={() => { goTo(product); setQueueOpen(false); }} className={`flex w-full items-center gap-2.5 border-b border-border/60 px-3 py-2 text-left transition-colors ${active ? 'bg-primary/10' : 'hover:bg-accent'}`}>
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-background">{image ? <img src={resolveProductImageUrl(image) || ''} alt="" className="h-full w-full object-contain" loading="lazy" /> : <Images className="h-4 w-4 text-muted-foreground/50" />}</div>
                   <div className="min-w-0 flex-1"><p className="truncate text-xs font-medium">{product.name}</p><p className="truncate font-mono text-[10px] text-muted-foreground">{product.brand ? `${product.brand} · ` : ''}{product.barcode}</p></div>
                   {savedImages[product.barcode] && <Check className="h-4 w-4 shrink-0 text-emerald-600" />}
@@ -292,6 +300,7 @@ function ImageFinder() {
             })}
             {queue.length > QUEUE_PAGE && <p className="p-3 text-center text-[11px] text-muted-foreground">{queue.length - QUEUE_PAGE} autre(s) — affinez le filtre.</p>}
             {!queue.length && <p className="p-6 text-center text-xs text-muted-foreground">{missingOnly ? 'Tous les produits de cette sélection ont une image. 🎉' : 'Aucun produit trouvé.'}</p>}
+          </div>
           </div>
         </aside>
 
