@@ -3,6 +3,8 @@ import { getToken } from './session';
 import { describeEdgeError } from './edgeError';
 
 const FUNCTION_NAME = 'kiosk';
+const KIOSK_LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'];
+const KIOSK_LOGO_MAX_BYTES = 2 * 1024 * 1024;
 
 /**
  * Keeps the HTTP status of a failed kiosk call so the tablet can tell a
@@ -35,6 +37,10 @@ export interface KioskPublicProfile {
   logo_url: string | null;
   accent_color: string;
   language: KioskLanguage;
+  /** Languages the customer can switch to; the first is the default. */
+  customer_languages: KioskLanguage[];
+  allow_deferred_contact: boolean;
+  success_screen_seconds: number;
   show_prices: boolean;
   price_mode: KioskPriceMode;
   require_email: boolean;
@@ -50,6 +56,7 @@ export interface KioskProduct {
   kiosk_category: KioskCategory | null;
   price: number | null;
   available: boolean;
+  featured?: boolean;
 }
 
 export interface KioskAdminProfile {
@@ -63,6 +70,9 @@ export interface KioskAdminProfile {
   logo_url: string | null;
   accent_color: string | null;
   language: KioskLanguage;
+  customer_languages: KioskLanguage[];
+  allow_deferred_contact: boolean;
+  success_screen_seconds: number;
   show_prices: boolean;
   price_mode: KioskPriceMode;
   require_email: boolean;
@@ -185,6 +195,7 @@ export class KioskService {
     category?: KioskCategory | null;
     brand?: string | null;
     onlyAvailable?: boolean;
+    featuredOnly?: boolean;
     page?: number;
     pageSize?: number;
   } = {}): Promise<{ products: KioskProduct[]; total: number; page: number; page_size: number }> {
@@ -192,6 +203,7 @@ export class KioskService {
       action: 'public_catalog', token,
       search: options.search || '', category: options.category || null,
       brand: options.brand || null, only_available: options.onlyAvailable === true,
+      featured_only: options.featuredOnly === true,
       page: options.page || 0, page_size: options.pageSize || 30,
     });
   }
@@ -221,6 +233,25 @@ export class KioskService {
   static async saveProfile(profile: KioskAdminProfile): Promise<KioskAdminProfile> {
     const result = await invoke<{ profile: KioskAdminProfile }>({ action: 'admin_save_profile', profile }, true);
     return result.profile;
+  }
+
+  static async featuredProducts(barcodes: string[]): Promise<Array<Pick<KioskAdminProduct, 'barcode' | 'name' | 'brand' | 'image'>>> {
+    if (!barcodes.length) return [];
+    const result = await invoke<{ products: Array<Pick<KioskAdminProduct, 'barcode' | 'name' | 'brand' | 'image'>> }>({
+      action: 'admin_featured_products', barcodes,
+    }, true);
+    return result.products;
+  }
+
+  /** Store a kiosk logo next to the product photos and return its public URL. */
+  static async uploadLogo(companyId: string, file: File): Promise<string> {
+    if (!KIOSK_LOGO_TYPES.includes(file.type)) throw new Error('Format accepté : PNG, JPG, WEBP ou SVG.');
+    if (file.size > KIOSK_LOGO_MAX_BYTES) throw new Error('Logo trop volumineux (2 Mo maximum).');
+    const extension = file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
+    const path = `${companyId}/kiosk/logo-${Date.now()}-${crypto.randomUUID().slice(0, 8)}.${extension}`;
+    const { error } = await supabase.storage.from('product-photos').upload(path, file, { upsert: false, contentType: file.type });
+    if (error) throw error;
+    return supabase.storage.from('product-photos').getPublicUrl(path).data.publicUrl;
   }
 
   static async rotateToken(profileId: string): Promise<string> {

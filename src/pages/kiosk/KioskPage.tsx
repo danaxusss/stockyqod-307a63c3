@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 import {
-  AlertTriangle, ArrowLeft, Check, ChevronRight, Expand, Loader2,
-  Minus, Package, Plus, RotateCcw, Search, ShoppingCart, UserRound, WifiOff, X,
+  AlertTriangle, ArrowLeft, Check, ChevronRight, Expand, Languages, Loader2,
+  Minus, Package, Plus, RotateCcw, Search, ShoppingCart, Star, Trash2, UserRound, WifiOff, X,
 } from 'lucide-react';
 import {
   KioskRequestError, KioskService, type KioskCategory, type KioskLanguage, type KioskProduct, type KioskPublicProfile,
@@ -12,6 +12,18 @@ import { DEFAULT_KIOSK_ACCENT, isHexColor, readableTextOn } from '../../utils/ki
 type Stage = 'welcome' | 'catalog' | 'review' | 'submitted';
 type CartLine = { product: KioskProduct; quantity: number };
 type FatalState = { kind: 'gone' | 'temporary'; message: string };
+type CustomerDetails = { name: string; phone: string; email: string; note: string };
+type SavedSession = {
+  cart: Record<string, CartLine>;
+  customer: CustomerDetails;
+  deferContact: boolean;
+  stage: Extract<Stage, 'welcome' | 'catalog' | 'review'>;
+  language: KioskLanguage | null;
+  expiresAt: number;
+};
+
+const EMPTY_CUSTOMER: CustomerDetails = { name: '', phone: '', email: '', note: '' };
+const LANGUAGE_NAMES: Record<KioskLanguage, string> = { fr: 'Français', en: 'English', ar: 'العربية' };
 
 const copy = {
   fr: {
@@ -37,6 +49,7 @@ const copy = {
     productsUnavailable: 'Un ou plusieurs produits ne sont plus disponibles. Retirez-les puis renvoyez la demande.',
     genericError: 'Une erreur est survenue. Réessayez ou demandez à un conseiller.',
     temporarilyUnavailable: 'Le kiosque est momentanément indisponible. Nouvelle tentative automatique…',
+    featured: 'Sélection', featuredTitle: 'Notre sélection', remove: 'Retirer', seconds: 's', language: 'Langue',
   },
   en: {
     start: 'Start', home: 'Home', details: 'Your details', name: 'Full name', phone: 'Phone', email: 'Email',
@@ -61,6 +74,7 @@ const copy = {
     productsUnavailable: 'One or more products are no longer available. Remove them and send the request again.',
     genericError: 'Something went wrong. Try again or ask a sales representative.',
     temporarilyUnavailable: 'The kiosk is temporarily unavailable. Retrying automatically…',
+    featured: 'Featured', featuredTitle: 'Our selection', remove: 'Remove', seconds: 's', language: 'Language',
   },
   ar: {
     start: 'ابدأ', home: 'الرئيسية', details: 'معلوماتك', name: 'الاسم الكامل', phone: 'الهاتف', email: 'البريد الإلكتروني',
@@ -85,6 +99,7 @@ const copy = {
     productsUnavailable: 'منتج واحد أو أكثر لم يعد متوفراً. احذفه ثم أعد إرسال الطلب.',
     genericError: 'حدث خطأ. أعد المحاولة أو اطلب مساعدة مستشار المبيعات.',
     temporarilyUnavailable: 'الكشك غير متاح مؤقتاً. ستتم إعادة المحاولة تلقائياً…',
+    featured: 'مختارات', featuredTitle: 'مختاراتنا', remove: 'حذف', seconds: 'ث', language: 'اللغة',
   },
 } as const;
 
@@ -122,13 +137,43 @@ function describeKioskError(error: unknown, t: KioskCopy): string {
 
 const scrollToY = (y: number) => window.scrollTo({ top: y });
 
+// An accidental reload (or the tablet browser discarding the tab) should not
+// lose a selection in progress. The copy lives in sessionStorage — this tab
+// only — and expires with the kiosk's inactivity timeout.
+const sessionKey = (token: string) => `stocky-kiosk-session:${token}`;
+
+function readSavedSession(token: string): SavedSession | null {
+  try {
+    const raw = sessionStorage.getItem(sessionKey(token));
+    if (!raw) return null;
+    const saved = JSON.parse(raw) as SavedSession;
+    if (!saved || typeof saved.expiresAt !== 'number' || saved.expiresAt < Date.now()) {
+      sessionStorage.removeItem(sessionKey(token));
+      return null;
+    }
+    return saved;
+  } catch {
+    return null;
+  }
+}
+
+function writeSavedSession(token: string, session: SavedSession | null) {
+  try {
+    if (session) sessionStorage.setItem(sessionKey(token), JSON.stringify(session));
+    else sessionStorage.removeItem(sessionKey(token));
+  } catch { /* storage full or disabled: the session simply is not kept */ }
+}
+
 export default function KioskPage() {
   const { token = '' } = useParams();
+  const [saved] = useState(() => readSavedSession(token));
   const [profile, setProfile] = useState<KioskPublicProfile | null>(null);
   const [brands, setBrands] = useState<string[]>([]);
-  const [stage, setStage] = useState<Stage>('welcome');
-  const [customer, setCustomer] = useState({ name: '', phone: '', email: '', note: '' });
-  const [deferContact, setDeferContact] = useState(false);
+  const [featured, setFeatured] = useState<KioskProduct[]>([]);
+  const [stage, setStage] = useState<Stage>(saved?.stage || 'welcome');
+  const [chosenLanguage, setChosenLanguage] = useState<KioskLanguage | null>(saved?.language || null);
+  const [customer, setCustomer] = useState<CustomerDetails>(saved?.customer || EMPTY_CUSTOMER);
+  const [deferContact, setDeferContact] = useState(saved?.deferContact || false);
   const [formError, setFormError] = useState('');
   const [products, setProducts] = useState<KioskProduct[]>([]);
   const [totalProducts, setTotalProducts] = useState(0);
@@ -138,7 +183,8 @@ export default function KioskPage() {
   const [category, setCategory] = useState<KioskCategory | null>(null);
   const [brand, setBrand] = useState('');
   const [onlyAvailable, setOnlyAvailable] = useState(false);
-  const [cart, setCart] = useState<Record<string, CartLine>>({});
+  const [featuredOnly, setFeaturedOnly] = useState(false);
+  const [cart, setCart] = useState<Record<string, CartLine>>(saved?.cart || {});
   const [selectedProduct, setSelectedProduct] = useState<KioskProduct | null>(null);
   const [loading, setLoading] = useState(true);
   const [catalogLoading, setCatalogLoading] = useState(false);
@@ -148,16 +194,19 @@ export default function KioskPage() {
   const [fatal, setFatal] = useState<FatalState | null>(null);
   const [requestNumber, setRequestNumber] = useState('');
   const [idleWarning, setIdleWarning] = useState(false);
+  const [idleSecondsLeft, setIdleSecondsLeft] = useState(0);
   const [online, setOnline] = useState(navigator.onLine);
   const idleWarningTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const idleResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const idleDeadline = useRef(0);
   // Filters of the page currently on screen, so returning from the review
   // step keeps the loaded pages instead of starting over at page one.
   const loadedCatalogKey = useRef<string | null>(null);
   const catalogRequest = useRef(0);
   const catalogScroll = useRef(0);
 
-  const language: KioskLanguage = profile?.language || 'fr';
+  const customerLanguages: KioskLanguage[] = profile?.customer_languages?.length ? profile.customer_languages : [profile?.language || 'fr'];
+  const language: KioskLanguage = chosenLanguage && customerLanguages.includes(chosenLanguage) ? chosenLanguage : profile?.language || 'fr';
   const t = copy[language];
   const dir = language === 'ar' ? 'rtl' : 'ltr';
   const accent = profile && isHexColor(profile.accent_color) ? profile.accent_color : DEFAULT_KIOSK_ACCENT;
@@ -167,6 +216,8 @@ export default function KioskPage() {
   const cartQuantity = useMemo(() => cartLines.reduce((sum, line) => sum + line.quantity, 0), [cartLines]);
   const cartTotal = useMemo(() => cartLines.reduce((sum, line) => sum + (line.product.price || 0) * line.quantity, 0), [cartLines]);
   const sessionDirty = cartLines.length > 0 || Object.values(customer).some(value => value.trim() !== '');
+  const canDeferContact = profile?.allow_deferred_contact !== false;
+  const deferring = canDeferContact && deferContact;
 
   const loadProfile = useCallback(async (quiet: boolean) => {
     if (!quiet) setLoading(true);
@@ -175,6 +226,10 @@ export default function KioskPage() {
       setProfile(data.profile);
       setBrands(data.brands || []);
       setFatal(null);
+      // Featured products are a bonus: the kiosk works the same without them.
+      KioskService.listPublicProducts(token, { featuredOnly: true, page: 0, pageSize: 24 })
+        .then(result => setFeatured(result.products))
+        .catch(() => undefined);
     } catch (error) {
       const gone = error instanceof KioskRequestError && error.status === 404;
       // A quiet background refresh that fails transiently keeps the kiosk
@@ -193,9 +248,11 @@ export default function KioskPage() {
 
   const resetSession = useCallback(() => {
     clearIdleTimers();
-    setCustomer({ name: '', phone: '', email: '', note: '' });
+    setCustomer(EMPTY_CUSTOMER);
     setDeferContact(false);
     setCart({});
+    setChosenLanguage(null);
+    setFeaturedOnly(false);
     setQuery('');
     setDebouncedQuery('');
     setCategory(null);
@@ -225,9 +282,30 @@ export default function KioskPage() {
     if (stage === 'welcome' && !sessionDirty) return;
     const totalMs = profile.inactivity_timeout_seconds * 1000;
     const warningMs = Math.max(10_000, totalMs - 20_000);
+    idleDeadline.current = Date.now() + totalMs;
     idleWarningTimer.current = setTimeout(() => setIdleWarning(true), warningMs);
     idleResetTimer.current = setTimeout(resetSession, totalMs);
-  }, [clearIdleTimers, profile, resetSession, sessionDirty, stage]);
+    const kept = readSavedSession(token);
+    if (kept) writeSavedSession(token, { ...kept, expiresAt: idleDeadline.current });
+  }, [clearIdleTimers, profile, resetSession, sessionDirty, stage, token]);
+
+  useEffect(() => {
+    if (!idleWarning) return;
+    const tick = () => setIdleSecondsLeft(Math.max(0, Math.ceil((idleDeadline.current - Date.now()) / 1000)));
+    tick();
+    const timer = setInterval(tick, 250);
+    return () => clearInterval(timer);
+  }, [idleWarning]);
+
+  useEffect(() => {
+    if (!profile) return;
+    if (!sessionDirty || stage === 'submitted') { writeSavedSession(token, null); return; }
+    writeSavedSession(token, {
+      cart, customer, deferContact, language: chosenLanguage,
+      stage: stage === 'review' || stage === 'catalog' ? stage : 'welcome',
+      expiresAt: Date.now() + profile.inactivity_timeout_seconds * 1000,
+    });
+  }, [cart, chosenLanguage, customer, deferContact, profile, sessionDirty, stage, token]);
 
   useEffect(() => {
     const onOnline = () => setOnline(true);
@@ -262,14 +340,14 @@ export default function KioskPage() {
     return () => clearTimeout(timer);
   }, [query]);
 
-  const catalogKey = JSON.stringify([debouncedQuery, category, brand, onlyAvailable, catalogReload]);
+  const catalogKey = JSON.stringify([debouncedQuery, category, brand, onlyAvailable, featuredOnly, catalogReload]);
 
   useEffect(() => {
     if (!profile || stage !== 'catalog' || loadedCatalogKey.current === catalogKey) return;
     const requestId = ++catalogRequest.current;
     setCatalogLoading(true);
     setCatalogError('');
-    KioskService.listPublicProducts(token, { search: debouncedQuery, category, brand, onlyAvailable, page: 0, pageSize: PAGE_SIZE })
+    KioskService.listPublicProducts(token, { search: debouncedQuery, category, brand, onlyAvailable, featuredOnly, page: 0, pageSize: PAGE_SIZE })
       .then(data => {
         if (requestId !== catalogRequest.current) return;
         loadedCatalogKey.current = catalogKey;
@@ -280,7 +358,7 @@ export default function KioskPage() {
       .catch(error => { if (requestId === catalogRequest.current) setCatalogError(describeKioskError(error, t)); })
       .finally(() => { if (requestId === catalogRequest.current) setCatalogLoading(false); });
     // `t` only changes with the profile language, which already re-runs this.
-  }, [brand, catalogKey, category, debouncedQuery, onlyAvailable, profile, stage, token]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [brand, catalogKey, category, debouncedQuery, featuredOnly, onlyAvailable, profile, stage, token]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (stage === 'catalog') {
@@ -302,9 +380,9 @@ export default function KioskPage() {
 
   useEffect(() => {
     if (stage !== 'submitted') return;
-    const timer = setTimeout(resetSession, 20_000);
+    const timer = setTimeout(resetSession, (profile?.success_screen_seconds || 20) * 1000);
     return () => clearTimeout(timer);
-  }, [resetSession, stage]);
+  }, [profile?.success_screen_seconds, resetSession, stage]);
 
   const changeQuantity = (product: KioskProduct, delta: number) => {
     setCart(current => {
@@ -332,7 +410,7 @@ export default function KioskPage() {
     setCatalogError('');
     try {
       const data = await KioskService.listPublicProducts(token, {
-        search: debouncedQuery, category, brand, onlyAvailable, page: nextPage, pageSize: PAGE_SIZE,
+        search: debouncedQuery, category, brand, onlyAvailable, featuredOnly, page: nextPage, pageSize: PAGE_SIZE,
       });
       // Filters changed while this page was loading: it belongs to another list.
       if (requestId !== catalogRequest.current) return;
@@ -358,7 +436,7 @@ export default function KioskPage() {
 
   const submit = async () => {
     if (!cartLines.length || submitting) return;
-    if (!deferContact) {
+    if (!deferring) {
       if (customer.name.trim().length < 2 || !customer.phone.trim()) {
         setFormError(t.required);
         return;
@@ -379,12 +457,12 @@ export default function KioskPage() {
     setFormError('');
     setSubmitting(true);
     try {
-      const submissionCustomer = deferContact
+      const submissionCustomer = deferring
         ? { name: '', phone: '', email: '', note: customer.note }
         : customer;
       const result = await KioskService.submit(token, submissionCustomer, cartLines.map(line => ({
         barcode: line.product.barcode, quantity: line.quantity,
-      })), deferContact);
+      })), deferring);
       setRequestNumber(result.request_number);
       setStage('submitted');
     } catch (error) {
@@ -392,6 +470,16 @@ export default function KioskPage() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const selectCategory = (value: KioskCategory | null, featuredSelection = false) => {
+    setCategory(value);
+    setFeaturedOnly(featuredSelection);
+  };
+
+  const openFeatured = (product: KioskProduct) => {
+    setStage('catalog');
+    setSelectedProduct(product);
   };
 
   const requestFullscreen = () => document.documentElement.requestFullscreen?.().catch(() => {});
@@ -424,6 +512,12 @@ export default function KioskPage() {
           <button onClick={requestFullscreen} className="absolute top-5 end-5 h-12 w-12 rounded-2xl bg-white shadow-sm border border-slate-200 flex items-center justify-center" aria-label="Fullscreen">
             <Expand className="h-5 w-5" />
           </button>
+          {customerLanguages.length > 1 && (
+            <div role="group" aria-label={t.language} className="absolute top-5 start-5 flex items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
+              <Languages className="mx-2 h-5 w-5 text-slate-400" />
+              {customerLanguages.map(code => <button key={code} lang={code} onClick={() => setChosenLanguage(code)} aria-pressed={language === code} className={`min-h-10 rounded-xl px-3 text-base font-bold ${language === code ? 'bg-[var(--kiosk-accent)] text-[color:var(--kiosk-on-accent)]' : 'text-slate-600'}`}>{LANGUAGE_NAMES[code]}</button>)}
+            </div>
+          )}
           {profile.logo_url ? <img src={profile.logo_url} alt={profile.company_name} className="mb-8 h-28 w-56 object-contain" /> : <div className="mb-8 h-24 w-24 rounded-3xl flex items-center justify-center shadow-xl" style={{ backgroundColor: accent, color: onAccent }}><Package className="h-12 w-12" /></div>}
           <p className="mb-3 text-lg font-semibold tracking-wide text-slate-500">{profile.company_name}</p>
           <h1 className="max-w-3xl text-4xl md:text-6xl font-black tracking-tight">{profile.greeting_title}</h1>
@@ -431,6 +525,14 @@ export default function KioskPage() {
           <button onClick={() => setStage('catalog')} className="mt-12 min-h-16 min-w-64 rounded-2xl px-10 text-xl font-bold shadow-xl active:scale-[0.98] transition" style={{ backgroundColor: accent, color: onAccent }}>
             {t.start} <ChevronRight className="inline h-6 w-6 ms-2 rtl:rotate-180" />
           </button>
+          {featured.length > 0 && (
+            <section className="mt-12 w-full max-w-5xl">
+              <h2 className="mb-3 flex items-center justify-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-500"><Star className="h-4 w-4" />{t.featuredTitle}</h2>
+              <div className="overflow-x-auto pb-2"><div className="mx-auto flex w-max gap-3">
+                {featured.slice(0, 12).map(product => <button key={product.barcode} onClick={() => openFeatured(product)} className="w-36 shrink-0 rounded-2xl border border-slate-200 bg-white p-2 text-start shadow-sm active:scale-[0.98]"><ProductImage image={product.image} name={product.name} placeholderLogo={profile.logo_url} /><p className="mt-2 line-clamp-2 text-sm font-bold leading-snug">{product.name}</p></button>)}
+              </div></div>
+            </section>
+          )}
         </main>
       )}
 
@@ -446,10 +548,11 @@ export default function KioskPage() {
             <div className="mx-auto max-w-[1600px] px-4 pb-4">
               <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">{t.categories}</p>
               <div className="overflow-x-auto"><div className="flex min-w-max gap-2">
-                <FilterButton active={!category} label={t.all} onClick={() => setCategory(null)} />
-                <FilterButton active={category === 'utensils'} label={t.utensils} onClick={() => setCategory('utensils')} />
-                <FilterButton active={category === 'furniture'} label={t.furniture} onClick={() => setCategory('furniture')} />
-                <FilterButton active={category === 'equipment'} label={t.equipment} onClick={() => setCategory('equipment')} />
+                <FilterButton active={!category && !featuredOnly} label={t.all} onClick={() => selectCategory(null)} />
+                {featured.length > 0 && <FilterButton active={featuredOnly} label={`★ ${t.featured}`} onClick={() => selectCategory(null, true)} />}
+                <FilterButton active={category === 'utensils'} label={t.utensils} onClick={() => selectCategory('utensils')} />
+                <FilterButton active={category === 'furniture'} label={t.furniture} onClick={() => selectCategory('furniture')} />
+                <FilterButton active={category === 'equipment'} label={t.equipment} onClick={() => selectCategory('equipment')} />
               </div></div>
               <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
                 <select aria-label={t.allBrands} value={brand} onChange={event => setBrand(event.target.value)} className="min-h-12 flex-1 rounded-xl border-2 border-slate-200 bg-white px-4 text-base font-semibold outline-none focus:border-[var(--kiosk-accent)]">
@@ -460,7 +563,7 @@ export default function KioskPage() {
                   <input type="checkbox" checked={onlyAvailable} onChange={event => setOnlyAvailable(event.target.checked)} className="h-5 w-5" />
                   {t.availableOnly}
                 </label>
-                {(category || brand || onlyAvailable) && <button onClick={() => { setCategory(null); setBrand(''); setOnlyAvailable(false); }} className="min-h-12 rounded-xl px-4 text-sm font-bold text-slate-500 active:bg-slate-100">{t.clearFilters}</button>}
+                {(category || featuredOnly || brand || onlyAvailable) && <button onClick={() => { selectCategory(null); setBrand(''); setOnlyAvailable(false); }} className="min-h-12 rounded-xl px-4 text-sm font-bold text-slate-500 active:bg-slate-100">{t.clearFilters}</button>}
               </div>
             </div>
           </header>
@@ -492,19 +595,21 @@ export default function KioskPage() {
           <button onClick={() => setStage('catalog')} className="mb-6 min-h-12 inline-flex items-center gap-2 rounded-xl bg-white border border-slate-200 px-4 font-semibold"><ArrowLeft className="h-5 w-5 rtl:rotate-180" /> {t.back}</button>
           <h1 className="text-3xl md:text-4xl font-black">{t.review}</h1>
           <div className="mt-8 space-y-3">
-            {cartLines.map(line => <ReviewLine key={line.product.barcode} line={line} showPrice={profile.show_prices} placeholderLogo={profile.logo_url} accent={accent} onSet={quantity => setQuantity(line.product, quantity)} />)}
+            {cartLines.map(line => <ReviewLine key={line.product.barcode} line={line} showPrice={profile.show_prices} placeholderLogo={profile.logo_url} accent={accent} removeLabel={t.remove} onSet={quantity => setQuantity(line.product, quantity)} />)}
           </div>
           {!cartLines.length && <div className="mt-8 rounded-2xl bg-white p-12 text-center text-lg text-slate-500">{t.empty}</div>}
           <section className="mt-8 rounded-3xl border border-slate-200 bg-white p-5 md:p-7">
             <div className="flex items-center gap-4"><div className="h-12 w-12 shrink-0 rounded-2xl flex items-center justify-center" style={{ backgroundColor: accent, color: onAccent }}><UserRound className="h-6 w-6" /></div><div><h2 className="text-2xl font-black">{t.details}</h2><p className="mt-1 text-slate-500">{t.contactPrompt}</p></div></div>
-            <label className="mt-6 flex cursor-pointer items-start gap-3 rounded-2xl border-2 border-slate-200 bg-slate-50 p-4">
-              <input type="checkbox" checked={deferContact} onChange={event => { setDeferContact(event.target.checked); setFormError(''); }} className="mt-1 h-6 w-6 shrink-0" />
-              <span><span className="block text-base font-bold">{t.detailsLater}</span><span className="mt-1 block text-sm leading-relaxed text-slate-500">{t.detailsLaterHelp}</span></span>
-            </label>
-            <div className={`mt-6 grid gap-5 md:grid-cols-2 ${deferContact ? 'opacity-45' : ''}`}>
-              <KioskInput label={t.name} value={customer.name} onChange={name => { setCustomer(c => ({ ...c, name })); setFormError(''); }} required={!deferContact} disabled={deferContact} autoFocus={!deferContact} />
-              <KioskInput label={t.phone} value={customer.phone} onChange={phone => { setCustomer(c => ({ ...c, phone })); setFormError(''); }} required={!deferContact} disabled={deferContact} inputMode="tel" />
-              <KioskInput label={t.email} value={customer.email} onChange={email => { setCustomer(c => ({ ...c, email })); setFormError(''); }} required={!deferContact && profile.require_email} disabled={deferContact} inputMode="email" />
+            {canDeferContact && (
+              <label className="mt-6 flex cursor-pointer items-start gap-3 rounded-2xl border-2 border-slate-200 bg-slate-50 p-4">
+                <input type="checkbox" checked={deferContact} onChange={event => { setDeferContact(event.target.checked); setFormError(''); }} className="mt-1 h-6 w-6 shrink-0" />
+                <span><span className="block text-base font-bold">{t.detailsLater}</span><span className="mt-1 block text-sm leading-relaxed text-slate-500">{t.detailsLaterHelp}</span></span>
+              </label>
+            )}
+            <div className={`mt-6 grid gap-5 md:grid-cols-2 ${deferring ? 'opacity-45' : ''}`}>
+              <KioskInput label={t.name} value={customer.name} onChange={name => { setCustomer(c => ({ ...c, name })); setFormError(''); }} required={!deferring} disabled={deferring} autoFocus={!deferring} />
+              <KioskInput label={t.phone} value={customer.phone} onChange={phone => { setCustomer(c => ({ ...c, phone })); setFormError(''); }} required={!deferring} disabled={deferring} inputMode="tel" />
+              <KioskInput label={t.email} value={customer.email} onChange={email => { setCustomer(c => ({ ...c, email })); setFormError(''); }} required={!deferring && profile.require_email} disabled={deferring} inputMode="email" />
             </div>
             <label className="mt-5 block"><span className="mb-2 block text-base font-bold">{t.note}</span><textarea value={customer.note} onChange={e => setCustomer(c => ({ ...c, note: e.target.value.slice(0, 500) }))} rows={3} className="w-full rounded-2xl border-2 border-slate-200 bg-white px-5 py-4 text-lg outline-none focus:border-[var(--kiosk-accent)]" /></label>
             <p className="mt-5 text-sm leading-relaxed text-slate-500">{t.privacy}</p>
@@ -534,7 +639,7 @@ export default function KioskPage() {
 
       {idleWarning && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/65 p-5 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-3xl bg-white p-8 text-center shadow-2xl"><RotateCcw className="mx-auto h-12 w-12 text-amber-500" /><h2 className="mt-5 text-3xl font-black">{t.idleTitle}</h2><p className="mt-3 text-lg text-slate-600">{t.idleText}</p><button onClick={armIdleReset} className="mt-7 min-h-14 w-full rounded-2xl text-lg font-bold" style={{ backgroundColor: accent, color: onAccent }}>{t.stay}</button></div>
+          <div className="w-full max-w-lg rounded-3xl bg-white p-8 text-center shadow-2xl"><div aria-live="polite" className="mx-auto flex h-24 w-24 items-center justify-center rounded-full border-4 border-amber-400 text-4xl font-black tabular-nums text-amber-600">{idleSecondsLeft}<span className="ms-0.5 text-lg">{t.seconds}</span></div><h2 className="mt-5 text-3xl font-black">{t.idleTitle}</h2><p className="mt-3 text-lg text-slate-600">{t.idleText}</p><button onClick={armIdleReset} className="mt-7 min-h-14 w-full rounded-2xl text-lg font-bold" style={{ backgroundColor: accent, color: onAccent }}>{t.stay}</button></div>
         </div>
       )}
     </div>
@@ -559,15 +664,15 @@ function ProductImage({ image, name, placeholderLogo }: { image: string | null; 
 }
 
 function ProductCard({ product, quantity, showPrice, showAvailability, placeholderLogo, t, accent, onOpen, onChange }: { product: KioskProduct; quantity: number; showPrice: boolean; showAvailability: boolean; placeholderLogo?: string | null; t: KioskCopy; accent: string; onOpen: () => void; onChange: (delta: number) => void }) {
-  return <article className="rounded-3xl border border-slate-200 bg-white p-2.5 shadow-sm flex flex-col"><button onClick={onOpen} className="text-start"><ProductImage image={product.image} name={product.name} placeholderLogo={placeholderLogo} /><div className="px-1 pt-3"><p className="min-h-5 truncate text-xs font-bold uppercase tracking-wide text-slate-400">{product.brand || '—'}</p><h2 className="mt-1 line-clamp-2 min-h-12 text-base sm:text-lg font-bold leading-snug">{product.name}</h2><p className="mt-1 truncate font-mono text-xs text-slate-400">{product.barcode}</p>{showAvailability && <p className={`mt-2 text-xs font-bold ${product.available ? 'text-emerald-600' : 'text-amber-600'}`}>{product.available ? t.available : t.onRequest}</p>}{showPrice && <p className="mt-2 text-lg font-black" style={{ color: accent }}>{fmt(product.price || 0)} DH</p>}</div></button><div className="mt-auto pt-3">{quantity > 0 ? <QuantityStepper quantity={quantity} onMinus={() => onChange(-1)} onPlus={() => onChange(1)} accent={accent} /> : <button onClick={() => onChange(1)} className="min-h-12 w-full rounded-xl bg-[var(--kiosk-accent)] text-base font-bold text-[color:var(--kiosk-on-accent)]"><Plus className="inline h-5 w-5 me-1" />{t.add}</button>}</div></article>;
+  return <article className="rounded-3xl border border-slate-200 bg-white p-2.5 shadow-sm flex flex-col"><button onClick={onOpen} className="relative text-start">{product.featured && <span className="absolute start-2 top-2 z-10 inline-flex items-center gap-1 rounded-full bg-[var(--kiosk-accent)] px-2.5 py-1 text-xs font-bold text-[color:var(--kiosk-on-accent)] shadow"><Star className="h-3 w-3" />{t.featured}</span>}<ProductImage image={product.image} name={product.name} placeholderLogo={placeholderLogo} /><div className="px-1 pt-3"><p className="min-h-5 truncate text-xs font-bold uppercase tracking-wide text-slate-400">{product.brand || '—'}</p><h2 className="mt-1 line-clamp-2 min-h-12 text-base sm:text-lg font-bold leading-snug">{product.name}</h2><p className="mt-1 truncate font-mono text-xs text-slate-400">{product.barcode}</p>{showAvailability && <p className={`mt-2 text-xs font-bold ${product.available ? 'text-emerald-600' : 'text-amber-600'}`}>{product.available ? t.available : t.onRequest}</p>}{showPrice && <p className="mt-2 text-lg font-black" style={{ color: accent }}>{fmt(product.price || 0)} DH</p>}</div></button><div className="mt-auto pt-3">{quantity > 0 ? <QuantityStepper quantity={quantity} onMinus={() => onChange(-1)} onPlus={() => onChange(1)} accent={accent} /> : <button onClick={() => onChange(1)} className="min-h-12 w-full rounded-xl bg-[var(--kiosk-accent)] text-base font-bold text-[color:var(--kiosk-on-accent)]"><Plus className="inline h-5 w-5 me-1" />{t.add}</button>}</div></article>;
 }
 
 function QuantityStepper({ quantity, onMinus, onPlus, accent }: { quantity: number; onMinus: () => void; onPlus: () => void; accent: string }) {
   return <div className="grid min-h-12 grid-cols-[48px_1fr_48px] overflow-hidden rounded-xl border-2" style={{ borderColor: accent }}><button onClick={onMinus} className="flex items-center justify-center bg-white"><Minus className="h-5 w-5" /></button><span className="flex items-center justify-center bg-[var(--kiosk-accent)] text-lg font-black text-[color:var(--kiosk-on-accent)]">{quantity}</span><button onClick={onPlus} className="flex items-center justify-center bg-white"><Plus className="h-5 w-5" /></button></div>;
 }
 
-function ReviewLine({ line, showPrice, placeholderLogo, accent, onSet }: { line: CartLine; showPrice: boolean; placeholderLogo?: string | null; accent: string; onSet: (quantity: number) => void }) {
-  return <div className="grid grid-cols-[88px_1fr] gap-4 rounded-2xl border border-slate-200 bg-white p-3 sm:grid-cols-[100px_1fr_auto] sm:items-center"><ProductImage image={line.product.image} name={line.product.name} placeholderLogo={placeholderLogo} /><div><p className="text-xs font-bold uppercase text-slate-400">{line.product.brand}</p><h2 className="mt-1 text-lg font-bold">{line.product.name}</h2><p className="mt-1 font-mono text-xs text-slate-400">{line.product.barcode}</p>{showPrice && <p className="mt-2 font-black" style={{ color: accent }}>{fmt((line.product.price || 0) * line.quantity)} DH</p>}</div><div className="col-span-2 sm:col-span-1 sm:w-44"><div className="grid h-14 grid-cols-[52px_1fr_52px] overflow-hidden rounded-xl border-2" style={{ borderColor: accent }}><button onClick={() => onSet(line.quantity - 1)} className="flex items-center justify-center"><Minus className="h-5 w-5" /></button><input type="number" min={1} max={999} value={line.quantity} onChange={e => onSet(Number(e.target.value) || 1)} className="w-full bg-[var(--kiosk-accent)] text-center text-xl font-black text-[color:var(--kiosk-on-accent)] outline-none" /><button onClick={() => onSet(line.quantity + 1)} className="flex items-center justify-center"><Plus className="h-5 w-5" /></button></div></div></div>;
+function ReviewLine({ line, showPrice, placeholderLogo, accent, removeLabel, onSet }: { line: CartLine; showPrice: boolean; placeholderLogo?: string | null; accent: string; removeLabel: string; onSet: (quantity: number) => void }) {
+  return <div className="grid grid-cols-[88px_1fr] gap-4 rounded-2xl border border-slate-200 bg-white p-3 sm:grid-cols-[100px_1fr_auto_auto] sm:items-center"><ProductImage image={line.product.image} name={line.product.name} placeholderLogo={placeholderLogo} /><div><p className="text-xs font-bold uppercase text-slate-400">{line.product.brand}</p><h2 className="mt-1 text-lg font-bold">{line.product.name}</h2><p className="mt-1 font-mono text-xs text-slate-400">{line.product.barcode}</p>{showPrice && <p className="mt-2 font-black" style={{ color: accent }}>{fmt((line.product.price || 0) * line.quantity)} DH</p>}</div><div className="col-span-2 sm:col-span-1 sm:w-44"><div className="grid h-14 grid-cols-[52px_1fr_52px] overflow-hidden rounded-xl border-2" style={{ borderColor: accent }}><button onClick={() => onSet(line.quantity - 1)} className="flex items-center justify-center"><Minus className="h-5 w-5" /></button><input type="number" min={1} max={999} value={line.quantity} onChange={e => onSet(Number(e.target.value) || 1)} className="w-full bg-[var(--kiosk-accent)] text-center text-xl font-black text-[color:var(--kiosk-on-accent)] outline-none" /><button onClick={() => onSet(line.quantity + 1)} className="flex items-center justify-center"><Plus className="h-5 w-5" /></button></div></div><button onClick={() => onSet(0)} aria-label={removeLabel} className="col-span-2 flex min-h-12 items-center justify-center gap-2 rounded-xl border-2 border-red-200 px-4 font-bold text-red-600 active:bg-red-50 sm:col-span-1 sm:w-14 sm:px-0"><Trash2 className="h-5 w-5" /><span className="sm:hidden">{removeLabel}</span></button></div>;
 }
 
 function ProductDialog({ product, quantity, showPrice, showAvailability, placeholderLogo, t, accent, onClose, onChange }: { product: KioskProduct; quantity: number; showPrice: boolean; showAvailability: boolean; placeholderLogo?: string | null; t: KioskCopy; accent: string; onClose: () => void; onChange: (delta: number) => void }) {

@@ -20,27 +20,32 @@ vi.mock('../utils/kioskService', () => ({
 const service = vi.mocked(KioskService);
 const TOKEN = '00000000-0000-4000-8000-000000000000';
 
-afterEach(() => { vi.clearAllMocks(); vi.useRealTimers(); });
+afterEach(() => { vi.clearAllMocks(); vi.useRealTimers(); sessionStorage.clear(); });
 
-function mockKiosk(overrides: Record<string, unknown> = {}) {
+const DRILL = {
+  barcode: '611000000001', name: 'Perceuse de test', brand: 'Stocky', image: null,
+  kiosk_category: 'equipment' as const, price: 799, available: true,
+};
+const FEATURED = { ...DRILL, barcode: '611000000099', name: 'Aspirateur vedette', featured: true };
+
+function mockKiosk(overrides: Record<string, unknown> = {}, featured: typeof FEATURED[] = []) {
   service.loadPublic.mockResolvedValue({
     profile: {
       id: 'profile-1', name: 'Accueil', company_name: 'Stocky Test',
       greeting_title: 'Bienvenue chez Stocky', greeting_message: 'Préparez votre demande.',
-      logo_url: null, accent_color: '#2563eb', language: 'fr', show_prices: true,
+      logo_url: null, accent_color: '#2563eb', language: 'fr', customer_languages: ['fr', 'en'],
+      allow_deferred_contact: true, success_screen_seconds: 20, show_prices: true,
       price_mode: 'retail', require_email: true, show_availability: true,
       inactivity_timeout_seconds: 180,
       ...overrides,
     },
     brands: ['Stocky'],
   });
-  service.listPublicProducts.mockResolvedValue({
-    products: [{
-      barcode: '611000000001', name: 'Perceuse de test', brand: 'Stocky', image: null,
-      kiosk_category: 'equipment', price: 799, available: true,
-    }],
-    total: 1, page: 0, page_size: 30,
-  });
+  service.listPublicProducts.mockImplementation(async (_token, options = {}) => (
+    options.featuredOnly
+      ? { products: featured, total: featured.length, page: 0, page_size: 24 }
+      : { products: [DRILL], total: 1, page: 0, page_size: 48 }
+  ));
   service.submit.mockResolvedValue({ request_id: 'request-1', request_number: 'KSK-TEST-001' });
 }
 
@@ -151,7 +156,15 @@ describe('KioskPage', () => {
 
   it('keeps the kiosk usable and offers a retry when the catalogue fails to load', async () => {
     mockKiosk();
-    service.listPublicProducts.mockRejectedValueOnce(new KioskRequestError('Too many requests', 429, 'Too many requests'));
+    const catalogue = service.listPublicProducts.getMockImplementation()!;
+    let failed = false;
+    service.listPublicProducts.mockImplementation(async (token, options = {}) => {
+      if (!options.featuredOnly && !failed) {
+        failed = true;
+        throw new KioskRequestError('Too many requests', 429, 'Too many requests');
+      }
+      return catalogue(token, options);
+    });
     renderKiosk();
     expect(await screen.findByRole('heading', { name: 'Bienvenue chez Stocky' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Commencer/i }));
@@ -181,10 +194,11 @@ describe('KioskPage', () => {
     mockKiosk();
     renderKiosk();
     await openReview();
-    expect(service.listPublicProducts).toHaveBeenCalledTimes(1);
+    const catalogCalls = () => service.listPublicProducts.mock.calls.filter(([, options]) => !options?.featuredOnly).length;
+    expect(catalogCalls()).toBe(1);
     fireEvent.click(screen.getByRole('button', { name: /Retour au catalogue/i }));
     expect(await screen.findByText('Perceuse de test')).toBeInTheDocument();
-    expect(service.listPublicProducts).toHaveBeenCalledTimes(1);
+    expect(catalogCalls()).toBe(1);
   });
 
   it('shows an unavailable screen with a retry for a disabled kiosk', async () => {
@@ -196,6 +210,68 @@ describe('KioskPage', () => {
     mockKiosk();
     fireEvent.click(screen.getByRole('button', { name: /Réessayer/i }));
     expect(await screen.findByRole('heading', { name: 'Bienvenue chez Stocky' })).toBeInTheDocument();
+  });
+
+  it('lets the customer switch to another offered language', async () => {
+    mockKiosk();
+    renderKiosk();
+    expect(await screen.findByRole('button', { name: /Commencer/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'العربية' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'English' }));
+    expect(screen.getByRole('button', { name: /Start/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Français' }));
+    expect(screen.getByRole('button', { name: /Commencer/i })).toBeInTheDocument();
+  });
+
+  it('shows featured products on the welcome screen and opens them in the catalogue', async () => {
+    mockKiosk({}, [FEATURED]);
+    renderKiosk();
+    expect(await screen.findByText('Notre sélection')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Aspirateur vedette/ }));
+    expect(await screen.findByRole('heading', { level: 2, name: 'Aspirateur vedette' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /★ Sélection/ })).toBeInTheDocument();
+  });
+
+  it('keeps the selection through an accidental reload', async () => {
+    mockKiosk();
+    const first = renderKiosk();
+    expect(await screen.findByRole('button', { name: /Commencer/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Commencer/i }));
+    expect(await screen.findByText('Perceuse de test')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Ajouter/i }));
+    first.unmount();
+
+    renderKiosk();
+    expect(await screen.findByRole('button', { name: /Voir ma demande/i })).toBeInTheDocument();
+  });
+
+  it('removes a line from the review step', async () => {
+    mockKiosk();
+    renderKiosk();
+    await openReview();
+    fireEvent.click(screen.getByRole('button', { name: 'Retirer' }));
+    expect(screen.getByText('Votre sélection est vide.')).toBeInTheDocument();
+  });
+
+  it('hides the "details later" option when the kiosk requires contact details', async () => {
+    mockKiosk({ allow_deferred_contact: false });
+    renderKiosk();
+    await openReview();
+    expect(screen.queryByLabelText(/Je renseignerai mes coordonnées plus tard/)).not.toBeInTheDocument();
+    expect(screen.getByText('Nom complet')).toBeInTheDocument();
+  });
+
+  it('counts down before clearing an idle session', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    mockKiosk({ inactivity_timeout_seconds: 60 });
+    renderKiosk();
+    expect(await screen.findByRole('button', { name: /Commencer/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Commencer/i }));
+    expect(await screen.findByText('Perceuse de test')).toBeInTheDocument();
+    act(() => { vi.advanceTimersByTime(45_000); });
+    expect(screen.getByText('Toujours là ?')).toBeInTheDocument();
+    expect(screen.getByText('15')).toBeInTheDocument();
   });
 });
 
