@@ -126,38 +126,63 @@ describe('ProductsPage business sectors', () => {
     expect(applyProductChanges).not.toHaveBeenCalled();
   });
 
-  it('applies sector changes to several products in bulk mode and saves them only on "Enregistrer"', async () => {
+  it('saves bulk changes to several products automatically, grouped in one save', async () => {
     renderProducts();
     fireEvent.click(screen.getByRole('button', { name: 'Modification groupée' }));
     fireEvent.click(screen.getByRole('button', { name: 'Sélectionner Hachoir' }));
     fireEvent.click(screen.getByRole('button', { name: 'Sélectionner Machine espresso' }));
     fireEvent.change(screen.getByRole('combobox', { name: 'Ajouter un secteur à la sélection' }), { target: { value: 's-hotel' } });
     fireEvent.change(screen.getByRole('combobox', { name: 'Type kiosque pour la sélection' }), { target: { value: 'furniture' } });
+    expect(screen.getByText('2 produit(s) en attente d’enregistrement…')).toBeInTheDocument();
 
-    expect(screen.getByText('2 produit(s) modifié(s), non enregistré(s)')).toBeInTheDocument();
-    expect(save).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
-    await waitFor(() => expect(save).toHaveBeenCalledWith({
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1), { timeout: 3000 });
+    expect(save).toHaveBeenCalledWith({
       P3: { sector_ids: ['s-hotel'], kiosk_category: 'furniture' },
       P2: { sector_ids: ['s-cafe', 's-hotel'], kiosk_category: 'furniture' },
-    }));
+    });
     expect(applyProductChanges).toHaveBeenCalledWith(expect.objectContaining({ P2: expect.anything(), P3: expect.anything() }));
-    expect(await screen.findByText('Aucune modification')).toBeInTheDocument();
+    expect(await screen.findByText('Modifications enregistrées')).toBeInTheDocument();
   });
 
-  it('lets bulk edits on a row be cancelled without saving', async () => {
+  it('saves at once with "Enregistrer", and on "Terminer"', async () => {
     renderProducts();
     fireEvent.click(screen.getByRole('button', { name: 'Modification groupée' }));
     const row = screen.getByRole('link', { name: 'Four mixte' }).closest('tr')!;
     fireEvent.click(within(row).getByRole('button', { name: /Secteur : Restaurant, Hôtel/ }));
     fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Hôtel' }));
-    expect(screen.getByText('1 produit(s) modifié(s), non enregistré(s)')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+    expect(save).toHaveBeenCalledWith({ P1: { sector_ids: ['s-resto'] } });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Annuler' }));
-    expect(screen.getByText('Aucune modification')).toBeInTheDocument();
-    expect(within(row).getByRole('button', { name: /Secteur : Restaurant, Hôtel/ })).toBeInTheDocument();
-    expect(save).not.toHaveBeenCalled();
+    fireEvent.change(within(row).getByRole('combobox', { name: 'Type kiosque de Four mixte' }), { target: { value: 'equipment' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Terminer' }));
+    // Edited while the first save was still running, so the sectors ride along again.
+    await waitFor(() => expect(save).toHaveBeenLastCalledWith({ P1: expect.objectContaining({ kiosk_category: 'equipment' }) }));
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Modification groupée' })).not.toBeInTheDocument());
+  });
+
+  it('saves pending bulk changes when leaving the page', async () => {
+    const view = renderProducts();
+    fireEvent.click(screen.getByRole('button', { name: 'Modification groupée' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sélectionner Hachoir' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Ajouter un secteur à la sélection' }), { target: { value: 's-cafe' } });
+    view.unmount();
+    expect(save).toHaveBeenCalledWith({ P3: { sector_ids: ['s-cafe'] } });
+  });
+
+  it('reports a failed bulk save and retries only when asked', async () => {
+    save.mockResolvedValueOnce({ saved: {}, failed: [{ barcode: 'P3', message: 'permission denied' }] });
+    renderProducts();
+    fireEvent.click(screen.getByRole('button', { name: 'Modification groupée' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sélectionner Hachoir' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Ajouter un secteur à la sélection' }), { target: { value: 's-cafe' } });
+
+    expect(await screen.findByText(/1 produit\(s\) non enregistré\(s\) — P3 : permission denied/, {}, { timeout: 3000 })).toBeInTheDocument();
+    await new Promise(resolve => setTimeout(resolve, 1200));
+    expect(save).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: /Réessayer/ }));
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText('Modifications enregistrées')).toBeInTheDocument();
   });
 
   it('lets a user granted "Peut modifier les produits" edit, but not delete sectors', () => {

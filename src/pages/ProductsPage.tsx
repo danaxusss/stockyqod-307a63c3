@@ -1,8 +1,8 @@
 // @ts-nocheck
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, Link } from 'react-router-dom';
-import { Package, Search, Edit, Check, X, Loader, SortAsc, SortDesc, ChevronLeft, ChevronRight, Filter, Paperclip, ShoppingCart, Info, Eye, Building, Tag, Briefcase, ListChecks, Save, CheckSquare, Square } from 'lucide-react';
+import { Package, Search, Edit, Check, X, Loader, SortAsc, SortDesc, ChevronLeft, ChevronRight, Filter, Paperclip, ShoppingCart, Info, Eye, Building, Tag, Briefcase, ListChecks, Save, CheckSquare, Square, CheckCircle2, AlertTriangle, RotateCcw } from 'lucide-react';
 import { Product, StockLocation } from '../types';
 import { useAppContext } from '../context/AppContext';
 import { StockLocationsService } from '../utils/supabaseStockLocations';
@@ -31,6 +31,21 @@ const KIOSK_CATEGORIES: Array<{ value: KioskCategory; label: string }> = [
 
 // Sector filter value for products that have no sector yet.
 const NO_SECTOR = '__none__';
+// Bulk edits are grouped and saved this long after the last change.
+const BULK_AUTOSAVE_MS = 900;
+
+/** Sector names on one line: the first two, then "+N" (all names in the tooltip). */
+function SectorChips({ names }: { names: string[] }) {
+  if (!names.length) return <span className="text-[10px] text-muted-foreground">—</span>;
+  return (
+    <div className="flex max-w-44 flex-nowrap items-center gap-1 overflow-hidden" title={names.join(', ')}>
+      {names.slice(0, 2).map(name => (
+        <span key={name} className="truncate whitespace-nowrap rounded-full bg-secondary px-2 py-1 text-[10px] text-muted-foreground">{name}</span>
+      ))}
+      {names.length > 2 && <span className="shrink-0 whitespace-nowrap rounded-full bg-secondary px-1.5 py-1 text-[10px] font-medium text-muted-foreground">+{names.length - 2}</span>}
+    </div>
+  );
+}
 
 const kioskCategoryLabel = (value?: Product['kiosk_category']) =>
   KIOSK_CATEGORIES.find(category => category.value === value)?.label || 'Non classé';
@@ -48,12 +63,20 @@ export default function ProductsPage() {
   const [categoryFilter, setCategoryFilter] = useState('');
   const [sectorFilter, setSectorFilter] = useState('');
   const [managingSectors, setManagingSectors] = useState(false);
-  // Bulk mode: kiosk type and sectors become editable on every row; changes
-  // stay pending until "Enregistrer".
+  // Bulk mode: kiosk type and sectors become editable on every row. Changes
+  // are saved automatically shortly after the last edit ("Enregistrer" saves
+  // at once), and whatever is left is saved when leaving bulk mode or the page.
   const [bulkMode, setBulkMode] = useState(false);
   const [pending, setPending] = useState<Record<string, ClassificationChange>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [savingBulk, setSavingBulk] = useState(false);
+  const [bulkError, setBulkError] = useState('');
+  const [bulkSavedCount, setBulkSavedCount] = useState(0);
+  const pendingRef = useRef(pending);
+  pendingRef.current = pending;
+  const saveInFlight = useRef<Promise<number> | null>(null);
+  const applyChangesRef = useRef(applyProductChanges);
+  applyChangesRef.current = applyProductChanges;
   const { sectors } = useBusinessSectors();
   const [currentPage, setCurrentPage] = useState(1);
   const [sortField, setSortField] = useState<SortField>('name');
@@ -224,6 +247,7 @@ export default function ProductsPage() {
   };
 
   const editPending = (product: Product, change: ClassificationChange) => {
+    setBulkError('');
     setPending(current => {
       const next = effectiveChange(product, { ...current[product.barcode], ...change });
       const copy = { ...current };
@@ -253,37 +277,72 @@ export default function ProductsPage() {
     return next;
   });
 
-  const startBulk = () => { cancelEdit(); setBulkMode(true); };
+  const startBulk = () => { cancelEdit(); setBulkError(''); setBulkSavedCount(0); setBulkMode(true); };
 
-  const leaveBulk = () => {
-    if (pendingCount && !window.confirm(`Abandonner ${pendingCount} modification(s) non enregistrée(s) ?`)) return;
+  /**
+   * Save every pending bulk edit; returns how many could not be saved. Waits
+   * for a save already running, then saves what is still pending.
+   */
+  const flushPending = useCallback(async (): Promise<number> => {
+    while (saveInFlight.current) await saveInFlight.current;
+    const snapshot = pendingRef.current;
+    if (!Object.keys(snapshot).length) return 0;
+    const run = (async () => {
+      setSavingBulk(true);
+      try {
+        const result = await saveProductClassifications(snapshot);
+        applyChangesRef.current(result.saved);
+        // Keep edits made while saving: only drop entries that were saved as-is.
+        const dropSaved = (current: Record<string, ClassificationChange>) => {
+          const next = { ...current };
+          Object.keys(result.saved).forEach(barcode => { if (next[barcode] === snapshot[barcode]) delete next[barcode]; });
+          return next;
+        };
+        pendingRef.current = dropSaved(pendingRef.current);
+        setPending(dropSaved);
+        setBulkSavedCount(count => count + Object.keys(result.saved).length);
+        if (result.failed.length) {
+          setBulkError(`${result.failed.length} produit(s) non enregistré(s) — ${result.failed[0].barcode} : ${result.failed[0].message}`);
+        }
+        return result.failed.length;
+      } catch (error) {
+        setBulkError(error?.message || 'Enregistrement impossible');
+        return Object.keys(snapshot).length;
+      } finally {
+        setSavingBulk(false);
+      }
+    })();
+    saveInFlight.current = run;
+    try {
+      return await run;
+    } finally {
+      saveInFlight.current = null;
+    }
+  }, []);
+
+  // Autosave: shortly after the last change; paused after a failure until the
+  // user retries or edits again (no retry loop).
+  useEffect(() => {
+    if (!bulkMode || !pendingCount || savingBulk || bulkError) return;
+    const timer = setTimeout(() => { flushPending(); }, BULK_AUTOSAVE_MS);
+    return () => clearTimeout(timer);
+  }, [bulkMode, pendingCount, pending, savingBulk, bulkError, flushPending]);
+
+  // Leaving the page (another menu, a product sheet…) must not lose edits.
+  useEffect(() => () => {
+    const left = pendingRef.current;
+    if (Object.keys(left).length) {
+      saveProductClassifications(left).then(result => applyChangesRef.current(result.saved)).catch(() => undefined);
+    }
+  }, []);
+
+  const leaveBulk = async () => {
+    const failed = await flushPending();
+    if (failed && !window.confirm(`${failed} modification(s) n’ont pas pu être enregistrées. Quitter quand même et les abandonner ?`)) return;
     setPending({});
     setSelected(new Set());
+    setBulkError('');
     setBulkMode(false);
-  };
-
-  const saveBulk = async () => {
-    if (!pendingCount || savingBulk) return;
-    setSavingBulk(true);
-    try {
-      const result = await saveProductClassifications(pending);
-      applyProductChanges(result.saved);
-      setPending(current => {
-        const next = { ...current };
-        Object.keys(result.saved).forEach(barcode => { delete next[barcode]; });
-        return next;
-      });
-      const savedCount = Object.keys(result.saved).length;
-      if (result.failed.length) {
-        showToast({ type: 'warning', title: `${savedCount} produit(s) enregistré(s), ${result.failed.length} en échec`, message: `${result.failed[0].barcode} : ${result.failed[0].message}` });
-      } else {
-        showToast({ type: 'success', message: `${savedCount} produit(s) enregistré(s)` });
-      }
-    } catch (error) {
-      showToast({ type: 'error', title: 'Enregistrement impossible', message: error?.message || 'Erreur inconnue' });
-    } finally {
-      setSavingBulk(false);
-    }
   };
 
   const getSortIcon = (field: SortField) => {
@@ -294,7 +353,7 @@ export default function ProductsPage() {
   const formatCurrency = (n: number) => new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
 
   return (
-    <div className="max-w-7xl mx-auto space-y-4">
+    <div className={`max-w-7xl mx-auto space-y-4 ${bulkMode ? 'pb-28' : ''}`}>
       {/* Header */}
       <div className="glass rounded-xl shadow-lg p-4">
         <div className="flex items-center justify-between mb-4">
@@ -367,46 +426,6 @@ export default function ProductsPage() {
           </div>
         ) : (
           <>
-            {bulkMode && (
-              <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-border bg-primary/5 px-3 py-2 text-xs">
-                <span className="font-medium text-foreground">{selected.size} sélectionné(s)</span>
-                {filtered.length > selected.size && (
-                  <button onClick={() => setSelected(new Set(filtered.map(product => product.barcode)))} className="text-primary hover:underline">
-                    Sélectionner les {filtered.length} produits filtrés
-                  </button>
-                )}
-                {selected.size > 0 && <button onClick={() => setSelected(new Set())} className="text-muted-foreground hover:underline">Désélectionner</button>}
-                <span className="mx-1 h-4 w-px bg-border" />
-                <select value="" disabled={!selected.size} aria-label="Type kiosque pour la sélection"
-                  onChange={e => { const value = e.target.value; if (value) applyToSelection(() => ({ kiosk_category: value === 'none' ? null : value })); }}
-                  className="rounded-md border border-input bg-background px-2 py-1 disabled:opacity-50">
-                  <option value="">Type kiosque…</option>
-                  <option value="none">Non classé</option>
-                  {KIOSK_CATEGORIES.map(category => <option key={category.value} value={category.value}>{category.label}</option>)}
-                </select>
-                <select value="" disabled={!selected.size} aria-label="Ajouter un secteur à la sélection"
-                  onChange={e => { const id = e.target.value; if (id) applyToSelection(product => ({ sector_ids: [...new Set([...shownSectors(product), id])] })); }}
-                  className="rounded-md border border-input bg-background px-2 py-1 disabled:opacity-50">
-                  <option value="">Ajouter un secteur…</option>
-                  {sectors.map(sector => <option key={sector.id} value={sector.id}>{sector.name}</option>)}
-                </select>
-                <select value="" disabled={!selected.size} aria-label="Retirer un secteur de la sélection"
-                  onChange={e => { const id = e.target.value; if (id) applyToSelection(product => ({ sector_ids: shownSectors(product).filter(item => item !== id) })); }}
-                  className="rounded-md border border-input bg-background px-2 py-1 disabled:opacity-50">
-                  <option value="">Retirer un secteur…</option>
-                  {sectors.map(sector => <option key={sector.id} value={sector.id}>{sector.name}</option>)}
-                </select>
-                <div className="ml-auto flex items-center gap-2">
-                  <span className={pendingCount ? 'font-medium text-amber-600' : 'text-muted-foreground'}>
-                    {pendingCount ? `${pendingCount} produit(s) modifié(s), non enregistré(s)` : 'Aucune modification'}
-                  </span>
-                  <button onClick={() => setPending({})} disabled={!pendingCount || savingBulk} className="rounded-md border border-border px-2.5 py-1 hover:bg-accent disabled:opacity-40">Annuler</button>
-                  <button onClick={saveBulk} disabled={!pendingCount || savingBulk} className="inline-flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1 font-medium text-primary-foreground disabled:opacity-40">
-                    {savingBulk ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}Enregistrer
-                  </button>
-                </div>
-              </div>
-            )}
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-secondary">
@@ -542,7 +561,7 @@ export default function ProductsPage() {
                               {KIOSK_CATEGORIES.map(category => <option key={category.value} value={category.value}>{category.label}</option>)}
                             </select>
                           ) : (
-                            <span className="rounded-full bg-secondary px-2 py-1 text-[10px] text-muted-foreground">{kioskCategoryLabel(kioskCategory)}</span>
+                            <span className="whitespace-nowrap rounded-full bg-secondary px-2 py-1 text-[10px] text-muted-foreground">{kioskCategoryLabel(kioskCategory)}</span>
                           )}
                         </td>
                         <td className="px-3 py-2">
@@ -551,12 +570,7 @@ export default function ProductsPage() {
                               onChange={ids => { if (isEditing) autoSaveClassification(product, { sector_ids: ids }); else editPending(product, { sector_ids: ids }); }}
                               onCreate={name => BusinessSectorsService.create(name)} />
                           ) : (
-                            <div className="flex flex-wrap gap-1">
-                              {sectorNames(rowSectors, sectors).map(name => (
-                                <span key={name} className="rounded-full bg-secondary px-2 py-1 text-[10px] text-muted-foreground">{name}</span>
-                              ))}
-                              {!sectorNames(rowSectors, sectors).length && <span className="text-[10px] text-muted-foreground">—</span>}
-                            </div>
+                            <SectorChips names={sectorNames(rowSectors, sectors)} />
                           )}
                         </td>
                         <td className="px-3 py-2">
@@ -726,6 +740,60 @@ export default function ProductsPage() {
           </div>
         );
       })(), document.body)}
+
+      {bulkMode && (
+        <div role="region" aria-label="Modification groupée" className="fixed inset-x-3 bottom-3 z-40 mx-auto max-w-5xl rounded-xl border border-border bg-card/95 p-2.5 text-xs shadow-2xl backdrop-blur">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-medium text-foreground">{selected.size} sélectionné(s)</span>
+            {filtered.length > selected.size && (
+              <button onClick={() => setSelected(new Set(filtered.map(product => product.barcode)))} className="text-primary hover:underline">
+                Sélectionner les {filtered.length} produits filtrés
+              </button>
+            )}
+            {selected.size > 0 && <button onClick={() => setSelected(new Set())} className="text-muted-foreground hover:underline">Désélectionner</button>}
+            <span className="mx-1 h-4 w-px bg-border" />
+            <select value="" disabled={!selected.size} aria-label="Type kiosque pour la sélection"
+              onChange={e => { const value = e.target.value; if (value) applyToSelection(() => ({ kiosk_category: value === 'none' ? null : value })); }}
+              className="rounded-md border border-input bg-background px-2 py-1 disabled:opacity-50">
+              <option value="">Type kiosque…</option>
+              <option value="none">Non classé</option>
+              {KIOSK_CATEGORIES.map(category => <option key={category.value} value={category.value}>{category.label}</option>)}
+            </select>
+            <select value="" disabled={!selected.size} aria-label="Ajouter un secteur à la sélection"
+              onChange={e => { const id = e.target.value; if (id) applyToSelection(product => ({ sector_ids: [...new Set([...shownSectors(product), id])] })); }}
+              className="rounded-md border border-input bg-background px-2 py-1 disabled:opacity-50">
+              <option value="">Ajouter un secteur…</option>
+              {sectors.map(sector => <option key={sector.id} value={sector.id}>{sector.name}</option>)}
+            </select>
+            <select value="" disabled={!selected.size} aria-label="Retirer un secteur de la sélection"
+              onChange={e => { const id = e.target.value; if (id) applyToSelection(product => ({ sector_ids: shownSectors(product).filter(item => item !== id) })); }}
+              className="rounded-md border border-input bg-background px-2 py-1 disabled:opacity-50">
+              <option value="">Retirer un secteur…</option>
+              {sectors.map(sector => <option key={sector.id} value={sector.id}>{sector.name}</option>)}
+            </select>
+            <div className="ml-auto flex items-center gap-2" aria-live="polite">
+              {bulkError ? (
+                <>
+                  <span className="inline-flex items-center gap-1 font-medium text-destructive"><AlertTriangle className="h-3.5 w-3.5" />{bulkError}</span>
+                  <button onClick={() => { setBulkError(''); flushPending(); }} className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 hover:bg-accent"><RotateCcw className="h-3.5 w-3.5" />Réessayer</button>
+                </>
+              ) : savingBulk ? (
+                <span className="inline-flex items-center gap-1 text-muted-foreground"><Loader className="h-3.5 w-3.5 animate-spin" />Enregistrement…</span>
+              ) : pendingCount ? (
+                <span className="font-medium text-amber-600">{pendingCount} produit(s) en attente d’enregistrement…</span>
+              ) : bulkSavedCount ? (
+                <span className="inline-flex items-center gap-1 text-emerald-600"><CheckCircle2 className="h-3.5 w-3.5" />Modifications enregistrées</span>
+              ) : (
+                <span className="text-muted-foreground">Enregistrement automatique</span>
+              )}
+              <button onClick={() => flushPending()} disabled={!pendingCount || savingBulk} className="inline-flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1 font-medium text-primary-foreground disabled:opacity-40">
+                <Save className="h-3.5 w-3.5" />Enregistrer
+              </button>
+              <button onClick={leaveBulk} className="rounded-md border border-border px-2.5 py-1 hover:bg-accent">Terminer</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {managingSectors && <SectorManagerDialog sectors={sectors} productCounts={sectorCounts} canDelete={isStock} onClose={() => setManagingSectors(false)} />}
 
