@@ -23,6 +23,7 @@ const ClientsPage = React.lazy(() => import('./pages/ClientsPage'));
 const ProductsPage = React.lazy(() => import('./pages/ProductsPage'));
 const TechnicalSheetsPage = React.lazy(() => import('./pages/TechnicalSheetsPage'));
 const ProductPhotosPage = React.lazy(() => import('./pages/ProductPhotosPage'));
+const ImageFinderPage = React.lazy(() => import('./pages/ImageFinderPage'));
 const PublicSharePage = React.lazy(() => import('./pages/PublicSharePage'));
 const CompaniesPage = React.lazy(() => import('./pages/CompaniesPage'));
 const UserManagementPage = React.lazy(() => import('./pages/UserManagementPage'));
@@ -174,6 +175,7 @@ function AppContent() {
             <Route path="/products" element={<ProductsPage />} />
             <Route path="/sheets" element={<TechnicalSheetsPage />} />
             <Route path="/photos" element={<ProductPhotosPage />} />
+            <Route path="/photos/finder" element={<ImageFinderPage />} />
             <Route path="/catalogue" element={<CataloguePage />} />
             <Route path="/whatsapp" element={<WhatsappConnectionPage />} />
             <Route path="/whatsapp/contacts" element={<WhatsappContactsPage />} />

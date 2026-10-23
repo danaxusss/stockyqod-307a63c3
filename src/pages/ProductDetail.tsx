@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { Package, ArrowLeft, Copy, MapPin, DollarSign, ShoppingCart, Home, AlertCircle, Users, Building, TrendingUp, Search, Calculator, Plus, Paperclip, Upload, Download, Trash2, Loader, FileText, X, Images, ImagePlus } from 'lucide-react';
+import { Package, ArrowLeft, Copy, MapPin, DollarSign, ShoppingCart, Home, AlertCircle, Users, Building, TrendingUp, Search, Calculator, Plus, Paperclip, Upload, Download, Trash2, Loader, FileText, X, Images, ImagePlus, Globe } from 'lucide-react';
 import { Product, TechnicalSheet, StockLocation } from '../types';
 import { useAppContext } from '../context/AppContext';
 import { searchStateManager } from '../utils/searchStateManager';
@@ -425,6 +425,14 @@ export function ProductDetail() {
                   >
                     {isImageUploading ? <Loader className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
                     {isImageUploading ? 'Import en cours…' : product.image ? 'Remplacer l’image' : 'Ajouter une image'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/photos/finder?barcode=${encodeURIComponent(product.barcode)}`)}
+                    className="mt-3 ml-2 inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-border hover:bg-accent text-sm"
+                  >
+                    <Globe className="h-4 w-4" />
+                    Chercher sur le web
                   </button>
                   <p className="text-[11px] text-muted-foreground mt-1.5">JPG, PNG ou WebP · maximum 10 Mo</p>
                 </>
