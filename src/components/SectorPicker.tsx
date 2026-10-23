@@ -46,12 +46,12 @@ export function SectorPicker({ sectors, value, onChange, onCreate, disabled, siz
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild disabled={disabled}>
         <button type="button" aria-label={`${label} : ${selected.map(sector => sector.name).join(', ') || 'aucun'}`}
-          className={`flex w-full items-center justify-between gap-1 rounded-md border border-input bg-background text-left text-foreground disabled:opacity-60 ${compact ? 'min-w-32 px-2 py-1 text-[11px]' : 'h-9 px-3 text-sm'}`}>
-          <span className="flex min-w-0 flex-wrap gap-1">
+          className={`flex w-full items-center justify-between gap-1 rounded-md border border-input bg-background text-left text-foreground disabled:opacity-60 ${compact ? 'min-w-32 max-w-48 px-2 py-1 text-[11px]' : 'h-9 px-3 text-sm'}`}>
+          <span className={`flex min-w-0 gap-1 ${compact ? 'flex-nowrap overflow-hidden' : 'flex-wrap'}`} title={selected.map(sector => sector.name).join(', ')}>
             {selected.length ? selected.slice(0, compact ? 2 : 6).map(sector => (
-              <span key={sector.id} className="rounded bg-primary/10 px-1.5 py-0.5 text-primary">{sector.name}</span>
-            )) : <span className="text-muted-foreground">Aucun secteur</span>}
-            {compact && selected.length > 2 && <span className="text-muted-foreground">+{selected.length - 2}</span>}
+              <span key={sector.id} className={`rounded bg-primary/10 px-1.5 py-0.5 text-primary ${compact ? 'truncate whitespace-nowrap' : ''}`}>{sector.name}</span>
+            )) : <span className="whitespace-nowrap text-muted-foreground">Aucun secteur</span>}
+            {compact && selected.length > 2 && <span className="shrink-0 whitespace-nowrap text-muted-foreground">+{selected.length - 2}</span>}
           </span>
           <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         </button>
