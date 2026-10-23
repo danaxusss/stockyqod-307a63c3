@@ -1,8 +1,25 @@
 import { supabase } from './supabaseClient';
 import { getToken } from './session';
-import { throwEdgeError } from './edgeError';
+import { describeEdgeError } from './edgeError';
 
 const FUNCTION_NAME = 'kiosk';
+
+/**
+ * Keeps the HTTP status of a failed kiosk call so the tablet can tell a
+ * kiosk that is gone (404) from a transient failure (network, 429, 5xx) and
+ * react differently: the first ends the session, the others offer a retry.
+ */
+export class KioskRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number | null,
+    readonly serverMessage: string | null,
+    readonly retryAfter?: number,
+  ) {
+    super(message);
+    this.name = 'KioskRequestError';
+  }
+}
 
 export type KioskLanguage = 'fr' | 'en' | 'ar';
 export type KioskPriceMode = 'retail' | 'reseller';
@@ -138,8 +155,12 @@ async function invoke<T>(body: Record<string, unknown>, staff = false): Promise<
   const payload = staff ? { ...body, session_token: getToken() } : body;
   if (staff && !payload.session_token) throw new Error('Reconnectez-vous pour accéder aux demandes kiosque.');
   const { data, error } = await supabase.functions.invoke(FUNCTION_NAME, { body: payload });
-  if (error) return throwEdgeError(error, FUNCTION_NAME);
-  if (data?.error) throw new Error(data.error);
+  if (error) {
+    const failure = await describeEdgeError(error, FUNCTION_NAME);
+    console.error(`[edge:${FUNCTION_NAME}] status=${failure.status ?? '?'} — ${failure.serverMessage ?? failure.message}`);
+    throw new KioskRequestError(failure.message, failure.status, failure.serverMessage, failure.retryAfter);
+  }
+  if (data?.error) throw new KioskRequestError(data.error, 200, data.error);
   return data as T;
 }
 

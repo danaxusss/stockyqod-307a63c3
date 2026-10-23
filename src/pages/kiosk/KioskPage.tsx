@@ -1,19 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 import {
-  ArrowLeft, Check, ChevronRight, Expand, Loader2,
+  AlertTriangle, ArrowLeft, Check, ChevronRight, Expand, Loader2,
   Minus, Package, Plus, RotateCcw, Search, ShoppingCart, UserRound, WifiOff, X,
 } from 'lucide-react';
 import {
-  KioskService, type KioskCategory, type KioskLanguage, type KioskProduct, type KioskPublicProfile,
+  KioskRequestError, KioskService, type KioskCategory, type KioskLanguage, type KioskProduct, type KioskPublicProfile,
 } from '../../utils/kioskService';
+import { DEFAULT_KIOSK_ACCENT, isHexColor, readableTextOn } from '../../utils/kioskColors';
 
 type Stage = 'welcome' | 'catalog' | 'review' | 'submitted';
 type CartLine = { product: KioskProduct; quantity: number };
+type FatalState = { kind: 'gone' | 'temporary'; message: string };
 
 const copy = {
   fr: {
-    start: 'Commencer', details: 'Vos coordonnées', name: 'Nom complet', phone: 'Téléphone', email: 'E-mail',
+    start: 'Commencer', home: 'Accueil', details: 'Vos coordonnées', name: 'Nom complet', phone: 'Téléphone', email: 'E-mail',
     note: 'Précision sur votre demande (facultatif)', continue: 'Ouvrir le catalogue', search: 'Rechercher un produit, une marque ou une référence…',
     all: 'Tous', add: 'Ajouter', cart: 'Voir ma demande', products: 'produits', review: 'Vérifier la demande',
     confirm: 'Envoyer la demande', back: 'Retour au catalogue', requestSent: 'Demande envoyée',
@@ -29,9 +31,15 @@ const copy = {
     privacy: 'Vos coordonnées servent uniquement au traitement de cette demande de devis.',
     categories: 'Type de produit', utensils: 'Ustensiles', furniture: 'Mobilier', equipment: 'Équipement',
     allBrands: 'Toutes les marques', availableOnly: 'Disponibles uniquement', clearFilters: 'Réinitialiser les filtres',
+    retry: 'Réessayer', catalogError: 'Le catalogue n’a pas pu être chargé.',
+    networkError: 'Connexion impossible. Vérifiez le réseau puis réessayez.',
+    tooManyRequests: 'Le kiosque est très sollicité. Patientez un instant puis réessayez.',
+    productsUnavailable: 'Un ou plusieurs produits ne sont plus disponibles. Retirez-les puis renvoyez la demande.',
+    genericError: 'Une erreur est survenue. Réessayez ou demandez à un conseiller.',
+    temporarilyUnavailable: 'Le kiosque est momentanément indisponible. Nouvelle tentative automatique…',
   },
   en: {
-    start: 'Start', details: 'Your details', name: 'Full name', phone: 'Phone', email: 'Email',
+    start: 'Start', home: 'Home', details: 'Your details', name: 'Full name', phone: 'Phone', email: 'Email',
     note: 'Request details (optional)', continue: 'Open catalogue', search: 'Search product, brand or reference…',
     all: 'All', add: 'Add', cart: 'View request', products: 'products', review: 'Review request',
     confirm: 'Send request', back: 'Back to catalogue', requestSent: 'Request sent',
@@ -47,9 +55,15 @@ const copy = {
     privacy: 'Your contact details are used only to process this quote request.',
     categories: 'Product type', utensils: 'Utensils', furniture: 'Furniture', equipment: 'Equipment',
     allBrands: 'All brands', availableOnly: 'Available only', clearFilters: 'Reset filters',
+    retry: 'Try again', catalogError: 'The catalogue could not be loaded.',
+    networkError: 'Unable to connect. Check the network and try again.',
+    tooManyRequests: 'The kiosk is very busy. Please wait a moment and try again.',
+    productsUnavailable: 'One or more products are no longer available. Remove them and send the request again.',
+    genericError: 'Something went wrong. Try again or ask a sales representative.',
+    temporarilyUnavailable: 'The kiosk is temporarily unavailable. Retrying automatically…',
   },
   ar: {
-    start: 'ابدأ', details: 'معلوماتك', name: 'الاسم الكامل', phone: 'الهاتف', email: 'البريد الإلكتروني',
+    start: 'ابدأ', home: 'الرئيسية', details: 'معلوماتك', name: 'الاسم الكامل', phone: 'الهاتف', email: 'البريد الإلكتروني',
     note: 'تفاصيل الطلب (اختياري)', continue: 'فتح الكتالوج', search: 'ابحث عن منتج أو علامة أو مرجع…',
     all: 'الكل', add: 'إضافة', cart: 'عرض الطلب', products: 'منتجات', review: 'مراجعة الطلب',
     confirm: 'إرسال الطلب', back: 'العودة إلى الكتالوج', requestSent: 'تم إرسال الطلب',
@@ -65,6 +79,12 @@ const copy = {
     privacy: 'تُستخدم معلومات الاتصال فقط لمعالجة طلب عرض السعر.',
     categories: 'نوع المنتج', utensils: 'أدوات', furniture: 'أثاث', equipment: 'معدات',
     allBrands: 'كل العلامات التجارية', availableOnly: 'المتوفر فقط', clearFilters: 'إعادة ضبط الفلاتر',
+    retry: 'إعادة المحاولة', catalogError: 'تعذر تحميل الكتالوج.',
+    networkError: 'تعذر الاتصال. تحقق من الشبكة ثم أعد المحاولة.',
+    tooManyRequests: 'الكشك مشغول جداً. يرجى الانتظار قليلاً ثم إعادة المحاولة.',
+    productsUnavailable: 'منتج واحد أو أكثر لم يعد متوفراً. احذفه ثم أعد إرسال الطلب.',
+    genericError: 'حدث خطأ. أعد المحاولة أو اطلب مساعدة مستشار المبيعات.',
+    temporarilyUnavailable: 'الكشك غير متاح مؤقتاً. ستتم إعادة المحاولة تلقائياً…',
   },
 } as const;
 
@@ -73,12 +93,34 @@ type KioskCopy = Record<keyof typeof copy.fr, string>;
 const fmt = (value: number) => new Intl.NumberFormat('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const PHONE_RE = /^\+?[0-9\s().-]{7,24}$/;
+const PAGE_SIZE = 48;
+// While the welcome screen is idle, pick up settings changed from the admin
+// page (disabled kiosk, renewed link, prices, colours) without a reload.
+const PROFILE_REFRESH_MS = 5 * 60_000;
+const UNAVAILABLE_RETRY_MS = 30_000;
 
 const isValidPhone = (value: string) => {
   const normalized = value.trim();
   const digitCount = normalized.replace(/\D/g, '').length;
   return PHONE_RE.test(normalized) && digitCount >= 7 && digitCount <= 15;
 };
+
+/** Translate a failed kiosk call into a message for the customer, in their language. */
+function describeKioskError(error: unknown, t: KioskCopy): string {
+  const status = error instanceof KioskRequestError ? error.status : null;
+  const server = error instanceof KioskRequestError ? error.serverMessage || '' : error instanceof Error ? error.message : '';
+  if (status === 429) return t.tooManyRequests;
+  if (status === 404) return t.unavailable;
+  if (/products? (are|is) unavailable|unavailable products?/i.test(server)) return t.productsUnavailable;
+  if (/name and phone|customer name/i.test(server)) return t.required;
+  if (/invalid (customer )?phone/i.test(server)) return t.invalidPhone;
+  if (/email is required/i.test(server)) return t.emailRequired;
+  if (/invalid (customer )?email/i.test(server)) return t.invalidEmail;
+  if (status === null || (typeof navigator !== 'undefined' && !navigator.onLine)) return t.networkError;
+  return t.genericError;
+}
+
+const scrollToY = (y: number) => window.scrollTo({ top: y });
 
 export default function KioskPage() {
   const { token = '' } = useParams();
@@ -100,18 +142,49 @@ export default function KioskPage() {
   const [selectedProduct, setSelectedProduct] = useState<KioskProduct | null>(null);
   const [loading, setLoading] = useState(true);
   const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState('');
+  const [catalogReload, setCatalogReload] = useState(0);
   const [submitting, setSubmitting] = useState(false);
-  const [fatalError, setFatalError] = useState('');
+  const [fatal, setFatal] = useState<FatalState | null>(null);
   const [requestNumber, setRequestNumber] = useState('');
   const [idleWarning, setIdleWarning] = useState(false);
   const [online, setOnline] = useState(navigator.onLine);
   const idleWarningTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const idleResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Filters of the page currently on screen, so returning from the review
+  // step keeps the loaded pages instead of starting over at page one.
+  const loadedCatalogKey = useRef<string | null>(null);
+  const catalogRequest = useRef(0);
+  const catalogScroll = useRef(0);
 
   const language: KioskLanguage = profile?.language || 'fr';
   const t = copy[language];
   const dir = language === 'ar' ? 'rtl' : 'ltr';
-  const accent = profile?.accent_color || '#2563eb';
+  const accent = profile && isHexColor(profile.accent_color) ? profile.accent_color : DEFAULT_KIOSK_ACCENT;
+  const onAccent = readableTextOn(accent);
+
+  const cartLines = useMemo(() => Object.values(cart), [cart]);
+  const cartQuantity = useMemo(() => cartLines.reduce((sum, line) => sum + line.quantity, 0), [cartLines]);
+  const cartTotal = useMemo(() => cartLines.reduce((sum, line) => sum + (line.product.price || 0) * line.quantity, 0), [cartLines]);
+  const sessionDirty = cartLines.length > 0 || Object.values(customer).some(value => value.trim() !== '');
+
+  const loadProfile = useCallback(async (quiet: boolean) => {
+    if (!quiet) setLoading(true);
+    try {
+      const data = await KioskService.loadPublic(token);
+      setProfile(data.profile);
+      setBrands(data.brands || []);
+      setFatal(null);
+    } catch (error) {
+      const gone = error instanceof KioskRequestError && error.status === 404;
+      // A quiet background refresh that fails transiently keeps the kiosk
+      // running on the settings it already has.
+      if (gone) setFatal({ kind: 'gone', message: '' });
+      else if (!quiet) setFatal({ kind: 'temporary', message: error instanceof Error ? error.message : '' });
+    } finally {
+      if (!quiet) setLoading(false);
+    }
+  }, [token]);
 
   const clearIdleTimers = useCallback(() => {
     if (idleWarningTimer.current) clearTimeout(idleWarningTimer.current);
@@ -124,6 +197,7 @@ export default function KioskPage() {
     setDeferContact(false);
     setCart({});
     setQuery('');
+    setDebouncedQuery('');
     setCategory(null);
     setBrand('');
     setOnlyAvailable(false);
@@ -131,18 +205,29 @@ export default function KioskPage() {
     setRequestNumber('');
     setIdleWarning(false);
     setFormError('');
+    setCatalogError('');
+    setProducts([]);
+    setTotalProducts(0);
+    loadedCatalogKey.current = null;
+    catalogScroll.current = 0;
     setStage('welcome');
-  }, [clearIdleTimers]);
+    scrollToY(0);
+    loadProfile(true);
+  }, [clearIdleTimers, loadProfile]);
 
   const armIdleReset = useCallback(() => {
     clearIdleTimers();
     setIdleWarning(false);
-    if (!profile || stage === 'welcome' || stage === 'submitted') return;
+    if (!profile || stage === 'submitted') return;
+    // The welcome screen is safe to leave alone only when nothing has been
+    // entered yet; otherwise a customer who tapped back and walked away
+    // would hand their selection to the next person.
+    if (stage === 'welcome' && !sessionDirty) return;
     const totalMs = profile.inactivity_timeout_seconds * 1000;
     const warningMs = Math.max(10_000, totalMs - 20_000);
     idleWarningTimer.current = setTimeout(() => setIdleWarning(true), warningMs);
     idleResetTimer.current = setTimeout(resetSession, totalMs);
-  }, [clearIdleTimers, profile, resetSession, stage]);
+  }, [clearIdleTimers, profile, resetSession, sessionDirty, stage]);
 
   useEffect(() => {
     const onOnline = () => setOnline(true);
@@ -152,40 +237,57 @@ export default function KioskPage() {
     return () => { window.removeEventListener('online', onOnline); window.removeEventListener('offline', onOffline); };
   }, []);
 
+  useEffect(() => { loadProfile(false); }, [loadProfile]);
+
+  // An unattended tablet must recover by itself: keep retrying while the
+  // kiosk is unavailable (network down, kiosk re-enabled later…).
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    KioskService.loadPublic(token)
-      .then(data => {
-        if (cancelled) return;
-        setProfile(data.profile);
-        setBrands(data.brands || []);
-      })
-      .catch(error => { if (!cancelled) setFatalError(error instanceof Error ? error.message : 'Kiosk unavailable'); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [token]);
+    if (!fatal) return;
+    const timer = setInterval(() => loadProfile(true), UNAVAILABLE_RETRY_MS);
+    return () => clearInterval(timer);
+  }, [fatal, loadProfile]);
+
+  useEffect(() => {
+    // A refreshed profile re-arms the idle timer, so never refresh while an
+    // abandoned selection is still waiting to be cleared.
+    if (fatal || stage !== 'welcome' || sessionDirty) return;
+    const timer = setInterval(() => loadProfile(true), PROFILE_REFRESH_MS);
+    const onVisible = () => { if (document.visibilityState === 'visible') loadProfile(true); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', onVisible); };
+  }, [fatal, loadProfile, sessionDirty, stage]);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQuery(query.trim()), 300);
     return () => clearTimeout(timer);
   }, [query]);
 
+  const catalogKey = JSON.stringify([debouncedQuery, category, brand, onlyAvailable, catalogReload]);
+
   useEffect(() => {
-    if (!profile || stage !== 'catalog') return;
-    let cancelled = false;
+    if (!profile || stage !== 'catalog' || loadedCatalogKey.current === catalogKey) return;
+    const requestId = ++catalogRequest.current;
     setCatalogLoading(true);
-    setPage(0);
-    KioskService.listPublicProducts(token, { search: debouncedQuery, category, brand, onlyAvailable, page: 0, pageSize: 48 })
+    setCatalogError('');
+    KioskService.listPublicProducts(token, { search: debouncedQuery, category, brand, onlyAvailable, page: 0, pageSize: PAGE_SIZE })
       .then(data => {
-        if (cancelled) return;
+        if (requestId !== catalogRequest.current) return;
+        loadedCatalogKey.current = catalogKey;
         setProducts(data.products);
         setTotalProducts(data.total);
+        setPage(0);
       })
-      .catch(error => { if (!cancelled) setFatalError(error instanceof Error ? error.message : 'Catalogue unavailable'); })
-      .finally(() => { if (!cancelled) setCatalogLoading(false); });
-    return () => { cancelled = true; };
-  }, [brand, category, debouncedQuery, onlyAvailable, profile, stage, token]);
+      .catch(error => { if (requestId === catalogRequest.current) setCatalogError(describeKioskError(error, t)); })
+      .finally(() => { if (requestId === catalogRequest.current) setCatalogLoading(false); });
+    // `t` only changes with the profile language, which already re-runs this.
+  }, [brand, catalogKey, category, debouncedQuery, onlyAvailable, profile, stage, token]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (stage === 'catalog') {
+      const y = catalogScroll.current;
+      requestAnimationFrame(() => scrollToY(y));
+    }
+  }, [stage]);
 
   useEffect(() => {
     armIdleReset();
@@ -203,10 +305,6 @@ export default function KioskPage() {
     const timer = setTimeout(resetSession, 20_000);
     return () => clearTimeout(timer);
   }, [resetSession, stage]);
-
-  const cartLines = useMemo(() => Object.values(cart), [cart]);
-  const cartQuantity = useMemo(() => cartLines.reduce((sum, line) => sum + line.quantity, 0), [cartLines]);
-  const cartTotal = useMemo(() => cartLines.reduce((sum, line) => sum + (line.product.price || 0) * line.quantity, 0), [cartLines]);
 
   const changeQuantity = (product: KioskProduct, delta: number) => {
     setCart(current => {
@@ -228,19 +326,34 @@ export default function KioskPage() {
 
   const loadMore = async () => {
     if (catalogLoading || products.length >= totalProducts) return;
+    const requestId = ++catalogRequest.current;
     const nextPage = page + 1;
     setCatalogLoading(true);
+    setCatalogError('');
     try {
       const data = await KioskService.listPublicProducts(token, {
-        search: debouncedQuery, category, brand, onlyAvailable, page: nextPage, pageSize: 48,
+        search: debouncedQuery, category, brand, onlyAvailable, page: nextPage, pageSize: PAGE_SIZE,
       });
+      // Filters changed while this page was loading: it belongs to another list.
+      if (requestId !== catalogRequest.current) return;
       setProducts(current => [...current, ...data.products]);
       setPage(nextPage);
     } catch (error) {
-      setFatalError(error instanceof Error ? error.message : 'Catalogue unavailable');
+      if (requestId === catalogRequest.current) setCatalogError(describeKioskError(error, t));
     } finally {
-      setCatalogLoading(false);
+      if (requestId === catalogRequest.current) setCatalogLoading(false);
     }
+  };
+
+  const retryCatalog = () => {
+    if (products.length && loadedCatalogKey.current === catalogKey) loadMore();
+    else setCatalogReload(value => value + 1);
+  };
+
+  const openReview = () => {
+    catalogScroll.current = window.scrollY;
+    setStage('review');
+    scrollToY(0);
   };
 
   const submit = async () => {
@@ -275,7 +388,7 @@ export default function KioskPage() {
       setRequestNumber(result.request_number);
       setStage('submitted');
     } catch (error) {
-      setFormError(error instanceof Error ? error.message : 'Unable to submit request');
+      setFormError(describeKioskError(error, t));
     } finally {
       setSubmitting(false);
     }
@@ -284,10 +397,22 @@ export default function KioskPage() {
   const requestFullscreen = () => document.documentElement.requestFullscreen?.().catch(() => {});
 
   if (loading) return <KioskCentered><Loader2 className="h-10 w-10 animate-spin text-slate-400" /><p>{t.loading}</p></KioskCentered>;
-  if (fatalError || !profile) return <KioskCentered><WifiOff className="h-12 w-12 text-slate-400" /><h1 className="text-2xl font-bold">{t.unavailable}</h1><p className="text-slate-500">{fatalError}</p></KioskCentered>;
+  if (fatal || !profile) {
+    const temporary = fatal?.kind !== 'gone';
+    return (
+      <KioskCentered>
+        <WifiOff className="h-12 w-12 text-slate-400" />
+        <h1 className="text-2xl font-bold">{t.unavailable}</h1>
+        {temporary && <p className="max-w-md text-slate-500">{t.temporarilyUnavailable}</p>}
+        <button onClick={() => loadProfile(false)} className="mt-2 min-h-14 rounded-2xl border-2 border-slate-300 bg-white px-8 text-lg font-bold">
+          <RotateCcw className="inline h-5 w-5 me-2" />{t.retry}
+        </button>
+      </KioskCentered>
+    );
+  }
 
   return (
-    <div dir={dir} className="min-h-screen bg-slate-50 text-slate-900 select-none" style={{ '--kiosk-accent': accent } as CSSProperties}>
+    <div dir={dir} className="min-h-screen bg-slate-50 text-slate-900 select-none" style={{ '--kiosk-accent': accent, '--kiosk-on-accent': onAccent } as CSSProperties}>
       {!online && (
         <div className="fixed inset-x-0 top-0 z-[70] flex items-center justify-center gap-2 bg-amber-500 px-4 py-2 text-sm font-semibold text-white">
           <WifiOff className="h-4 w-4" /> {t.offline}
@@ -299,12 +424,12 @@ export default function KioskPage() {
           <button onClick={requestFullscreen} className="absolute top-5 end-5 h-12 w-12 rounded-2xl bg-white shadow-sm border border-slate-200 flex items-center justify-center" aria-label="Fullscreen">
             <Expand className="h-5 w-5" />
           </button>
-          {profile.logo_url ? <img src={profile.logo_url} alt={profile.company_name} className="mb-8 h-28 w-56 object-contain" /> : <div className="mb-8 h-24 w-24 rounded-3xl flex items-center justify-center text-white shadow-xl" style={{ backgroundColor: accent }}><Package className="h-12 w-12" /></div>}
+          {profile.logo_url ? <img src={profile.logo_url} alt={profile.company_name} className="mb-8 h-28 w-56 object-contain" /> : <div className="mb-8 h-24 w-24 rounded-3xl flex items-center justify-center shadow-xl" style={{ backgroundColor: accent, color: onAccent }}><Package className="h-12 w-12" /></div>}
           <p className="mb-3 text-lg font-semibold tracking-wide text-slate-500">{profile.company_name}</p>
           <h1 className="max-w-3xl text-4xl md:text-6xl font-black tracking-tight">{profile.greeting_title}</h1>
           <p className="mt-5 max-w-2xl text-xl md:text-2xl leading-relaxed text-slate-600">{profile.greeting_message}</p>
-          <button onClick={() => setStage('catalog')} className="mt-12 min-h-16 min-w-64 rounded-2xl px-10 text-xl font-bold text-white shadow-xl active:scale-[0.98] transition" style={{ backgroundColor: accent }}>
-            {t.start} <ChevronRight className="inline h-6 w-6 ms-2" />
+          <button onClick={() => setStage('catalog')} className="mt-12 min-h-16 min-w-64 rounded-2xl px-10 text-xl font-bold shadow-xl active:scale-[0.98] transition" style={{ backgroundColor: accent, color: onAccent }}>
+            {t.start} <ChevronRight className="inline h-6 w-6 ms-2 rtl:rotate-180" />
           </button>
         </main>
       )}
@@ -313,7 +438,7 @@ export default function KioskPage() {
         <div className="min-h-screen pb-28">
           <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
             <div className="mx-auto flex max-w-[1600px] items-center gap-3 px-4 py-3">
-              <button onClick={() => setStage('welcome')} className="h-12 w-12 shrink-0 rounded-xl border border-slate-200 flex items-center justify-center"><ArrowLeft className="h-5 w-5" /></button>
+              <button onClick={() => setStage('welcome')} aria-label={t.home} className="h-12 w-12 shrink-0 rounded-xl border border-slate-200 flex items-center justify-center"><ArrowLeft className="h-5 w-5 rtl:rotate-180" /></button>
               {profile.logo_url ? <img src={profile.logo_url} alt="" className="hidden sm:block h-10 w-28 object-contain" /> : <Package className="hidden sm:block h-8 w-8" style={{ color: accent }} />}
               <div className="relative flex-1"><Search className="absolute start-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" /><input value={query} onChange={e => setQuery(e.target.value)} placeholder={t.search} className="h-14 w-full rounded-2xl border-2 border-slate-200 bg-slate-50 ps-12 pe-12 text-lg outline-none focus:bg-white focus:border-[var(--kiosk-accent)]" />{query && <button onClick={() => setQuery('')} className="absolute end-2 top-1/2 h-10 w-10 -translate-y-1/2 flex items-center justify-center"><X className="h-5 w-5" /></button>}</div>
               <button onClick={requestFullscreen} className="hidden sm:flex h-12 w-12 rounded-xl border border-slate-200 items-center justify-center"><Expand className="h-5 w-5" /></button>
@@ -321,10 +446,10 @@ export default function KioskPage() {
             <div className="mx-auto max-w-[1600px] px-4 pb-4">
               <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">{t.categories}</p>
               <div className="overflow-x-auto"><div className="flex min-w-max gap-2">
-                <FilterButton active={!category} label={t.all} onClick={() => setCategory(null)} accent={accent} />
-                <FilterButton active={category === 'utensils'} label={t.utensils} onClick={() => setCategory('utensils')} accent={accent} />
-                <FilterButton active={category === 'furniture'} label={t.furniture} onClick={() => setCategory('furniture')} accent={accent} />
-                <FilterButton active={category === 'equipment'} label={t.equipment} onClick={() => setCategory('equipment')} accent={accent} />
+                <FilterButton active={!category} label={t.all} onClick={() => setCategory(null)} />
+                <FilterButton active={category === 'utensils'} label={t.utensils} onClick={() => setCategory('utensils')} />
+                <FilterButton active={category === 'furniture'} label={t.furniture} onClick={() => setCategory('furniture')} />
+                <FilterButton active={category === 'equipment'} label={t.equipment} onClick={() => setCategory('equipment')} />
               </div></div>
               <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
                 <select aria-label={t.allBrands} value={brand} onChange={event => setBrand(event.target.value)} className="min-h-12 flex-1 rounded-xl border-2 border-slate-200 bg-white px-4 text-base font-semibold outline-none focus:border-[var(--kiosk-accent)]">
@@ -342,7 +467,13 @@ export default function KioskPage() {
 
           <main className="mx-auto max-w-[1600px] p-4 md:p-6">
             <div className="mb-4 flex items-center justify-between"><p className="text-sm font-semibold text-slate-500">{totalProducts} {t.products}</p>{catalogLoading && <Loader2 className="h-5 w-5 animate-spin" style={{ color: accent }} />}</div>
-            {!catalogLoading && products.length === 0 ? (
+            {catalogError && (
+              <div role="alert" className="mb-4 flex flex-col gap-3 rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 text-amber-900 sm:flex-row sm:items-center sm:justify-between">
+                <p className="flex items-center gap-3 font-semibold"><AlertTriangle className="h-6 w-6 shrink-0" />{products.length ? catalogError : `${t.catalogError} ${catalogError}`}</p>
+                <button onClick={retryCatalog} disabled={catalogLoading} className="min-h-12 shrink-0 rounded-xl bg-amber-600 px-6 font-bold text-white disabled:opacity-50"><RotateCcw className="inline h-5 w-5 me-2" />{t.retry}</button>
+              </div>
+            )}
+            {!catalogLoading && !catalogError && products.length === 0 ? (
               <div className="rounded-3xl border-2 border-dashed border-slate-200 bg-white py-24 text-center"><Search className="mx-auto h-12 w-12 text-slate-300" /><p className="mt-4 text-xl font-semibold text-slate-500">{t.noProducts}</p></div>
             ) : (
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
@@ -352,20 +483,20 @@ export default function KioskPage() {
             {products.length < totalProducts && <button onClick={loadMore} disabled={catalogLoading} className="mx-auto mt-8 flex min-h-14 min-w-52 items-center justify-center rounded-2xl border-2 border-slate-300 bg-white px-8 text-lg font-bold disabled:opacity-50">{catalogLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : t.loadMore}</button>}
           </main>
 
-          {cartQuantity > 0 && <button onClick={() => setStage('review')} className="fixed bottom-4 start-1/2 z-50 flex min-h-16 w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 items-center justify-between rounded-2xl px-5 text-white shadow-2xl active:scale-[0.99]" style={{ backgroundColor: accent }}><span className="flex items-center gap-3 text-lg font-bold"><span className="h-10 min-w-10 rounded-xl bg-white/20 px-2 flex items-center justify-center">{cartQuantity}</span><ShoppingCart className="h-6 w-6" />{t.cart}</span>{profile.show_prices && <strong className="text-lg">{fmt(cartTotal)} DH</strong>}</button>}
+          {cartQuantity > 0 && <button onClick={openReview} className="fixed inset-x-4 bottom-4 z-50 mx-auto flex min-h-16 max-w-2xl items-center justify-between rounded-2xl px-5 shadow-2xl active:scale-[0.99]" style={{ backgroundColor: accent, color: onAccent }}><span className="flex items-center gap-3 text-lg font-bold"><span className="h-10 min-w-10 rounded-xl bg-white/20 px-2 flex items-center justify-center">{cartQuantity}</span><ShoppingCart className="h-6 w-6" />{t.cart}</span>{profile.show_prices && <strong className="text-lg">{fmt(cartTotal)} DH</strong>}</button>}
         </div>
       )}
 
       {stage === 'review' && (
         <main className="mx-auto min-h-screen max-w-5xl p-4 pb-32 md:p-8">
-          <button onClick={() => setStage('catalog')} className="mb-6 min-h-12 inline-flex items-center gap-2 rounded-xl bg-white border border-slate-200 px-4 font-semibold"><ArrowLeft className="h-5 w-5" /> {t.back}</button>
+          <button onClick={() => setStage('catalog')} className="mb-6 min-h-12 inline-flex items-center gap-2 rounded-xl bg-white border border-slate-200 px-4 font-semibold"><ArrowLeft className="h-5 w-5 rtl:rotate-180" /> {t.back}</button>
           <h1 className="text-3xl md:text-4xl font-black">{t.review}</h1>
           <div className="mt-8 space-y-3">
             {cartLines.map(line => <ReviewLine key={line.product.barcode} line={line} showPrice={profile.show_prices} placeholderLogo={profile.logo_url} accent={accent} onSet={quantity => setQuantity(line.product, quantity)} />)}
           </div>
           {!cartLines.length && <div className="mt-8 rounded-2xl bg-white p-12 text-center text-lg text-slate-500">{t.empty}</div>}
           <section className="mt-8 rounded-3xl border border-slate-200 bg-white p-5 md:p-7">
-            <div className="flex items-center gap-4"><div className="h-12 w-12 shrink-0 rounded-2xl flex items-center justify-center text-white" style={{ backgroundColor: accent }}><UserRound className="h-6 w-6" /></div><div><h2 className="text-2xl font-black">{t.details}</h2><p className="mt-1 text-slate-500">{t.contactPrompt}</p></div></div>
+            <div className="flex items-center gap-4"><div className="h-12 w-12 shrink-0 rounded-2xl flex items-center justify-center" style={{ backgroundColor: accent, color: onAccent }}><UserRound className="h-6 w-6" /></div><div><h2 className="text-2xl font-black">{t.details}</h2><p className="mt-1 text-slate-500">{t.contactPrompt}</p></div></div>
             <label className="mt-6 flex cursor-pointer items-start gap-3 rounded-2xl border-2 border-slate-200 bg-slate-50 p-4">
               <input type="checkbox" checked={deferContact} onChange={event => { setDeferContact(event.target.checked); setFormError(''); }} className="mt-1 h-6 w-6 shrink-0" />
               <span><span className="block text-base font-bold">{t.detailsLater}</span><span className="mt-1 block text-sm leading-relaxed text-slate-500">{t.detailsLaterHelp}</span></span>
@@ -378,23 +509,23 @@ export default function KioskPage() {
             <label className="mt-5 block"><span className="mb-2 block text-base font-bold">{t.note}</span><textarea value={customer.note} onChange={e => setCustomer(c => ({ ...c, note: e.target.value.slice(0, 500) }))} rows={3} className="w-full rounded-2xl border-2 border-slate-200 bg-white px-5 py-4 text-lg outline-none focus:border-[var(--kiosk-accent)]" /></label>
             <p className="mt-5 text-sm leading-relaxed text-slate-500">{t.privacy}</p>
           </section>
-          {formError && <p className="mt-5 rounded-xl bg-red-50 p-4 font-semibold text-red-700">{formError}</p>}
+          {formError && <p role="alert" className="mt-5 rounded-xl bg-red-50 p-4 font-semibold text-red-700">{formError}</p>}
           <div className="mt-8 rounded-2xl bg-white border border-slate-200 p-5">
             {profile.show_prices && <div className="flex items-center justify-between text-xl font-black"><span>{t.total}</span><span>{fmt(cartTotal)} DH</span></div>}
             <p className={`${profile.show_prices ? 'mt-4' : ''} text-sm leading-relaxed text-slate-500`}>{t.nonBinding}</p>
           </div>
-          <button onClick={submit} disabled={!cartLines.length || submitting || !online} className="mt-7 min-h-16 w-full rounded-2xl px-6 text-xl font-bold text-white disabled:opacity-40" style={{ backgroundColor: accent }}>{submitting ? <Loader2 className="mx-auto h-7 w-7 animate-spin" /> : <><Check className="inline h-6 w-6 me-2" />{t.confirm}</>}</button>
+          <button onClick={submit} disabled={!cartLines.length || submitting || !online} className="mt-7 min-h-16 w-full rounded-2xl px-6 text-xl font-bold disabled:opacity-40" style={{ backgroundColor: accent, color: onAccent }}>{submitting ? <Loader2 className="mx-auto h-7 w-7 animate-spin" /> : <><Check className="inline h-6 w-6 me-2" />{t.confirm}</>}</button>
         </main>
       )}
 
       {stage === 'submitted' && (
         <main className="min-h-screen flex items-center justify-center p-6 text-center">
           <section className="w-full max-w-2xl rounded-3xl bg-white p-8 md:p-12 shadow-xl border border-slate-200">
-            <div className="mx-auto h-24 w-24 rounded-full flex items-center justify-center text-white" style={{ backgroundColor: accent }}><Check className="h-12 w-12" /></div>
+            <div className="mx-auto h-24 w-24 rounded-full flex items-center justify-center" style={{ backgroundColor: accent, color: onAccent }}><Check className="h-12 w-12" /></div>
             <h1 className="mt-7 text-4xl font-black">{t.requestSent}</h1>
             <p className="mt-4 text-xl leading-relaxed text-slate-600">{t.requestMessage}</p>
             <div className="mx-auto mt-8 max-w-md rounded-2xl bg-slate-100 p-6"><p className="text-sm font-bold uppercase tracking-wider text-slate-500">{t.requestNumber}</p><p className="mt-2 text-3xl font-black tracking-wide">{requestNumber}</p></div>
-            <button onClick={resetSession} className="mt-8 min-h-14 rounded-2xl px-8 text-lg font-bold text-white" style={{ backgroundColor: accent }}><RotateCcw className="inline h-5 w-5 me-2" />{t.reset}</button>
+            <button onClick={resetSession} className="mt-8 min-h-14 rounded-2xl px-8 text-lg font-bold" style={{ backgroundColor: accent, color: onAccent }}><RotateCcw className="inline h-5 w-5 me-2" />{t.reset}</button>
           </section>
         </main>
       )}
@@ -403,7 +534,7 @@ export default function KioskPage() {
 
       {idleWarning && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/65 p-5 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-3xl bg-white p-8 text-center shadow-2xl"><RotateCcw className="mx-auto h-12 w-12 text-amber-500" /><h2 className="mt-5 text-3xl font-black">{t.idleTitle}</h2><p className="mt-3 text-lg text-slate-600">{t.idleText}</p><button onClick={armIdleReset} className="mt-7 min-h-14 w-full rounded-2xl text-lg font-bold text-white" style={{ backgroundColor: accent }}>{t.stay}</button></div>
+          <div className="w-full max-w-lg rounded-3xl bg-white p-8 text-center shadow-2xl"><RotateCcw className="mx-auto h-12 w-12 text-amber-500" /><h2 className="mt-5 text-3xl font-black">{t.idleTitle}</h2><p className="mt-3 text-lg text-slate-600">{t.idleText}</p><button onClick={armIdleReset} className="mt-7 min-h-14 w-full rounded-2xl text-lg font-bold" style={{ backgroundColor: accent, color: onAccent }}>{t.stay}</button></div>
         </div>
       )}
     </div>
@@ -418,8 +549,8 @@ function KioskInput({ label, value, onChange, required, disabled, inputMode, aut
   return <label className="block"><span className="mb-2 block text-base font-bold">{label}{required && <span className="text-red-500"> *</span>}</span><input autoFocus={autoFocus} disabled={disabled} inputMode={inputMode} type={inputMode === 'email' ? 'email' : 'text'} value={value} onChange={e => onChange(e.target.value)} className="h-16 w-full rounded-2xl border-2 border-slate-200 bg-white px-5 text-xl outline-none focus:border-[var(--kiosk-accent)] disabled:cursor-not-allowed disabled:bg-slate-100" /></label>;
 }
 
-function FilterButton({ active, label, onClick, accent }: { active: boolean; label: string; onClick: () => void; accent: string }) {
-  return <button onClick={onClick} className={`min-h-12 rounded-xl border-2 px-5 text-base font-bold transition active:scale-95 ${active ? 'text-white' : 'border-slate-200 bg-white text-slate-700'}`} style={active ? { backgroundColor: accent, borderColor: accent } : undefined}>{label}</button>;
+function FilterButton({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
+  return <button onClick={onClick} className={`min-h-12 rounded-xl border-2 px-5 text-base font-bold transition active:scale-95 ${active ? 'border-[var(--kiosk-accent)] bg-[var(--kiosk-accent)] text-[color:var(--kiosk-on-accent)]' : 'border-slate-200 bg-white text-slate-700'}`}>{label}</button>;
 }
 
 function ProductImage({ image, name, placeholderLogo }: { image: string | null; name: string; placeholderLogo?: string | null }) {
@@ -428,17 +559,17 @@ function ProductImage({ image, name, placeholderLogo }: { image: string | null; 
 }
 
 function ProductCard({ product, quantity, showPrice, showAvailability, placeholderLogo, t, accent, onOpen, onChange }: { product: KioskProduct; quantity: number; showPrice: boolean; showAvailability: boolean; placeholderLogo?: string | null; t: KioskCopy; accent: string; onOpen: () => void; onChange: (delta: number) => void }) {
-  return <article className="rounded-3xl border border-slate-200 bg-white p-2.5 shadow-sm flex flex-col"><button onClick={onOpen} className="text-start"><ProductImage image={product.image} name={product.name} placeholderLogo={placeholderLogo} /><div className="px-1 pt-3"><p className="min-h-5 truncate text-xs font-bold uppercase tracking-wide text-slate-400">{product.brand || '—'}</p><h2 className="mt-1 line-clamp-2 min-h-12 text-base sm:text-lg font-bold leading-snug">{product.name}</h2><p className="mt-1 truncate font-mono text-xs text-slate-400">{product.barcode}</p>{showAvailability && <p className={`mt-2 text-xs font-bold ${product.available ? 'text-emerald-600' : 'text-amber-600'}`}>{product.available ? t.available : t.onRequest}</p>}{showPrice && <p className="mt-2 text-lg font-black" style={{ color: accent }}>{fmt(product.price || 0)} DH</p>}</div></button><div className="mt-auto pt-3">{quantity > 0 ? <QuantityStepper quantity={quantity} onMinus={() => onChange(-1)} onPlus={() => onChange(1)} accent={accent} /> : <button onClick={() => onChange(1)} className="min-h-12 w-full rounded-xl text-base font-bold text-white" style={{ backgroundColor: accent }}><Plus className="inline h-5 w-5 me-1" />{t.add}</button>}</div></article>;
+  return <article className="rounded-3xl border border-slate-200 bg-white p-2.5 shadow-sm flex flex-col"><button onClick={onOpen} className="text-start"><ProductImage image={product.image} name={product.name} placeholderLogo={placeholderLogo} /><div className="px-1 pt-3"><p className="min-h-5 truncate text-xs font-bold uppercase tracking-wide text-slate-400">{product.brand || '—'}</p><h2 className="mt-1 line-clamp-2 min-h-12 text-base sm:text-lg font-bold leading-snug">{product.name}</h2><p className="mt-1 truncate font-mono text-xs text-slate-400">{product.barcode}</p>{showAvailability && <p className={`mt-2 text-xs font-bold ${product.available ? 'text-emerald-600' : 'text-amber-600'}`}>{product.available ? t.available : t.onRequest}</p>}{showPrice && <p className="mt-2 text-lg font-black" style={{ color: accent }}>{fmt(product.price || 0)} DH</p>}</div></button><div className="mt-auto pt-3">{quantity > 0 ? <QuantityStepper quantity={quantity} onMinus={() => onChange(-1)} onPlus={() => onChange(1)} accent={accent} /> : <button onClick={() => onChange(1)} className="min-h-12 w-full rounded-xl bg-[var(--kiosk-accent)] text-base font-bold text-[color:var(--kiosk-on-accent)]"><Plus className="inline h-5 w-5 me-1" />{t.add}</button>}</div></article>;
 }
 
 function QuantityStepper({ quantity, onMinus, onPlus, accent }: { quantity: number; onMinus: () => void; onPlus: () => void; accent: string }) {
-  return <div className="grid min-h-12 grid-cols-[48px_1fr_48px] overflow-hidden rounded-xl border-2" style={{ borderColor: accent }}><button onClick={onMinus} className="flex items-center justify-center bg-white"><Minus className="h-5 w-5" /></button><span className="flex items-center justify-center text-lg font-black text-white" style={{ backgroundColor: accent }}>{quantity}</span><button onClick={onPlus} className="flex items-center justify-center bg-white"><Plus className="h-5 w-5" /></button></div>;
+  return <div className="grid min-h-12 grid-cols-[48px_1fr_48px] overflow-hidden rounded-xl border-2" style={{ borderColor: accent }}><button onClick={onMinus} className="flex items-center justify-center bg-white"><Minus className="h-5 w-5" /></button><span className="flex items-center justify-center bg-[var(--kiosk-accent)] text-lg font-black text-[color:var(--kiosk-on-accent)]">{quantity}</span><button onClick={onPlus} className="flex items-center justify-center bg-white"><Plus className="h-5 w-5" /></button></div>;
 }
 
 function ReviewLine({ line, showPrice, placeholderLogo, accent, onSet }: { line: CartLine; showPrice: boolean; placeholderLogo?: string | null; accent: string; onSet: (quantity: number) => void }) {
-  return <div className="grid grid-cols-[88px_1fr] gap-4 rounded-2xl border border-slate-200 bg-white p-3 sm:grid-cols-[100px_1fr_auto] sm:items-center"><ProductImage image={line.product.image} name={line.product.name} placeholderLogo={placeholderLogo} /><div><p className="text-xs font-bold uppercase text-slate-400">{line.product.brand}</p><h2 className="mt-1 text-lg font-bold">{line.product.name}</h2><p className="mt-1 font-mono text-xs text-slate-400">{line.product.barcode}</p>{showPrice && <p className="mt-2 font-black" style={{ color: accent }}>{fmt((line.product.price || 0) * line.quantity)} DH</p>}</div><div className="col-span-2 sm:col-span-1 sm:w-44"><div className="grid h-14 grid-cols-[52px_1fr_52px] overflow-hidden rounded-xl border-2" style={{ borderColor: accent }}><button onClick={() => onSet(line.quantity - 1)} className="flex items-center justify-center"><Minus className="h-5 w-5" /></button><input type="number" min={1} max={999} value={line.quantity} onChange={e => onSet(Number(e.target.value) || 1)} className="w-full text-center text-xl font-black text-white outline-none" style={{ backgroundColor: accent }} /><button onClick={() => onSet(line.quantity + 1)} className="flex items-center justify-center"><Plus className="h-5 w-5" /></button></div></div></div>;
+  return <div className="grid grid-cols-[88px_1fr] gap-4 rounded-2xl border border-slate-200 bg-white p-3 sm:grid-cols-[100px_1fr_auto] sm:items-center"><ProductImage image={line.product.image} name={line.product.name} placeholderLogo={placeholderLogo} /><div><p className="text-xs font-bold uppercase text-slate-400">{line.product.brand}</p><h2 className="mt-1 text-lg font-bold">{line.product.name}</h2><p className="mt-1 font-mono text-xs text-slate-400">{line.product.barcode}</p>{showPrice && <p className="mt-2 font-black" style={{ color: accent }}>{fmt((line.product.price || 0) * line.quantity)} DH</p>}</div><div className="col-span-2 sm:col-span-1 sm:w-44"><div className="grid h-14 grid-cols-[52px_1fr_52px] overflow-hidden rounded-xl border-2" style={{ borderColor: accent }}><button onClick={() => onSet(line.quantity - 1)} className="flex items-center justify-center"><Minus className="h-5 w-5" /></button><input type="number" min={1} max={999} value={line.quantity} onChange={e => onSet(Number(e.target.value) || 1)} className="w-full bg-[var(--kiosk-accent)] text-center text-xl font-black text-[color:var(--kiosk-on-accent)] outline-none" /><button onClick={() => onSet(line.quantity + 1)} className="flex items-center justify-center"><Plus className="h-5 w-5" /></button></div></div></div>;
 }
 
 function ProductDialog({ product, quantity, showPrice, showAvailability, placeholderLogo, t, accent, onClose, onChange }: { product: KioskProduct; quantity: number; showPrice: boolean; showAvailability: boolean; placeholderLogo?: string | null; t: KioskCopy; accent: string; onClose: () => void; onChange: (delta: number) => void }) {
-  return <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm" onClick={onClose}><section className="relative max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white p-5 shadow-2xl" onClick={e => e.stopPropagation()}><button onClick={onClose} className="absolute end-4 top-4 z-10 h-12 w-12 rounded-full bg-white/95 shadow flex items-center justify-center"><X className="h-6 w-6" /></button><div className="grid gap-6 sm:grid-cols-2"><ProductImage image={product.image} name={product.name} placeholderLogo={placeholderLogo} /><div className="flex flex-col"><p className="text-sm font-bold uppercase tracking-wide text-slate-400">{product.brand}</p><h2 className="mt-2 text-3xl font-black leading-tight">{product.name}</h2><p className="mt-3 font-mono text-sm text-slate-400">{product.barcode}</p>{showAvailability && <p className={`mt-4 font-bold ${product.available ? 'text-emerald-600' : 'text-amber-600'}`}>{product.available ? t.available : t.onRequest}</p>}{showPrice && <p className="mt-4 text-3xl font-black" style={{ color: accent }}>{fmt(product.price || 0)} DH</p>}<div className="mt-auto pt-8">{quantity ? <QuantityStepper quantity={quantity} onMinus={() => onChange(-1)} onPlus={() => onChange(1)} accent={accent} /> : <button onClick={() => onChange(1)} className="min-h-14 w-full rounded-2xl text-lg font-bold text-white" style={{ backgroundColor: accent }}><Plus className="inline h-5 w-5 me-2" />{t.add}</button>}</div></div></div></section></div>;
+  return <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm" onClick={onClose}><section className="relative max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white p-5 shadow-2xl" onClick={e => e.stopPropagation()}><button onClick={onClose} className="absolute end-4 top-4 z-10 h-12 w-12 rounded-full bg-white/95 shadow flex items-center justify-center"><X className="h-6 w-6" /></button><div className="grid gap-6 sm:grid-cols-2"><ProductImage image={product.image} name={product.name} placeholderLogo={placeholderLogo} /><div className="flex flex-col"><p className="text-sm font-bold uppercase tracking-wide text-slate-400">{product.brand}</p><h2 className="mt-2 text-3xl font-black leading-tight">{product.name}</h2><p className="mt-3 font-mono text-sm text-slate-400">{product.barcode}</p>{showAvailability && <p className={`mt-4 font-bold ${product.available ? 'text-emerald-600' : 'text-amber-600'}`}>{product.available ? t.available : t.onRequest}</p>}{showPrice && <p className="mt-4 text-3xl font-black" style={{ color: accent }}>{fmt(product.price || 0)} DH</p>}<div className="mt-auto pt-8">{quantity ? <QuantityStepper quantity={quantity} onMinus={() => onChange(-1)} onPlus={() => onChange(1)} accent={accent} /> : <button onClick={() => onChange(1)} className="min-h-14 w-full rounded-2xl bg-[var(--kiosk-accent)] text-lg font-bold text-[color:var(--kiosk-on-accent)]"><Plus className="inline h-5 w-5 me-2" />{t.add}</button>}</div></div></div></section></div>;
 }

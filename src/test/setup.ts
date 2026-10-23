@@ -13,3 +13,6 @@ Object.defineProperty(window, "matchMedia", {
     dispatchEvent: () => {},
   }),
 });
+
+// jsdom does not implement scrolling.
+window.scrollTo = (() => {}) as typeof window.scrollTo;

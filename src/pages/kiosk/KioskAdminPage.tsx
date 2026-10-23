@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, Check, ChevronLeft, ChevronRight, Clipboard, ExternalLink, ImageOff,
+  ArrowLeft, Check, ChevronLeft, ChevronRight, Clipboard, ExternalLink, History, ImageOff,
   Link2, Loader2, MonitorSmartphone, PackagePlus, Plus, RefreshCw, RotateCw,
   Save, Search, Settings2, ShoppingCart, Trash2, UserRound, X,
 } from 'lucide-react';
@@ -12,6 +12,7 @@ import {
   type KioskRequestDetail, type KioskRequestItem, type KioskRequestStatus,
   type KioskRequestSummary, type KioskUserOption,
 } from '../../utils/kioskService';
+import { DEFAULT_KIOSK_ACCENT, isHexColor, readableTextOn } from '../../utils/kioskColors';
 
 type Tab = 'requests' | 'settings';
 
@@ -25,6 +26,10 @@ const STATUS_STYLES: Record<KioskRequestStatus, string> = {
   reviewing: 'bg-amber-100 text-amber-700', prepared: 'bg-cyan-100 text-cyan-700',
   contacted: 'bg-emerald-100 text-emerald-700', converted: 'bg-green-100 text-green-700',
   rejected: 'bg-red-100 text-red-700',
+};
+
+const EVENT_LABELS: Record<string, string> = {
+  submitted: 'Demande reçue du kiosque', updated: 'Demande modifiée', converted: 'Devis créé',
 };
 
 const EMPTY_PROFILE = (companyId = ''): KioskAdminProfile => ({
@@ -209,6 +214,19 @@ export default function KioskAdminPage() {
     setEditingProfile(profile ? { ...profile } : EMPTY_PROFILE(companies[0]?.id || ''));
   };
 
+  const copyLink = async (profile: KioskAdminProfile) => {
+    if (!profile.public_token) return;
+    const url = KioskService.publicUrl(profile.public_token);
+    try {
+      await navigator.clipboard.writeText(url);
+      showToast({ type: 'success', title: 'Lien copié', message: 'Collez-le dans le navigateur de la tablette.' });
+    } catch {
+      // Clipboard access is refused outside HTTPS or without permission:
+      // show the link so it can still be copied by hand.
+      window.prompt('Copiez le lien du kiosque :', url);
+    }
+  };
+
   const requiresReconnect = /Reconnectez-vous|Authentication required/i.test(error);
   const reconnect = () => {
     logout();
@@ -243,7 +261,7 @@ export default function KioskAdminPage() {
           onSearch={setSearch} onStatus={value => { setStatus(value); setPage(0); }} onPage={setPage} onOpen={openRequest}
         />
       ) : (
-        <ProfilesPanel profiles={profiles} companies={companies} canManage={canManageProfiles} onEdit={beginProfile} onRotate={async profile => {
+        <ProfilesPanel profiles={profiles} companies={companies} canManage={canManageProfiles} onEdit={beginProfile} onCopy={copyLink} onRotate={async profile => {
           if (!profile.id || !window.confirm('L’ancien lien cessera immédiatement de fonctionner. Générer un nouveau lien ?')) return;
           try {
             const token = await KioskService.rotateToken(profile.id);
@@ -315,24 +333,20 @@ function RequestsPanel({ requests, total, page, search, status, loading, onSearc
   );
 }
 
-function ProfilesPanel({ profiles, companies, canManage, onEdit, onRotate }: {
+function ProfilesPanel({ profiles, companies, canManage, onEdit, onCopy, onRotate }: {
   profiles: KioskAdminProfile[]; companies: KioskCompanyOption[]; canManage: boolean;
-  onEdit: (profile?: KioskAdminProfile) => void; onRotate: (profile: KioskAdminProfile) => void;
+  onEdit: (profile?: KioskAdminProfile) => void; onCopy: (profile: KioskAdminProfile) => void; onRotate: (profile: KioskAdminProfile) => void;
 }) {
-  const copyLink = async (profile: KioskAdminProfile) => {
-    if (!profile.public_token) return;
-    await navigator.clipboard.writeText(KioskService.publicUrl(profile.public_token));
-  };
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between"><div><h2 className="text-lg font-semibold">Liens kiosque</h2><p className="text-sm text-muted-foreground">Créez un lien distinct par tablette, magasin ou point d’accueil.</p></div>{canManage && <button onClick={() => onEdit()} disabled={!companies.length} className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-50"><Plus className="h-4 w-4" />Nouveau kiosque</button>}</div>
       <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
         {profiles.map(profile => (
           <article key={profile.id} className="rounded-xl border bg-card p-5 shadow-sm">
-            <div className="flex items-start justify-between gap-3"><div><div className="flex items-center gap-2"><h3 className="font-semibold">{profile.name}</h3><span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${profile.enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{profile.enabled ? 'Actif' : 'Désactivé'}</span></div><p className="mt-1 text-sm text-muted-foreground">{profile.company?.name || companies.find(c => c.id === profile.company_id)?.name}</p></div><div className="h-9 w-9 rounded-lg border-4" style={{ borderColor: profile.accent_color || '#2563eb' }} /></div>
+            <div className="flex items-start justify-between gap-3"><div><div className="flex items-center gap-2"><h3 className="font-semibold">{profile.name}</h3><span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${profile.enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{profile.enabled ? 'Actif' : 'Désactivé'}</span></div><p className="mt-1 text-sm text-muted-foreground">{profile.company?.name || companies.find(c => c.id === profile.company_id)?.name}</p></div><div className="h-9 w-9 rounded-lg border-4" style={{ borderColor: isHexColor(profile.accent_color) ? profile.accent_color : DEFAULT_KIOSK_ACCENT }} /></div>
             <div className="mt-4 rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground"><div className="truncate font-mono">{profile.public_token ? KioskService.publicUrl(profile.public_token) : 'Lien en attente'}</div></div>
             <div className="mt-4 flex flex-wrap gap-2">
-              <button onClick={() => copyLink(profile)} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium hover:bg-accent"><Clipboard className="h-3.5 w-3.5" />Copier</button>
+              <button onClick={() => onCopy(profile)} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium hover:bg-accent"><Clipboard className="h-3.5 w-3.5" />Copier</button>
               {profile.public_token && <a href={KioskService.publicUrl(profile.public_token)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium hover:bg-accent"><ExternalLink className="h-3.5 w-3.5" />Ouvrir</a>}
               {canManage && <><button onClick={() => onEdit(profile)} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium hover:bg-accent"><Settings2 className="h-3.5 w-3.5" />Régler</button><button onClick={() => onRotate(profile)} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium text-amber-700 hover:bg-amber-50"><RotateCw className="h-3.5 w-3.5" />Renouveler</button></>}
             </div>
@@ -414,6 +428,14 @@ function RequestEditor({ request, loading, companies, users, isSuperadmin, canAs
                   <div className="flex justify-end border-t pt-4 text-lg font-bold">Total : {money(request.items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0))} DH</div>
                 </Section>
               </fieldset>
+
+              {request.events.length > 0 && (
+                <div className="mt-6"><Section title="Historique" icon={<History className="h-4 w-4" />}>
+                  <ol className="space-y-3 border-s ps-4">
+                    {request.events.map(event => <RequestEventRow key={event.id} event={event} users={users} companies={companies} />)}
+                  </ol>
+                </Section></div>
+              )}
             </div>
             <div className="flex flex-col-reverse gap-3 border-t bg-card p-4 sm:flex-row sm:justify-end md:px-6">
               <button onClick={onClose} className="h-11 rounded-lg border px-5 text-sm font-medium">Fermer</button>
@@ -438,6 +460,8 @@ function ProfileEditor({ profile: initial, companies, users, isSuperadmin, onClo
   const [error, setError] = useState('');
   const patch = (values: Partial<KioskAdminProfile>) => setProfile(current => ({ ...current, ...values }));
   const profileUsers = users.filter(user => user.company_id === profile.company_id || (isSuperadmin && !user.company_id));
+  const accentInvalid = !!profile.accent_color && !isHexColor(profile.accent_color);
+  const previewAccent = isHexColor(profile.accent_color) ? profile.accent_color : DEFAULT_KIOSK_ACCENT;
 
   useEffect(() => {
     if (!profile.company_id) return;
@@ -454,6 +478,7 @@ function ProfileEditor({ profile: initial, companies, users, isSuperadmin, onClo
   };
   const save = async () => {
     if (!profile.company_id || !profile.name.trim()) { setError('La société et le nom sont obligatoires.'); return; }
+    if (accentInvalid) { setError('La couleur principale doit être au format #RRGGBB, par exemple #2563eb.'); return; }
     setSaving(true); setError('');
     try { onSaved(await KioskService.saveProfile(profile)); }
     catch (err) { setError(err instanceof Error ? err.message : 'Enregistrement impossible'); }
@@ -467,7 +492,7 @@ function ProfileEditor({ profile: initial, companies, users, isSuperadmin, onClo
         <div className="flex-1 space-y-6 overflow-y-auto p-5 md:p-6">
           {error && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
           <Section title="Identité & accueil" icon={<MonitorSmartphone className="h-4 w-4" />}>
-            <div className="grid gap-4 md:grid-cols-2"><Field label="Société"><select disabled={!isSuperadmin || !!profile.id} value={profile.company_id} onChange={e => patch({ company_id: e.target.value, default_assignee_id: null, visible_family_ids: [], visible_brands: [] })} className="field">{companies.map(company => <option key={company.id} value={company.id}>{company.name}</option>)}</select></Field><Field label="Nom interne"><input value={profile.name} onChange={e => patch({ name: e.target.value })} className="field" /></Field><Field label="Titre d’accueil"><input value={profile.greeting_title} onChange={e => patch({ greeting_title: e.target.value })} className="field" /></Field><Field label="Langue"><select value={profile.language} onChange={e => patch({ language: e.target.value as KioskAdminProfile['language'] })} className="field"><option value="fr">Français</option><option value="en">English</option><option value="ar">العربية</option></select></Field><Field label="URL du logo (facultatif)"><input value={profile.logo_url || ''} onChange={e => patch({ logo_url: e.target.value || null })} className="field" placeholder="https://…" /></Field><Field label="Couleur principale"><div className="flex gap-2"><input type="color" value={profile.accent_color || '#2563eb'} onChange={e => patch({ accent_color: e.target.value })} className="h-10 w-14 rounded-lg border bg-background p-1" /><input value={profile.accent_color || ''} onChange={e => patch({ accent_color: e.target.value })} className="field" /></div></Field></div>
+            <div className="grid gap-4 md:grid-cols-2"><Field label="Société"><select disabled={!isSuperadmin || !!profile.id} value={profile.company_id} onChange={e => patch({ company_id: e.target.value, default_assignee_id: null, visible_family_ids: [], visible_brands: [] })} className="field">{companies.map(company => <option key={company.id} value={company.id}>{company.name}</option>)}</select></Field><Field label="Nom interne"><input value={profile.name} onChange={e => patch({ name: e.target.value })} className="field" /></Field><Field label="Titre d’accueil"><input value={profile.greeting_title} onChange={e => patch({ greeting_title: e.target.value })} className="field" /></Field><Field label="Langue"><select value={profile.language} onChange={e => patch({ language: e.target.value as KioskAdminProfile['language'] })} className="field"><option value="fr">Français</option><option value="en">English</option><option value="ar">العربية</option></select></Field><Field label="URL du logo (facultatif)"><input value={profile.logo_url || ''} onChange={e => patch({ logo_url: e.target.value || null })} className="field" placeholder="https://…" /></Field><Field label="Couleur principale"><div className="flex gap-2"><input type="color" value={previewAccent} onChange={e => patch({ accent_color: e.target.value })} className="h-10 w-14 rounded-lg border bg-background p-1" /><input value={profile.accent_color || ''} onChange={e => patch({ accent_color: e.target.value.trim() || null })} placeholder={DEFAULT_KIOSK_ACCENT} aria-invalid={accentInvalid} className={`field ${accentInvalid ? 'border-red-400 focus:ring-red-300' : ''}`} /><span className="inline-flex h-10 shrink-0 items-center rounded-lg px-3 text-sm font-semibold" style={{ backgroundColor: previewAccent, color: readableTextOn(previewAccent) }}>Aperçu</span></div>{accentInvalid && <span className="mt-1 block text-xs text-red-600">Format attendu : #RRGGBB (ex. #2563eb).</span>}</Field></div>
             <Field label="Message d’accueil"><textarea rows={3} value={profile.greeting_message} onChange={e => patch({ greeting_message: e.target.value })} className="field py-2" /></Field>
           </Section>
 
@@ -486,6 +511,21 @@ function ProfileEditor({ profile: initial, companies, users, isSuperadmin, onClo
       </div>
     </div>
   );
+}
+
+function RequestEventRow({ event, users, companies }: { event: KioskRequestDetail['events'][number]; users: KioskUserOption[]; companies: KioskCompanyOption[] }) {
+  const details = event.details || {};
+  const parts: string[] = [];
+  const status = typeof details.status === 'string' ? details.status as KioskRequestStatus : null;
+  if (event.event_type === 'updated' && status && STATUS_LABELS[status]) parts.push(`Statut : ${STATUS_LABELS[status]}`);
+  if (event.event_type === 'updated' && typeof details.assigned_user_id === 'string') parts.push(`Assignée à ${userLabel(users.find(user => user.id === details.assigned_user_id))}`);
+  if (event.event_type === 'updated' && typeof details.assigned_company_id === 'string' && companies.length > 1) {
+    const company = companies.find(item => item.id === details.assigned_company_id);
+    if (company) parts.push(company.name);
+  }
+  if (event.event_type === 'converted' && typeof details.quote_number === 'string') parts.push(details.quote_number);
+  if (details.contact_details_pending === true) parts.push('Coordonnées à compléter');
+  return <li className="relative"><span className="absolute -start-[21px] top-1.5 h-2.5 w-2.5 rounded-full bg-primary" /><div className="text-sm font-medium">{EVENT_LABELS[event.event_type] || event.event_type}</div><div className="text-xs text-muted-foreground">{dateTime(event.created_at)}{event.actor_name ? ` · ${event.actor_name}` : ''}</div>{parts.length > 0 && <div className="mt-0.5 text-xs text-muted-foreground">{parts.join(' · ')}</div>}</li>;
 }
 
 function ProductImage({ image, name, size = 'md' }: { image: string | null; name: string; size?: 'sm' | 'md' }) {

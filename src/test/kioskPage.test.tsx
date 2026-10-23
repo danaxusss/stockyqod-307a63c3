@@ -1,10 +1,14 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import KioskPage from '../pages/kiosk/KioskPage';
-import { KioskService } from '../utils/kioskService';
+import { KioskRequestError, KioskService } from '../utils/kioskService';
+import { readableTextOn } from '../utils/kioskColors';
 
 vi.mock('../utils/kioskService', () => ({
+  KioskRequestError: class KioskRequestError extends Error {
+    constructor(message: string, readonly status: number | null, readonly serverMessage: string | null) { super(message); }
+  },
   KioskService: {
     loadPublic: vi.fn(),
     listPublicProducts: vi.fn(),
@@ -16,9 +20,9 @@ vi.mock('../utils/kioskService', () => ({
 const service = vi.mocked(KioskService);
 const TOKEN = '00000000-0000-4000-8000-000000000000';
 
-afterEach(() => vi.clearAllMocks());
+afterEach(() => { vi.clearAllMocks(); vi.useRealTimers(); });
 
-function mockKiosk() {
+function mockKiosk(overrides: Record<string, unknown> = {}) {
   service.loadPublic.mockResolvedValue({
     profile: {
       id: 'profile-1', name: 'Accueil', company_name: 'Stocky Test',
@@ -26,6 +30,7 @@ function mockKiosk() {
       logo_url: null, accent_color: '#2563eb', language: 'fr', show_prices: true,
       price_mode: 'retail', require_email: true, show_availability: true,
       inactivity_timeout_seconds: 180,
+      ...overrides,
     },
     brands: ['Stocky'],
   });
@@ -122,5 +127,82 @@ describe('KioskPage', () => {
       TOKEN,
       expect.objectContaining({ category: 'equipment', brand: 'Stocky', onlyAvailable: true }),
     ));
+  });
+
+  it('clears an abandoned selection left on the welcome screen', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    mockKiosk({ inactivity_timeout_seconds: 60 });
+    renderKiosk();
+    expect(await screen.findByRole('heading', { name: 'Bienvenue chez Stocky' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Commencer/i }));
+    expect(await screen.findByText('Perceuse de test')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Ajouter/i }));
+    expect(screen.getByRole('button', { name: /Voir ma demande/i })).toBeInTheDocument();
+
+    // The customer taps back and walks away.
+    fireEvent.click(screen.getByRole('button', { name: 'Accueil' }));
+    expect(await screen.findByRole('heading', { name: 'Bienvenue chez Stocky' })).toBeInTheDocument();
+    act(() => { vi.advanceTimersByTime(61_000); });
+
+    fireEvent.click(screen.getByRole('button', { name: /Commencer/i }));
+    expect(await screen.findByText('Perceuse de test')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Voir ma demande/i })).not.toBeInTheDocument();
+  });
+
+  it('keeps the kiosk usable and offers a retry when the catalogue fails to load', async () => {
+    mockKiosk();
+    service.listPublicProducts.mockRejectedValueOnce(new KioskRequestError('Too many requests', 429, 'Too many requests'));
+    renderKiosk();
+    expect(await screen.findByRole('heading', { name: 'Bienvenue chez Stocky' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Commencer/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Le kiosque est très sollicité');
+    expect(screen.queryByText('Ce kiosque est indisponible.')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Réessayer/i }));
+    expect(await screen.findByText('Perceuse de test')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('explains a rejected submission in the kiosk language and keeps the selection', async () => {
+    mockKiosk();
+    service.submit.mockRejectedValueOnce(new KioskRequestError('One or more products are unavailable', 500, 'One or more products are unavailable'));
+    renderKiosk();
+    await openReview();
+
+    fireEvent.click(screen.getByLabelText(/Je renseignerai mes coordonnées plus tard/));
+    fireEvent.click(screen.getByRole('button', { name: /Envoyer la demande/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Un ou plusieurs produits ne sont plus disponibles');
+    expect(screen.getByText('Perceuse de test')).toBeInTheDocument();
+  });
+
+  it('does not reload the catalogue when returning from the review step', async () => {
+    mockKiosk();
+    renderKiosk();
+    await openReview();
+    expect(service.listPublicProducts).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: /Retour au catalogue/i }));
+    expect(await screen.findByText('Perceuse de test')).toBeInTheDocument();
+    expect(service.listPublicProducts).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows an unavailable screen with a retry for a disabled kiosk', async () => {
+    service.loadPublic.mockRejectedValueOnce(new KioskRequestError('Kiosk unavailable', 404, 'Kiosk unavailable'));
+    renderKiosk();
+    expect(await screen.findByText('Ce kiosque est indisponible.')).toBeInTheDocument();
+    expect(screen.queryByText(/momentanément indisponible/)).not.toBeInTheDocument();
+
+    mockKiosk();
+    fireEvent.click(screen.getByRole('button', { name: /Réessayer/i }));
+    expect(await screen.findByRole('heading', { name: 'Bienvenue chez Stocky' })).toBeInTheDocument();
+  });
+});
+
+describe('readableTextOn', () => {
+  it('picks dark text on light accents and white text on dark ones', () => {
+    expect(readableTextOn('#facc15')).toBe('#0f172a');
+    expect(readableTextOn('#2563eb')).toBe('#ffffff');
+    expect(readableTextOn('not-a-colour')).toBe('#ffffff');
   });
 });

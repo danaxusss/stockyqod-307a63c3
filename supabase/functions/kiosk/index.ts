@@ -109,9 +109,14 @@ serve(async (req) => {
       const token = text(body.token, 80);
       if (!UUID_RE.test(token)) return json(req, { error: "Kiosk unavailable" }, 404);
 
+      // A shop's tablets usually share one public IP and every search,
+      // filter change or "show more" is a catalogue call, so the per-IP cap
+      // must cover a busy hour across several tablets. The per-token cap is
+      // the real bound: the token is an unguessable UUID per kiosk.
+      const submit = action === "public_submit";
       const blocked = await guard(req, [
-        { bucket: `kiosk:${action}:ip`, id: ip, max: action === "public_submit" ? 15 : 240, window: 60 * 60 },
-        { bucket: `kiosk:${action}:token`, id: token, max: action === "public_submit" ? 200 : 3000, window: 60 * 60 },
+        { bucket: `kiosk:${action}:ip`, id: ip, max: submit ? 60 : 3000, window: 60 * 60 },
+        { bucket: `kiosk:${action}:token`, id: token, max: submit ? 300 : 6000, window: 60 * 60 },
       ]);
       if (blocked) return blocked;
 
