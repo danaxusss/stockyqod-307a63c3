@@ -1,17 +1,19 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
+import QRCode from 'qrcode';
 import {
-  ArrowLeft, Check, ChevronLeft, ChevronRight, Clipboard, ExternalLink, ImageOff,
-  Link2, Loader2, MonitorSmartphone, PackagePlus, Plus, RefreshCw, RotateCw,
-  Save, Search, Settings2, ShoppingCart, Trash2, UserRound, X,
+  ArrowDown, ArrowLeft, ArrowUp, Check, ChevronLeft, ChevronRight, Clipboard, Download, ExternalLink, History, ImageOff,
+  Link2, Loader2, MonitorSmartphone, PackagePlus, Plus, QrCode, RefreshCw, RotateCw,
+  Save, Search, Settings2, ShoppingCart, Star, Trash2, Upload, UserRound, X,
 } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../hooks/useAuth';
 import {
   KioskService, type KioskAdminProduct, type KioskAdminProfile, type KioskCompanyOption,
-  type KioskRequestDetail, type KioskRequestItem, type KioskRequestStatus,
+  type KioskLanguage, type KioskRequestDetail, type KioskRequestItem, type KioskRequestStatus,
   type KioskRequestSummary, type KioskUserOption,
 } from '../../utils/kioskService';
+import { DEFAULT_KIOSK_ACCENT, isHexColor, readableTextOn } from '../../utils/kioskColors';
 
 type Tab = 'requests' | 'settings';
 
@@ -27,6 +29,10 @@ const STATUS_STYLES: Record<KioskRequestStatus, string> = {
   rejected: 'bg-red-100 text-red-700',
 };
 
+const EVENT_LABELS: Record<string, string> = {
+  submitted: 'Demande reçue du kiosque', updated: 'Demande modifiée', converted: 'Devis créé',
+};
+
 const EMPTY_PROFILE = (companyId = ''): KioskAdminProfile => ({
   company_id: companyId,
   name: 'Kiosque principal',
@@ -36,6 +42,10 @@ const EMPTY_PROFILE = (companyId = ''): KioskAdminProfile => ({
   logo_url: null,
   accent_color: '#2563eb',
   language: 'fr',
+  customer_languages: ['fr', 'en', 'ar'],
+  allow_deferred_contact: true,
+  success_screen_seconds: 20,
+  grid_columns: 0,
   show_prices: true,
   price_mode: 'retail',
   require_email: false,
@@ -47,6 +57,13 @@ const EMPTY_PROFILE = (companyId = ''): KioskAdminProfile => ({
   visible_brands: [],
   featured_barcodes: [],
 });
+
+const LANGUAGE_OPTIONS: Array<{ value: KioskLanguage; label: string }> = [
+  { value: 'fr', label: 'Français' }, { value: 'en', label: 'English' }, { value: 'ar', label: 'العربية' },
+];
+const FEATURED_LIMIT = 24;
+
+type FeaturedProduct = Pick<KioskAdminProduct, 'barcode' | 'name' | 'brand' | 'image'>;
 
 const money = (value: number) => new Intl.NumberFormat('fr-MA', {
   minimumFractionDigits: 2, maximumFractionDigits: 2,
@@ -96,6 +113,7 @@ export default function KioskAdminPage() {
   const [requestLoading, setRequestLoading] = useState(false);
   const [savingRequest, setSavingRequest] = useState(false);
   const [editingProfile, setEditingProfile] = useState<KioskAdminProfile | null>(null);
+  const [qrProfile, setQrProfile] = useState<KioskAdminProfile | null>(null);
 
   const loadBootstrap = useCallback(async () => {
     setError('');
@@ -206,7 +224,21 @@ export default function KioskAdminPage() {
   };
 
   const beginProfile = (profile?: KioskAdminProfile) => {
-    setEditingProfile(profile ? { ...profile } : EMPTY_PROFILE(companies[0]?.id || ''));
+    // Spread over the defaults so profiles saved before a setting existed still edit cleanly.
+    setEditingProfile(profile ? { ...EMPTY_PROFILE(profile.company_id), ...profile } : EMPTY_PROFILE(companies[0]?.id || ''));
+  };
+
+  const copyLink = async (profile: KioskAdminProfile) => {
+    if (!profile.public_token) return;
+    const url = KioskService.publicUrl(profile.public_token);
+    try {
+      await navigator.clipboard.writeText(url);
+      showToast({ type: 'success', title: 'Lien copié', message: 'Collez-le dans le navigateur de la tablette.' });
+    } catch {
+      // Clipboard access is refused outside HTTPS or without permission:
+      // show the link so it can still be copied by hand.
+      window.prompt('Copiez le lien du kiosque :', url);
+    }
   };
 
   const requiresReconnect = /Reconnectez-vous|Authentication required/i.test(error);
@@ -243,7 +275,7 @@ export default function KioskAdminPage() {
           onSearch={setSearch} onStatus={value => { setStatus(value); setPage(0); }} onPage={setPage} onOpen={openRequest}
         />
       ) : (
-        <ProfilesPanel profiles={profiles} companies={companies} canManage={canManageProfiles} onEdit={beginProfile} onRotate={async profile => {
+        <ProfilesPanel profiles={profiles} companies={companies} canManage={canManageProfiles} onEdit={beginProfile} onCopy={copyLink} onShowQr={setQrProfile} onRotate={async profile => {
           if (!profile.id || !window.confirm('L’ancien lien cessera immédiatement de fonctionner. Générer un nouveau lien ?')) return;
           try {
             const token = await KioskService.rotateToken(profile.id);
@@ -262,6 +294,8 @@ export default function KioskAdminPage() {
           onSave={() => saveRequest()} onConvert={convertRequest}
         />
       )}
+
+      {qrProfile?.public_token && <QrDialog profile={qrProfile} onClose={() => setQrProfile(null)} />}
 
       {editingProfile && (
         <ProfileEditor
@@ -315,25 +349,23 @@ function RequestsPanel({ requests, total, page, search, status, loading, onSearc
   );
 }
 
-function ProfilesPanel({ profiles, companies, canManage, onEdit, onRotate }: {
+function ProfilesPanel({ profiles, companies, canManage, onEdit, onCopy, onShowQr, onRotate }: {
   profiles: KioskAdminProfile[]; companies: KioskCompanyOption[]; canManage: boolean;
-  onEdit: (profile?: KioskAdminProfile) => void; onRotate: (profile: KioskAdminProfile) => void;
+  onEdit: (profile?: KioskAdminProfile) => void; onCopy: (profile: KioskAdminProfile) => void;
+  onShowQr: (profile: KioskAdminProfile) => void; onRotate: (profile: KioskAdminProfile) => void;
 }) {
-  const copyLink = async (profile: KioskAdminProfile) => {
-    if (!profile.public_token) return;
-    await navigator.clipboard.writeText(KioskService.publicUrl(profile.public_token));
-  };
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between"><div><h2 className="text-lg font-semibold">Liens kiosque</h2><p className="text-sm text-muted-foreground">Créez un lien distinct par tablette, magasin ou point d’accueil.</p></div>{canManage && <button onClick={() => onEdit()} disabled={!companies.length} className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-50"><Plus className="h-4 w-4" />Nouveau kiosque</button>}</div>
       <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
         {profiles.map(profile => (
           <article key={profile.id} className="rounded-xl border bg-card p-5 shadow-sm">
-            <div className="flex items-start justify-between gap-3"><div><div className="flex items-center gap-2"><h3 className="font-semibold">{profile.name}</h3><span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${profile.enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{profile.enabled ? 'Actif' : 'Désactivé'}</span></div><p className="mt-1 text-sm text-muted-foreground">{profile.company?.name || companies.find(c => c.id === profile.company_id)?.name}</p></div><div className="h-9 w-9 rounded-lg border-4" style={{ borderColor: profile.accent_color || '#2563eb' }} /></div>
+            <div className="flex items-start justify-between gap-3"><div><div className="flex items-center gap-2"><h3 className="font-semibold">{profile.name}</h3><span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${profile.enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{profile.enabled ? 'Actif' : 'Désactivé'}</span></div><p className="mt-1 text-sm text-muted-foreground">{profile.company?.name || companies.find(c => c.id === profile.company_id)?.name}</p></div><div className="h-9 w-9 rounded-lg border-4" style={{ borderColor: isHexColor(profile.accent_color) ? profile.accent_color : DEFAULT_KIOSK_ACCENT }} /></div>
             <div className="mt-4 rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground"><div className="truncate font-mono">{profile.public_token ? KioskService.publicUrl(profile.public_token) : 'Lien en attente'}</div></div>
             <div className="mt-4 flex flex-wrap gap-2">
-              <button onClick={() => copyLink(profile)} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium hover:bg-accent"><Clipboard className="h-3.5 w-3.5" />Copier</button>
+              <button onClick={() => onCopy(profile)} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium hover:bg-accent"><Clipboard className="h-3.5 w-3.5" />Copier</button>
               {profile.public_token && <a href={KioskService.publicUrl(profile.public_token)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium hover:bg-accent"><ExternalLink className="h-3.5 w-3.5" />Ouvrir</a>}
+              {profile.public_token && <button onClick={() => onShowQr(profile)} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium hover:bg-accent"><QrCode className="h-3.5 w-3.5" />QR code</button>}
               {canManage && <><button onClick={() => onEdit(profile)} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium hover:bg-accent"><Settings2 className="h-3.5 w-3.5" />Régler</button><button onClick={() => onRotate(profile)} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium text-amber-700 hover:bg-amber-50"><RotateCw className="h-3.5 w-3.5" />Renouveler</button></>}
             </div>
           </article>
@@ -414,6 +446,14 @@ function RequestEditor({ request, loading, companies, users, isSuperadmin, canAs
                   <div className="flex justify-end border-t pt-4 text-lg font-bold">Total : {money(request.items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0))} DH</div>
                 </Section>
               </fieldset>
+
+              {request.events.length > 0 && (
+                <div className="mt-6"><Section title="Historique" icon={<History className="h-4 w-4" />}>
+                  <ol className="space-y-3 border-s ps-4">
+                    {request.events.map(event => <RequestEventRow key={event.id} event={event} users={users} companies={companies} />)}
+                  </ol>
+                </Section></div>
+              )}
             </div>
             <div className="flex flex-col-reverse gap-3 border-t bg-card p-4 sm:flex-row sm:justify-end md:px-6">
               <button onClick={onClose} className="h-11 rounded-lg border px-5 text-sm font-medium">Fermer</button>
@@ -435,9 +475,13 @@ function ProfileEditor({ profile: initial, companies, users, isSuperadmin, onClo
   const [brands, setBrands] = useState<string[]>([]);
   const [loadingOptions, setLoadingOptions] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   const [error, setError] = useState('');
+  const logoInput = useRef<HTMLInputElement>(null);
   const patch = (values: Partial<KioskAdminProfile>) => setProfile(current => ({ ...current, ...values }));
   const profileUsers = users.filter(user => user.company_id === profile.company_id || (isSuperadmin && !user.company_id));
+  const accentInvalid = !!profile.accent_color && !isHexColor(profile.accent_color);
+  const previewAccent = isHexColor(profile.accent_color) ? profile.accent_color : DEFAULT_KIOSK_ACCENT;
 
   useEffect(() => {
     if (!profile.company_id) return;
@@ -448,12 +492,31 @@ function ProfileEditor({ profile: initial, companies, users, isSuperadmin, onClo
       .finally(() => setLoadingOptions(false));
   }, [profile.company_id]);
 
+  const uploadLogo = async (file: File | undefined) => {
+    if (!file) return;
+    setUploadingLogo(true); setError('');
+    try { patch({ logo_url: await KioskService.uploadLogo(profile.company_id, file) }); }
+    catch (err) { setError(err instanceof Error ? err.message : 'Import du logo impossible'); }
+    finally {
+      setUploadingLogo(false);
+      if (logoInput.current) logoInput.current.value = '';
+    }
+  };
+  const toggleLanguage = (value: KioskLanguage) => {
+    const current = profile.customer_languages;
+    patch({ customer_languages: current.includes(value) ? current.filter(item => item !== value) : [...current, value] });
+  };
+  const changeDefaultLanguage = (value: KioskLanguage) => {
+    patch({ language: value, customer_languages: profile.customer_languages.includes(value) ? profile.customer_languages : [...profile.customer_languages, value] });
+  };
+
   const toggleBrand = (value: string) => {
     const current = profile.visible_brands;
     patch({ visible_brands: current.includes(value) ? current.filter(item => item !== value) : [...current, value] });
   };
   const save = async () => {
     if (!profile.company_id || !profile.name.trim()) { setError('La société et le nom sont obligatoires.'); return; }
+    if (accentInvalid) { setError('La couleur principale doit être au format #RRGGBB, par exemple #2563eb.'); return; }
     setSaving(true); setError('');
     try { onSaved(await KioskService.saveProfile(profile)); }
     catch (err) { setError(err instanceof Error ? err.message : 'Enregistrement impossible'); }
@@ -467,25 +530,116 @@ function ProfileEditor({ profile: initial, companies, users, isSuperadmin, onClo
         <div className="flex-1 space-y-6 overflow-y-auto p-5 md:p-6">
           {error && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
           <Section title="Identité & accueil" icon={<MonitorSmartphone className="h-4 w-4" />}>
-            <div className="grid gap-4 md:grid-cols-2"><Field label="Société"><select disabled={!isSuperadmin || !!profile.id} value={profile.company_id} onChange={e => patch({ company_id: e.target.value, default_assignee_id: null, visible_family_ids: [], visible_brands: [] })} className="field">{companies.map(company => <option key={company.id} value={company.id}>{company.name}</option>)}</select></Field><Field label="Nom interne"><input value={profile.name} onChange={e => patch({ name: e.target.value })} className="field" /></Field><Field label="Titre d’accueil"><input value={profile.greeting_title} onChange={e => patch({ greeting_title: e.target.value })} className="field" /></Field><Field label="Langue"><select value={profile.language} onChange={e => patch({ language: e.target.value as KioskAdminProfile['language'] })} className="field"><option value="fr">Français</option><option value="en">English</option><option value="ar">العربية</option></select></Field><Field label="URL du logo (facultatif)"><input value={profile.logo_url || ''} onChange={e => patch({ logo_url: e.target.value || null })} className="field" placeholder="https://…" /></Field><Field label="Couleur principale"><div className="flex gap-2"><input type="color" value={profile.accent_color || '#2563eb'} onChange={e => patch({ accent_color: e.target.value })} className="h-10 w-14 rounded-lg border bg-background p-1" /><input value={profile.accent_color || ''} onChange={e => patch({ accent_color: e.target.value })} className="field" /></div></Field></div>
+            <div className="grid gap-4 md:grid-cols-2"><Field label="Société"><select disabled={!isSuperadmin || !!profile.id} value={profile.company_id} onChange={e => patch({ company_id: e.target.value, default_assignee_id: null, visible_family_ids: [], visible_brands: [] })} className="field">{companies.map(company => <option key={company.id} value={company.id}>{company.name}</option>)}</select></Field><Field label="Nom interne"><input value={profile.name} onChange={e => patch({ name: e.target.value })} className="field" /></Field><Field label="Titre d’accueil"><input value={profile.greeting_title} onChange={e => patch({ greeting_title: e.target.value })} className="field" /></Field><Field label="Langue par défaut"><select value={profile.language} onChange={e => changeDefaultLanguage(e.target.value as KioskLanguage)} className="field">{LANGUAGE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field><div className="md:col-span-2"><span className="mb-1.5 block text-sm font-medium text-muted-foreground">Langues proposées au client</span><div className="flex flex-wrap gap-2">{LANGUAGE_OPTIONS.map(option => <label key={option.value} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm ${profile.customer_languages.includes(option.value) ? 'border-primary bg-primary/5' : ''}`}><input type="checkbox" checked={profile.customer_languages.includes(option.value)} disabled={option.value === profile.language} onChange={() => toggleLanguage(option.value)} className="h-4 w-4" />{option.label}{option.value === profile.language && <span className="text-xs text-muted-foreground">(par défaut)</span>}</label>)}</div><span className="mt-1 block text-xs text-muted-foreground">Avec plus d’une langue, le client peut changer de langue depuis l’écran d’accueil.</span></div><Field label="Logo (facultatif)"><div className="flex gap-2">{profile.logo_url && <img src={profile.logo_url} alt="" className="h-10 w-16 shrink-0 rounded-lg border bg-white object-contain p-1" />}<input value={profile.logo_url || ''} onChange={e => patch({ logo_url: e.target.value || null })} className="field" placeholder="https://… ou importez un fichier" /><button type="button" onClick={() => logoInput.current?.click()} disabled={uploadingLogo || !profile.company_id} className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium hover:bg-accent disabled:opacity-50">{uploadingLogo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}Importer</button><input ref={logoInput} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="hidden" onChange={e => uploadLogo(e.target.files?.[0])} /></div></Field><Field label="Couleur principale"><div className="flex gap-2"><input type="color" value={previewAccent} onChange={e => patch({ accent_color: e.target.value })} className="h-10 w-14 rounded-lg border bg-background p-1" /><input value={profile.accent_color || ''} onChange={e => patch({ accent_color: e.target.value.trim() || null })} placeholder={DEFAULT_KIOSK_ACCENT} aria-invalid={accentInvalid} className={`field ${accentInvalid ? 'border-red-400 focus:ring-red-300' : ''}`} /><span className="inline-flex h-10 shrink-0 items-center rounded-lg px-3 text-sm font-semibold" style={{ backgroundColor: previewAccent, color: readableTextOn(previewAccent) }}>Aperçu</span></div>{accentInvalid && <span className="mt-1 block text-xs text-red-600">Format attendu : #RRGGBB (ex. #2563eb).</span>}</Field></div>
             <Field label="Message d’accueil"><textarea rows={3} value={profile.greeting_message} onChange={e => patch({ greeting_message: e.target.value })} className="field py-2" /></Field>
           </Section>
 
           <Section title="Parcours client" icon={<ShoppingCart className="h-4 w-4" />}>
-            <div className="grid gap-3 sm:grid-cols-2"><Toggle label="Kiosque actif" description="Le lien accepte les visites et les demandes." checked={profile.enabled} onChange={enabled => patch({ enabled })} /><Toggle label="Afficher les prix" description="Masque entièrement les montants si désactivé." checked={profile.show_prices} onChange={show_prices => patch({ show_prices })} /><Toggle label="E-mail obligatoire" description="Le client doit fournir une adresse e-mail." checked={profile.require_email} onChange={require_email => patch({ require_email })} /><Toggle label="Afficher la disponibilité" description="Indique disponible ou sur demande." checked={profile.show_availability} onChange={show_availability => patch({ show_availability })} /><Toggle label="Inclure les ruptures" description="Autorise les produits sans stock actuel." checked={profile.show_out_of_stock} onChange={show_out_of_stock => patch({ show_out_of_stock })} /></div>
-            <div className="grid gap-4 md:grid-cols-3"><Field label="Tarif affiché"><select disabled={!profile.show_prices} value={profile.price_mode} onChange={e => patch({ price_mode: e.target.value as KioskAdminProfile['price_mode'] })} className="field"><option value="retail">Prix de vente</option><option value="reseller">Prix revendeur</option></select></Field><Field label="Effacement automatique"><select value={profile.inactivity_timeout_seconds} onChange={e => patch({ inactivity_timeout_seconds: Number(e.target.value) })} className="field"><option value={60}>1 minute</option><option value={120}>2 minutes</option><option value={180}>3 minutes</option><option value={300}>5 minutes</option><option value={600}>10 minutes</option><option value={900}>15 minutes</option></select></Field><Field label="Assignation par défaut"><select value={profile.default_assignee_id || ''} onChange={e => patch({ default_assignee_id: e.target.value || null })} className="field"><option value="">File non assignée</option>{profileUsers.map(user => <option key={user.id} value={user.id}>{userLabel(user)}</option>)}</select></Field></div>
+            <div className="grid gap-3 sm:grid-cols-2"><Toggle label="Kiosque actif" description="Le lien accepte les visites et les demandes." checked={profile.enabled} onChange={enabled => patch({ enabled })} /><Toggle label="Afficher les prix" description="Masque entièrement les montants si désactivé." checked={profile.show_prices} onChange={show_prices => patch({ show_prices })} /><Toggle label="E-mail obligatoire" description="Le client doit fournir une adresse e-mail." checked={profile.require_email} onChange={require_email => patch({ require_email })} /><Toggle label="Afficher la disponibilité" description="Indique disponible ou sur demande." checked={profile.show_availability} onChange={show_availability => patch({ show_availability })} /><Toggle label="Inclure les ruptures" description="Autorise les produits sans stock actuel." checked={profile.show_out_of_stock} onChange={show_out_of_stock => patch({ show_out_of_stock })} /><Toggle label="Coordonnées plus tard" description="Le client peut envoyer sans nom ni téléphone ; un conseiller complète ensuite." checked={profile.allow_deferred_contact} onChange={allow_deferred_contact => patch({ allow_deferred_contact })} /></div>
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4"><Field label="Tarif affiché"><select disabled={!profile.show_prices} value={profile.price_mode} onChange={e => patch({ price_mode: e.target.value as KioskAdminProfile['price_mode'] })} className="field"><option value="retail">Prix de vente</option><option value="reseller">Prix revendeur</option></select></Field><Field label="Effacement automatique"><select value={profile.inactivity_timeout_seconds} onChange={e => patch({ inactivity_timeout_seconds: Number(e.target.value) })} className="field"><option value={60}>1 minute</option><option value={120}>2 minutes</option><option value={180}>3 minutes</option><option value={300}>5 minutes</option><option value={600}>10 minutes</option><option value={900}>15 minutes</option></select></Field><Field label="Écran « Demande envoyée »"><select value={profile.success_screen_seconds} onChange={e => patch({ success_screen_seconds: Number(e.target.value) })} className="field"><option value={10}>10 secondes</option><option value={20}>20 secondes</option><option value={30}>30 secondes</option><option value={60}>1 minute</option><option value={120}>2 minutes</option></select></Field><Field label="Produits par ligne (tablette)"><select value={profile.grid_columns} onChange={e => patch({ grid_columns: Number(e.target.value) })} className="field"><option value={0}>Automatique</option><option value={2}>2 — très grandes cartes</option><option value={3}>3 — grandes cartes</option><option value={4}>4</option><option value={5}>5</option><option value={6}>6 — cartes compactes</option></select></Field><Field label="Assignation par défaut"><select value={profile.default_assignee_id || ''} onChange={e => patch({ default_assignee_id: e.target.value || null })} className="field"><option value="">File non assignée</option>{profileUsers.map(user => <option key={user.id} value={user.id}>{userLabel(user)}</option>)}</select></Field></div>
           </Section>
 
           <Section title="Produits visibles" icon={<Search className="h-4 w-4" />}>
             <p className="text-sm text-muted-foreground">Tous les produits Stocky sont inclus. Laissez la liste des marques vide pour toutes les afficher. Les types kiosque (ustensiles, mobilier, équipement) se définissent depuis la liste ou la fiche produit.</p>
             {loadingOptions ? <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Chargement des marques…</div> : <ChoiceList title="Marques" values={brands.map(value => ({ value, label: value }))} selected={profile.visible_brands} onToggle={toggleBrand} />}
-            <Field label="Produits mis en avant (codes-barres, un par ligne — maximum 24)"><textarea rows={4} value={profile.featured_barcodes.join('\n')} onChange={e => patch({ featured_barcodes: e.target.value.split(/[,\n]/).map(value => value.trim()).filter(Boolean).slice(0, 24) })} className="field py-2 font-mono text-xs" placeholder="6112345678901" /></Field>
+            {profile.company_id && <FeaturedPicker companyId={profile.company_id} barcodes={profile.featured_barcodes} onChange={featured_barcodes => patch({ featured_barcodes })} />}
           </Section>
         </div>
         <div className="flex justify-end gap-3 border-t bg-card p-4 md:px-6"><button onClick={onClose} className="h-10 rounded-lg border px-5 text-sm font-medium">Annuler</button><button onClick={save} disabled={saving} className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-5 text-sm font-semibold text-primary-foreground disabled:opacity-50">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Enregistrer</button></div>
       </div>
     </div>
   );
+}
+
+function FeaturedPicker({ companyId, barcodes, onChange }: { companyId: string; barcodes: string[]; onChange: (barcodes: string[]) => void }) {
+  const [details, setDetails] = useState<Record<string, FeaturedProduct>>({});
+  const [loadingDetails, setLoadingDetails] = useState(barcodes.length > 0);
+  const [search, setSearch] = useState('');
+  const [results, setResults] = useState<KioskAdminProduct[]>([]);
+  const [searching, setSearching] = useState(false);
+
+  useEffect(() => {
+    if (!barcodes.length) return;
+    KioskService.featuredProducts(barcodes)
+      .then(products => setDetails(current => ({ ...current, ...Object.fromEntries(products.map(product => [product.barcode, product])) })))
+      .catch(() => undefined)
+      .finally(() => setLoadingDetails(false));
+    // Only the saved list needs looking up; products added here come with their details.
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (search.trim().length < 2) { setResults([]); return; }
+    const timer = setTimeout(() => {
+      setSearching(true);
+      KioskService.searchProducts(companyId, search.trim())
+        .then(setResults).catch(() => setResults([])).finally(() => setSearching(false));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [companyId, search]);
+
+  const add = (product: KioskAdminProduct) => {
+    if (barcodes.includes(product.barcode) || barcodes.length >= FEATURED_LIMIT) return;
+    setDetails(current => ({ ...current, [product.barcode]: product }));
+    onChange([...barcodes, product.barcode]);
+  };
+  const move = (index: number, delta: number) => {
+    const target = index + delta;
+    if (target < 0 || target >= barcodes.length) return;
+    const next = [...barcodes];
+    [next[index], next[target]] = [next[target], next[index]];
+    onChange(next);
+  };
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between"><h4 className="flex items-center gap-1.5 text-sm font-semibold"><Star className="h-4 w-4" />Produits mis en avant</h4><span className="text-xs text-muted-foreground">{barcodes.length} / {FEATURED_LIMIT}</span></div>
+      <p className="mb-3 text-xs text-muted-foreground">Affichés en tête du catalogue dans cet ordre, avec un badge et le filtre « Sélection ».</p>
+      <div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><input value={search} onChange={e => setSearch(e.target.value)} disabled={barcodes.length >= FEATURED_LIMIT} placeholder={barcodes.length >= FEATURED_LIMIT ? 'Limite atteinte' : 'Ajouter par nom, marque ou référence…'} className="field pl-10" />{searching && <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin" />}</div>
+      {results.length > 0 && <div className="mt-2 max-h-56 overflow-y-auto rounded-lg border">{results.map(product => { const added = barcodes.includes(product.barcode); return <button key={product.barcode} type="button" disabled={added} onClick={() => add(product)} className="flex w-full items-center gap-3 border-b p-2.5 text-left last:border-0 hover:bg-accent disabled:opacity-50"><ProductImage image={product.image} name={product.name} size="sm" /><div className="min-w-0 flex-1"><div className="truncate text-sm font-medium">{product.name}</div><div className="text-xs text-muted-foreground">{product.brand} · {product.barcode}</div></div>{added ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}</button>; })}</div>}
+      <ol className="mt-3 space-y-2">
+        {barcodes.map((barcode, index) => {
+          const product = details[barcode];
+          return <li key={barcode} className="flex items-center gap-3 rounded-lg border p-2"><span className="w-5 text-center text-xs font-semibold text-muted-foreground">{index + 1}</span><ProductImage image={product?.image || null} name={product?.name || barcode} size="sm" /><div className="min-w-0 flex-1">{product ? <><div className="truncate text-sm font-medium">{product.name}</div><div className="text-xs text-muted-foreground">{product.brand} · {barcode}</div></> : <><div className="font-mono text-sm">{barcode}</div><div className="text-xs text-muted-foreground">{loadingDetails ? 'Chargement…' : 'Produit introuvable — il ne sera pas affiché'}</div></>}</div><button type="button" onClick={() => move(index, -1)} disabled={index === 0} aria-label="Monter" className="rounded-md p-1.5 hover:bg-accent disabled:opacity-30"><ArrowUp className="h-4 w-4" /></button><button type="button" onClick={() => move(index, 1)} disabled={index === barcodes.length - 1} aria-label="Descendre" className="rounded-md p-1.5 hover:bg-accent disabled:opacity-30"><ArrowDown className="h-4 w-4" /></button><button type="button" onClick={() => onChange(barcodes.filter(item => item !== barcode))} aria-label="Retirer" className="rounded-md p-1.5 text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button></li>;
+        })}
+      </ol>
+      {!barcodes.length && <p className="mt-3 rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">Aucun produit mis en avant.</p>}
+    </div>
+  );
+}
+
+function QrDialog({ profile, onClose }: { profile: KioskAdminProfile; onClose: () => void }) {
+  const url = KioskService.publicUrl(profile.public_token || '');
+  const [dataUrl, setDataUrl] = useState('');
+  useEffect(() => {
+    QRCode.toDataURL(url, { width: 640, margin: 2, errorCorrectionLevel: 'M' }).then(setDataUrl).catch(() => setDataUrl(''));
+  }, [url]);
+  const fileName = `qr-kiosque-${profile.name.toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'stocky'}.png`;
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4" onMouseDown={event => { if (event.currentTarget === event.target) onClose(); }}>
+      <div className="w-full max-w-sm rounded-2xl bg-background p-5 text-center shadow-2xl">
+        <div className="flex items-center justify-between"><h2 className="text-lg font-bold">{profile.name}</h2><button onClick={onClose} aria-label="Fermer" className="rounded-lg p-2 hover:bg-accent"><X className="h-5 w-5" /></button></div>
+        <p className="mt-1 text-sm text-muted-foreground">Scannez avec la tablette pour ouvrir le kiosque.</p>
+        <div className="mx-auto mt-4 flex aspect-square w-64 items-center justify-center rounded-xl border bg-white p-2">{dataUrl ? <img src={dataUrl} alt={`QR code du kiosque ${profile.name}`} className="h-full w-full" /> : <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />}</div>
+        <p className="mt-3 break-all font-mono text-[11px] text-muted-foreground">{url}</p>
+        {dataUrl && <a href={dataUrl} download={fileName} className="mt-4 inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground"><Download className="h-4 w-4" />Télécharger le PNG</a>}
+      </div>
+    </div>
+  );
+}
+
+function RequestEventRow({ event, users, companies }: { event: KioskRequestDetail['events'][number]; users: KioskUserOption[]; companies: KioskCompanyOption[] }) {
+  const details = event.details || {};
+  const parts: string[] = [];
+  const status = typeof details.status === 'string' ? details.status as KioskRequestStatus : null;
+  if (event.event_type === 'updated' && status && STATUS_LABELS[status]) parts.push(`Statut : ${STATUS_LABELS[status]}`);
+  if (event.event_type === 'updated' && typeof details.assigned_user_id === 'string') parts.push(`Assignée à ${userLabel(users.find(user => user.id === details.assigned_user_id))}`);
+  if (event.event_type === 'updated' && typeof details.assigned_company_id === 'string' && companies.length > 1) {
+    const company = companies.find(item => item.id === details.assigned_company_id);
+    if (company) parts.push(company.name);
+  }
+  if (event.event_type === 'converted' && typeof details.quote_number === 'string') parts.push(details.quote_number);
+  if (details.contact_details_pending === true) parts.push('Coordonnées à compléter');
+  return <li className="relative"><span className="absolute -start-[21px] top-1.5 h-2.5 w-2.5 rounded-full bg-primary" /><div className="text-sm font-medium">{EVENT_LABELS[event.event_type] || event.event_type}</div><div className="text-xs text-muted-foreground">{dateTime(event.created_at)}{event.actor_name ? ` · ${event.actor_name}` : ''}</div>{parts.length > 0 && <div className="mt-0.5 text-xs text-muted-foreground">{parts.join(' · ')}</div>}</li>;
 }
 
 function ProductImage({ image, name, size = 'md' }: { image: string | null; name: string; size?: 'sm' | 'md' }) {

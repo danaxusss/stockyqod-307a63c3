@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Images, Upload, Search, Link2, Trash2, Download, X, Loader, CheckSquare, Square, ChevronLeft, ChevronRight, ZoomIn, AlertTriangle, ImagePlus, ImageOff } from 'lucide-react';
+import { Images, Upload, Search, Link2, Trash2, Download, X, Loader, CheckSquare, Square, ChevronLeft, ChevronRight, ZoomIn, AlertTriangle, ImagePlus, ImageOff, Globe } from 'lucide-react';
 import { zipSync } from 'fflate';
-import { useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../hooks/useAuth';
@@ -388,6 +388,13 @@ export default function ProductPhotosPage() {
             ))}
           </div>
 
+          <Link
+            to="/photos/finder"
+            className="flex items-center gap-1.5 px-3 py-1.5 border border-border hover:bg-accent rounded-lg text-sm font-medium transition-colors"
+          >
+            <Globe className="h-4 w-4" />
+            Trouver les images manquantes
+          </Link>
           <button
             onClick={() => bulkFileInputRef.current?.click()}
             disabled={isUploading}
@@ -411,6 +418,7 @@ export default function ProductPhotosPage() {
       <div className="mb-4 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
         Import produit : nommez chaque fichier avec le code-barres exact, par exemple <span className="font-mono text-foreground">123456789.jpg</span>.
         Maximum {PRODUCT_IMAGE_BATCH_LIMIT} images par lot et 10 Mo par fichier.
+        {' '}Plus simple : <Link to="/photos/finder" className="font-medium text-primary hover:underline">Trouver les images manquantes</Link> cherche sur le web et lie l’image au produit sans renommer de fichier.
       </div>
 
       {/* Search */}

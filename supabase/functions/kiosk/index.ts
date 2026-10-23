@@ -27,6 +27,7 @@ type KioskProfile = {
 const COMPANY_REVIEW_ROLES = new Set(["admin", "manager", "facturation", "senior_sales"]);
 const PROFILE_ROLES = new Set(["admin", "manager"]);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const LANGUAGES = ["fr", "en", "ar"];
 
 function text(value: unknown, max: number): string {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
@@ -44,6 +45,18 @@ function isValidPhone(value: string): boolean {
 function stringArray(value: unknown, maxItems = 500): string[] {
   if (!Array.isArray(value)) return [];
   return Array.from(new Set(value.map(v => text(v, 200)).filter(Boolean))).slice(0, maxItems);
+}
+
+/** Customer-selectable languages, always including the kiosk's default language first. */
+function customerLanguages(value: unknown, defaultLanguage: string): string[] {
+  const chosen = Array.isArray(value) ? value.filter((v): v is string => LANGUAGES.includes(v as string)) : LANGUAGES;
+  return Array.from(new Set([defaultLanguage, ...chosen]));
+}
+
+/** Products per row on the tablet: 2–6, or 0 for the automatic layout. */
+function gridColumns(value: unknown): number {
+  const columns = Math.floor(Number(value) || 0);
+  return columns >= 2 && columns <= 6 ? columns : 0;
 }
 
 function isCompanyReviewer(user: StaffUser): boolean {
@@ -77,6 +90,10 @@ function publicProfile(row: Record<string, unknown>) {
     logo_url: row.logo_url || company?.logo_url || null,
     accent_color: row.accent_color || company?.accent_color || "#2563eb",
     language: row.language,
+    customer_languages: customerLanguages(row.customer_languages, String(row.language || "fr")),
+    allow_deferred_contact: row.allow_deferred_contact !== false,
+    success_screen_seconds: Number(row.success_screen_seconds) || 20,
+    grid_columns: gridColumns(row.grid_columns),
     show_prices: row.show_prices,
     price_mode: row.price_mode,
     require_email: row.require_email,
@@ -109,9 +126,14 @@ serve(async (req) => {
       const token = text(body.token, 80);
       if (!UUID_RE.test(token)) return json(req, { error: "Kiosk unavailable" }, 404);
 
+      // A shop's tablets usually share one public IP and every search,
+      // filter change or "show more" is a catalogue call, so the per-IP cap
+      // must cover a busy hour across several tablets. The per-token cap is
+      // the real bound: the token is an unguessable UUID per kiosk.
+      const submit = action === "public_submit";
       const blocked = await guard(req, [
-        { bucket: `kiosk:${action}:ip`, id: ip, max: action === "public_submit" ? 15 : 240, window: 60 * 60 },
-        { bucket: `kiosk:${action}:token`, id: token, max: action === "public_submit" ? 200 : 3000, window: 60 * 60 },
+        { bucket: `kiosk:${action}:ip`, id: ip, max: submit ? 60 : 3000, window: 60 * 60 },
+        { bucket: `kiosk:${action}:token`, id: token, max: submit ? 300 : 6000, window: 60 * 60 },
       ]);
       if (blocked) return blocked;
 
@@ -150,6 +172,7 @@ serve(async (req) => {
           p_only_available: body.only_available === true,
           p_offset: page * pageSize,
           p_limit: pageSize,
+          p_featured_only: body.featured_only === true,
         });
         if (error) throw error;
         const rows = data || [];
@@ -162,6 +185,7 @@ serve(async (req) => {
             kiosk_category: row.kiosk_category,
             price: row.display_price,
             available: row.available,
+            featured: row.featured === true,
           })),
           total: Number(rows[0]?.total_count || 0),
           page,
@@ -175,6 +199,9 @@ serve(async (req) => {
       const customerEmail = text(customer.email, 160);
       const customerNote = text(customer.note, 500);
       const deferContact = body.defer_contact === true;
+      if (deferContact && kiosk.allow_deferred_contact === false) {
+        return json(req, { error: "Name and phone are required" }, 400);
+      }
       if (!deferContact) {
         if (customerName.length < 2 || !customerPhone) {
           return json(req, { error: "Name and phone are required" }, 400);
@@ -292,7 +319,7 @@ serve(async (req) => {
         }
       }
       const timeout = Math.min(1800, Math.max(60, Math.floor(Number(input.inactivity_timeout_seconds) || 180)));
-      const language = ["fr", "en", "ar"].includes(input.language) ? input.language : "fr";
+      const language = LANGUAGES.includes(input.language) ? input.language : "fr";
       const priceMode = input.price_mode === "reseller" ? "reseller" : "retail";
       const accent = /^#[0-9a-f]{6}$/i.test(text(input.accent_color, 20)) ? text(input.accent_color, 20) : null;
       const values = {
@@ -304,6 +331,10 @@ serve(async (req) => {
         logo_url: text(input.logo_url, 500) || null,
         accent_color: accent,
         language,
+        customer_languages: customerLanguages(input.customer_languages, language),
+        allow_deferred_contact: input.allow_deferred_contact !== false,
+        success_screen_seconds: Math.min(120, Math.max(5, Math.floor(Number(input.success_screen_seconds) || 20))),
+        grid_columns: gridColumns(input.grid_columns),
         show_prices: input.show_prices !== false,
         price_mode: priceMode,
         require_email: input.require_email === true,
@@ -321,6 +352,17 @@ serve(async (req) => {
       const { data, error } = await query.select("*, company:companies!kiosk_profiles_company_id_fkey(name)").single();
       if (error) throw error;
       return json(req, { profile: data });
+    }
+
+    if (action === "admin_featured_products") {
+      if (!canManageProfiles(staff)) return json(req, { error: "Profile management access required" }, 403);
+      const barcodes = stringArray(body.barcodes, 24);
+      if (!barcodes.length) return json(req, { products: [] });
+      const { data, error } = await supabase.from("products")
+        .select("barcode, name, brand, image")
+        .in("barcode", barcodes);
+      if (error) throw error;
+      return json(req, { products: data || [] });
     }
 
     if (action === "admin_rotate_token") {
