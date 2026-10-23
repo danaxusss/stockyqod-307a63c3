@@ -25,7 +25,7 @@ export function ProductDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { canAccessStockLocation, canAccessBrand, canCreateQuote, getDisplayPrice, getPriceDisplayType, isAdmin: isAdminUser, isStock, companyId, currentUser } = useAuth();
-  const { state, syncData } = useAppContext();
+  const { state, syncData, applyProductChanges } = useAppContext();
   const [product, setProduct] = useState<Product | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -265,6 +265,9 @@ export function ProductDetail() {
     setProduct(current => current ? { ...current, sector_ids: sectorIds } : current);
     try {
       await BusinessSectorsService.setProductSectors(product.barcode, sectorIds);
+      // Without this the product list (and this page, when reopened) keeps the old sectors until the next sync.
+      applyProductChanges({ [product.barcode]: { sector_ids: sectorIds } });
+      showToast({ type: 'success', message: 'Secteurs enregistrés' });
     } catch (sectorError) {
       setProduct(current => current ? { ...current, sector_ids: previous } : current);
       showToast({ type: 'error', title: 'Secteur non enregistré', message: sectorError instanceof Error ? sectorError.message : 'Erreur inconnue' });
@@ -283,6 +286,7 @@ export function ProductDetail() {
       showToast({ type: 'error', title: 'Classement impossible', message: categoryError.message });
       return;
     }
+    applyProductChanges({ [product.barcode]: { kiosk_category: value } });
     showToast({ type: 'success', message: 'Type kiosque mis à jour' });
   };
 

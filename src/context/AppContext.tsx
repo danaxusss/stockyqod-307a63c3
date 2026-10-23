@@ -1,5 +1,5 @@
 import React, { createContext, useContext, ReactNode } from 'react';
-import { AppState } from '../types';
+import { AppState, Product } from '../types';
 import { useApp } from '../hooks/useApp';
 import { SyncInfo } from '../hooks/useApp';
 
@@ -9,6 +9,8 @@ interface AppContextType {
   syncStatus: null;
   syncInfo: SyncInfo;
   syncData: (forceSync?: boolean) => Promise<boolean>;
+  /** Reflect product fields already saved to Supabase in the app's product list and cache. */
+  applyProductChanges: (changes: Record<string, Partial<Product>>) => void;
   checkForUpdates: () => Promise<boolean>;
   getSyncStats: () => Promise<unknown>;
   updateRole: (role: AppState['role']) => void;

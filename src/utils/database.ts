@@ -260,6 +260,19 @@ export async function getProducts(): Promise<Product[]> {
   }));
 }
 
+/** Merge saved edits into the cached copy of the products, without a full re-sync. */
+export async function updateCachedProducts(changes: Record<string, Partial<Product>>): Promise<void> {
+  const barcodes = Object.keys(changes);
+  if (!barcodes.length) return;
+  const database = await ensureDBConnection();
+  const tx = database.transaction('products', 'readwrite');
+  for (const barcode of barcodes) {
+    const cached = await tx.store.get(barcode);
+    if (cached) await tx.store.put({ ...cached, ...changes[barcode], barcode });
+  }
+  await tx.done;
+}
+
 export async function getProduct(id: string): Promise<Product | undefined> {
   const database = await ensureDBConnection();
   
