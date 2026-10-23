@@ -22,7 +22,9 @@ function getPublicUrl(storagePath: string) {
 
 export default function ProductPhotosPage() {
   const { showToast } = useToast();
-  const { companyId: adminCompanyId, currentUser } = useAuth();
+  // Adding and linking photos follows "Peut modifier les produits";
+  // deleting photos is kept for admins and managers.
+  const { companyId: adminCompanyId, currentUser, canEditProducts, isStock: canDeletePhotos } = useAuth();
   const { authenticatedUser } = useUserAuth();
   const companyId = adminCompanyId || authenticatedUser?.company_id || null;
   const { state, syncData } = useAppContext();
@@ -101,7 +103,7 @@ export default function ProductPhotosPage() {
 
   // Product image import: the file name (without extension) must equal the exact barcode/reference.
   const handleBulkFiles = (files: FileList | null) => {
-    if (!files || files.length === 0) return;
+    if (!files || files.length === 0 || !canEditProducts) return;
     if (!companyId) { showToast({ type: 'error', message: 'Aucune société associée' }); return; }
     const analysis = analyzeProductImageFiles(Array.from(files), state.products);
     setExistingImageMode('skip');
@@ -157,6 +159,7 @@ export default function ProductPhotosPage() {
   };
 
   const handleDelete = async (photo: ProductPhoto) => {
+    if (!canDeletePhotos) return;
     if (!confirm(`Supprimer "${photo.title || photo.file_name}" ?`)) return;
     try {
       await supabase.storage.from('product-photos').remove([photo.storage_path]);
@@ -215,6 +218,7 @@ export default function ProductPhotosPage() {
   };
 
   const deleteSelected = async () => {
+    if (!canDeletePhotos) return;
     if (!confirm(`Supprimer ${selected.size} photo(s) ? Cette action est irréversible.`)) return;
     setIsDeleting(true);
     const toDelete = photos.filter(p => selected.has(p.id));
@@ -353,14 +357,16 @@ export default function ProductPhotosPage() {
                 {isDownloading ? <Loader className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                 {isDownloading ? 'ZIP...' : `ZIP (${selected.size})`}
               </button>
-              <button
-                onClick={deleteSelected}
-                disabled={isDeleting}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-destructive hover:bg-destructive/90 text-destructive-foreground rounded-lg text-sm font-medium transition-colors disabled:opacity-60"
-              >
-                {isDeleting ? <Loader className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                {isDeleting ? 'Suppression...' : `Supprimer (${selected.size})`}
-              </button>
+              {canDeletePhotos && (
+                <button
+                  onClick={deleteSelected}
+                  disabled={isDeleting}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-destructive hover:bg-destructive/90 text-destructive-foreground rounded-lg text-sm font-medium transition-colors disabled:opacity-60"
+                >
+                  {isDeleting ? <Loader className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  {isDeleting ? 'Suppression...' : `Supprimer (${selected.size})`}
+                </button>
+              )}
             </>
           )}
           {/* Page size picker */}
@@ -388,22 +394,26 @@ export default function ProductPhotosPage() {
             ))}
           </div>
 
-          <Link
-            to="/photos/finder"
-            className="flex items-center gap-1.5 px-3 py-1.5 border border-border hover:bg-accent rounded-lg text-sm font-medium transition-colors"
-          >
-            <Globe className="h-4 w-4" />
-            Trouver les images manquantes
-          </Link>
-          <button
-            onClick={() => bulkFileInputRef.current?.click()}
-            disabled={isUploading}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm font-medium transition-colors disabled:opacity-60"
-            style={{ boxShadow: 'var(--shadow-glow)' }}
-          >
-            {isUploading ? <Loader className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-            {isUploading ? `Import... ${uploadProgress}%` : 'Importer par code-barres'}
-          </button>
+          {canEditProducts && (
+            <>
+              <Link
+                to="/photos/finder"
+                className="flex items-center gap-1.5 px-3 py-1.5 border border-border hover:bg-accent rounded-lg text-sm font-medium transition-colors"
+              >
+                <Globe className="h-4 w-4" />
+                Trouver les images manquantes
+              </Link>
+              <button
+                onClick={() => bulkFileInputRef.current?.click()}
+                disabled={isUploading}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm font-medium transition-colors disabled:opacity-60"
+                style={{ boxShadow: 'var(--shadow-glow)' }}
+              >
+                {isUploading ? <Loader className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                {isUploading ? `Import... ${uploadProgress}%` : 'Importer par code-barres'}
+              </button>
+            </>
+          )}
           <input
             ref={bulkFileInputRef}
             type="file"
@@ -415,11 +425,11 @@ export default function ProductPhotosPage() {
         </div>
       </div>
 
-      <div className="mb-4 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
+      {canEditProducts && <div className="mb-4 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
         Import produit : nommez chaque fichier avec le code-barres exact, par exemple <span className="font-mono text-foreground">123456789.jpg</span>.
         Maximum {PRODUCT_IMAGE_BATCH_LIMIT} images par lot et 10 Mo par fichier.
         {' '}Plus simple : <Link to="/photos/finder" className="font-medium text-primary hover:underline">Trouver les images manquantes</Link> cherche sur le web et lie l’image au produit sans renommer de fichier.
-      </div>
+      </div>}
 
       {/* Search */}
       <div className="relative mb-4">
@@ -639,20 +649,24 @@ export default function ProductPhotosPage() {
               >
                 <Download className="h-4 w-4" />
               </a>
-              <button
-                onClick={() => { setLinkModal(lightbox); setLightbox(null); }}
-                className="p-2 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors"
-                title="Lier à un produit"
-              >
-                <Link2 className="h-4 w-4" />
-              </button>
-              <button
-                onClick={() => { handleDelete(lightbox); }}
-                className="p-2 rounded-lg text-white/70 hover:text-red-400 hover:bg-white/10 transition-colors"
-                title="Supprimer"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
+              {canEditProducts && (
+                <button
+                  onClick={() => { setLinkModal(lightbox); setLightbox(null); }}
+                  className="p-2 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+                  title="Lier à un produit"
+                >
+                  <Link2 className="h-4 w-4" />
+                </button>
+              )}
+              {canDeletePhotos && (
+                <button
+                  onClick={() => { handleDelete(lightbox); }}
+                  className="p-2 rounded-lg text-white/70 hover:text-red-400 hover:bg-white/10 transition-colors"
+                  title="Supprimer"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              )}
               <button
                 onClick={() => setLightbox(null)}
                 className="p-2 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors"

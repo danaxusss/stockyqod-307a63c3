@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, Link } from 'react-router-dom';
-import { Package, Search, Edit, Check, X, Loader, SortAsc, SortDesc, ChevronLeft, ChevronRight, Filter, Paperclip, ShoppingCart, Info, Eye, Building, Tag, Briefcase } from 'lucide-react';
+import { Package, Search, Edit, Check, X, Loader, SortAsc, SortDesc, ChevronLeft, ChevronRight, Filter, Paperclip, ShoppingCart, Info, Eye, Building, Tag, Briefcase, ListChecks, Save, CheckSquare, Square } from 'lucide-react';
 import { Product, StockLocation } from '../types';
 import { useAppContext } from '../context/AppContext';
 import { StockLocationsService } from '../utils/supabaseStockLocations';
@@ -16,6 +16,7 @@ import { useEscapeKey } from '../hooks/useShortcuts';
 import { SectorPicker } from '../components/SectorPicker';
 import { SectorManagerDialog } from '../components/SectorManagerDialog';
 import { BusinessSectorsService, sectorNames, useBusinessSectors } from '../utils/businessSectors';
+import { effectiveChange, saveProductClassifications, type ClassificationChange } from '../utils/productClassification';
 
 const PRODUCTS_PER_PAGE = 20;
 type SortField = 'name' | 'brand' | 'price' | 'buyprice' | 'provider';
@@ -36,18 +37,23 @@ const kioskCategoryLabel = (value?: Product['kiosk_category']) =>
 
 export default function ProductsPage() {
   const navigate = useNavigate();
-  const { state } = useAppContext();
+  const { state, applyProductChanges } = useAppContext();
   const { showToast } = useToast();
   const { addToCart } = useQuoteCart();
-  const { canCreateQuote, getPriceDisplayType, isStock } = useAuth();
+  const { canCreateQuote, getPriceDisplayType, isStock, canEditProducts } = useAuth();
   const { getOriginalName, getAllNames, getDisplayName } = useProductOverrides();
   const [searchQuery, setSearchQuery] = useState('');
   const [brandFilter, setBrandFilter] = useState('');
   const [providerFilter, setProviderFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [sectorFilter, setSectorFilter] = useState('');
-  const [localSectors, setLocalSectors] = useState<Record<string, string[]>>({});
   const [managingSectors, setManagingSectors] = useState(false);
+  // Bulk mode: kiosk type and sectors become editable on every row; changes
+  // stay pending until "Enregistrer".
+  const [bulkMode, setBulkMode] = useState(false);
+  const [pending, setPending] = useState<Record<string, ClassificationChange>>({});
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [savingBulk, setSavingBulk] = useState(false);
   const { sectors } = useBusinessSectors();
   const [currentPage, setCurrentPage] = useState(1);
   const [sortField, setSortField] = useState<SortField>('name');
@@ -56,7 +62,6 @@ export default function ProductsPage() {
   const [editForm, setEditForm] = useState<Partial<Product>>({});
   const [isSaving, setIsSaving] = useState(false);
   const [sheetCounts, setSheetCounts] = useState<Record<string, number>>({});
-  const [localCategories, setLocalCategories] = useState<Record<string, Product['kiosk_category']>>({});
   const [qtyMap, setQtyMap] = useState<Record<string, number>>({});
   const [stockLocations, setStockLocations] = useState<StockLocation[]>([]);
   const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
@@ -90,30 +95,31 @@ export default function ProductsPage() {
     fetchCounts();
   }, []);
 
-  useEffect(() => {
-    setLocalCategories(current => {
-      const next = { ...current };
-      products.forEach(product => {
-        if (!(product.barcode in next)) next[product.barcode] = product.kiosk_category || null;
-      });
-      return next;
-    });
-  }, [products]);
 
   useEffect(() => {
     StockLocationsService.getStockLocations().then(setStockLocations).catch(() => {});
   }, []);
 
-  const productSectors = useCallback(
-    (product: Product): string[] => localSectors[product.barcode] ?? product.sector_ids ?? [],
-    [localSectors],
-  );
+  const pendingCount = Object.keys(pending).length;
+
+  // Values shown in a row: the pending bulk edit when there is one, else the saved value.
+  const shownKioskCategory = (product: Product) =>
+    pending[product.barcode] && 'kiosk_category' in pending[product.barcode] ? pending[product.barcode].kiosk_category ?? null : product.kiosk_category ?? null;
+  const shownSectors = (product: Product): string[] =>
+    pending[product.barcode] && 'sector_ids' in pending[product.barcode] ? pending[product.barcode].sector_ids ?? [] : product.sector_ids ?? [];
 
   const sectorCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    products.forEach(product => productSectors(product).forEach(id => { counts[id] = (counts[id] || 0) + 1; }));
+    products.forEach(product => (product.sector_ids || []).forEach(id => { counts[id] = (counts[id] || 0) + 1; }));
     return counts;
-  }, [products, productSectors]);
+  }, [products]);
+
+  useEffect(() => {
+    if (!pendingCount) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [pendingCount]);
 
   const brands = useMemo(() => [...new Set(products.map(p => p.brand).filter(Boolean))].sort(), [products]);
   const providers = useMemo(() => [...new Set(products.map(p => p.provider).filter(Boolean))].sort(), [products]);
@@ -134,10 +140,11 @@ export default function ProductsPage() {
     const normalizedProviderFilter = providerFilter.toLowerCase().trim();
     if (normalizedBrandFilter) list = list.filter(p => getAllNames('brand', p.brand || '').some(name => name.toLowerCase() === normalizedBrandFilter));
     if (normalizedProviderFilter) list = list.filter(p => getAllNames('provider', p.provider || '').some(name => name.toLowerCase() === normalizedProviderFilter));
-    if (categoryFilter) list = list.filter(p => (localCategories[p.barcode] ?? p.kiosk_category ?? null) === categoryFilter);
+    // Filters use saved values, so rows don't disappear while being edited.
+    if (categoryFilter) list = list.filter(p => (p.kiosk_category ?? null) === categoryFilter);
     if (sectorFilter) {
       list = list.filter(p => {
-        const ids = productSectors(p);
+        const ids = p.sector_ids || [];
         return sectorFilter === NO_SECTOR ? ids.length === 0 : ids.includes(sectorFilter);
       });
     }
@@ -149,7 +156,7 @@ export default function ProductsPage() {
       return 0;
     });
     return list;
-  }, [products, searchQuery, brandFilter, providerFilter, categoryFilter, sectorFilter, productSectors, localCategories, sortField, sortOrder, getAllNames]);
+  }, [products, searchQuery, brandFilter, providerFilter, categoryFilter, sectorFilter, sortField, sortOrder, getAllNames]);
 
   const totalPages = Math.ceil(filtered.length / PRODUCTS_PER_PAGE);
   const startIdx = (currentPage - 1) * PRODUCTS_PER_PAGE;
@@ -162,7 +169,10 @@ export default function ProductsPage() {
 
   const startEdit = (product: Product) => {
     setEditingBarcode(product.barcode);
-    setEditForm({ name: product.name, price: product.price, buyprice: product.buyprice, reseller_price: product.reseller_price, provider: product.provider });
+    setEditForm({
+      name: product.name, price: product.price, buyprice: product.buyprice, reseller_price: product.reseller_price, provider: product.provider,
+      kiosk_category: product.kiosk_category ?? null, sector_ids: product.sector_ids || [],
+    });
   };
 
   const cancelEdit = () => { setEditingBarcode(null); setEditForm({}); };
@@ -170,19 +180,22 @@ export default function ProductsPage() {
   const saveEdit = async (barcode: string) => {
     setIsSaving(true);
     try {
-      const { error } = await supabase.from('products').update({
+      const values = {
         name: editForm.name,
         price: editForm.price,
         buyprice: editForm.buyprice,
         reseller_price: editForm.reseller_price,
         provider: editForm.provider,
-      }).eq('barcode', barcode);
+        ...(canEditProducts ? { kiosk_category: editForm.kiosk_category ?? null, sector_ids: editForm.sector_ids || [] } : {}),
+      };
+      const { error } = await supabase.from('products').update(values).eq('barcode', barcode);
       if (error) throw error;
+      applyProductChanges({ [barcode]: values });
       showToast({ type: 'success', message: 'Produit mis à jour' });
       setEditingBarcode(null);
-      window.location.reload();
-    } catch {
-      showToast({ type: 'error', message: 'Erreur lors de la mise à jour' });
+      setEditForm({});
+    } catch (error) {
+      showToast({ type: 'error', title: 'Erreur lors de la mise à jour', message: error?.message || 'Erreur inconnue' });
     } finally {
       setIsSaving(false);
     }
@@ -195,26 +208,81 @@ export default function ProductsPage() {
     showToast({ type: 'success', message: `${product.name} ajouté au devis` });
   };
 
-  const setKioskCategory = async (product: Product, value: Product['kiosk_category']) => {
-    const previous = localCategories[product.barcode] ?? product.kiosk_category ?? null;
-    setLocalCategories(current => ({ ...current, [product.barcode]: value }));
-    const { error } = await supabase.from('products').update({ kiosk_category: value }).eq('barcode', product.barcode);
-    if (error) {
-      setLocalCategories(current => ({ ...current, [product.barcode]: previous }));
-      showToast({ type: 'error', title: 'Classement impossible', message: error.message });
+  // Row edit (pencil): kiosk type and sectors save as soon as they change;
+  // the other fields wait for the ✓ button.
+  const autoSaveClassification = async (product: Product, change: ClassificationChange) => {
+    const previous = { kiosk_category: editForm.kiosk_category ?? null, sector_ids: editForm.sector_ids || [] };
+    setEditForm(f => ({ ...f, ...change }));
+    const result = await saveProductClassifications({ [product.barcode]: change });
+    if (result.failed.length) {
+      setEditForm(f => ({ ...f, ...Object.fromEntries(Object.keys(change).map(key => [key, previous[key]])) }));
+      showToast({ type: 'error', title: 'Non enregistré', message: result.failed[0].message });
       return;
     }
-    showToast({ type: 'success', message: `${product.name} classé : ${kioskCategoryLabel(value)}` });
+    applyProductChanges(result.saved);
+    showToast({ type: 'success', message: `${product.name} : enregistré` });
   };
 
-  const setProductSectors = async (product: Product, sectorIds: string[]) => {
-    const previous = productSectors(product);
-    setLocalSectors(current => ({ ...current, [product.barcode]: sectorIds }));
+  const editPending = (product: Product, change: ClassificationChange) => {
+    setPending(current => {
+      const next = effectiveChange(product, { ...current[product.barcode], ...change });
+      const copy = { ...current };
+      if (Object.keys(next).length) copy[product.barcode] = next;
+      else delete copy[product.barcode];
+      return copy;
+    });
+  };
+
+  const productsByBarcode = useMemo(() => new Map(products.map(product => [product.barcode, product])), [products]);
+  const selectedProducts = () => [...selected].map(barcode => productsByBarcode.get(barcode)).filter(Boolean) as Product[];
+
+  const applyToSelection = (change: (product: Product) => ClassificationChange) => {
+    selectedProducts().forEach(product => editPending(product, change(product)));
+  };
+
+  const toggleSelected = (barcode: string) => setSelected(current => {
+    const next = new Set(current);
+    if (next.has(barcode)) next.delete(barcode); else next.add(barcode);
+    return next;
+  });
+
+  const pageSelected = currentProducts.length > 0 && currentProducts.every(product => selected.has(product.barcode));
+  const togglePageSelection = () => setSelected(current => {
+    const next = new Set(current);
+    currentProducts.forEach(product => { if (pageSelected) next.delete(product.barcode); else next.add(product.barcode); });
+    return next;
+  });
+
+  const startBulk = () => { cancelEdit(); setBulkMode(true); };
+
+  const leaveBulk = () => {
+    if (pendingCount && !window.confirm(`Abandonner ${pendingCount} modification(s) non enregistrée(s) ?`)) return;
+    setPending({});
+    setSelected(new Set());
+    setBulkMode(false);
+  };
+
+  const saveBulk = async () => {
+    if (!pendingCount || savingBulk) return;
+    setSavingBulk(true);
     try {
-      await BusinessSectorsService.setProductSectors(product.barcode, sectorIds);
+      const result = await saveProductClassifications(pending);
+      applyProductChanges(result.saved);
+      setPending(current => {
+        const next = { ...current };
+        Object.keys(result.saved).forEach(barcode => { delete next[barcode]; });
+        return next;
+      });
+      const savedCount = Object.keys(result.saved).length;
+      if (result.failed.length) {
+        showToast({ type: 'warning', title: `${savedCount} produit(s) enregistré(s), ${result.failed.length} en échec`, message: `${result.failed[0].barcode} : ${result.failed[0].message}` });
+      } else {
+        showToast({ type: 'success', message: `${savedCount} produit(s) enregistré(s)` });
+      }
     } catch (error) {
-      setLocalSectors(current => ({ ...current, [product.barcode]: previous }));
-      showToast({ type: 'error', title: 'Secteur non enregistré', message: error?.message || 'Erreur inconnue' });
+      showToast({ type: 'error', title: 'Enregistrement impossible', message: error?.message || 'Erreur inconnue' });
+    } finally {
+      setSavingBulk(false);
     }
   };
 
@@ -239,10 +307,16 @@ export default function ProductsPage() {
               <p className="text-xs text-muted-foreground">{products.length} produit{products.length !== 1 ? 's' : ''}</p>
             </div>
           </div>
-          {isStock && (
-            <button onClick={() => setManagingSectors(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-border rounded-lg hover:bg-accent">
-              <Briefcase className="h-3.5 w-3.5" />Gérer les secteurs
-            </button>
+          {canEditProducts && (
+            <div className="flex items-center gap-2">
+              <button onClick={() => setManagingSectors(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-border rounded-lg hover:bg-accent">
+                <Briefcase className="h-3.5 w-3.5" />Gérer les secteurs
+              </button>
+              <button onClick={bulkMode ? leaveBulk : startBulk} aria-pressed={bulkMode}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border ${bulkMode ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:bg-accent'}`}>
+                <ListChecks className="h-3.5 w-3.5" />{bulkMode ? 'Quitter la modification groupée' : 'Modification groupée'}
+              </button>
+            </div>
           )}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-2.5">
@@ -293,10 +367,57 @@ export default function ProductsPage() {
           </div>
         ) : (
           <>
+            {bulkMode && (
+              <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-border bg-primary/5 px-3 py-2 text-xs">
+                <span className="font-medium text-foreground">{selected.size} sélectionné(s)</span>
+                {filtered.length > selected.size && (
+                  <button onClick={() => setSelected(new Set(filtered.map(product => product.barcode)))} className="text-primary hover:underline">
+                    Sélectionner les {filtered.length} produits filtrés
+                  </button>
+                )}
+                {selected.size > 0 && <button onClick={() => setSelected(new Set())} className="text-muted-foreground hover:underline">Désélectionner</button>}
+                <span className="mx-1 h-4 w-px bg-border" />
+                <select value="" disabled={!selected.size} aria-label="Type kiosque pour la sélection"
+                  onChange={e => { const value = e.target.value; if (value) applyToSelection(() => ({ kiosk_category: value === 'none' ? null : value })); }}
+                  className="rounded-md border border-input bg-background px-2 py-1 disabled:opacity-50">
+                  <option value="">Type kiosque…</option>
+                  <option value="none">Non classé</option>
+                  {KIOSK_CATEGORIES.map(category => <option key={category.value} value={category.value}>{category.label}</option>)}
+                </select>
+                <select value="" disabled={!selected.size} aria-label="Ajouter un secteur à la sélection"
+                  onChange={e => { const id = e.target.value; if (id) applyToSelection(product => ({ sector_ids: [...new Set([...shownSectors(product), id])] })); }}
+                  className="rounded-md border border-input bg-background px-2 py-1 disabled:opacity-50">
+                  <option value="">Ajouter un secteur…</option>
+                  {sectors.map(sector => <option key={sector.id} value={sector.id}>{sector.name}</option>)}
+                </select>
+                <select value="" disabled={!selected.size} aria-label="Retirer un secteur de la sélection"
+                  onChange={e => { const id = e.target.value; if (id) applyToSelection(product => ({ sector_ids: shownSectors(product).filter(item => item !== id) })); }}
+                  className="rounded-md border border-input bg-background px-2 py-1 disabled:opacity-50">
+                  <option value="">Retirer un secteur…</option>
+                  {sectors.map(sector => <option key={sector.id} value={sector.id}>{sector.name}</option>)}
+                </select>
+                <div className="ml-auto flex items-center gap-2">
+                  <span className={pendingCount ? 'font-medium text-amber-600' : 'text-muted-foreground'}>
+                    {pendingCount ? `${pendingCount} produit(s) modifié(s), non enregistré(s)` : 'Aucune modification'}
+                  </span>
+                  <button onClick={() => setPending({})} disabled={!pendingCount || savingBulk} className="rounded-md border border-border px-2.5 py-1 hover:bg-accent disabled:opacity-40">Annuler</button>
+                  <button onClick={saveBulk} disabled={!pendingCount || savingBulk} className="inline-flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1 font-medium text-primary-foreground disabled:opacity-40">
+                    {savingBulk ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}Enregistrer
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-secondary">
                   <tr>
+                    {bulkMode && (
+                      <th className="w-8 px-3 py-2">
+                        <button onClick={togglePageSelection} aria-label={pageSelected ? 'Désélectionner la page' : 'Sélectionner la page'} className="text-muted-foreground hover:text-foreground">
+                          {pageSelected ? <CheckSquare className="h-4 w-4 text-primary" /> : <Square className="h-4 w-4" />}
+                        </button>
+                      </th>
+                    )}
                     <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Image</th>
                     <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Code</th>
                     {([
@@ -322,9 +443,20 @@ export default function ProductsPage() {
                     const isEditing = editingBarcode === product.barcode;
                     const totalStock = Object.values(product.stock_levels || {}).reduce((s: number, v: any) => s + (Number(v) || 0), 0);
                     const hasSheets = (sheetCounts[product.barcode] || 0) > 0;
-                    const kioskCategory = localCategories[product.barcode] ?? product.kiosk_category ?? null;
+                    const kioskCategory = shownKioskCategory(product);
+                    const rowSectors = shownSectors(product);
+                    const isPending = !!pending[product.barcode];
+                    const editClassification = canEditProducts && (bulkMode || isEditing);
+                    const isSelected = selected.has(product.barcode);
                     return (
-                      <tr key={product.barcode} className="hover:bg-accent/50">
+                      <tr key={product.barcode} className={isPending ? 'bg-amber-500/5 hover:bg-amber-500/10' : 'hover:bg-accent/50'}>
+                        {bulkMode && (
+                          <td className="px-3 py-2">
+                            <button onClick={() => toggleSelected(product.barcode)} aria-label={`Sélectionner ${product.name}`} aria-pressed={isSelected} className="text-muted-foreground hover:text-foreground">
+                              {isSelected ? <CheckSquare className="h-4 w-4 text-primary" /> : <Square className="h-4 w-4" />}
+                            </button>
+                          </td>
+                        )}
                         <td className="px-3 py-2">
                           <button
                             type="button"
@@ -398,8 +530,13 @@ export default function ProductsPage() {
                           )}
                         </td>
                         <td className="px-3 py-2">
-                          {isStock ? (
-                            <select value={kioskCategory || ''} onChange={event => setKioskCategory(product, (event.target.value || null) as Product['kiosk_category'])}
+                          {editClassification ? (
+                            <select value={(isEditing ? editForm.kiosk_category : kioskCategory) || ''} aria-label={`Type kiosque de ${product.name}`}
+                              onChange={event => {
+                                const value = (event.target.value || null) as Product['kiosk_category'];
+                                if (isEditing) autoSaveClassification(product, { kiosk_category: value });
+                                else editPending(product, { kiosk_category: value });
+                              }}
                               className="min-w-28 rounded-md border border-input bg-background px-2 py-1 text-[11px] text-foreground">
                               <option value="">Non classé</option>
                               {KIOSK_CATEGORIES.map(category => <option key={category.value} value={category.value}>{category.label}</option>)}
@@ -409,15 +546,16 @@ export default function ProductsPage() {
                           )}
                         </td>
                         <td className="px-3 py-2">
-                          {isStock ? (
-                            <SectorPicker sectors={sectors} value={productSectors(product)} onChange={ids => setProductSectors(product, ids)}
+                          {editClassification ? (
+                            <SectorPicker sectors={sectors} value={isEditing ? editForm.sector_ids || [] : rowSectors}
+                              onChange={ids => { if (isEditing) autoSaveClassification(product, { sector_ids: ids }); else editPending(product, { sector_ids: ids }); }}
                               onCreate={name => BusinessSectorsService.create(name)} />
                           ) : (
                             <div className="flex flex-wrap gap-1">
-                              {sectorNames(productSectors(product), sectors).map(name => (
+                              {sectorNames(rowSectors, sectors).map(name => (
                                 <span key={name} className="rounded-full bg-secondary px-2 py-1 text-[10px] text-muted-foreground">{name}</span>
                               ))}
-                              {!sectorNames(productSectors(product), sectors).length && <span className="text-[10px] text-muted-foreground">—</span>}
+                              {!sectorNames(rowSectors, sectors).length && <span className="text-[10px] text-muted-foreground">—</span>}
                             </div>
                           )}
                         </td>
@@ -463,9 +601,11 @@ export default function ProductsPage() {
                               <Link to={`/product/${encodeURIComponent(product.barcode)}`} className="p-1 text-muted-foreground hover:bg-accent rounded" title="Fiche produit">
                                 <Info className="h-3.5 w-3.5" />
                               </Link>
-                              <button onClick={() => startEdit(product)} className="p-1 text-primary hover:bg-primary/10 rounded" title="Modifier">
-                                <Edit className="h-3.5 w-3.5" />
-                              </button>
+                              {canEditProducts && (
+                                <button onClick={() => startEdit(product)} disabled={bulkMode} className="p-1 text-primary hover:bg-primary/10 rounded disabled:opacity-30" title={bulkMode ? 'Indisponible en modification groupée' : 'Modifier'}>
+                                  <Edit className="h-3.5 w-3.5" />
+                                </button>
+                              )}
                               {canCreateQuote() && (
                                 <div className="flex items-center gap-1">
                                   <input
@@ -587,7 +727,7 @@ export default function ProductsPage() {
         );
       })(), document.body)}
 
-      {managingSectors && <SectorManagerDialog sectors={sectors} productCounts={sectorCounts} onClose={() => setManagingSectors(false)} />}
+      {managingSectors && <SectorManagerDialog sectors={sectors} productCounts={sectorCounts} canDelete={isStock} onClose={() => setManagingSectors(false)} />}
 
       {/* Stats */}
       {filtered.length > 0 && (

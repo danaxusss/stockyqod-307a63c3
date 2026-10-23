@@ -2,8 +2,8 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import ProductsPage from '../pages/ProductsPage';
-import { BusinessSectorsService } from '../utils/businessSectors';
 import { sectorLabel } from '../utils/sectorLabel';
+import { effectiveChange, saveProductClassifications } from '../utils/productClassification';
 
 const SECTORS = vi.hoisted(() => [
   { id: 's-resto', name: 'Restaurant', name_en: 'Restaurant', name_ar: 'مطعم', sort_order: 10 },
@@ -17,13 +17,14 @@ const product = (barcode: string, name: string, sector_ids: string[]) => ({
 });
 
 const appState = vi.hoisted(() => ({ products: [] as unknown[] }));
-const auth = vi.hoisted(() => ({ isStock: true }));
+const auth = vi.hoisted(() => ({ isStock: true, canEditProducts: true }));
+const applyProductChanges = vi.hoisted(() => vi.fn());
 
-vi.mock('../context/AppContext', () => ({ useAppContext: () => ({ state: appState }) }));
+vi.mock('../context/AppContext', () => ({ useAppContext: () => ({ state: appState, applyProductChanges }) }));
 vi.mock('../context/ToastContext', () => ({ useToast: () => ({ showToast: vi.fn() }) }));
 vi.mock('../hooks/useQuoteCart', () => ({ useQuoteCart: () => ({ addToCart: vi.fn() }) }));
 vi.mock('../hooks/useAuth', () => ({
-  useAuth: () => ({ canCreateQuote: () => false, getPriceDisplayType: () => 'normal', isStock: auth.isStock }),
+  useAuth: () => ({ canCreateQuote: () => false, getPriceDisplayType: () => 'normal', isStock: auth.isStock, canEditProducts: auth.canEditProducts }),
 }));
 vi.mock('../hooks/useProductOverrides', () => ({
   useProductOverrides: () => ({
@@ -46,13 +47,23 @@ vi.mock('../utils/businessSectors', async () => {
   return {
     ...actual,
     useBusinessSectors: () => ({ sectors: SECTORS, loading: false, error: '' }),
-    BusinessSectorsService: { setProductSectors: vi.fn().mockResolvedValue(undefined), create: vi.fn(), update: vi.fn(), remove: vi.fn() },
+    BusinessSectorsService: { setProductSectors: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn() },
   };
 });
+vi.mock('../utils/productClassification', async () => {
+  const actual = await vi.importActual<typeof import('../utils/productClassification')>('../utils/productClassification');
+  return { ...actual, saveProductClassifications: vi.fn() };
+});
 
-const setProductSectors = vi.mocked(BusinessSectorsService.setProductSectors);
+const save = vi.mocked(saveProductClassifications);
+save.mockImplementation(async changes => ({ saved: changes, failed: [] }));
 
-afterEach(() => { vi.clearAllMocks(); auth.isStock = true; });
+afterEach(() => {
+  vi.clearAllMocks();
+  save.mockImplementation(async changes => ({ saved: changes, failed: [] }));
+  auth.isStock = true;
+  auth.canEditProducts = true;
+});
 
 function renderProducts() {
   appState.products = [
@@ -83,24 +94,102 @@ describe('ProductsPage business sectors', () => {
     expect(visibleNames()).toEqual(['Hachoir']);
   });
 
-  it('assigns several sectors to a product from the "Secteur" column', async () => {
+  it('shows sectors read-only until the row is edited', () => {
     renderProducts();
-    const row = screen.getByRole('link', { name: 'Hachoir' }).closest('tr')!;
-    fireEvent.click(within(row).getByRole('button', { name: /Secteur : aucun/ }));
-    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Restaurant' }));
-    await waitFor(() => expect(setProductSectors).toHaveBeenLastCalledWith('P3', ['s-resto']));
-    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Hôtel' }));
-    await waitFor(() => expect(setProductSectors).toHaveBeenLastCalledWith('P3', ['s-resto', 's-hotel']));
-    expect(within(row).getByRole('button', { name: /Secteur : Restaurant, Hôtel/ })).toBeInTheDocument();
+    const row = screen.getByRole('link', { name: 'Four mixte' }).closest('tr')!;
+    expect(within(row).queryByRole('button', { name: /Secteur :/ })).not.toBeInTheDocument();
+    expect(within(row).getByText('Restaurant')).toBeInTheDocument();
+    expect(within(row).getByText('Hôtel')).toBeInTheDocument();
   });
 
-  it('shows sectors read-only to users who cannot classify products', () => {
+  it('saves sectors as soon as they change while a row is being edited', async () => {
+    renderProducts();
+    const row = screen.getByRole('link', { name: 'Hachoir' }).closest('tr')!;
+    fireEvent.click(within(row).getByTitle('Modifier'));
+    fireEvent.click(within(row).getByRole('button', { name: /Secteur : aucun/ }));
+    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Restaurant' }));
+
+    await waitFor(() => expect(save).toHaveBeenCalledWith({ P3: { sector_ids: ['s-resto'] } }));
+    await waitFor(() => expect(applyProductChanges).toHaveBeenCalledWith({ P3: { sector_ids: ['s-resto'] } }));
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Hôtel' }));
+    await waitFor(() => expect(save).toHaveBeenLastCalledWith({ P3: { sector_ids: ['s-resto', 's-hotel'] } }));
+  });
+
+  it('puts the sector back and warns when an automatic save fails', async () => {
+    save.mockResolvedValueOnce({ saved: {}, failed: [{ barcode: 'P3', message: 'permission denied' }] });
+    renderProducts();
+    const row = screen.getByRole('link', { name: 'Hachoir' }).closest('tr')!;
+    fireEvent.click(within(row).getByTitle('Modifier'));
+    fireEvent.click(within(row).getByRole('button', { name: /Secteur : aucun/ }));
+    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Restaurant' }));
+    await waitFor(() => expect(within(row).getByRole('button', { name: /Secteur : aucun/ })).toBeInTheDocument());
+    expect(applyProductChanges).not.toHaveBeenCalled();
+  });
+
+  it('applies sector changes to several products in bulk mode and saves them only on "Enregistrer"', async () => {
+    renderProducts();
+    fireEvent.click(screen.getByRole('button', { name: 'Modification groupée' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sélectionner Hachoir' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sélectionner Machine espresso' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Ajouter un secteur à la sélection' }), { target: { value: 's-hotel' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Type kiosque pour la sélection' }), { target: { value: 'furniture' } });
+
+    expect(screen.getByText('2 produit(s) modifié(s), non enregistré(s)')).toBeInTheDocument();
+    expect(save).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+    await waitFor(() => expect(save).toHaveBeenCalledWith({
+      P3: { sector_ids: ['s-hotel'], kiosk_category: 'furniture' },
+      P2: { sector_ids: ['s-cafe', 's-hotel'], kiosk_category: 'furniture' },
+    }));
+    expect(applyProductChanges).toHaveBeenCalledWith(expect.objectContaining({ P2: expect.anything(), P3: expect.anything() }));
+    expect(await screen.findByText('Aucune modification')).toBeInTheDocument();
+  });
+
+  it('lets bulk edits on a row be cancelled without saving', async () => {
+    renderProducts();
+    fireEvent.click(screen.getByRole('button', { name: 'Modification groupée' }));
+    const row = screen.getByRole('link', { name: 'Four mixte' }).closest('tr')!;
+    fireEvent.click(within(row).getByRole('button', { name: /Secteur : Restaurant, Hôtel/ }));
+    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Hôtel' }));
+    expect(screen.getByText('1 produit(s) modifié(s), non enregistré(s)')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Annuler' }));
+    expect(screen.getByText('Aucune modification')).toBeInTheDocument();
+    expect(within(row).getByRole('button', { name: /Secteur : Restaurant, Hôtel/ })).toBeInTheDocument();
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('lets a user granted "Peut modifier les produits" edit, but not delete sectors', () => {
     auth.isStock = false;
     renderProducts();
     const row = screen.getByRole('link', { name: 'Four mixte' }).closest('tr')!;
+    expect(within(row).getByTitle('Modifier')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Modification groupée' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Gérer les secteurs/ }));
+    expect(screen.getByRole('textbox', { name: 'Nom du secteur Restaurant' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Supprimer Restaurant' })).not.toBeInTheDocument();
+  });
+
+  it('keeps products read-only for users without the editing permission', () => {
+    auth.isStock = false;
+    auth.canEditProducts = false;
+    renderProducts();
+    const row = screen.getByRole('link', { name: 'Four mixte' }).closest('tr')!;
+    expect(within(row).queryByTitle('Modifier')).not.toBeInTheDocument();
     expect(within(row).getByText('Restaurant')).toBeInTheDocument();
     expect(within(row).getByText('Hôtel')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Gérer les secteurs/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Modification groupée/ })).not.toBeInTheDocument();
+  });
+});
+
+describe('effectiveChange', () => {
+  it('keeps only fields that differ from the saved product', () => {
+    const saved = { kiosk_category: 'equipment' as const, sector_ids: ['a', 'b'] };
+    expect(effectiveChange(saved, { sector_ids: ['b', 'a'], kiosk_category: 'equipment' })).toEqual({});
+    expect(effectiveChange(saved, { sector_ids: ['a'] })).toEqual({ sector_ids: ['a'] });
+    expect(effectiveChange(saved, { kiosk_category: null })).toEqual({ kiosk_category: null });
   });
 });
 

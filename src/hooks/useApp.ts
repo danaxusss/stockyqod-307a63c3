@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { AppState, Product } from '../types';
 import { StorageManager } from '../utils/storage';
-import { getProducts, saveProducts } from '../utils/database';
+import { getProducts, saveProducts, updateCachedProducts } from '../utils/database';
 import { ProductUploadService } from '../utils/productUploadService';
 
 export type SyncState = 'idle' | 'syncing' | 'offline' | 'error';
@@ -135,6 +135,18 @@ export function useApp() {
     return products.length > 0;
   }, [state.isOnline, pullProducts]);
 
+  // Apply edits saved to Supabase to the in-memory list and the offline
+  // cache right away; otherwise pages keep showing the old values until the
+  // next sync (up to 5 minutes).
+  const applyProductChanges = useCallback((changes: Record<string, Partial<Product>>) => {
+    if (!Object.keys(changes).length) return;
+    setState(prev => ({
+      ...prev,
+      products: prev.products.map(product => changes[product.barcode] ? { ...product, ...changes[product.barcode] } : product),
+    }));
+    updateCachedProducts(changes).catch(error => console.warn('Product cache update failed:', error));
+  }, []);
+
   const checkForUpdates = async (): Promise<boolean> => false;
 
   const getSyncStats = async () => ({
@@ -157,6 +169,7 @@ export function useApp() {
     syncStatus: null,
     syncInfo,
     syncData,
+    applyProductChanges,
     checkForUpdates,
     getSyncStats,
     updateRole,
