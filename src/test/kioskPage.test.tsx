@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import KioskPage from '../pages/kiosk/KioskPage';
@@ -28,7 +28,9 @@ const DRILL = {
 };
 const FEATURED = { ...DRILL, barcode: '611000000099', name: 'Aspirateur vedette', featured: true };
 
-function mockKiosk(overrides: Record<string, unknown> = {}, featured: typeof FEATURED[] = []) {
+type Sector = { id: string; name: string; name_en: string | null; name_ar: string | null };
+
+function mockKiosk(overrides: Record<string, unknown> = {}, featured: typeof FEATURED[] = [], sectors: Sector[] = []) {
   service.loadPublic.mockResolvedValue({
     profile: {
       id: 'profile-1', name: 'Accueil', company_name: 'Stocky Test',
@@ -40,6 +42,7 @@ function mockKiosk(overrides: Record<string, unknown> = {}, featured: typeof FEA
       ...overrides,
     },
     brands: ['Stocky'],
+    sectors,
   });
   service.listPublicProducts.mockImplementation(async (_token, options = {}) => (
     options.featuredOnly
@@ -236,6 +239,34 @@ describe('KioskPage', () => {
     await waitFor(() => expect(service.listPublicProducts).toHaveBeenLastCalledWith(
       TOKEN, expect.objectContaining({ featuredOnly: true, page: 0, pageSize: 48 }),
     ));
+  });
+
+  it('filters the catalogue by business sector, labelled in the kiosk language', async () => {
+    mockKiosk({ language: 'en' }, [], [
+      { id: '11111111-1111-4111-8111-111111111111', name: 'Hôtel', name_en: 'Hotel', name_ar: 'فندق' },
+      { id: '22222222-2222-4222-8222-222222222222', name: 'Boucherie', name_en: null, name_ar: null },
+    ]);
+    renderKiosk();
+    fireEvent.click(await screen.findByRole('button', { name: /Start/ }));
+    const sectors = await screen.findByRole('group', { name: 'Sector' });
+    expect(within(sectors).getByRole('button', { name: 'Boucherie' })).toBeInTheDocument();
+
+    fireEvent.click(within(sectors).getByRole('button', { name: 'Hotel' }));
+    await waitFor(() => expect(service.listPublicProducts).toHaveBeenLastCalledWith(
+      TOKEN, expect.objectContaining({ sector: '11111111-1111-4111-8111-111111111111', page: 0 }),
+    ));
+    fireEvent.click(within(sectors).getByRole('button', { name: 'All sectors' }));
+    await waitFor(() => expect(service.listPublicProducts).toHaveBeenLastCalledWith(
+      TOKEN, expect.objectContaining({ sector: null }),
+    ));
+  });
+
+  it('hides the sector filter when no sector has products', async () => {
+    mockKiosk();
+    renderKiosk();
+    fireEvent.click(await screen.findByRole('button', { name: /Commencer/i }));
+    expect(await screen.findByText('Perceuse de test')).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Secteur' })).not.toBeInTheDocument();
   });
 
   it('lays out the catalogue with the configured number of products per row', async () => {

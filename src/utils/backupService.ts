@@ -16,6 +16,7 @@ const BACKUP_TABLES = [
   'kiosk_profiles',
   'clients',
   'document_counters',
+  'business_sectors',
   'products',
   'catalog_products',
   'product_name_overrides',

@@ -50,6 +50,13 @@ export interface KioskPublicProfile {
   inactivity_timeout_seconds: number;
 }
 
+export interface KioskSector {
+  id: string;
+  name: string;
+  name_en: string | null;
+  name_ar: string | null;
+}
+
 export interface KioskProduct {
   barcode: string;
   name: string;
@@ -189,7 +196,7 @@ export class KioskService {
     return new URL(`kiosk/${token}`, base).toString();
   }
 
-  static async loadPublic(token: string): Promise<{ profile: KioskPublicProfile; brands: string[] }> {
+  static async loadPublic(token: string): Promise<{ profile: KioskPublicProfile; brands: string[]; sectors?: KioskSector[] }> {
     return invoke({ action: 'public_profile', token });
   }
 
@@ -199,6 +206,7 @@ export class KioskService {
     brand?: string | null;
     onlyAvailable?: boolean;
     featuredOnly?: boolean;
+    sector?: string | null;
     page?: number;
     pageSize?: number;
   } = {}): Promise<{ products: KioskProduct[]; total: number; page: number; page_size: number }> {
@@ -207,6 +215,7 @@ export class KioskService {
       search: options.search || '', category: options.category || null,
       brand: options.brand || null, only_available: options.onlyAvailable === true,
       featured_only: options.featuredOnly === true,
+      sector: options.sector || null,
       page: options.page || 0, page_size: options.pageSize || 30,
     });
   }

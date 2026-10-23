@@ -12,6 +12,8 @@ import { useAuth } from '../hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { useProductOverrides } from '../hooks/useProductOverrides';
 import { resolveProductImageUrl, uploadPrimaryProductImage } from '../utils/productImages';
+import { SectorPicker } from '../components/SectorPicker';
+import { BusinessSectorsService, sectorNames, useBusinessSectors } from '../utils/businessSectors';
 
 const KIOSK_CATEGORIES: Array<{ value: NonNullable<Product['kiosk_category']>; label: string }> = [
   { value: 'utensils', label: 'Ustensiles' },
@@ -35,6 +37,7 @@ export function ProductDetail() {
   const [isSheetUploading, setIsSheetUploading] = useState(false);
   const sheetFileInputRef = useRef<HTMLInputElement>(null);
   const [isImageUploading, setIsImageUploading] = useState(false);
+  const { sectors } = useBusinessSectors();
   const imageFileInputRef = useRef<HTMLInputElement>(null);
   
   // Linked sheets state
@@ -256,6 +259,18 @@ export function ProductDetail() {
     }
   };
 
+  const updateSectors = async (sectorIds: string[]) => {
+    if (!product) return;
+    const previous = product.sector_ids || [];
+    setProduct(current => current ? { ...current, sector_ids: sectorIds } : current);
+    try {
+      await BusinessSectorsService.setProductSectors(product.barcode, sectorIds);
+    } catch (sectorError) {
+      setProduct(current => current ? { ...current, sector_ids: previous } : current);
+      showToast({ type: 'error', title: 'Secteur non enregistré', message: sectorError instanceof Error ? sectorError.message : 'Erreur inconnue' });
+    }
+  };
+
   const updateKioskCategory = async (value: Product['kiosk_category']) => {
     if (!product || !isStock) return;
     const previous = product.kiosk_category || null;
@@ -407,6 +422,15 @@ export function ProductDetail() {
                   {KIOSK_CATEGORIES.map(category => <option key={category.value} value={category.value}>{category.label}</option>)}
                 </select>
               </label>
+              <div className="mt-3 max-w-xs">
+                <span className="mb-1 block text-[11px] font-medium text-muted-foreground">Secteur</span>
+                {isStock ? (
+                  <SectorPicker sectors={sectors} value={product.sector_ids || []} onChange={updateSectors}
+                    onCreate={name => BusinessSectorsService.create(name)} size="md" />
+                ) : (
+                  <p className="text-sm text-foreground">{sectorNames(product.sector_ids, sectors).join(', ') || 'Aucun secteur'}</p>
+                )}
+              </div>
               {isStock && (
                 <>
                   <input
