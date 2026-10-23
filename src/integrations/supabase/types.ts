@@ -14,6 +14,33 @@ export type Database = {
   }
   public: {
     Tables: {
+      business_sectors: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          name_ar: string | null
+          name_en: string | null
+          sort_order: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          name_ar?: string | null
+          name_en?: string | null
+          sort_order?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          name_ar?: string | null
+          name_en?: string | null
+          sort_order?: number
+        }
+        Relationships: []
+      }
       activity_logs: {
         Row: {
           action: string
@@ -306,6 +333,7 @@ export type Database = {
           price: number
           provider: string
           reseller_price: number
+          sector_ids: string[]
           stock_levels: Json
           techsheet: string
           updated_at: string
@@ -321,6 +349,7 @@ export type Database = {
           price?: number
           provider?: string
           reseller_price?: number
+          sector_ids?: string[]
           stock_levels?: Json
           techsheet?: string
           updated_at?: string
@@ -336,6 +365,7 @@ export type Database = {
           price?: number
           provider?: string
           reseller_price?: number
+          sector_ids?: string[]
           stock_levels?: Json
           techsheet?: string
           updated_at?: string
@@ -517,6 +547,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      delete_business_sector: {
+        Args: { p_id: string }
+        Returns: undefined
+      }
       get_activity_logs_by_user: {
         Args: { p_limit?: number; p_username: string }
         Returns: {

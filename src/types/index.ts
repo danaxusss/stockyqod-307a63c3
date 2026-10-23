@@ -4,6 +4,8 @@ export interface Product {
   brand: string;
   image?: string | null;
   kiosk_category?: 'utensils' | 'furniture' | 'equipment' | null;
+  /** Business sectors (restaurant, café…) the product is sold to; several allowed. */
+  sector_ids?: string[];
   techsheet: string;
   price: number;
   buyprice: number;
@@ -12,6 +14,14 @@ export interface Product {
   stock_levels: Record<string, number>;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface BusinessSector {
+  id: string;
+  name: string;
+  name_en: string | null;
+  name_ar: string | null;
+  sort_order: number;
 }
 
 export interface Meta {

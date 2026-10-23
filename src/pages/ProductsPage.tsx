@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, Link } from 'react-router-dom';
-import { Package, Search, Edit, Check, X, Loader, SortAsc, SortDesc, ChevronLeft, ChevronRight, Filter, Paperclip, ShoppingCart, Info, Eye, Building, Tag } from 'lucide-react';
+import { Package, Search, Edit, Check, X, Loader, SortAsc, SortDesc, ChevronLeft, ChevronRight, Filter, Paperclip, ShoppingCart, Info, Eye, Building, Tag, Briefcase } from 'lucide-react';
 import { Product, StockLocation } from '../types';
 import { useAppContext } from '../context/AppContext';
 import { StockLocationsService } from '../utils/supabaseStockLocations';
@@ -13,6 +13,9 @@ import { useAuth } from '../hooks/useAuth';
 import { useProductOverrides } from '../hooks/useProductOverrides';
 import { resolveProductImageUrl } from '../utils/productImages';
 import { useEscapeKey } from '../hooks/useShortcuts';
+import { SectorPicker } from '../components/SectorPicker';
+import { SectorManagerDialog } from '../components/SectorManagerDialog';
+import { BusinessSectorsService, sectorNames, useBusinessSectors } from '../utils/businessSectors';
 
 const PRODUCTS_PER_PAGE = 20;
 type SortField = 'name' | 'brand' | 'price' | 'buyprice' | 'provider';
@@ -24,6 +27,9 @@ const KIOSK_CATEGORIES: Array<{ value: KioskCategory; label: string }> = [
   { value: 'furniture', label: 'Mobilier' },
   { value: 'equipment', label: 'Équipement' },
 ];
+
+// Sector filter value for products that have no sector yet.
+const NO_SECTOR = '__none__';
 
 const kioskCategoryLabel = (value?: Product['kiosk_category']) =>
   KIOSK_CATEGORIES.find(category => category.value === value)?.label || 'Non classé';
@@ -39,6 +45,10 @@ export default function ProductsPage() {
   const [brandFilter, setBrandFilter] = useState('');
   const [providerFilter, setProviderFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [sectorFilter, setSectorFilter] = useState('');
+  const [localSectors, setLocalSectors] = useState<Record<string, string[]>>({});
+  const [managingSectors, setManagingSectors] = useState(false);
+  const { sectors } = useBusinessSectors();
   const [currentPage, setCurrentPage] = useState(1);
   const [sortField, setSortField] = useState<SortField>('name');
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
@@ -94,6 +104,17 @@ export default function ProductsPage() {
     StockLocationsService.getStockLocations().then(setStockLocations).catch(() => {});
   }, []);
 
+  const productSectors = useCallback(
+    (product: Product): string[] => localSectors[product.barcode] ?? product.sector_ids ?? [],
+    [localSectors],
+  );
+
+  const sectorCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    products.forEach(product => productSectors(product).forEach(id => { counts[id] = (counts[id] || 0) + 1; }));
+    return counts;
+  }, [products, productSectors]);
+
   const brands = useMemo(() => [...new Set(products.map(p => p.brand).filter(Boolean))].sort(), [products]);
   const providers = useMemo(() => [...new Set(products.map(p => p.provider).filter(Boolean))].sort(), [products]);
 
@@ -114,6 +135,12 @@ export default function ProductsPage() {
     if (normalizedBrandFilter) list = list.filter(p => getAllNames('brand', p.brand || '').some(name => name.toLowerCase() === normalizedBrandFilter));
     if (normalizedProviderFilter) list = list.filter(p => getAllNames('provider', p.provider || '').some(name => name.toLowerCase() === normalizedProviderFilter));
     if (categoryFilter) list = list.filter(p => (localCategories[p.barcode] ?? p.kiosk_category ?? null) === categoryFilter);
+    if (sectorFilter) {
+      list = list.filter(p => {
+        const ids = productSectors(p);
+        return sectorFilter === NO_SECTOR ? ids.length === 0 : ids.includes(sectorFilter);
+      });
+    }
     list.sort((a, b) => {
       const aV = a[sortField] ?? '';
       const bV = b[sortField] ?? '';
@@ -122,7 +149,7 @@ export default function ProductsPage() {
       return 0;
     });
     return list;
-  }, [products, searchQuery, brandFilter, providerFilter, categoryFilter, localCategories, sortField, sortOrder, getAllNames]);
+  }, [products, searchQuery, brandFilter, providerFilter, categoryFilter, sectorFilter, productSectors, localCategories, sortField, sortOrder, getAllNames]);
 
   const totalPages = Math.ceil(filtered.length / PRODUCTS_PER_PAGE);
   const startIdx = (currentPage - 1) * PRODUCTS_PER_PAGE;
@@ -180,6 +207,17 @@ export default function ProductsPage() {
     showToast({ type: 'success', message: `${product.name} classé : ${kioskCategoryLabel(value)}` });
   };
 
+  const setProductSectors = async (product: Product, sectorIds: string[]) => {
+    const previous = productSectors(product);
+    setLocalSectors(current => ({ ...current, [product.barcode]: sectorIds }));
+    try {
+      await BusinessSectorsService.setProductSectors(product.barcode, sectorIds);
+    } catch (error) {
+      setLocalSectors(current => ({ ...current, [product.barcode]: previous }));
+      showToast({ type: 'error', title: 'Secteur non enregistré', message: error?.message || 'Erreur inconnue' });
+    }
+  };
+
   const getSortIcon = (field: SortField) => {
     if (sortField !== field) return null;
     return sortOrder === 'asc' ? <SortAsc className="h-3 w-3" /> : <SortDesc className="h-3 w-3" />;
@@ -201,8 +239,13 @@ export default function ProductsPage() {
               <p className="text-xs text-muted-foreground">{products.length} produit{products.length !== 1 ? 's' : ''}</p>
             </div>
           </div>
+          {isStock && (
+            <button onClick={() => setManagingSectors(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-border rounded-lg hover:bg-accent">
+              <Briefcase className="h-3.5 w-3.5" />Gérer les secteurs
+            </button>
+          )}
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2.5">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-2.5">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
             <input type="text" value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setCurrentPage(1); }}
@@ -224,10 +267,16 @@ export default function ProductsPage() {
             <option value="">Tous les types kiosque</option>
             {KIOSK_CATEGORIES.map(category => <option key={category.value} value={category.value}>{category.label}</option>)}
           </select>
+          <select value={sectorFilter} onChange={e => { setSectorFilter(e.target.value); setCurrentPage(1); }} aria-label="Secteur"
+            className="px-2.5 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground">
+            <option value="">Tous les secteurs</option>
+            {sectors.map(sector => <option key={sector.id} value={sector.id}>{sector.name}</option>)}
+            <option value={NO_SECTOR}>Sans secteur</option>
+          </select>
         </div>
-        {(searchQuery || brandFilter || providerFilter || categoryFilter) && (
+        {(searchQuery || brandFilter || providerFilter || categoryFilter || sectorFilter) && (
           <div className="mt-2">
-            <button onClick={() => { setSearchQuery(''); setBrandFilter(''); setProviderFilter(''); setCategoryFilter(''); }}
+            <button onClick={() => { setSearchQuery(''); setBrandFilter(''); setProviderFilter(''); setCategoryFilter(''); setSectorFilter(''); }}
               className="flex items-center space-x-1 px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground">
               <X className="h-3 w-3" /><span>Effacer filtres</span>
             </button>
@@ -263,6 +312,7 @@ export default function ProductsPage() {
                       </th>
                     ))}
                     <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Type kiosque</th>
+                    <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Secteur</th>
                     <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Stock</th>
                     <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Actions</th>
                   </tr>
@@ -356,6 +406,19 @@ export default function ProductsPage() {
                             </select>
                           ) : (
                             <span className="rounded-full bg-secondary px-2 py-1 text-[10px] text-muted-foreground">{kioskCategoryLabel(kioskCategory)}</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          {isStock ? (
+                            <SectorPicker sectors={sectors} value={productSectors(product)} onChange={ids => setProductSectors(product, ids)}
+                              onCreate={name => BusinessSectorsService.create(name)} />
+                          ) : (
+                            <div className="flex flex-wrap gap-1">
+                              {sectorNames(productSectors(product), sectors).map(name => (
+                                <span key={name} className="rounded-full bg-secondary px-2 py-1 text-[10px] text-muted-foreground">{name}</span>
+                              ))}
+                              {!sectorNames(productSectors(product), sectors).length && <span className="text-[10px] text-muted-foreground">—</span>}
+                            </div>
                           )}
                         </td>
                         <td className="px-3 py-2">
@@ -523,6 +586,8 @@ export default function ProductsPage() {
           </div>
         );
       })(), document.body)}
+
+      {managingSectors && <SectorManagerDialog sectors={sectors} productCounts={sectorCounts} onClose={() => setManagingSectors(false)} />}
 
       {/* Stats */}
       {filtered.length > 0 && (

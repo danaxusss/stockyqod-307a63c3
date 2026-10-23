@@ -5,9 +5,10 @@ import {
   Minus, Package, Plus, RotateCcw, Search, ShoppingCart, Star, Trash2, UserRound, WifiOff, X,
 } from 'lucide-react';
 import {
-  KioskRequestError, KioskService, type KioskCategory, type KioskLanguage, type KioskProduct, type KioskPublicProfile,
+  KioskRequestError, KioskService, type KioskCategory, type KioskLanguage, type KioskProduct, type KioskPublicProfile, type KioskSector,
 } from '../../utils/kioskService';
 import { DEFAULT_KIOSK_ACCENT, isHexColor, readableTextOn } from '../../utils/kioskColors';
+import { sectorLabel } from '../../utils/sectorLabel';
 
 type Stage = 'welcome' | 'catalog' | 'review' | 'submitted';
 type CartLine = { product: KioskProduct; quantity: number };
@@ -41,6 +42,7 @@ const copy = {
     idleTitle: 'Toujours là ?', idleText: 'Cette session sera effacée dans quelques secondes pour protéger vos informations.', stay: 'Continuer',
     offline: 'Connexion interrompue — votre sélection reste affichée.', loading: 'Chargement du kiosque…', unavailable: 'Ce kiosque est indisponible.',
     privacy: 'Vos coordonnées servent uniquement au traitement de cette demande de devis.',
+    sector: 'Secteur', allSectors: 'Tous les secteurs',
     categories: 'Type de produit', utensils: 'Ustensiles', furniture: 'Mobilier', equipment: 'Équipement',
     allBrands: 'Toutes les marques', availableOnly: 'Disponibles uniquement', clearFilters: 'Réinitialiser les filtres',
     retry: 'Réessayer', catalogError: 'Le catalogue n’a pas pu être chargé.',
@@ -66,6 +68,7 @@ const copy = {
     idleTitle: 'Still there?', idleText: 'This session will be cleared in a few seconds to protect your information.', stay: 'Continue',
     offline: 'Connection lost — your selection is still displayed.', loading: 'Loading kiosk…', unavailable: 'This kiosk is unavailable.',
     privacy: 'Your contact details are used only to process this quote request.',
+    sector: 'Sector', allSectors: 'All sectors',
     categories: 'Product type', utensils: 'Utensils', furniture: 'Furniture', equipment: 'Equipment',
     allBrands: 'All brands', availableOnly: 'Available only', clearFilters: 'Reset filters',
     retry: 'Try again', catalogError: 'The catalogue could not be loaded.',
@@ -91,6 +94,7 @@ const copy = {
     idleTitle: 'هل ما زلت هنا؟', idleText: 'سيتم مسح هذه الجلسة خلال ثوانٍ لحماية معلوماتك.', stay: 'متابعة',
     offline: 'انقطع الاتصال — ما زال اختيارك ظاهراً.', loading: 'جارٍ تحميل الكشك…', unavailable: 'هذا الكشك غير متاح.',
     privacy: 'تُستخدم معلومات الاتصال فقط لمعالجة طلب عرض السعر.',
+    sector: 'القطاع', allSectors: 'كل القطاعات',
     categories: 'نوع المنتج', utensils: 'أدوات', furniture: 'أثاث', equipment: 'معدات',
     allBrands: 'كل العلامات التجارية', availableOnly: 'المتوفر فقط', clearFilters: 'إعادة ضبط الفلاتر',
     retry: 'إعادة المحاولة', catalogError: 'تعذر تحميل الكتالوج.',
@@ -179,6 +183,7 @@ export default function KioskPage() {
   const [saved] = useState(() => readSavedSession(token));
   const [profile, setProfile] = useState<KioskPublicProfile | null>(null);
   const [brands, setBrands] = useState<string[]>([]);
+  const [sectors, setSectors] = useState<KioskSector[]>([]);
   const [featured, setFeatured] = useState<KioskProduct[]>([]);
   const [stage, setStage] = useState<Stage>(saved?.stage || 'welcome');
   const [chosenLanguage, setChosenLanguage] = useState<KioskLanguage | null>(saved?.language || null);
@@ -194,6 +199,7 @@ export default function KioskPage() {
   const [brand, setBrand] = useState('');
   const [onlyAvailable, setOnlyAvailable] = useState(false);
   const [featuredOnly, setFeaturedOnly] = useState(false);
+  const [sector, setSector] = useState<string | null>(null);
   const [cart, setCart] = useState<Record<string, CartLine>>(saved?.cart || {});
   const [selectedProduct, setSelectedProduct] = useState<KioskProduct | null>(null);
   const [loading, setLoading] = useState(true);
@@ -235,6 +241,7 @@ export default function KioskPage() {
       const data = await KioskService.loadPublic(token);
       setProfile(data.profile);
       setBrands(data.brands || []);
+      setSectors(data.sectors || []);
       setFatal(null);
       // Featured products are a bonus: the kiosk works the same without them.
       KioskService.listPublicProducts(token, { featuredOnly: true, page: 0, pageSize: 24 })
@@ -263,6 +270,7 @@ export default function KioskPage() {
     setCart({});
     setChosenLanguage(null);
     setFeaturedOnly(false);
+    setSector(null);
     setQuery('');
     setDebouncedQuery('');
     setCategory(null);
@@ -350,14 +358,14 @@ export default function KioskPage() {
     return () => clearTimeout(timer);
   }, [query]);
 
-  const catalogKey = JSON.stringify([debouncedQuery, category, brand, onlyAvailable, featuredOnly, catalogReload]);
+  const catalogKey = JSON.stringify([debouncedQuery, category, brand, onlyAvailable, featuredOnly, sector, catalogReload]);
 
   useEffect(() => {
     if (!profile || stage !== 'catalog' || loadedCatalogKey.current === catalogKey) return;
     const requestId = ++catalogRequest.current;
     setCatalogLoading(true);
     setCatalogError('');
-    KioskService.listPublicProducts(token, { search: debouncedQuery, category, brand, onlyAvailable, featuredOnly, page: 0, pageSize: PAGE_SIZE })
+    KioskService.listPublicProducts(token, { search: debouncedQuery, category, brand, onlyAvailable, featuredOnly, sector, page: 0, pageSize: PAGE_SIZE })
       .then(data => {
         if (requestId !== catalogRequest.current) return;
         loadedCatalogKey.current = catalogKey;
@@ -368,7 +376,7 @@ export default function KioskPage() {
       .catch(error => { if (requestId === catalogRequest.current) setCatalogError(describeKioskError(error, t)); })
       .finally(() => { if (requestId === catalogRequest.current) setCatalogLoading(false); });
     // `t` only changes with the profile language, which already re-runs this.
-  }, [brand, catalogKey, category, debouncedQuery, featuredOnly, onlyAvailable, profile, stage, token]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [brand, catalogKey, category, debouncedQuery, featuredOnly, onlyAvailable, profile, sector, stage, token]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (stage === 'catalog') {
@@ -420,7 +428,7 @@ export default function KioskPage() {
     setCatalogError('');
     try {
       const data = await KioskService.listPublicProducts(token, {
-        search: debouncedQuery, category, brand, onlyAvailable, featuredOnly, page: nextPage, pageSize: PAGE_SIZE,
+        search: debouncedQuery, category, brand, onlyAvailable, featuredOnly, sector, page: nextPage, pageSize: PAGE_SIZE,
       });
       // Filters changed while this page was loading: it belongs to another list.
       if (requestId !== catalogRequest.current) return;
@@ -551,6 +559,15 @@ export default function KioskPage() {
                 <FilterButton active={category === 'furniture'} label={t.furniture} onClick={() => selectCategory('furniture')} />
                 <FilterButton active={category === 'equipment'} label={t.equipment} onClick={() => selectCategory('equipment')} />
               </div></div>
+              {sectors.length > 0 && (
+                <>
+                  <p className="mb-2 mt-3 text-xs font-bold uppercase tracking-wide text-slate-400">{t.sector}</p>
+                  <div className="overflow-x-auto"><div role="group" aria-label={t.sector} className="flex min-w-max gap-2">
+                    <FilterButton active={!sector} label={t.allSectors} onClick={() => setSector(null)} />
+                    {sectors.map(item => <FilterButton key={item.id} active={sector === item.id} label={sectorLabel(item, language)} onClick={() => setSector(item.id)} />)}
+                  </div></div>
+                </>
+              )}
               <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
                 <select aria-label={t.allBrands} value={brand} onChange={event => setBrand(event.target.value)} className="min-h-12 flex-1 rounded-xl border-2 border-slate-200 bg-white px-4 text-base font-semibold outline-none focus:border-[var(--kiosk-accent)]">
                   <option value="">{t.allBrands}</option>
@@ -560,7 +577,7 @@ export default function KioskPage() {
                   <input type="checkbox" checked={onlyAvailable} onChange={event => setOnlyAvailable(event.target.checked)} className="h-5 w-5" />
                   {t.availableOnly}
                 </label>
-                {(category || featuredOnly || brand || onlyAvailable) && <button onClick={() => { selectCategory(null); setBrand(''); setOnlyAvailable(false); }} className="min-h-12 rounded-xl px-4 text-sm font-bold text-slate-500 active:bg-slate-100">{t.clearFilters}</button>}
+                {(category || featuredOnly || sector || brand || onlyAvailable) && <button onClick={() => { selectCategory(null); setSector(null); setBrand(''); setOnlyAvailable(false); }} className="min-h-12 rounded-xl px-4 text-sm font-bold text-slate-500 active:bg-slate-100">{t.clearFilters}</button>}
               </div>
             </div>
           </header>
