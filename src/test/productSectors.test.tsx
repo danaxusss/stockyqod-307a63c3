@@ -17,14 +17,14 @@ const product = (barcode: string, name: string, sector_ids: string[]) => ({
 });
 
 const appState = vi.hoisted(() => ({ products: [] as unknown[] }));
-const auth = vi.hoisted(() => ({ isStock: true }));
+const auth = vi.hoisted(() => ({ isStock: true, canEditProducts: true }));
 const applyProductChanges = vi.hoisted(() => vi.fn());
 
 vi.mock('../context/AppContext', () => ({ useAppContext: () => ({ state: appState, applyProductChanges }) }));
 vi.mock('../context/ToastContext', () => ({ useToast: () => ({ showToast: vi.fn() }) }));
 vi.mock('../hooks/useQuoteCart', () => ({ useQuoteCart: () => ({ addToCart: vi.fn() }) }));
 vi.mock('../hooks/useAuth', () => ({
-  useAuth: () => ({ canCreateQuote: () => false, getPriceDisplayType: () => 'normal', isStock: auth.isStock }),
+  useAuth: () => ({ canCreateQuote: () => false, getPriceDisplayType: () => 'normal', isStock: auth.isStock, canEditProducts: auth.canEditProducts }),
 }));
 vi.mock('../hooks/useProductOverrides', () => ({
   useProductOverrides: () => ({
@@ -62,6 +62,7 @@ afterEach(() => {
   vi.clearAllMocks();
   save.mockImplementation(async changes => ({ saved: changes, failed: [] }));
   auth.isStock = true;
+  auth.canEditProducts = true;
 });
 
 function renderProducts() {
@@ -159,10 +160,23 @@ describe('ProductsPage business sectors', () => {
     expect(save).not.toHaveBeenCalled();
   });
 
-  it('shows sectors read-only to users who cannot classify products', () => {
+  it('lets a user granted "Peut modifier les produits" edit, but not delete sectors', () => {
     auth.isStock = false;
     renderProducts();
     const row = screen.getByRole('link', { name: 'Four mixte' }).closest('tr')!;
+    expect(within(row).getByTitle('Modifier')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Modification groupée' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Gérer les secteurs/ }));
+    expect(screen.getByRole('textbox', { name: 'Nom du secteur Restaurant' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Supprimer Restaurant' })).not.toBeInTheDocument();
+  });
+
+  it('keeps products read-only for users without the editing permission', () => {
+    auth.isStock = false;
+    auth.canEditProducts = false;
+    renderProducts();
+    const row = screen.getByRole('link', { name: 'Four mixte' }).closest('tr')!;
+    expect(within(row).queryByTitle('Modifier')).not.toBeInTheDocument();
     expect(within(row).getByText('Restaurant')).toBeInTheDocument();
     expect(within(row).getByText('Hôtel')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Gérer les secteurs/ })).not.toBeInTheDocument();

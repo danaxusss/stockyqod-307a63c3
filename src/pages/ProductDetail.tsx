@@ -24,7 +24,7 @@ const KIOSK_CATEGORIES: Array<{ value: NonNullable<Product['kiosk_category']>; l
 export function ProductDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { canAccessStockLocation, canAccessBrand, canCreateQuote, getDisplayPrice, getPriceDisplayType, isAdmin: isAdminUser, isStock, companyId, currentUser } = useAuth();
+  const { canAccessStockLocation, canAccessBrand, canCreateQuote, getDisplayPrice, getPriceDisplayType, canEditProducts, companyId, currentUser } = useAuth();
   const { state, syncData, applyProductChanges } = useAppContext();
   const [product, setProduct] = useState<Product | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -275,7 +275,7 @@ export function ProductDetail() {
   };
 
   const updateKioskCategory = async (value: Product['kiosk_category']) => {
-    if (!product || !isStock) return;
+    if (!product || !canEditProducts) return;
     const previous = product.kiosk_category || null;
     setProduct(current => current ? { ...current, kiosk_category: value } : current);
     const { error: categoryError } = await supabase.from('products')
@@ -420,7 +420,7 @@ export function ProductDetail() {
               </p>
               <label className="mt-3 block max-w-xs">
                 <span className="mb-1 block text-[11px] font-medium text-muted-foreground">Type de produit pour le kiosque</span>
-                <select value={product.kiosk_category || ''} onChange={event => updateKioskCategory((event.target.value || null) as Product['kiosk_category'])} disabled={!isStock}
+                <select value={product.kiosk_category || ''} onChange={event => updateKioskCategory((event.target.value || null) as Product['kiosk_category'])} disabled={!canEditProducts}
                   className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground disabled:opacity-60">
                   <option value="">Non classé</option>
                   {KIOSK_CATEGORIES.map(category => <option key={category.value} value={category.value}>{category.label}</option>)}
@@ -428,14 +428,14 @@ export function ProductDetail() {
               </label>
               <div className="mt-3 max-w-xs">
                 <span className="mb-1 block text-[11px] font-medium text-muted-foreground">Secteur</span>
-                {isStock ? (
+                {canEditProducts ? (
                   <SectorPicker sectors={sectors} value={product.sector_ids || []} onChange={updateSectors}
                     onCreate={name => BusinessSectorsService.create(name)} size="md" />
                 ) : (
                   <p className="text-sm text-foreground">{sectorNames(product.sector_ids, sectors).join(', ') || 'Aucun secteur'}</p>
                 )}
               </div>
-              {isStock && (
+              {canEditProducts && (
                 <>
                   <input
                     ref={imageFileInputRef}
@@ -597,8 +597,8 @@ export function ProductDetail() {
                         className="p-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors">
                         <Download className="h-3.5 w-3.5" />
                       </a>
-                      {isAdminUser && (
-                        <button onClick={() => unlinkSheet(sheet.id)} className="p-1.5 bg-destructive/10 hover:bg-destructive/20 text-destructive rounded-lg transition-colors">
+                      {canEditProducts && (
+                        <button onClick={() => unlinkSheet(sheet.id)} title="Retirer le lien (la fiche reste dans la bibliothèque)" className="p-1.5 bg-destructive/10 hover:bg-destructive/20 text-destructive rounded-lg transition-colors">
                           <X className="h-3.5 w-3.5" />
                         </button>
                       )}
@@ -611,7 +611,7 @@ export function ProductDetail() {
             )}
 
             {/* Search existing sheets to link */}
-            {isAdminUser && (
+            {canEditProducts && (
               <div className="space-y-2">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />

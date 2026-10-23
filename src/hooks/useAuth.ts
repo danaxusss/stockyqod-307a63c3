@@ -12,6 +12,23 @@ import { deriveRoleFlags } from '../lib/permissions';
 // Create a custom event for auth state changes
 const AUTH_CHANGE_EVENT = 'auth-state-change';
 
+// The logged-in user is cached in localStorage, so a product-editing grant
+// made in User Management would otherwise only apply after the next login.
+// Re-read it once per session (shared by every useAuth instance).
+const productEditRefresh = new Map<string, Promise<boolean | null>>();
+function freshCanEditProducts(userId: string): Promise<boolean | null> {
+  if (!productEditRefresh.has(userId)) {
+    productEditRefresh.set(userId, (async () => {
+      const { data, error } = await supabase.rpc('get_app_user_by_id_safe', { p_id: userId });
+      const row = Array.isArray(data) ? (data[0] as { can_edit_products?: boolean } | undefined) : undefined;
+      // Before the migration the column is absent: keep the cached value.
+      if (error || !row || typeof row.can_edit_products !== 'boolean') return null;
+      return row.can_edit_products;
+    })().catch(() => null));
+  }
+  return productEditRefresh.get(userId)!;
+}
+
 // Global auth state manager
 class AuthStateManager {
   private listeners: Set<() => void> = new Set();
@@ -357,6 +374,22 @@ export function useAuth() {
     }
   }, [getPriceDisplayType]);
 
+  useEffect(() => {
+    const userId = currentUser?.id;
+    if (!userId) return;
+    let cancelled = false;
+    freshCanEditProducts(userId).then(fresh => {
+      if (cancelled || fresh === null) return;
+      setCurrentUser(current => {
+        if (!current || current.id !== userId || (current.can_edit_products === true) === fresh) return current;
+        const next = { ...current, can_edit_products: fresh };
+        localStorage.setItem('inventory_current_user', JSON.stringify(next));
+        return next;
+      });
+    });
+    return () => { cancelled = true; };
+  }, [currentUser?.id]);
+
   const isAdmin = role === 'admin';
   const isSuperAdmin = userPermissions?.isSuperAdmin ?? false;
   const isFacturation = userPermissions?.isFacturation ?? false;
@@ -367,6 +400,10 @@ export function useAuth() {
   const isPaie = userPermissions?.isPaie ?? false;
   // Stock management: super_admin, admin and managers.
   const isStock = isSuperAdmin || isAdmin || isManager;
+  // Editing anything about a product (details, kiosk type, sectors, images,
+  // photo and sheet links): stock roles, plus users granted "Peut modifier
+  // les produits". Deleting photos or products stays with isStock.
+  const canEditProducts = isStock || currentUser?.can_edit_products === true;
   const isTasks = userPermissions?.isTasks ?? false;
   const isTasksOnly = userPermissions?.isTasksOnly ?? false;
   const tasksRole = userPermissions?.tasksRole ?? null;
@@ -387,6 +424,7 @@ export function useAuth() {
     isJuniorSales,
     isPaie,
     isStock,
+    canEditProducts,
     isTasks,
     isTasksOnly,
     tasksRole,

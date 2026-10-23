@@ -28,6 +28,22 @@ const QUEUE_PAGE = 200;
  * Without a search provider, pasting (Ctrl+V) or dropping an image works too.
  */
 export default function ImageFinderPage() {
+  const { canEditProducts } = useAuth();
+  // Checked before mounting the finder, which starts (paid) searches right away.
+  if (!canEditProducts) {
+    return (
+      <div className="mx-auto flex min-h-[50vh] max-w-md flex-col items-center justify-center text-center">
+        <Images className="mb-3 h-8 w-8 text-muted-foreground/50" />
+        <h1 className="text-base font-semibold text-foreground">Accès réservé</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Ajouter des images aux produits demande l’autorisation « Peut modifier les produits ». Demandez-la à un administrateur.</p>
+        <Link to="/photos" className="mt-4 rounded-lg border border-border px-3 py-2 text-sm hover:bg-accent">Retour à la galerie</Link>
+      </div>
+    );
+  }
+  return <ImageFinder />;
+}
+
+function ImageFinder() {
   const { showToast } = useToast();
   const { companyId: adminCompanyId, currentUser } = useAuth();
   const { authenticatedUser } = useUserAuth();

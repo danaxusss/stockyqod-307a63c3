@@ -40,7 +40,7 @@ export default function ProductsPage() {
   const { state, applyProductChanges } = useAppContext();
   const { showToast } = useToast();
   const { addToCart } = useQuoteCart();
-  const { canCreateQuote, getPriceDisplayType, isStock } = useAuth();
+  const { canCreateQuote, getPriceDisplayType, isStock, canEditProducts } = useAuth();
   const { getOriginalName, getAllNames, getDisplayName } = useProductOverrides();
   const [searchQuery, setSearchQuery] = useState('');
   const [brandFilter, setBrandFilter] = useState('');
@@ -186,7 +186,7 @@ export default function ProductsPage() {
         buyprice: editForm.buyprice,
         reseller_price: editForm.reseller_price,
         provider: editForm.provider,
-        ...(isStock ? { kiosk_category: editForm.kiosk_category ?? null, sector_ids: editForm.sector_ids || [] } : {}),
+        ...(canEditProducts ? { kiosk_category: editForm.kiosk_category ?? null, sector_ids: editForm.sector_ids || [] } : {}),
       };
       const { error } = await supabase.from('products').update(values).eq('barcode', barcode);
       if (error) throw error;
@@ -307,7 +307,7 @@ export default function ProductsPage() {
               <p className="text-xs text-muted-foreground">{products.length} produit{products.length !== 1 ? 's' : ''}</p>
             </div>
           </div>
-          {isStock && (
+          {canEditProducts && (
             <div className="flex items-center gap-2">
               <button onClick={() => setManagingSectors(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-border rounded-lg hover:bg-accent">
                 <Briefcase className="h-3.5 w-3.5" />Gérer les secteurs
@@ -446,7 +446,7 @@ export default function ProductsPage() {
                     const kioskCategory = shownKioskCategory(product);
                     const rowSectors = shownSectors(product);
                     const isPending = !!pending[product.barcode];
-                    const editClassification = isStock && (bulkMode || isEditing);
+                    const editClassification = canEditProducts && (bulkMode || isEditing);
                     const isSelected = selected.has(product.barcode);
                     return (
                       <tr key={product.barcode} className={isPending ? 'bg-amber-500/5 hover:bg-amber-500/10' : 'hover:bg-accent/50'}>
@@ -601,9 +601,11 @@ export default function ProductsPage() {
                               <Link to={`/product/${encodeURIComponent(product.barcode)}`} className="p-1 text-muted-foreground hover:bg-accent rounded" title="Fiche produit">
                                 <Info className="h-3.5 w-3.5" />
                               </Link>
-                              <button onClick={() => startEdit(product)} disabled={bulkMode} className="p-1 text-primary hover:bg-primary/10 rounded disabled:opacity-30" title={bulkMode ? 'Indisponible en modification groupée' : 'Modifier'}>
-                                <Edit className="h-3.5 w-3.5" />
-                              </button>
+                              {canEditProducts && (
+                                <button onClick={() => startEdit(product)} disabled={bulkMode} className="p-1 text-primary hover:bg-primary/10 rounded disabled:opacity-30" title={bulkMode ? 'Indisponible en modification groupée' : 'Modifier'}>
+                                  <Edit className="h-3.5 w-3.5" />
+                                </button>
+                              )}
                               {canCreateQuote() && (
                                 <div className="flex items-center gap-1">
                                   <input
@@ -725,7 +727,7 @@ export default function ProductsPage() {
         );
       })(), document.body)}
 
-      {managingSectors && <SectorManagerDialog sectors={sectors} productCounts={sectorCounts} onClose={() => setManagingSectors(false)} />}
+      {managingSectors && <SectorManagerDialog sectors={sectors} productCounts={sectorCounts} canDelete={isStock} onClose={() => setManagingSectors(false)} />}
 
       {/* Stats */}
       {filtered.length > 0 && (

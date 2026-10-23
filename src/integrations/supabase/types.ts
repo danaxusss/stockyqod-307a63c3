@@ -79,6 +79,7 @@ export type Database = {
           allowed_brands: string[]
           allowed_stock_locations: string[]
           can_create_quote: boolean
+          can_edit_products: boolean
           created_at: string
           custom_seller_name: string
           id: string
@@ -92,6 +93,7 @@ export type Database = {
           allowed_brands?: string[]
           allowed_stock_locations?: string[]
           can_create_quote?: boolean
+          can_edit_products?: boolean
           created_at?: string
           custom_seller_name?: string
           id?: string
@@ -105,6 +107,7 @@ export type Database = {
           allowed_brands?: string[]
           allowed_stock_locations?: string[]
           can_create_quote?: boolean
+          can_edit_products?: boolean
           created_at?: string
           custom_seller_name?: string
           id?: string
@@ -570,6 +573,7 @@ export type Database = {
           allowed_brands: string[]
           allowed_stock_locations: string[]
           can_create_quote: boolean
+          can_edit_products: boolean
           created_at: string
           custom_seller_name: string
           id: string
@@ -585,6 +589,7 @@ export type Database = {
           allowed_brands: string[]
           allowed_stock_locations: string[]
           can_create_quote: boolean
+          can_edit_products: boolean
           created_at: string
           custom_seller_name: string
           id: string
@@ -600,6 +605,7 @@ export type Database = {
           allowed_brands: string[]
           allowed_stock_locations: string[]
           can_create_quote: boolean
+          can_edit_products: boolean
           created_at: string
           custom_seller_name: string
           id: string

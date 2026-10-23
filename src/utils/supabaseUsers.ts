@@ -11,6 +11,7 @@ type SafeAppUserRow = {
   cross_branch_read: boolean;
   company_id: string | null;
   can_create_quote: boolean;
+  can_edit_products?: boolean;
   allowed_stock_locations: string[];
   allowed_brands: string[];
   price_display_type: string;
@@ -62,6 +63,9 @@ export class SupabaseUsersService {
         phone: userData.phone || '',
         tasks_role: userData.tasks_role || null,
         tasks_only: userData.tasks_only || false,
+        // Only sent when granted, so creating users keeps working on a
+        // database that has not run the can_edit_products migration yet.
+        ...(userData.can_edit_products ? { can_edit_products: true } : {}),
       })
       .select('id, username, is_admin, is_superadmin, is_compta, new_role, cross_branch_read, company_id, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, phone, tasks_role, tasks_only, created_at, updated_at')
       .single();
@@ -70,7 +74,7 @@ export class SupabaseUsersService {
       if (error.code === '23505') throw new Error("Ce nom d'utilisateur existe déjà");
       throw new Error(error.message);
     }
-    return this.mapRow(data as SafeAppUserRow);
+    return { ...this.mapRow(data as SafeAppUserRow), can_edit_products: userData.can_edit_products === true };
   }
 
   static async getUserByUsername(username: string): Promise<AppUser | null> {
@@ -118,6 +122,7 @@ export class SupabaseUsersService {
     if (updates.phone !== undefined) updateData.phone = updates.phone;
     if (updates.tasks_role !== undefined) updateData.tasks_role = updates.tasks_role || null;
     if (updates.tasks_only !== undefined) updateData.tasks_only = updates.tasks_only || false;
+    if (updates.can_edit_products !== undefined) updateData.can_edit_products = updates.can_edit_products;
 
     const { data, error } = await supabase
       .from('app_users')
@@ -130,7 +135,8 @@ export class SupabaseUsersService {
       if (error.code === '23505') throw new Error("Ce nom d'utilisateur existe déjà");
       throw new Error(error.message);
     }
-    return this.mapRow(data as SafeAppUserRow);
+    const updated = this.mapRow(data as SafeAppUserRow);
+    return updates.can_edit_products !== undefined ? { ...updated, can_edit_products: updates.can_edit_products } : updated;
   }
 
   static async deleteUser(id: string): Promise<void> {
@@ -190,6 +196,7 @@ export class SupabaseUsersService {
       cross_branch_read: data.cross_branch_read || false,
       company_id: data.company_id || undefined,
       can_create_quote: data.can_create_quote,
+      can_edit_products: data.can_edit_products === true,
       allowed_stock_locations: data.allowed_stock_locations || [],
       allowed_brands: data.allowed_brands || [],
       price_display_type: (data.price_display_type || 'normal') as AppUser['price_display_type'],

@@ -227,6 +227,8 @@ export interface AppUser {
   cross_branch_read?: boolean;
   company_id?: string;
   can_create_quote: boolean;
+  /** Lets a user who is not admin/manager edit products (details, kiosk type, sectors, images). */
+  can_edit_products?: boolean;
   allowed_stock_locations: string[];
   allowed_brands: string[];
   price_display_type: 'normal' | 'reseller' | 'buy' | 'calculated';
@@ -248,6 +250,7 @@ export interface CreateAppUserRequest {
   cross_branch_read?: boolean;
   company_id?: string;
   can_create_quote?: boolean;
+  can_edit_products?: boolean;
   allowed_stock_locations?: string[];
   allowed_brands?: string[];
   price_display_type?: 'normal' | 'reseller' | 'buy' | 'calculated';
@@ -267,6 +270,7 @@ export interface UpdateAppUserRequest {
   cross_branch_read?: boolean;
   company_id?: string;
   can_create_quote?: boolean;
+  can_edit_products?: boolean;
   allowed_stock_locations?: string[];
   allowed_brands?: string[];
   price_display_type?: 'normal' | 'reseller' | 'buy' | 'calculated';

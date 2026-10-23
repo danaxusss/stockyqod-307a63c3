@@ -15,11 +15,12 @@ const product = (barcode: string, name: string, brand: string, image: string | n
 
 const appState = vi.hoisted(() => ({ products: [] as Product[] }));
 const showToast = vi.hoisted(() => vi.fn());
+const auth = vi.hoisted(() => ({ canEditProducts: true }));
 const syncData = vi.hoisted(() => vi.fn());
 
 vi.mock('../context/AppContext', () => ({ useAppContext: () => ({ state: appState, syncData }) }));
 vi.mock('../context/ToastContext', () => ({ useToast: () => ({ showToast }) }));
-vi.mock('../hooks/useAuth', () => ({ useAuth: () => ({ companyId: 'company-1', currentUser: { username: 'stock' } }) }));
+vi.mock('../hooks/useAuth', () => ({ useAuth: () => ({ companyId: 'company-1', currentUser: { username: 'stock' }, canEditProducts: auth.canEditProducts }) }));
 vi.mock('../hooks/useUserAuth', () => ({ useUserAuth: () => ({ authenticatedUser: null }) }));
 vi.mock('../utils/productImages', () => ({
   resolveProductImageUrl: (image: string | null) => (image ? `https://cdn.test/${image}` : null),
@@ -39,7 +40,7 @@ const RESULT = {
   width: 800, height: 800, title: 'Perceuse Bosch GSB', source: 'shop.example', page: 'https://shop.example/p/drill',
 };
 
-afterEach(() => { vi.clearAllMocks(); });
+afterEach(() => { vi.clearAllMocks(); auth.canEditProducts = true; });
 
 function renderFinder() {
   return render(<MemoryRouter><ImageFinderPage /></MemoryRouter>);
@@ -127,5 +128,14 @@ describe('ImageFinderPage', () => {
     renderFinder();
     expect(await screen.findByText('Recherche intégrée non configurée')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Google Images/ })).toHaveAttribute('href', expect.stringContaining('tbm=isch'));
+  });
+
+  it('is reserved to users allowed to edit products, without starting any search', async () => {
+    auth.canEditProducts = false;
+    appState.products = [product('611000000001', 'Perceuse GSB 13', 'Bosch')];
+    renderFinder();
+    expect(screen.getByText('Accès réservé')).toBeInTheDocument();
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(search).not.toHaveBeenCalled();
   });
 });

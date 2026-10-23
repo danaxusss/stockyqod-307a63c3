@@ -39,6 +39,7 @@ interface UserFormData {
   is_compta: boolean;
   company_id: string;
   can_create_quote: boolean;
+  can_edit_products: boolean;
   allowed_stock_locations: string[];
   allowed_brands: string[];
   price_display_type: string;
@@ -58,6 +59,7 @@ const initialFormData: UserFormData = {
   is_compta: false,
   company_id: '',
   can_create_quote: true,
+  can_edit_products: false,
   allowed_stock_locations: [],
   allowed_brands: [],
   price_display_type: 'normal',
@@ -66,6 +68,9 @@ const initialFormData: UserFormData = {
   tasks_role: '',
   tasks_only: false
 };
+
+// These roles can always edit products; the per-user option is for everyone else.
+const ROLES_EDITING_PRODUCTS: AppUserRole[] = ['super_admin', 'admin', 'manager'];
 
 export default function UserManagementPage() {
   const { showToast } = useToast();
@@ -193,7 +198,8 @@ export default function UserManagementPage() {
         custom_seller_name: formData.custom_seller_name.trim(),
         phone: formData.phone.trim(),
         tasks_role: formData.tasks_only ? (formData.tasks_role || 'technician') : (formData.tasks_role || null),
-        tasks_only: formData.tasks_only
+        tasks_only: formData.tasks_only,
+        can_edit_products: !formData.tasks_only && formData.can_edit_products,
       };
 
       await SupabaseUsersService.createUser(userData);
@@ -222,6 +228,7 @@ export default function UserManagementPage() {
       is_compta: user.is_compta || false,
       company_id: user.company_id || '',
       can_create_quote: user.can_create_quote,
+      can_edit_products: user.can_edit_products === true,
       allowed_stock_locations: user.allowed_stock_locations,
       allowed_brands: user.allowed_brands || [],
       price_display_type: user.price_display_type,
@@ -265,6 +272,10 @@ export default function UserManagementPage() {
         tasks_only: formData.tasks_only
       };
       if (formData.pin) updates.pin = formData.pin;
+      // Only written when changed, so editing users keeps working on a
+      // database that has not run the can_edit_products migration yet.
+      const canEditProducts = !formData.tasks_only && formData.can_edit_products;
+      if (canEditProducts !== (editingUser.can_edit_products === true)) updates.can_edit_products = canEditProducts;
 
       await SupabaseUsersService.updateUser(editingUser.id, updates);
       showToast({ type: 'success', title: 'Utilisateur modifié', message: `${formData.username} mis à jour` });
@@ -593,6 +604,23 @@ export default function UserManagementPage() {
                       <div>
                         <span className="text-sm font-medium text-foreground">Peut créer des devis</span>
                         <p className="text-[10px] text-muted-foreground">Accès au panier et à la création de devis</p>
+                      </div>
+                    </label>
+                  )}
+
+                  {!formData.tasks_only && (
+                    <label className={`flex items-center space-x-3 ${ROLES_EDITING_PRODUCTS.includes(formData.new_role) ? 'opacity-70' : 'cursor-pointer'}`}>
+                      <input type="checkbox"
+                        checked={ROLES_EDITING_PRODUCTS.includes(formData.new_role) || formData.can_edit_products}
+                        disabled={ROLES_EDITING_PRODUCTS.includes(formData.new_role)}
+                        onChange={e => handleInputChange('can_edit_products', e.target.checked)} className="w-4 h-4 rounded accent-primary" />
+                      <div>
+                        <span className="text-sm font-medium text-foreground">Peut modifier les produits</span>
+                        <p className="text-[10px] text-muted-foreground">
+                          {ROLES_EDITING_PRODUCTS.includes(formData.new_role)
+                            ? 'Toujours autorisé pour ce rôle'
+                            : 'Nom, prix, fournisseur, type kiosque, secteurs et images des produits'}
+                        </p>
                       </div>
                     </label>
                   )}

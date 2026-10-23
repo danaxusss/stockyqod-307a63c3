@@ -11,9 +11,11 @@ type Draft = { name: string; name_en: string; name_ar: string };
 const draftOf = (sector: BusinessSector): Draft => ({ name: sector.name, name_en: sector.name_en || '', name_ar: sector.name_ar || '' });
 
 /** Add, rename, translate (for the kiosk) and delete business sectors. */
-export function SectorManagerDialog({ sectors, productCounts, onClose }: {
+export function SectorManagerDialog({ sectors, productCounts, canDelete = true, onClose }: {
   sectors: BusinessSector[];
   productCounts: Record<string, number>;
+  /** Deleting is kept for admins/managers; others may only add and rename. */
+  canDelete?: boolean;
   onClose: () => void;
 }) {
   const { showToast } = useToast();
@@ -107,7 +109,7 @@ export function SectorManagerDialog({ sectors, productCounts, onClose }: {
                   <span className="text-xs text-muted-foreground sm:text-right">{productCounts[sector.id] || 0} produit(s)</span>
                   <div className="flex justify-end gap-1">
                     <button onClick={() => save(sector)} disabled={!changed(sector) || busy} aria-label={`Enregistrer ${sector.name}`} className="rounded-md p-1.5 text-primary hover:bg-primary/10 disabled:opacity-30">{busy ? <Loader className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}</button>
-                    <button onClick={() => remove(sector)} disabled={busy} aria-label={`Supprimer ${sector.name}`} className="rounded-md p-1.5 text-destructive hover:bg-destructive/10 disabled:opacity-30"><Trash2 className="h-4 w-4" /></button>
+                    {canDelete && <button onClick={() => remove(sector)} disabled={busy} aria-label={`Supprimer ${sector.name}`} className="rounded-md p-1.5 text-destructive hover:bg-destructive/10 disabled:opacity-30"><Trash2 className="h-4 w-4" /></button>}
                   </div>
                 </div>
               );
