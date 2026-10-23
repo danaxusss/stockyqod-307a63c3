@@ -41,6 +41,8 @@ export interface KioskPublicProfile {
   customer_languages: KioskLanguage[];
   allow_deferred_contact: boolean;
   success_screen_seconds: number;
+  /** Products per row on a tablet; 0 = automatic. */
+  grid_columns: number;
   show_prices: boolean;
   price_mode: KioskPriceMode;
   require_email: boolean;
@@ -73,6 +75,7 @@ export interface KioskAdminProfile {
   customer_languages: KioskLanguage[];
   allow_deferred_contact: boolean;
   success_screen_seconds: number;
+  grid_columns: number;
   show_prices: boolean;
   price_mode: KioskPriceMode;
   require_email: boolean;

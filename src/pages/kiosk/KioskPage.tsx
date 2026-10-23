@@ -49,7 +49,7 @@ const copy = {
     productsUnavailable: 'Un ou plusieurs produits ne sont plus disponibles. Retirez-les puis renvoyez la demande.',
     genericError: 'Une erreur est survenue. Réessayez ou demandez à un conseiller.',
     temporarilyUnavailable: 'Le kiosque est momentanément indisponible. Nouvelle tentative automatique…',
-    featured: 'Sélection', featuredTitle: 'Notre sélection', remove: 'Retirer', seconds: 's', language: 'Langue',
+    featured: 'Sélection', remove: 'Retirer', seconds: 's', language: 'Langue',
   },
   en: {
     start: 'Start', home: 'Home', details: 'Your details', name: 'Full name', phone: 'Phone', email: 'Email',
@@ -74,7 +74,7 @@ const copy = {
     productsUnavailable: 'One or more products are no longer available. Remove them and send the request again.',
     genericError: 'Something went wrong. Try again or ask a sales representative.',
     temporarilyUnavailable: 'The kiosk is temporarily unavailable. Retrying automatically…',
-    featured: 'Featured', featuredTitle: 'Our selection', remove: 'Remove', seconds: 's', language: 'Language',
+    featured: 'Featured', remove: 'Remove', seconds: 's', language: 'Language',
   },
   ar: {
     start: 'ابدأ', home: 'الرئيسية', details: 'معلوماتك', name: 'الاسم الكامل', phone: 'الهاتف', email: 'البريد الإلكتروني',
@@ -99,7 +99,7 @@ const copy = {
     productsUnavailable: 'منتج واحد أو أكثر لم يعد متوفراً. احذفه ثم أعد إرسال الطلب.',
     genericError: 'حدث خطأ. أعد المحاولة أو اطلب مساعدة مستشار المبيعات.',
     temporarilyUnavailable: 'الكشك غير متاح مؤقتاً. ستتم إعادة المحاولة تلقائياً…',
-    featured: 'مختارات', featuredTitle: 'مختاراتنا', remove: 'حذف', seconds: 'ث', language: 'اللغة',
+    featured: 'مختارات', remove: 'حذف', seconds: 'ث', language: 'اللغة',
   },
 } as const;
 
@@ -109,6 +109,16 @@ const fmt = (value: number) => new Intl.NumberFormat('fr-MA', { minimumFractionD
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const PHONE_RE = /^\+?[0-9\s().-]{7,24}$/;
 const PAGE_SIZE = 48;
+// Products per row on a landscape tablet (lg and up), scaled down on smaller
+// screens. 0 keeps the automatic layout that grows with the screen width.
+const GRID_CLASSES: Record<number, string> = {
+  0: 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6',
+  2: 'grid-cols-1 sm:grid-cols-2',
+  3: 'grid-cols-2 lg:grid-cols-3',
+  4: 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4',
+  5: 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-5',
+  6: 'grid-cols-2 sm:grid-cols-4 lg:grid-cols-6',
+};
 // While the welcome screen is idle, pick up settings changed from the admin
 // page (disabled kiosk, renewed link, prices, colours) without a reload.
 const PROFILE_REFRESH_MS = 5 * 60_000;
@@ -477,11 +487,6 @@ export default function KioskPage() {
     setFeaturedOnly(featuredSelection);
   };
 
-  const openFeatured = (product: KioskProduct) => {
-    setStage('catalog');
-    setSelectedProduct(product);
-  };
-
   const requestFullscreen = () => document.documentElement.requestFullscreen?.().catch(() => {});
 
   if (loading) return <KioskCentered><Loader2 className="h-10 w-10 animate-spin text-slate-400" /><p>{t.loading}</p></KioskCentered>;
@@ -525,14 +530,6 @@ export default function KioskPage() {
           <button onClick={() => setStage('catalog')} className="mt-12 min-h-16 min-w-64 rounded-2xl px-10 text-xl font-bold shadow-xl active:scale-[0.98] transition" style={{ backgroundColor: accent, color: onAccent }}>
             {t.start} <ChevronRight className="inline h-6 w-6 ms-2 rtl:rotate-180" />
           </button>
-          {featured.length > 0 && (
-            <section className="mt-12 w-full max-w-5xl">
-              <h2 className="mb-3 flex items-center justify-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-500"><Star className="h-4 w-4" />{t.featuredTitle}</h2>
-              <div className="overflow-x-auto pb-2"><div className="mx-auto flex w-max gap-3">
-                {featured.slice(0, 12).map(product => <button key={product.barcode} onClick={() => openFeatured(product)} className="w-36 shrink-0 rounded-2xl border border-slate-200 bg-white p-2 text-start shadow-sm active:scale-[0.98]"><ProductImage image={product.image} name={product.name} placeholderLogo={profile.logo_url} /><p className="mt-2 line-clamp-2 text-sm font-bold leading-snug">{product.name}</p></button>)}
-              </div></div>
-            </section>
-          )}
         </main>
       )}
 
@@ -579,7 +576,7 @@ export default function KioskPage() {
             {!catalogLoading && !catalogError && products.length === 0 ? (
               <div className="rounded-3xl border-2 border-dashed border-slate-200 bg-white py-24 text-center"><Search className="mx-auto h-12 w-12 text-slate-300" /><p className="mt-4 text-xl font-semibold text-slate-500">{t.noProducts}</p></div>
             ) : (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+              <div data-testid="kiosk-grid" className={`grid gap-3 ${GRID_CLASSES[profile.grid_columns] || GRID_CLASSES[0]}`}>
                 {products.map(product => <ProductCard key={product.barcode} product={product} quantity={cart[product.barcode]?.quantity || 0} showPrice={profile.show_prices} showAvailability={profile.show_availability} placeholderLogo={profile.logo_url} t={t} accent={accent} onOpen={() => setSelectedProduct(product)} onChange={delta => changeQuantity(product, delta)} />)}
               </div>
             )}

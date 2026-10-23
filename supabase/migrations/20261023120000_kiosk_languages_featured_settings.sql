@@ -1,10 +1,13 @@
 -- Kiosk quick wins: customer language choice, configurable confirmation
--- flow, and featured products returned by the public catalogue.
+-- flow and product grid, and featured products returned by the public
+-- catalogue.
 
 ALTER TABLE public.kiosk_profiles
   ADD COLUMN IF NOT EXISTS customer_languages text[] NOT NULL DEFAULT '{fr,en,ar}',
   ADD COLUMN IF NOT EXISTS allow_deferred_contact boolean NOT NULL DEFAULT true,
-  ADD COLUMN IF NOT EXISTS success_screen_seconds integer NOT NULL DEFAULT 20;
+  ADD COLUMN IF NOT EXISTS success_screen_seconds integer NOT NULL DEFAULT 20,
+  -- Products per row on a tablet; 0 keeps the automatic responsive layout.
+  ADD COLUMN IF NOT EXISTS grid_columns integer NOT NULL DEFAULT 0;
 
 DO $$
 BEGIN
@@ -25,6 +28,15 @@ BEGIN
     ALTER TABLE public.kiosk_profiles
       ADD CONSTRAINT kiosk_profiles_success_screen_seconds_check
       CHECK (success_screen_seconds BETWEEN 5 AND 120);
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'public.kiosk_profiles'::regclass
+      AND conname = 'kiosk_profiles_grid_columns_check'
+  ) THEN
+    ALTER TABLE public.kiosk_profiles
+      ADD CONSTRAINT kiosk_profiles_grid_columns_check
+      CHECK (grid_columns = 0 OR grid_columns BETWEEN 2 AND 6);
   END IF;
 END;
 $$;

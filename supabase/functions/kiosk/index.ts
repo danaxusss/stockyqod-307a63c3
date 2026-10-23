@@ -53,6 +53,12 @@ function customerLanguages(value: unknown, defaultLanguage: string): string[] {
   return Array.from(new Set([defaultLanguage, ...chosen]));
 }
 
+/** Products per row on the tablet: 2–6, or 0 for the automatic layout. */
+function gridColumns(value: unknown): number {
+  const columns = Math.floor(Number(value) || 0);
+  return columns >= 2 && columns <= 6 ? columns : 0;
+}
+
 function isCompanyReviewer(user: StaffUser): boolean {
   return user.is_superadmin || user.is_admin || COMPANY_REVIEW_ROLES.has(user.new_role || "");
 }
@@ -87,6 +93,7 @@ function publicProfile(row: Record<string, unknown>) {
     customer_languages: customerLanguages(row.customer_languages, String(row.language || "fr")),
     allow_deferred_contact: row.allow_deferred_contact !== false,
     success_screen_seconds: Number(row.success_screen_seconds) || 20,
+    grid_columns: gridColumns(row.grid_columns),
     show_prices: row.show_prices,
     price_mode: row.price_mode,
     require_email: row.require_email,
@@ -327,6 +334,7 @@ serve(async (req) => {
         customer_languages: customerLanguages(input.customer_languages, language),
         allow_deferred_contact: input.allow_deferred_contact !== false,
         success_screen_seconds: Math.min(120, Math.max(5, Math.floor(Number(input.success_screen_seconds) || 20))),
+        grid_columns: gridColumns(input.grid_columns),
         show_prices: input.show_prices !== false,
         price_mode: priceMode,
         require_email: input.require_email === true,

@@ -34,7 +34,7 @@ function mockKiosk(overrides: Record<string, unknown> = {}, featured: typeof FEA
       id: 'profile-1', name: 'Accueil', company_name: 'Stocky Test',
       greeting_title: 'Bienvenue chez Stocky', greeting_message: 'Préparez votre demande.',
       logo_url: null, accent_color: '#2563eb', language: 'fr', customer_languages: ['fr', 'en'],
-      allow_deferred_contact: true, success_screen_seconds: 20, show_prices: true,
+      allow_deferred_contact: true, success_screen_seconds: 20, grid_columns: 0, show_prices: true,
       price_mode: 'retail', require_email: true, show_availability: true,
       inactivity_timeout_seconds: 180,
       ...overrides,
@@ -224,13 +224,27 @@ describe('KioskPage', () => {
     expect(screen.getByRole('button', { name: /Commencer/i })).toBeInTheDocument();
   });
 
-  it('shows featured products on the welcome screen and opens them in the catalogue', async () => {
+  it('keeps featured products off the welcome screen and offers them as a catalogue filter', async () => {
     mockKiosk({}, [FEATURED]);
     renderKiosk();
-    expect(await screen.findByText('Notre sélection')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /Aspirateur vedette/ }));
-    expect(await screen.findByRole('heading', { level: 2, name: 'Aspirateur vedette' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /★ Sélection/ })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /Commencer/i })).toBeInTheDocument();
+    await waitFor(() => expect(service.listPublicProducts).toHaveBeenCalledWith(TOKEN, expect.objectContaining({ featuredOnly: true })));
+    expect(screen.queryByText('Aspirateur vedette')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Commencer/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /★ Sélection/ }));
+    await waitFor(() => expect(service.listPublicProducts).toHaveBeenLastCalledWith(
+      TOKEN, expect.objectContaining({ featuredOnly: true, page: 0, pageSize: 48 }),
+    ));
+  });
+
+  it('lays out the catalogue with the configured number of products per row', async () => {
+    mockKiosk({ grid_columns: 3 });
+    renderKiosk();
+    fireEvent.click(await screen.findByRole('button', { name: /Commencer/i }));
+    expect(await screen.findByText('Perceuse de test')).toBeInTheDocument();
+    expect(screen.getByTestId('kiosk-grid')).toHaveClass('lg:grid-cols-3');
+    expect(screen.getByTestId('kiosk-grid')).not.toHaveClass('xl:grid-cols-5');
   });
 
   it('keeps the selection through an accidental reload', async () => {
