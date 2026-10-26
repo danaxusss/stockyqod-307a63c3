@@ -1,8 +1,8 @@
 // @ts-nocheck
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate, Link } from 'react-router-dom';
-import { Package, Search, Edit, Check, X, Loader, SortAsc, SortDesc, ChevronLeft, ChevronRight, Filter, Paperclip, ShoppingCart, Info, Eye, Building, Tag, Briefcase, ListChecks, Save, CheckSquare, Square, CheckCircle2, AlertTriangle, RotateCcw, SlidersHorizontal } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Package, Search, Edit, Check, X, Loader, SortAsc, SortDesc, ChevronLeft, ChevronRight, Filter, ShoppingCart, Info, Eye, Building, Tag, Briefcase, ListChecks, Save, CheckSquare, Square, CheckCircle2, AlertTriangle, RotateCcw, SlidersHorizontal, ChevronDown, ChevronUp } from 'lucide-react';
 import { Product, StockLocation } from '../types';
 import { useAppContext } from '../context/AppContext';
 import { StockLocationsService } from '../utils/supabaseStockLocations';
@@ -17,6 +17,9 @@ import { useIsMobile } from '../hooks/use-mobile';
 import { SectorPicker } from '../components/SectorPicker';
 import { SectorManagerDialog } from '../components/SectorManagerDialog';
 import { BusinessSectorsService, sectorNames, useBusinessSectors } from '../utils/businessSectors';
+import { TechnicalSheetButton } from '../components/TechnicalSheetButton';
+import { TechnicalSheetFinder } from '../components/TechnicalSheetFinder';
+import { loadSheetLinks, type SheetLink } from '../utils/technicalSheets';
 import { effectiveChange, saveProductClassifications, type ClassificationChange } from '../utils/productClassification';
 
 const PRODUCTS_PER_PAGE = 20;
@@ -52,7 +55,6 @@ const kioskCategoryLabel = (value?: Product['kiosk_category']) =>
   KIOSK_CATEGORIES.find(category => category.value === value)?.label || 'Non classé';
 
 export default function ProductsPage() {
-  const navigate = useNavigate();
   const { state, applyProductChanges } = useAppContext();
   const { showToast } = useToast();
   const { addToCart } = useQuoteCart();
@@ -67,6 +69,8 @@ export default function ProductsPage() {
   // Phones get product cards instead of the wide table, and collapsed filters.
   const isMobile = useIsMobile();
   const [showFilters, setShowFilters] = useState(false);
+  // Phones: the bulk bar can fold to one line so it hides less of the list.
+  const [bulkBarOpen, setBulkBarOpen] = useState(true);
   // Bulk mode: kiosk type and sectors become editable on every row. Changes
   // are saved automatically shortly after the last edit ("Enregistrer" saves
   // at once), and whatever is left is saved when leaving bulk mode or the page.
@@ -88,7 +92,8 @@ export default function ProductsPage() {
   const [editingBarcode, setEditingBarcode] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<Product>>({});
   const [isSaving, setIsSaving] = useState(false);
-  const [sheetCounts, setSheetCounts] = useState<Record<string, number>>({});
+  const [sheetLinks, setSheetLinks] = useState<Record<string, SheetLink[]>>({});
+  const [sheetFinderProduct, setSheetFinderProduct] = useState<Product | null>(null);
   const [qtyMap, setQtyMap] = useState<Record<string, number>>({});
   const [stockLocations, setStockLocations] = useState<StockLocation[]>([]);
   const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
@@ -106,20 +111,9 @@ export default function ProductsPage() {
     };
   }, [quickViewProduct]);
 
-  // Technical-sheet badges remain useful; gallery links are intentionally not
-  // repeated here now that the canonical product image is shown in the first column.
+  // Linked technical sheets, shown as the sheet icon in each row's actions.
   useEffect(() => {
-    const fetchCounts = async () => {
-      try {
-        const { data: sheetData } = await supabase.from('technical_sheet_products').select('product_barcode');
-        if (sheetData) {
-          const counts: Record<string, number> = {};
-          sheetData.forEach((row: any) => { counts[row.product_barcode] = (counts[row.product_barcode] || 0) + 1; });
-          setSheetCounts(counts);
-        }
-      } catch { /* ignore */ }
-    };
-    fetchCounts();
+    loadSheetLinks().then(setSheetLinks).catch(() => { /* the icon falls back to search */ });
   }, []);
 
 
@@ -282,6 +276,9 @@ export default function ProductsPage() {
     return next;
   });
 
+  // Re-open a folded bar when a selection starts, so the actions are at hand.
+  useEffect(() => { if (selected.size === 1) setBulkBarOpen(true); }, [selected.size]);
+
   const startBulk = () => { cancelEdit(); setBulkError(''); setBulkSavedCount(0); setBulkMode(true); };
 
   /**
@@ -402,7 +399,8 @@ export default function ProductsPage() {
   };
 
   // Touch targets are larger on phones (md:… restores the compact desktop size).
-  const renderActions = (product: Product, isEditing: boolean) => isEditing ? (
+  // compact (phone cards): no 👁/ⓘ, the photo opens the quick view and the name the product sheet.
+  const renderActions = (product: Product, isEditing: boolean, compact = false) => isEditing ? (
     <div className="flex items-center space-x-1">
       <button onClick={() => saveEdit(product.barcode)} disabled={isSaving} aria-label="Enregistrer"
         className="p-2 md:p-1 text-emerald-500 hover:bg-emerald-500/10 rounded">
@@ -413,13 +411,24 @@ export default function ProductsPage() {
       </button>
     </div>
   ) : (
-    <div className="flex items-center space-x-1">
-      <button onClick={() => setQuickViewProduct(product)} className="p-2 md:p-1 text-muted-foreground hover:bg-accent rounded" title="Aperçu rapide">
-        <Eye className="h-4 w-4 md:h-3.5 md:w-3.5" />
-      </button>
-      <Link to={`/product/${encodeURIComponent(product.barcode)}`} className="p-2 md:p-1 text-muted-foreground hover:bg-accent rounded" title="Fiche produit">
-        <Info className="h-4 w-4 md:h-3.5 md:w-3.5" />
-      </Link>
+    <div className="flex shrink-0 items-center space-x-1">
+      {!compact && (
+        <>
+          <button onClick={() => setQuickViewProduct(product)} className="p-2 md:p-1 text-muted-foreground hover:bg-accent rounded" title="Aperçu rapide">
+            <Eye className="h-4 w-4 md:h-3.5 md:w-3.5" />
+          </button>
+          <Link to={`/product/${encodeURIComponent(product.barcode)}`} className="p-2 md:p-1 text-muted-foreground hover:bg-accent rounded" title="Fiche produit">
+            <Info className="h-4 w-4 md:h-3.5 md:w-3.5" />
+          </Link>
+        </>
+      )}
+      <TechnicalSheetButton
+        sheets={sheetLinks[product.barcode] || []}
+        canSearch={canEditProducts}
+        onSearch={() => setSheetFinderProduct(product)}
+        className="p-2 md:p-1"
+        iconClassName="h-4 w-4 md:h-3.5 md:w-3.5"
+      />
       {canEditProducts && (
         <button onClick={() => startEdit(product)} disabled={bulkMode} className="p-2 md:p-1 text-primary hover:bg-primary/10 rounded disabled:opacity-30" title={bulkMode ? 'Indisponible en modification groupée' : 'Modifier'}>
           <Edit className="h-4 w-4 md:h-3.5 md:w-3.5" />
@@ -593,18 +602,31 @@ export default function ProductsPage() {
                               <label className="text-[10px] text-muted-foreground">Fournisseur<input type="text" value={editForm.provider || ''} onChange={e => setEditForm(f => ({ ...f, provider: e.target.value }))} className="mt-0.5 w-full rounded border border-input bg-background px-2 py-1.5 text-sm text-foreground" /></label>
                             </div>
                           ) : (
-                            <p className="mt-1 text-sm"><span className="font-semibold text-foreground">{formatCurrency(product.price)}</span> <span className="text-[11px] text-muted-foreground">· achat {formatCurrency(product.buyprice)}</span></p>
+                            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                              <span className="text-sm font-semibold text-foreground">{formatCurrency(product.price)}</span>
+                              <span className="text-[11px] text-muted-foreground">achat {formatCurrency(product.buyprice)}</span>
+                              {renderStock(product)}
+                            </div>
                           )}
                         </div>
                       </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        {renderKioskType(product, isEditing, editClassification, kioskCategory)}
-                        {renderSectors(product, isEditing, editClassification, rowSectors)}
-                      </div>
-                      <div className="mt-2 flex items-center justify-between gap-2">
-                        {renderStock(product)}
-                        {renderActions(product, isEditing)}
-                      </div>
+                      {editClassification ? (
+                        <>
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            {renderKioskType(product, isEditing, editClassification, kioskCategory)}
+                            {renderSectors(product, isEditing, editClassification, rowSectors)}
+                          </div>
+                          {isEditing && <div className="mt-2 flex justify-end">{renderActions(product, true, true)}</div>}
+                        </>
+                      ) : (
+                        <div className="mt-2 flex items-center gap-2">
+                          <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
+                            {renderKioskType(product, false, false, kioskCategory)}
+                            {renderSectors(product, false, false, rowSectors)}
+                          </div>
+                          {!bulkMode && renderActions(product, false, true)}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -644,7 +666,6 @@ export default function ProductsPage() {
                 <tbody className="divide-y divide-border">
                   {currentProducts.map(product => {
                     const isEditing = editingBarcode === product.barcode;
-                    const hasSheets = (sheetCounts[product.barcode] || 0) > 0;
                     const kioskCategory = shownKioskCategory(product);
                     const rowSectors = shownSectors(product);
                     const isPending = !!pending[product.barcode];
@@ -679,21 +700,13 @@ export default function ProductsPage() {
                             <input type="text" value={editForm.name || ''} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
                               className="w-full px-2 py-0.5 text-xs border border-input rounded bg-background text-foreground" />
                           ) : (
-                            <div className="flex items-center gap-1.5">
-                              <Link
-                                to={`/product/${encodeURIComponent(product.barcode)}`}
-                                className="text-xs font-medium text-foreground hover:text-primary hover:underline transition-colors"
-                                title="Voir la fiche produit"
-                              >
-                                {product.name}
-                              </Link>
-                              {hasSheets && (
-                                <button onClick={() => navigate('/sheets')} title={`${sheetCounts[product.barcode]} fiche(s) technique(s)`}
-                                  className="p-0.5 hover:bg-primary/10 rounded transition-colors">
-                                  <Paperclip className="h-3 w-3 text-primary shrink-0" />
-                                </button>
-                              )}
-                            </div>
+                            <Link
+                              to={`/product/${encodeURIComponent(product.barcode)}`}
+                              className="text-xs font-medium text-foreground hover:text-primary hover:underline transition-colors"
+                              title="Voir la fiche produit"
+                            >
+                              {product.name}
+                            </Link>
                           )}
                         </td>
                         <td className="px-3 py-2 text-xs text-foreground">
@@ -767,6 +780,19 @@ export default function ProductsPage() {
           </>
         )}
       </div>
+
+      {sheetFinderProduct && (
+        <TechnicalSheetFinder
+          product={sheetFinderProduct}
+          linkedSheetIds={(sheetLinks[sheetFinderProduct.barcode] || []).map(sheet => sheet.id)}
+          onLinked={sheet => setSheetLinks(links => {
+            const current = links[sheetFinderProduct.barcode] || [];
+            if (current.some(linked => linked.id === sheet.id)) return links;
+            return { ...links, [sheetFinderProduct.barcode]: [...current, { id: sheet.id, title: sheet.title, file_url: sheet.file_url }] };
+          })}
+          onClose={() => setSheetFinderProduct(null)}
+        />
+      )}
 
       {quickViewProduct && createPortal((() => {
         const quickTotalStock = Object.values(quickViewProduct.stock_levels || {}).reduce((sum, value) => sum + (Number(value) || 0), 0);
@@ -851,6 +877,13 @@ export default function ProductsPage() {
         <div role="region" aria-label="Modification groupée" className="fixed inset-x-2 bottom-[4.5rem] z-40 mx-auto max-w-5xl rounded-xl border border-border bg-card/95 p-2.5 text-xs shadow-2xl backdrop-blur sm:inset-x-3 sm:bottom-3 sm:right-20">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
             <span className="font-medium text-foreground">{selected.size} sélectionné(s)</span>
+            {isMobile && (
+              <button onClick={() => setBulkBarOpen(open => !open)} aria-expanded={bulkBarOpen} aria-label={bulkBarOpen ? 'Réduire la barre' : 'Afficher les actions'}
+                className="rounded-md border border-border p-1 text-muted-foreground">
+                {bulkBarOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+              </button>
+            )}
+            {(!isMobile || bulkBarOpen) && <>
             {filtered.length > selected.size && (
               <button onClick={() => setSelected(new Set(filtered.map(product => product.barcode)))} className="text-primary hover:underline">
                 Sélectionner les {filtered.length} produits filtrés
@@ -879,7 +912,8 @@ export default function ProductsPage() {
               {sectors.map(sector => <option key={sector.id} value={sector.id}>{sector.name}</option>)}
             </select>
             </div>
-            <div className="ml-auto flex w-full items-center justify-end gap-2 sm:w-auto" aria-live="polite">
+            </>}
+            <div className={`ml-auto flex items-center justify-end gap-2 sm:w-auto ${isMobile && bulkBarOpen ? 'w-full' : ''}`} aria-live="polite">
               {bulkError ? (
                 <>
                   <span className="inline-flex items-center gap-1 font-medium text-destructive"><AlertTriangle className="h-3.5 w-3.5" />{bulkError}</span>
@@ -890,14 +924,14 @@ export default function ProductsPage() {
               ) : pendingCount ? (
                 <span className="font-medium text-amber-600">{pendingCount} <span className="sm:hidden">en attente…</span><span className="hidden sm:inline">produit(s) en attente d’enregistrement…</span></span>
               ) : bulkSavedCount ? (
-                <span className="inline-flex items-center gap-1 text-emerald-600"><CheckCircle2 className="h-3.5 w-3.5" />Modifications enregistrées</span>
+                <span className="inline-flex items-center gap-1 text-emerald-600"><CheckCircle2 className="h-3.5 w-3.5" /><span className="sm:hidden">Enregistré</span><span className="hidden sm:inline">Modifications enregistrées</span></span>
               ) : (
-                <span className="text-muted-foreground">Enregistrement automatique</span>
+                <span className="text-muted-foreground"><span className="sm:hidden">Auto</span><span className="hidden sm:inline">Enregistrement automatique</span></span>
               )}
-              <button onClick={() => flushPending()} disabled={!pendingCount || savingBulk} className="inline-flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1 font-medium text-primary-foreground disabled:opacity-40">
-                <Save className="h-3.5 w-3.5" />Enregistrer
+              <button onClick={() => flushPending()} disabled={!pendingCount || savingBulk} aria-label="Enregistrer" className="inline-flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1.5 font-medium text-primary-foreground disabled:opacity-40 sm:py-1">
+                <Save className="h-3.5 w-3.5" /><span className="hidden sm:inline">Enregistrer</span>
               </button>
-              <button onClick={leaveBulk} className="rounded-md border border-border px-2.5 py-1 hover:bg-accent">Terminer</button>
+              <button onClick={leaveBulk} className="rounded-md border border-border px-2.5 py-1.5 hover:bg-accent sm:py-1">Terminer</button>
             </div>
           </div>
         </div>

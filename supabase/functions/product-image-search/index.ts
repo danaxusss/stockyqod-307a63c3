@@ -3,17 +3,17 @@
 // download them itself). The browser then compresses and stores the image
 // through the normal product image pipeline.
 //
-// Providers, picked by whichever secret is set (first match wins):
-//   SERPER_API_KEY        → serper.dev Google Images results
-//   BRAVE_SEARCH_API_KEY  → Brave Search image API
-// Google's own Custom Search JSON API is closed to new customers and retires
-// on 1 January 2027, so it is deliberately not supported.
+// Provider selection, address checks and downloads live in
+// ../_shared/webSearch.ts (shared with technical-sheet-search).
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { encode as encodeBase64 } from "https://deno.land/std@0.168.0/encoding/base64.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { clientIp, corsHeaders, guard, json, rateLimit } from "../_shared/security.ts";
 import { verifySessionLive } from "../_shared/session.ts";
+import {
+  braveRequest, downloadErrorMessage, fetchPublicFile, hostOf, isPublicHttpUrl, positive, searchProvider, serperRequest, text,
+} from "../_shared/webSearch.ts";
 
 type ImageResult = {
   url: string;
@@ -26,36 +26,9 @@ type ImageResult = {
 };
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
-const FETCH_TIMEOUT_MS = 15_000;
-const BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
-
-function text(value: unknown, max: number): string {
-  return typeof value === "string" ? value.trim().slice(0, max) : "";
-}
-
-function positive(value: unknown): number | null {
-  const number = Number(value);
-  return Number.isFinite(number) && number > 0 ? Math.round(number) : null;
-}
-
-function hostOf(url: string): string {
-  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return ""; }
-}
-
-function provider(): "serper" | "brave" | null {
-  if (Deno.env.get("SERPER_API_KEY")) return "serper";
-  if (Deno.env.get("BRAVE_SEARCH_API_KEY")) return "brave";
-  return null;
-}
 
 async function searchSerper(query: string): Promise<ImageResult[]> {
-  const response = await fetch("https://google.serper.dev/images", {
-    method: "POST",
-    headers: { "X-API-KEY": Deno.env.get("SERPER_API_KEY")!, "Content-Type": "application/json" },
-    body: JSON.stringify({ q: query, num: 30, gl: "ma", hl: "fr" }),
-  });
-  if (!response.ok) throw new Error(`Recherche d'images indisponible (Serper ${response.status})`);
-  const data = await response.json();
+  const data = await serperRequest("images", { q: query, num: 30, gl: "ma", hl: "fr" });
   return (Array.isArray(data?.images) ? data.images : []).map((item: Record<string, unknown>) => ({
     url: text(item.imageUrl, 2000),
     thumbnail: text(item.thumbnailUrl, 2000) || text(item.imageUrl, 2000),
@@ -68,12 +41,7 @@ async function searchSerper(query: string): Promise<ImageResult[]> {
 }
 
 async function searchBrave(query: string): Promise<ImageResult[]> {
-  const params = new URLSearchParams({ q: query, count: "30", safesearch: "strict" });
-  const response = await fetch(`https://api.search.brave.com/res/v1/images/search?${params}`, {
-    headers: { "X-Subscription-Token": Deno.env.get("BRAVE_SEARCH_API_KEY")!, Accept: "application/json" },
-  });
-  if (!response.ok) throw new Error(`Recherche d'images indisponible (Brave ${response.status})`);
-  const data = await response.json();
+  const data = await braveRequest("images/search", { q: query, count: "30", safesearch: "strict" });
   return (Array.isArray(data?.results) ? data.results : []).map((item: Record<string, any>) => ({
     url: text(item.properties?.url, 2000),
     thumbnail: text(item.thumbnail?.src, 2000) || text(item.properties?.url, 2000),
@@ -83,90 +51,6 @@ async function searchBrave(query: string): Promise<ImageResult[]> {
     source: text(item.source, 200) || hostOf(text(item.url, 2000)),
     page: text(item.url, 2000) || null,
   }));
-}
-
-/**
- * Only public web addresses: blocks localhost and private / link-local IP
- * literals so the function cannot be pointed at internal services.
- */
-function isPublicHttpUrl(value: string): boolean {
-  let url: URL;
-  try { url = new URL(value); } catch { return false; }
-  if (url.protocol !== "https:" && url.protocol !== "http:") return false;
-  if (url.username || url.password) return false;
-  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
-  if (!host || host === "localhost" || host.endsWith(".localhost") || host.endsWith(".internal") || host.endsWith(".local")) return false;
-  const ipv4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (ipv4) {
-    const [a, b] = [Number(ipv4[1]), Number(ipv4[2])];
-    if (a === 0 || a === 10 || a === 127 || a >= 224) return false;
-    if (a === 169 && b === 254) return false;
-    if (a === 172 && b >= 16 && b <= 31) return false;
-    if (a === 192 && b === 168) return false;
-    if (a === 100 && b >= 64 && b <= 127) return false;
-  }
-  if (host.includes(":")) {
-    if (host === "::1" || host === "::" || /^f[cd]/.test(host) || /^fe[89ab]/.test(host) || host.startsWith("::ffff:")) return false;
-  }
-  return true;
-}
-
-async function fetchImage(url: string, referer: string | null): Promise<{ contentType: string; bytes: Uint8Array }> {
-  let current = url;
-  // Follow redirects by hand so every hop goes through the same address check.
-  for (let hop = 0; hop < 5; hop++) {
-    if (!isPublicHttpUrl(current)) throw new Error("Adresse d'image non autorisée");
-    const response = await fetch(current, {
-      redirect: "manual",
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      headers: {
-        "User-Agent": BROWSER_UA,
-        Accept: "image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8",
-        ...(referer && isPublicHttpUrl(referer) ? { Referer: referer } : {}),
-      },
-    });
-    if (response.status >= 300 && response.status < 400) {
-      const location = response.headers.get("location");
-      await response.body?.cancel();
-      if (!location) throw new Error("Redirection invalide");
-      current = new URL(location, current).toString();
-      continue;
-    }
-    if (!response.ok) {
-      await response.body?.cancel();
-      throw new Error(`Le site source refuse le téléchargement (HTTP ${response.status})`);
-    }
-    const contentType = (response.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
-    if (!contentType.startsWith("image/")) {
-      await response.body?.cancel();
-      throw new Error("Cette adresse ne renvoie pas une image");
-    }
-    const declared = Number(response.headers.get("content-length") || 0);
-    if (declared > MAX_IMAGE_BYTES) {
-      await response.body?.cancel();
-      throw new Error("Image trop volumineuse (maximum 10 Mo)");
-    }
-    const reader = response.body?.getReader();
-    if (!reader) throw new Error("Image vide");
-    const chunks: Uint8Array[] = [];
-    let size = 0;
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      size += value.byteLength;
-      if (size > MAX_IMAGE_BYTES) {
-        await reader.cancel();
-        throw new Error("Image trop volumineuse (maximum 10 Mo)");
-      }
-      chunks.push(value);
-    }
-    const bytes = new Uint8Array(size);
-    let offset = 0;
-    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
-    if (!size) throw new Error("Image vide");
-    return { contentType, bytes };
-  }
-  throw new Error("Trop de redirections");
 }
 
 serve(async (req) => {
@@ -191,11 +75,11 @@ serve(async (req) => {
     const action = text(body.action, 30);
 
     if (action === "status") {
-      return json(req, { provider: provider() });
+      return json(req, { provider: searchProvider() });
     }
 
     if (action === "search") {
-      const active = provider();
+      const active = searchProvider();
       if (!active) {
         return json(req, {
           error: "Aucun service de recherche d'images n'est configuré (secret SERPER_API_KEY ou BRAVE_SEARCH_API_KEY).",
@@ -226,16 +110,20 @@ serve(async (req) => {
       ]);
       if (blocked) return blocked;
       try {
-        const image = await fetchImage(url, text(body.referer, 2000) || null);
+        const file = await fetchPublicFile(url, {
+          referer: text(body.referer, 2000) || null,
+          accept: "image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8",
+          maxBytes: MAX_IMAGE_BYTES,
+        });
+        if (!file.contentType.startsWith("image/")) throw new Error("Cette adresse ne renvoie pas une image");
         return json(req, {
-          content_type: image.contentType,
-          size: image.bytes.byteLength,
-          data: encodeBase64(image.bytes),
+          content_type: file.contentType,
+          size: file.bytes.byteLength,
+          data: encodeBase64(file.bytes),
         });
       } catch (error) {
         // The source site refused or timed out: not a server fault.
-        const message = error instanceof Error && error.name !== "TimeoutError" ? error.message : "Le site source ne répond pas";
-        return json(req, { error: message }, 422);
+        return json(req, { error: downloadErrorMessage(error) }, 422);
       }
     }
 

@@ -511,6 +511,7 @@ export type Database = {
           id: string
           manufacturer: string
           sector: string
+          source_url: string | null
           title: string
           updated_at: string
           view_count: number
@@ -525,6 +526,7 @@ export type Database = {
           id?: string
           manufacturer?: string
           sector?: string
+          source_url?: string | null
           title?: string
           updated_at?: string
           view_count?: number
@@ -539,6 +541,7 @@ export type Database = {
           id?: string
           manufacturer?: string
           sector?: string
+          source_url?: string | null
           title?: string
           updated_at?: string
           view_count?: number

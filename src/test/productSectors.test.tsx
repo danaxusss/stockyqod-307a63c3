@@ -260,4 +260,17 @@ describe('ProductsPage on phones', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
     expect(save).toHaveBeenCalledWith({ P3: { sector_ids: ['s-hotel'] } });
   });
+
+  it('folds the bulk bar to one line and keeps saving available', async () => {
+    window.innerWidth = 390;
+    renderProducts();
+    fireEvent.click(await screen.findByRole('button', { name: 'Modification groupée' }));
+    expect(screen.getByRole('combobox', { name: 'Ajouter un secteur à la sélection' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Réduire la barre' }));
+    expect(screen.queryByRole('combobox', { name: 'Ajouter un secteur à la sélection' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Enregistrer' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Terminer' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Sélectionner Hachoir' }));
+    expect(screen.getByRole('combobox', { name: 'Ajouter un secteur à la sélection' })).toBeInTheDocument();
+  });
 });

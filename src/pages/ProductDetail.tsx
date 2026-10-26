@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { Package, ArrowLeft, Copy, MapPin, DollarSign, ShoppingCart, Home, AlertCircle, Users, Building, TrendingUp, Search, Calculator, Plus, Paperclip, Upload, Download, Trash2, Loader, FileText, X, Images, ImagePlus, Globe } from 'lucide-react';
+import { Package, ArrowLeft, Copy, MapPin, DollarSign, ShoppingCart, Home, AlertCircle, Users, Building, TrendingUp, Search, Calculator, Plus, Upload, Download, Trash2, Loader, FileText, X, Images, ImagePlus, Globe } from 'lucide-react';
 import { Product, TechnicalSheet, StockLocation } from '../types';
 import { useAppContext } from '../context/AppContext';
 import { searchStateManager } from '../utils/searchStateManager';
@@ -13,6 +13,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useProductOverrides } from '../hooks/useProductOverrides';
 import { resolveProductImageUrl, uploadPrimaryProductImage } from '../utils/productImages';
 import { SectorPicker } from '../components/SectorPicker';
+import { TechnicalSheetButton } from '../components/TechnicalSheetButton';
+import { TechnicalSheetFinder } from '../components/TechnicalSheetFinder';
 import { BusinessSectorsService, sectorNames, useBusinessSectors } from '../utils/businessSectors';
 
 const KIOSK_CATEGORIES: Array<{ value: NonNullable<Product['kiosk_category']>; label: string }> = [
@@ -45,6 +47,7 @@ export function ProductDetail() {
   const [sheetSearchQuery, setSheetSearchQuery] = useState('');
   const [sheetSearchResults, setSheetSearchResults] = useState<TechnicalSheet[]>([]);
   const [allSheets, setAllSheets] = useState<TechnicalSheet[]>([]);
+  const [sheetFinderOpen, setSheetFinderOpen] = useState(false);
 
   const { addToCart } = useQuoteCart();
   const { showToast } = useToast();
@@ -340,7 +343,6 @@ export function ProductDetail() {
   const finalPrice = calculateFinalPrice();
   const normalMargin = calculateMargin(product.price, product.buyprice);
   const resellerMargin = calculateMargin(product.reseller_price, product.buyprice);
-  const hasLinkedSheets = linkedSheets.length > 0;
 
   const colorSchemes = [
     { bg: 'bg-primary/10', text: 'text-primary', textDark: 'text-primary' },
@@ -367,11 +369,14 @@ export function ProductDetail() {
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-bold truncate">{product.name}</h1>
-                {hasLinkedSheets && (
-                  <span className="shrink-0" title={`${linkedSheets.length} fiche(s) technique(s)`}>
-                    <Paperclip className="h-5 w-5 text-primary-foreground/80" />
-                  </span>
-                )}
+                <TechnicalSheetButton
+                  sheets={linkedSheets}
+                  canSearch={canEditProducts}
+                  onSearch={() => setSheetFinderOpen(true)}
+                  inverse
+                  className="shrink-0 p-1"
+                  iconClassName="h-5 w-5"
+                />
               </div>
               <div className="flex items-center flex-wrap gap-2 mt-0.5">
                 <span className="text-primary-foreground/70 text-sm">#{product.barcode}</span>
@@ -638,6 +643,11 @@ export function ProductDetail() {
                   {isSheetUploading ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
                   <span>Ajouter une nouvelle fiche</span>
                 </label>
+                <button type="button" onClick={() => setSheetFinderOpen(true)}
+                  className="ml-2 inline-flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm transition-colors">
+                  <Globe className="h-3.5 w-3.5" />
+                  <span>Rechercher en ligne</span>
+                </button>
               </div>
             )}
           </div>
@@ -689,6 +699,18 @@ export function ProductDetail() {
           </div>
         </div>
       </div>
+
+      {sheetFinderOpen && (
+        <TechnicalSheetFinder
+          product={product}
+          linkedSheetIds={linkedSheets.map(sheet => sheet.id)}
+          onLinked={sheet => {
+            setLinkedSheets(prev => prev.some(linked => linked.id === sheet.id) ? prev : [...prev, sheet]);
+            setAllSheets(prev => prev.some(known => known.id === sheet.id) ? prev : [...prev, sheet]);
+          }}
+          onClose={() => setSheetFinderOpen(false)}
+        />
+      )}
     </div>
   );
 }

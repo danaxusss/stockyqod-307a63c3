@@ -24,7 +24,7 @@ export function isModuleLoadError(e: unknown): boolean {
  * across a deploy, a stale service worker, or a flaky mobile connection.
  * Retry once after a short pause, then surface a message that says what to do.
  */
-async function loadPdfjs(): Promise<any> {
+export async function loadPdfjs(): Promise<any> {
   try {
     return await import('pdfjs-dist');
   } catch (first) {
