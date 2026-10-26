@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { FileText, Upload, Search, Link2, Trash2, Download, Eye, Share2, Copy, X, Plus, Loader, ExternalLink, Calendar, Package, CheckSquare, Archive } from 'lucide-react';
 import { zipSync } from 'fflate';
 import { supabase } from '@/integrations/supabase/client';
@@ -6,6 +6,7 @@ import { useToast } from '../context/ToastContext';
 import { useAuth } from '../hooks/useAuth';
 import { useAppContext } from '../context/AppContext';
 import { TechnicalSheet, SheetShareLink, Product } from '../types';
+import { matchSheetFiles, matchedSheetTitle } from '../utils/sheetBatch';
 
 const CATEGORIES = ['Fours', 'Réfrigération', 'Lavage', 'Préparation', 'Cuisson', 'Ventilation', 'Divers'];
 const SECTORS = ['Cafeteria', 'Restaurant', 'Patisserie', 'Boucherie', 'Hotellerie', 'Autre'];
@@ -40,6 +41,7 @@ export function TechnicalSheetsPage() {
   const [bulkSector, setBulkSector] = useState('');
   const [isBulkUploading, setIsBulkUploading] = useState(false);
   const [bulkProgress, setBulkProgress] = useState(0);
+  const [bulkAutoLink, setBulkAutoLink] = useState(true);
   const bulkFileInputRef = useRef<HTMLInputElement>(null);
 
   // Detail modal
@@ -154,6 +156,10 @@ export function TechnicalSheetsPage() {
     }
   };
 
+  // Files named after a product code are linked to that product on import.
+  const bulkMatches = useMemo(() => matchSheetFiles(bulkFiles, state.products || []), [bulkFiles, state.products]);
+  const bulkMatchedCount = bulkMatches.filter(match => match.products.length > 0).length;
+
   // Bulk import handler
   const handleBulkImport = async () => {
     if (bulkFiles.length === 0) {
@@ -164,15 +170,20 @@ export function TechnicalSheetsPage() {
     setBulkProgress(0);
     let successCount = 0;
     let errorCount = 0;
+    let linkedCount = 0;
+    let linkErrorCount = 0;
 
-    for (let i = 0; i < bulkFiles.length; i++) {
-      const file = bulkFiles[i];
+    for (let i = 0; i < bulkMatches.length; i++) {
+      const { file, products: matchedProducts } = bulkMatches[i];
+      const linkTo = bulkAutoLink ? matchedProducts : [];
       try {
         if (file.size > 50 * 1024 * 1024) { errorCount++; continue; }
         const sheetId = crypto.randomUUID();
         const ext = file.name.split('.').pop() || 'pdf';
         const filePath = `${sheetId}.${ext}`;
-        const title = file.name.replace(/\.[^/.]+$/, '');
+        const fileTitle = file.name.replace(/\.[^/.]+$/, '');
+        // A file named "CODE.pdf" gets the product's name as its title.
+        const title = matchedSheetTitle(linkTo, fileTitle);
 
         const { error: uploadError } = await supabase.storage
           .from('technical-sheets')
@@ -186,7 +197,7 @@ export function TechnicalSheetsPage() {
           .insert({
             id: sheetId,
             title,
-            manufacturer: bulkManufacturer.trim(),
+            manufacturer: bulkManufacturer.trim() || (linkTo.length === 1 ? linkTo[0].brand || '' : ''),
             category: bulkCategory,
             sector: bulkSector,
             file_url: urlData.publicUrl,
@@ -195,6 +206,11 @@ export function TechnicalSheetsPage() {
           });
         if (insertError) { errorCount++; continue; }
         successCount++;
+        if (linkTo.length) {
+          const { error: linkError } = await supabase.from('technical_sheet_products')
+            .insert(linkTo.map(product => ({ sheet_id: sheetId, product_barcode: product.barcode })));
+          if (linkError) linkErrorCount++; else linkedCount += linkTo.length;
+        }
       } catch {
         errorCount++;
       }
@@ -202,8 +218,8 @@ export function TechnicalSheetsPage() {
     }
 
     showToast({
-      type: errorCount > 0 ? 'warning' : 'success',
-      message: `${successCount} fichier(s) importé(s)${errorCount > 0 ? `, ${errorCount} erreur(s)` : ''}`
+      type: errorCount > 0 || linkErrorCount > 0 ? 'warning' : 'success',
+      message: `${successCount} fichier(s) importé(s)${linkedCount > 0 ? `, ${linkedCount} lien(s) produit créé(s)` : ''}${errorCount > 0 ? `, ${errorCount} erreur(s)` : ''}${linkErrorCount > 0 ? `, ${linkErrorCount} fiche(s) non liée(s)` : ''}`
     });
     setShowBulkModal(false);
     setBulkFiles([]);
@@ -675,7 +691,7 @@ export function TechnicalSheetsPage() {
               <h2 className="text-lg font-bold text-foreground">Import en masse</h2>
               <button onClick={() => !isBulkUploading && setShowBulkModal(false)} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
             </div>
-            <p className="text-sm text-muted-foreground mb-4">Sélectionnez plusieurs fichiers. Le nom du fichier sera utilisé comme titre.</p>
+            <p className="text-sm text-muted-foreground mb-4">Sélectionnez plusieurs fichiers. Nommez un fichier avec le code produit (ex. <span className="font-mono">GSB13.pdf</span>, ou <span className="font-mono">GSB13+GSB16.pdf</span> pour plusieurs produits) pour le lier automatiquement ; sinon le nom du fichier sert de titre.</p>
             <div className="space-y-3">
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1">Fichiers *</label>
@@ -684,6 +700,26 @@ export function TechnicalSheetsPage() {
                   className="w-full text-sm text-foreground file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-primary file:text-primary-foreground file:text-sm file:cursor-pointer" />
                 {bulkFiles.length > 0 && <p className="text-xs text-muted-foreground mt-1">{bulkFiles.length} fichier(s) sélectionné(s)</p>}
               </div>
+              {bulkFiles.length > 0 && (
+                <div className="rounded-lg border border-border p-3 text-xs">
+                  <label className="flex items-center gap-2 font-medium text-foreground">
+                    <input type="checkbox" checked={bulkAutoLink} onChange={e => setBulkAutoLink(e.target.checked)} />
+                    Lier aux produits dont le code est le nom du fichier
+                  </label>
+                  <p className="mt-1 text-muted-foreground">
+                    {bulkMatchedCount} fichier(s) reconnu(s){bulkFiles.length - bulkMatchedCount > 0 ? `, ${bulkFiles.length - bulkMatchedCount} importé(s) sans lien` : ''}
+                  </p>
+                  {bulkAutoLink && bulkMatchedCount > 0 && (
+                    <div className="mt-2 max-h-32 space-y-1 overflow-y-auto">
+                      {bulkMatches.filter(match => match.products.length > 0).map(match => (
+                        <p key={match.file.name} className="truncate text-muted-foreground">
+                          <span className="font-mono text-foreground">{match.file.name}</span> → {match.products.map(product => product.name).join(', ')}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1">Fabricant (commun)</label>
                 <input value={bulkManufacturer} onChange={e => setBulkManufacturer(e.target.value)}

@@ -310,6 +310,8 @@ export interface TechnicalSheet {
   file_url: string;
   file_size: number;
   file_type: string;
+  /** Web address the file was downloaded from (technical sheet finder). */
+  source_url?: string | null;
   view_count: number;
   download_count: number;
   created_at: string;
