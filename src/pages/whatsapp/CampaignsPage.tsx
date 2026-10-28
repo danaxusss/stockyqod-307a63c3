@@ -435,7 +435,7 @@ function Detail({ campaign, currentUser, onClose, onEdit, onChanged }: {
           {/* actions */}
           <div className="flex flex-wrap items-center gap-2 pt-1">
             {canLaunch && (
-              <button onClick={() => act(() => WaCampaignsService.launch(c.id, currentUser).then(r =>
+              <button onClick={() => act(() => WaCampaignsService.launch(c.id, currentUser, { now: c.status === 'scheduled' }).then(r =>
                 showToast({ type: 'success', message: `${r.enqueued} en file${r.skipped ? `, ${r.skipped} déjà envoyé(s)` : ''}` })), c.status === 'paused' ? 'Reprise' : 'Lancée')}
                 disabled={busy} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50">
                 <Play className="h-4 w-4" /> {c.status === 'paused' ? 'Reprendre' : c.status === 'scheduled' ? 'Lancer maintenant' : 'Lancer'}

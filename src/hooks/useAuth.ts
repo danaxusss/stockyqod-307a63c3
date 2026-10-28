@@ -51,6 +51,15 @@ export function isAllowedByList(allowedValues: string[] | null | undefined, valu
   return !allowedValues?.length || allowedValues.includes(value);
 }
 
+/** Fields that decide who the user is and what they may do. */
+function accessSignature(value: object | null | undefined): string {
+  if (!value) return '';
+  const user = value as Record<string, unknown>;
+  const keys = ['id', 'is_admin', 'is_superadmin', 'is_compta', 'new_role', 'cross_branch_read', 'company_id', 'can_create_quote',
+    'can_edit_products', 'allowed_stock_locations', 'allowed_brands', 'price_display_type', 'tasks_role', 'tasks_only'];
+  return JSON.stringify(keys.map(key => user[key] ?? null));
+}
+
 export function useAuth() {
   const [role, setRole] = useState<UserRole>(() => StorageManager.getRole());
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
@@ -184,9 +193,11 @@ export function useAuth() {
     triggerUpdate();
   }, []);
 
-  // Sync with useUserAuth - if user is authenticated there but not here, sync the data
+  // Sync with useUserAuth: load the signed-in user when none is loaded, when
+  // another person signed in (shared computer), or when the session brought
+  // fresh rights (a revoked permission applies without logging out).
   useEffect(() => {
-    if (authenticatedUser && !currentUser) {
+    if (authenticatedUser && (!currentUser || accessSignature(authenticatedUser) !== accessSignature(currentUser))) {
       console.log('Syncing authenticated user from useUserAuth to useAuth:', {
         username: authenticatedUser.username,
         is_admin: authenticatedUser.is_admin

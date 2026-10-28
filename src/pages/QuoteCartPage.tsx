@@ -654,9 +654,7 @@ export function QuoteCartPage() {
         const adminUser = currentUser || authenticatedUser;
         if (adminUser && adminUser.custom_seller_name !== customer.salesPerson.trim()) {
           try {
-            await SupabaseUsersService.updateUser(adminUser.id, {
-              custom_seller_name: customer.salesPerson.trim(),
-            } as any);
+            await SupabaseUsersService.updateOwnSellerName(customer.salesPerson.trim());
           } catch (e) {
             console.error('Failed to save custom seller name:', e);
           }

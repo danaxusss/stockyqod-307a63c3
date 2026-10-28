@@ -3,6 +3,7 @@ import { AppNotification, NotificationType } from '@/tasks/types';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/tasks/contexts/AuthAdapter';
+import { getToken } from '@/utils/session';
 
 interface NotificationContextType {
   notifications: AppNotification[];
@@ -94,7 +95,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
     // Fire a web push so the user is alerted even when the app isn't open.
     supabase.functions.invoke('send-push', {
-      body: { user_ids: [userId], title, body: message, task_id: taskId || null },
+      body: { session_token: getToken(), user_ids: [userId], title, body: message, task_id: taskId || null },
     }).catch(err => console.warn('send-push failed:', err));
   }, []);
 

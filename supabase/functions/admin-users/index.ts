@@ -34,6 +34,39 @@ function jsonResponse(data: unknown, status = 200) {
   });
 }
 
+const SAFE_COLUMNS = "id, username, is_admin, is_superadmin, is_compta, new_role, cross_branch_read, company_id, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, phone, tasks_role, tasks_only, created_at, updated_at";
+const ROLES = ["super_admin", "admin", "manager", "facturation", "compta", "senior_sales", "junior_sales"];
+const PRICE_TYPES = ["normal", "reseller", "buy", "calculated"];
+const TASK_ROLES = ["super_admin", "sales", "technician", "driver"];
+
+const stringList = (value: unknown) =>
+  Array.isArray(value) ? value.filter((v): v is string => typeof v === "string").map(v => v.trim()).filter(Boolean).slice(0, 200) : [];
+
+/** Validated app_users columns from a create/update payload (unknown keys are ignored). */
+function userFields(payload: Record<string, unknown>, creating: boolean): { values: Record<string, unknown> } | { error: string } {
+  const values: Record<string, unknown> = {};
+  const has = (key: string) => payload[key] !== undefined;
+  if (has("username") || creating) {
+    const username = typeof payload.username === "string" ? payload.username.trim() : "";
+    if (username.length < 3 || username.length > 50) return { error: "Le nom d'utilisateur doit faire 3 à 50 caractères" };
+    if (/[\u0000-\u001f\u007f]/.test(username)) return { error: "Le nom d'utilisateur contient des caractères invalides" };
+    values.username = username;
+  }
+  if (has("pin") && (typeof payload.pin !== "string" || !/^\d{6}$/.test(payload.pin))) return { error: "Le PIN doit comporter exactement 6 chiffres" };
+  for (const key of ["is_admin", "is_superadmin", "is_compta", "cross_branch_read", "can_create_quote", "can_edit_products", "tasks_only"]) {
+    if (has(key)) values[key] = payload[key] === true;
+  }
+  if (has("new_role")) values.new_role = ROLES.includes(payload.new_role as string) ? payload.new_role : null;
+  if (has("company_id")) values.company_id = typeof payload.company_id === "string" && payload.company_id ? payload.company_id : null;
+  if (has("allowed_stock_locations")) values.allowed_stock_locations = stringList(payload.allowed_stock_locations);
+  if (has("allowed_brands")) values.allowed_brands = stringList(payload.allowed_brands);
+  if (has("price_display_type")) values.price_display_type = PRICE_TYPES.includes(payload.price_display_type as string) ? payload.price_display_type : "normal";
+  if (has("custom_seller_name")) values.custom_seller_name = typeof payload.custom_seller_name === "string" ? payload.custom_seller_name.trim().slice(0, 100) : "";
+  if (has("phone")) values.phone = typeof payload.phone === "string" ? payload.phone.trim().slice(0, 30) : "";
+  if (has("tasks_role")) values.tasks_role = TASK_ROLES.includes(payload.tasks_role as string) ? payload.tasks_role : null;
+  return { values };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -48,7 +81,7 @@ serve(async (req) => {
     if (blocked) return blocked;
 
     const body = await req.json();
-    const { action, admin_user_id, session_token, ...payload } = body;
+    const { action, session_token, ...payload } = body;
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -58,43 +91,42 @@ serve(async (req) => {
       return jsonResponse({ error: "action is required" }, 400);
     }
 
-    // Authorization. Preferred: a server-signed session token, which the
-    // browser cannot forge. Legacy: a bare admin_user_id — accepted only while
-    // clients update, because a UUID is a bearer credential that leaks through
-    // logs and referrers. Either way the superadmin flag is re-read from the
-    // database, never taken from the caller.
-    let adminUser: { id: string; is_superadmin: boolean } | null = null;
+    // Authorization: a server-signed session token only. The former bare
+    // admin_user_id was accepted as proof of identity, and user ids are public
+    // (get_app_users_safe), so anyone could act as a superadmin.
+    if (!session_token) return jsonResponse({ error: "session_token is required" }, 401);
+    const live = await verifySessionLive(supabase, session_token);
+    const caller = (live?.user ?? null) as { id: string; is_superadmin?: boolean } | null;
 
-    if (session_token) {
-      const live = await verifySessionLive(supabase, session_token);
-      if (live) adminUser = live.user as any;
-    } else if (admin_user_id) {
-      console.warn("[admin-users] legacy admin_user_id auth used — send session_token instead");
-      const { data } = await supabase
-        .from("app_users")
-        .select("id, is_superadmin")
-        .eq("id", admin_user_id)
-        .maybeSingle();
-      adminUser = data as any;
-    } else {
-      return jsonResponse({ error: "session_token is required" }, 401);
-    }
-
-    if (!adminUser || !adminUser.is_superadmin) {
-      // Only FAILED authorizations consume this budget, so a busy legitimate
-      // admin is never locked out while UUID-guessing is cut off quickly.
+    const denied = async (message: string) => {
+      // Only FAILED authorizations consume this budget.
       const v = await rateLimit("admin-users:authfail", ip, 10, 15 * 60, true);
       console.warn(`[admin-users] unauthorized attempt ip=${ip} count=${v.count}`);
       if (!v.allowed) return jsonResponse({ error: "Too many attempts" }, 429);
-      return jsonResponse({ error: "Unauthorized: superadmin access required" }, 403);
+      return jsonResponse({ error: message }, 403);
+    };
+
+    if (!caller) return denied("Session expirée : reconnectez-vous.");
+
+    // Any signed-in user may change the seller name shown on their own quotes.
+    if (action === "update_own_profile") {
+      const name = typeof payload.custom_seller_name === "string" ? payload.custom_seller_name.trim().slice(0, 100) : null;
+      if (name === null) return jsonResponse({ error: "custom_seller_name required" }, 400);
+      const { error } = await supabase.from("app_users")
+        .update({ custom_seller_name: name, updated_at: new Date().toISOString() })
+        .eq("id", caller.id);
+      if (error) return jsonResponse({ error: error.message }, 500);
+      return jsonResponse({ success: true });
     }
 
-    // === CRUD ===
+    if (caller.is_superadmin !== true) return denied("Unauthorized: superadmin access required");
+
+    // === CRUD (superadmin) ===
 
     if (action === "check_username") {
       const { username, exclude_id } = payload;
       if (!username) return jsonResponse({ error: "username required" }, 400);
-      let query = supabase.from("app_users").select("id").eq("username", username);
+      let query = supabase.from("app_users").select("id").eq("username", String(username).trim());
       if (exclude_id) query = query.neq("id", exclude_id);
       const { data, error } = await query;
       if (error) return jsonResponse({ error: error.message }, 500);
@@ -102,80 +134,41 @@ serve(async (req) => {
     }
 
     if (action === "create_user") {
-      const { username, pin: newPin, is_admin, is_superadmin, company_id, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, tasks_role } = payload;
-      if (!username || !newPin) return jsonResponse({ error: "username and pin required" }, 400);
-      if (typeof username !== "string" || username.trim().length < 3 || username.trim().length > 50) {
-        return jsonResponse({ error: "username must be 3-50 characters" }, 400);
-      }
-      if (!/^[a-zA-Z0-9_-]+$/.test(username.trim())) {
-        return jsonResponse({ error: "username can only contain letters, numbers, hyphens and underscores" }, 400);
-      }
-      if (typeof newPin !== "string" || !/^\d{6}$/.test(newPin)) {
-        return jsonResponse({ error: "pin must be exactly 6 digits" }, 400);
-      }
-
-      const hashedPin = await hashPin(newPin);
-      const { data, error } = await supabase
-        .from("app_users")
-        .insert({
-          username: username.trim(),
-          pin: hashedPin,
-          is_admin: is_admin || false,
-          is_superadmin: is_superadmin || false,
-          company_id: company_id || null,
-          can_create_quote: can_create_quote !== undefined ? can_create_quote : true,
-          allowed_stock_locations: allowed_stock_locations || [],
-          allowed_brands: allowed_brands || [],
-          price_display_type: price_display_type || "normal",
-          custom_seller_name: custom_seller_name || "",
-          tasks_role: tasks_role || null,
-        })
-        .select("id, username, is_admin, is_superadmin, company_id, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, tasks_role, created_at, updated_at")
-        .single();
-
+      const fields = userFields(payload, true);
+      if ("error" in fields) return jsonResponse({ error: fields.error }, 400);
+      if (!fields.values.username || !payload.pin) return jsonResponse({ error: "username and pin required" }, 400);
+      const values: Record<string, unknown> = {
+        is_admin: false, is_superadmin: false, is_compta: false, cross_branch_read: false,
+        can_create_quote: true, allowed_stock_locations: [], allowed_brands: [],
+        price_display_type: "normal", custom_seller_name: "", phone: "", tasks_only: false,
+        ...fields.values,
+        pin: await hashPin(payload.pin),
+      };
+      // Only sent when granted, so creating users works before the
+      // can_edit_products migration has run.
+      if (values.can_edit_products !== true) delete values.can_edit_products;
+      const { data, error } = await supabase.from("app_users").insert(values).select(SAFE_COLUMNS).single();
       if (error) {
-        if (error.code === "23505") return jsonResponse({ error: "Username already exists" }, 409);
+        if (error.code === "23505") return jsonResponse({ error: "Ce nom d'utilisateur existe déjà" }, 409);
         return jsonResponse({ error: error.message }, 500);
       }
       return jsonResponse({ success: true, user: data });
     }
 
     if (action === "update_user") {
-      const { user_id, username, pin: newPin, is_admin, is_superadmin, company_id, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, tasks_role } = payload;
+      const { user_id } = payload;
       if (!user_id) return jsonResponse({ error: "user_id required" }, 400);
-
-      const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
-      if (username !== undefined) {
-        if (typeof username !== "string" || username.trim().length < 3 || username.trim().length > 50) {
-          return jsonResponse({ error: "username must be 3-50 characters" }, 400);
-        }
-        updateData.username = username.trim();
+      const fields = userFields(payload, false);
+      if ("error" in fields) return jsonResponse({ error: fields.error }, 400);
+      const values: Record<string, unknown> = { ...fields.values, updated_at: new Date().toISOString() };
+      if (payload.pin !== undefined) values.pin = await hashPin(payload.pin);
+      // A superadmin cannot lock themselves out.
+      if (user_id === caller.id && values.is_superadmin === false) {
+        return jsonResponse({ error: "Vous ne pouvez pas retirer vos propres droits de super administrateur." }, 400);
       }
-      if (newPin !== undefined) {
-        if (typeof newPin !== "string" || !/^\d{6}$/.test(newPin)) {
-          return jsonResponse({ error: "pin must be exactly 6 digits" }, 400);
-        }
-        updateData.pin = await hashPin(newPin);
-      }
-      if (is_admin !== undefined) updateData.is_admin = is_admin;
-      if (is_superadmin !== undefined) updateData.is_superadmin = is_superadmin;
-      if (company_id !== undefined) updateData.company_id = company_id || null;
-      if (can_create_quote !== undefined) updateData.can_create_quote = can_create_quote;
-      if (allowed_stock_locations !== undefined) updateData.allowed_stock_locations = allowed_stock_locations;
-      if (allowed_brands !== undefined) updateData.allowed_brands = allowed_brands;
-      if (price_display_type !== undefined) updateData.price_display_type = price_display_type;
-      if (custom_seller_name !== undefined) updateData.custom_seller_name = custom_seller_name;
-      if (tasks_role !== undefined) updateData.tasks_role = tasks_role || null;
-
-      const { data, error } = await supabase
-        .from("app_users")
-        .update(updateData)
-        .eq("id", user_id)
-        .select("id, username, is_admin, is_superadmin, company_id, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, tasks_role, created_at, updated_at")
-        .single();
-
+      const { data, error } = await supabase.from("app_users").update(values).eq("id", user_id).select(SAFE_COLUMNS).single();
       if (error) {
-        if (error.code === "23505") return jsonResponse({ error: "Username already exists" }, 409);
+        if (error.code === "23505") return jsonResponse({ error: "Ce nom d'utilisateur existe déjà" }, 409);
         return jsonResponse({ error: error.message }, 500);
       }
       return jsonResponse({ success: true, user: data });
@@ -184,6 +177,7 @@ serve(async (req) => {
     if (action === "delete_user") {
       const { user_id } = payload;
       if (!user_id) return jsonResponse({ error: "user_id required" }, 400);
+      if (user_id === caller.id) return jsonResponse({ error: "Vous ne pouvez pas supprimer votre propre compte." }, 400);
       const { error } = await supabase.from("app_users").delete().eq("id", user_id);
       if (error) return jsonResponse({ error: error.message }, 500);
       return jsonResponse({ success: true });

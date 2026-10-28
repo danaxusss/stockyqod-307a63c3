@@ -154,7 +154,7 @@ export class WaCampaignsService {
    * Launch (or resume): materialize recipients (at-most-once) and enqueue
    * personalized messages into wa_outbox. Already-sent phones are skipped.
    */
-  static async launch(campaignId: string, createdBy: string | null): Promise<{ enqueued: number; skipped: number }> {
+  static async launch(campaignId: string, createdBy: string | null, opts: { now?: boolean } = {}): Promise<{ enqueued: number; skipped: number }> {
     const { companyId } = getCompanyContext();
     const c = await this.getCampaign(campaignId);
     if (!c) throw new Error('Campagne introuvable');
@@ -164,15 +164,23 @@ export class WaCampaignsService {
     const audience = await this.resolveAudience(c.segment_filter);
     if (!audience.length) throw new Error('Audience vide (segment sans contact joignable)');
 
-    // phones already sent for this campaign (safe re-launch / resume)
+    // Phones already sent OR still queued for this campaign (safe re-launch /
+    // resume): a second launch must never queue the same message twice.
+    // Paused campaigns have their queue cancelled, so those phones go again.
     const { data: sentRows } = await (supabase as any).from('wa_outbox')
-      .select('to_phone').eq('campaign_id', campaignId).in('status', ['sent', 'sending']);
+      .select('to_phone').eq('campaign_id', campaignId).in('status', ['pending', 'sending', 'sent']);
     const alreadySent = new Set((sentRows || []).map((r: any) => r.to_phone));
     // existing recipients (the at-most-once ledger)
     const { data: recRows } = await (supabase as any).from('wa_campaign_recipients').select('phone').eq('campaign_id', campaignId);
     const existingRec = new Set((recRows || []).map((r: any) => r.phone));
 
-    const scheduledAt = c.scheduled_at && new Date(c.scheduled_at) > new Date() ? c.scheduled_at : new Date().toISOString();
+    const nowIso = new Date().toISOString();
+    const scheduledAt = !opts.now && c.scheduled_at && new Date(c.scheduled_at) > new Date() ? c.scheduled_at : nowIso;
+    if (opts.now) {
+      // "Lancer maintenant" on a scheduled campaign: bring its queue forward.
+      await (supabase as any).from('wa_outbox').update({ scheduled_at: nowIso })
+        .eq('campaign_id', campaignId).eq('status', 'pending');
+    }
     let enqueued = 0, skipped = 0;
 
     for (let i = 0; i < audience.length; i += 200) {
@@ -203,8 +211,10 @@ export class WaCampaignsService {
       }
     }
 
-    const status = c.scheduled_at && new Date(c.scheduled_at) > new Date() ? 'scheduled' : 'running';
-    await (supabase as any).from('wa_campaigns').update({ status, total_recipients: audience.length }).eq('id', campaignId);
+    const status = scheduledAt === nowIso ? 'running' : 'scheduled';
+    await (supabase as any).from('wa_campaigns')
+      .update({ status, total_recipients: audience.length, ...(opts.now ? { scheduled_at: nowIso } : {}) })
+      .eq('id', campaignId);
     return { enqueued, skipped };
   }
 

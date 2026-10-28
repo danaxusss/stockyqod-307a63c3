@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient';
 import { throwEdgeError, describeEdgeError } from './edgeError';
+import { getToken } from './session';
 
 // ─── Conversion ─────────────────────────────────────────────────────────────
 // One generic path, deliberately.
@@ -89,7 +90,7 @@ export interface TableResult { title: string | null; columns: string[]; rows: (s
 /** Read one page image into { title, columns, rows }. */
 export async function extractPage(imageDataUrl: string, model?: string | null): Promise<TableResult> {
   const { data, error } = await supabase.functions.invoke(CONVERTER_FN, {
-    body: { image_base64: imageDataUrl, mime: 'image/jpeg', kind: 'table', model: model || undefined },
+    body: { image_base64: imageDataUrl, mime: 'image/jpeg', kind: 'table', model: model || undefined, session_token: getToken() },
   });
   if (error) await throwEdgeError(error, CONVERTER_FN);
   if ((data as any)?.error) throw new Error((data as any).error);
@@ -119,7 +120,7 @@ export function setPreferredModel(id: string): void {
  */
 export async function listVisionModels(): Promise<VisionModel[]> {
   const { data, error } = await supabase.functions.invoke('ai-extract-table', {
-    body: { action: 'list-models' },
+    body: { action: 'list-models', session_token: getToken() },
   });
   if (error) await throwEdgeError(error, 'ai-extract-table');
   if ((data as any)?.error) throw new Error((data as any).error);
@@ -142,7 +143,7 @@ export interface HealthReport { fn: string; state: FnHealth; detail: string }
  */
 export async function checkFunction(fn: string): Promise<HealthReport> {
   try {
-    const { error } = await supabase.functions.invoke(fn, { body: {} });
+    const { error } = await supabase.functions.invoke(fn, { body: { session_token: getToken() } });
     if (!error) return { fn, state: 'ok', detail: 'Déployée et joignable.' };
 
     const d = await describeEdgeError(error, fn);

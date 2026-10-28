@@ -8,6 +8,7 @@ import { useEscapeKey } from '../hooks/useShortcuts';
 import { Product, Quote, QuoteItem, CustomerInfo } from '../types';
 import { SupabaseQuotesService } from '../utils/supabaseQuotes';
 import ReactMarkdown from 'react-markdown';
+import { getToken } from '../utils/session';
 
 type Msg = { role: 'user' | 'assistant'; content: string };
 type CreatedQuote = { id: string; quoteNumber: string };
@@ -63,7 +64,7 @@ async function streamChat({
       'Content-Type': 'application/json',
       Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
     },
-    body: JSON.stringify({ messages, company_id, username }),
+    body: JSON.stringify({ messages, company_id, username, session_token: getToken() }),
   });
 
   if (!resp.ok) {

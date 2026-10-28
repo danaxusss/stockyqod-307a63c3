@@ -36,13 +36,22 @@ export function json(req: Request, data: unknown, status = 200, extra: Record<st
 }
 
 // ── Caller identity ─────────────────────────────────────────────────────────
-/** Best-effort client IP. Supabase sets x-forwarded-for at the edge. */
+/**
+ * Client IP for rate limiting. The first X-Forwarded-For entry is whatever the
+ * caller sent (proxies append theirs after it), so it must never be trusted:
+ * rotating it would bypass every per-IP limit. Cloudflare's cf-connecting-ip
+ * is set by the edge itself; failing that, the last X-Forwarded-For entry is
+ * the one added by the nearest proxy.
+ */
 export function clientIp(req: Request): string {
+  const cf = req.headers.get("cf-connecting-ip");
+  if (cf) return cf.trim();
   const xff = req.headers.get("x-forwarded-for");
-  if (xff) return xff.split(",")[0].trim();
-  return req.headers.get("cf-connecting-ip")
-    || req.headers.get("x-real-ip")
-    || "unknown";
+  if (xff) {
+    const hops = xff.split(",").map(h => h.trim()).filter(Boolean);
+    if (hops.length) return hops[hops.length - 1];
+  }
+  return req.headers.get("x-real-ip") || "unknown";
 }
 
 // ── Rate limiting ───────────────────────────────────────────────────────────
