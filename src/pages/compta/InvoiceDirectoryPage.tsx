@@ -15,20 +15,13 @@ import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../hooks/useAuth';
 import { getCompanyContext } from '../../utils/supabaseCompanyFilter';
 import { exportToCSV } from '../../utils/csvExport';
+import { documentDay, formatDay, invoicePayment, matchesPaymentFilter } from '../../utils/documentLines';
 
 function fmt(n: number) {
   return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(n);
 }
 
-function computePayment(inv: Quote) {
-  const avance = inv.avance_amount || 0;
-  const paid = avance + (inv.payment_methods_json || []).reduce((s, e) => s + (e.amount || 0), 0);
-  const reste = Math.max(0, inv.totalAmount - paid);
-  const status: 'paid' | 'partial' | 'unpaid' =
-    reste <= 0 && paid > 0 ? 'paid' :
-    paid > 0 ? 'partial' : 'unpaid';
-  return { avance, paid, reste, status };
-}
+const computePayment = (inv: Quote) => invoicePayment(inv);
 
 type SortField = 'quoteNumber' | 'customer' | 'date' | 'total' | 'reste';
 type SortDir = 'asc' | 'desc';
@@ -151,7 +144,8 @@ export default function InvoiceDirectoryPage() {
   const handleExportPdf = async (inv: Quote) => {
     try {
       const settings = await buildSettings(inv);
-      await PdfExportService.exportQuoteToPdf(inv, settings, undefined, undefined, undefined, 'invoice');
+      // Invoices always print HT, TVA and TTC.
+      await PdfExportService.exportQuoteToPdf(inv, settings, undefined, undefined, undefined, 'invoice', undefined, false);
     } catch (e) {
       showToast({ type: 'error', title: 'Erreur PDF', message: String(e) });
     }
@@ -160,7 +154,7 @@ export default function InvoiceDirectoryPage() {
   const handlePreview = async (inv: Quote) => {
     try {
       const settings = await buildSettings(inv);
-      const { blob, filename } = await PdfExportService.generatePdfBlob(inv, settings, undefined, undefined, undefined, 'invoice');
+      const { blob, filename } = await PdfExportService.generatePdfBlob(inv, settings, undefined, undefined, undefined, 'invoice', undefined, false);
       setPreviewBlob(blob);
       setPreviewFilename(filename);
       setShowPrintPreview(true);
@@ -267,9 +261,11 @@ export default function InvoiceDirectoryPage() {
         && !inv.customer?.fullName?.toLowerCase().includes(q)
         && !clientCode.includes(q)
         && !inv.customer?.phoneNumber?.toLowerCase().includes(q)) return false;
-      if (dateFrom && new Date(inv.createdAt) < new Date(dateFrom)) return false;
-      if (dateTo && new Date(inv.createdAt) > new Date(dateTo + 'T23:59:59')) return false;
-      if (filterPayment !== 'Tous' && inv.payment_method?.toLowerCase() !== filterPayment.toLowerCase()) return false;
+      // The invoice date (as edited), compared as local calendar days.
+      const day = documentDay(inv);
+      if (dateFrom && day < dateFrom) return false;
+      if (dateTo && day > dateTo) return false;
+      if (filterPayment !== 'Tous' && !matchesPaymentFilter(inv, filterPayment)) return false;
       if (filterCompany && inv.issuing_company_id !== filterCompany) return false;
       if (filterPayStatus !== 'all') {
         const { status } = computePayment(inv);
@@ -281,7 +277,7 @@ export default function InvoiceDirectoryPage() {
       let cmp = 0;
       if (sortField === 'quoteNumber') cmp = a.quoteNumber.localeCompare(b.quoteNumber);
       else if (sortField === 'customer') cmp = (a.customer?.fullName || '').localeCompare(b.customer?.fullName || '');
-      else if (sortField === 'date') cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      else if (sortField === 'date') cmp = documentDay(a).localeCompare(documentDay(b)) || new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
       else if (sortField === 'total') cmp = a.totalAmount - b.totalAmount;
       else if (sortField === 'reste') cmp = computePayment(a).reste - computePayment(b).reste;
       return sortDir === 'asc' ? cmp : -cmp;
@@ -321,7 +317,7 @@ export default function InvoiceDirectoryPage() {
         'Statut Paiement': statusLabel,
         'Mode Paiement': inv.payment_method || '',
         'Référence Paiement': inv.payment_reference || '',
-        'Date': new Date(inv.createdAt).toLocaleDateString('fr-FR'),
+        'Date': formatDay(documentDay(inv)),
       };
     });
     exportToCSV(rows, `factures-${new Date().toISOString().slice(0, 10)}`);
@@ -503,7 +499,7 @@ export default function InvoiceDirectoryPage() {
                       )}
                     </td>
                     <td className="px-3 py-2.5 text-xs text-muted-foreground">
-                      {new Date(inv.createdAt).toLocaleDateString('fr-FR')}
+                      {formatDay(documentDay(inv))}
                     </td>
                     <td className="px-3 py-2.5 whitespace-nowrap">
                       <div className="flex items-center gap-1">

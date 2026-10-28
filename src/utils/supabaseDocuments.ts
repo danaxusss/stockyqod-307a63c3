@@ -1,6 +1,9 @@
 import { supabase } from './supabaseClient';
 import { getCompanyContext } from './supabaseCompanyFilter';
 import { Quote, QuoteItem, CustomerInfo } from '../types';
+import { documentTotal, invoicePayment, mergeLines, recomputeLine, sameCustomer } from './documentLines';
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
 
 // Extended row type with financial pipeline columns
 type DocRow = {
@@ -149,6 +152,16 @@ export class SupabaseDocumentsService {
     const companyId = (srcData as DocRow).company_id || getCompanyContext().companyId;
     if (!companyId) throw new Error('Le devis ne possède pas de société associée');
 
+    // A quote is delivered once: a second BL would ship (and invoice) the goods twice.
+    const { data: existingBL } = await (supabase.from('quotes') as any)
+      .select('quote_number')
+      .eq('parent_document_id', quoteId)
+      .eq('document_type', 'bl')
+      .limit(1);
+    if ((existingBL as any[])?.length) {
+      throw new Error(`Ce devis a déjà un BL (${(existingBL as any[])[0].quote_number}).`);
+    }
+
     // Get next BL number
     const blNumber = await this.nextNumber(companyId, 'bl');
     const now = new Date().toISOString();
@@ -191,168 +204,223 @@ export class SupabaseDocumentsService {
   // Items from all BLs are flattened (same barcode = sum quantities).
   // Source BL status is set to 'final'. Returns the new Proforma.
   static async createProformaFromBLs(blIds: string[], targetCompanyId: string): Promise<Quote> {
-    // Fetch all source BLs
+    const ids = Array.from(new Set(blIds));
+    if (ids.length === 0) throw new Error('Aucun BL sélectionné');
     const { data: blRows, error: blErr } = await (supabase.from('quotes') as any)
       .select('*')
-      .in('id', blIds);
-    if (blErr || !blRows || (blRows as any[]).length === 0) throw new Error('BLs introuvables');
+      .in('id', ids);
+    if (blErr || !blRows || (blRows as any[]).length !== ids.length) throw new Error('BLs introuvables');
 
-    const bls = (blRows as DocRow[]).map(mapDocRow);
+    const bls = (blRows as DocRow[])
+      .filter(r => r.document_type === 'bl')
+      .sort((a, b) => a.created_at.localeCompare(b.created_at))
+      .map(mapDocRow);
+    if (bls.length !== ids.length) throw new Error('Seuls des BL peuvent être fusionnés');
 
-    // Flatten items: merge by barcode (same product → sum quantities)
-    const itemMap = new Map<string, QuoteItem>();
-    for (const bl of bls) {
-      for (const item of bl.items) {
-        const key = item.quoteBarcode || item.product?.barcode || item.id;
-        if (itemMap.has(key)) {
-          const existing = itemMap.get(key)!;
-          const newQty = existing.quantity + item.quantity;
-          itemMap.set(key, {
-            ...existing,
-            quantity: newQty,
-            subtotal: existing.unitPrice * newQty,
-            is_billed: false,
-          });
-        } else {
-          itemMap.set(key, { ...item, is_billed: false });
-        }
-      }
-    }
-    const mergedItems = Array.from(itemMap.values());
-    const totalAmount = mergedItems.reduce((sum, i) => sum + i.subtotal, 0);
-
-    // Use first BL's customer info
     const customer = bls[0].customer;
+    if (!bls.every(bl => sameCustomer(bl.customer, customer))) {
+      throw new Error('Les BL sélectionnés concernent des clients différents : fusionnez uniquement les BL d\'un même client.');
+    }
+    const converted = bls.filter(bl => bl.status === 'final');
+    if (converted.length) {
+      throw new Error(`Déjà transformé en proforma : ${converted.map(b => b.quoteNumber).join(', ')}`);
+    }
+    const { data: holders } = await (supabase.from('quotes') as any)
+      .select('quote_number')
+      .eq('document_type', 'proforma')
+      .overlaps('source_bl_ids', ids)
+      .limit(1);
+    if ((holders as any[])?.length) {
+      throw new Error(`Ces BL figurent déjà dans le proforma ${(holders as any[])[0].quote_number}.`);
+    }
 
-    // Build auto-note listing source BL numbers
-    const blNums = bls.map(b => b.quoteNumber).join(', ');
-    const autoNote = `Proforma créé depuis les BL : ${blNums}`;
-
-    // Get next Proforma number
-    const proformaNumber = await this.nextNumber(targetCompanyId, 'proforma');
+    // Claim the BLs before creating the proforma: of two people merging the
+    // same BL at once, only one gets it.
     const now = new Date().toISOString();
-
-    const newId = crypto.randomUUID();
-    const proformaData: Record<string, unknown> = {
-      id: newId,
-      quote_number: proformaNumber,
-      created_at: now,
-      updated_at: now,
-      status: 'draft',
-      customer_info: customer,
-      items: mergedItems,
-      total_amount: totalAmount,
-      notes: autoNote,
-      created_by: null,
-      document_type: 'proforma',
-      parent_document_id: null,
-      source_bl_ids: blIds,
-      paid_amount: 0,
-      company_id: targetCompanyId,
-    };
-
-    const { data: newDoc, error: insertErr } = await (supabase.from('quotes') as any)
-      .insert(proformaData)
-      .select('*')
-      .single();
-    if (insertErr) throw new Error(`Erreur création Proforma: ${insertErr.message}`);
-
-    // Mark all source BLs as final
-    await (supabase.from('quotes') as any)
+    const { data: claimed, error: claimErr } = await (supabase.from('quotes') as any)
       .update({ status: 'final', updated_at: now })
-      .in('id', blIds);
+      .in('id', ids)
+      .neq('status', 'final')
+      .select('id');
+    if (claimErr) throw new Error(`Erreur création Proforma: ${claimErr.message}`);
+    const claimedIds = ((claimed as { id: string }[]) || []).map(r => r.id);
+    const release = () => claimedIds.length
+      ? (supabase.from('quotes') as any).update({ status: 'draft', updated_at: new Date().toISOString() }).in('id', claimedIds)
+      : Promise.resolve();
+    if (claimedIds.length !== ids.length) {
+      await release();
+      throw new Error('Un de ces BL vient d\'être transformé par quelqu\'un d\'autre. Rechargez la page.');
+    }
 
-    return mapDocRow(newDoc as DocRow);
+    try {
+      const mergedItems = mergeLines(bls.flatMap(bl => bl.items))
+        .map(item => ({ ...item, is_billed: false, billed_by_company_id: undefined, billed_invoice_id: undefined }));
+      const blNums = bls.map(b => b.quoteNumber).join(', ');
+      const proformaNumber = await this.nextNumber(targetCompanyId, 'proforma');
+
+      const proformaData: Record<string, unknown> = {
+        id: crypto.randomUUID(),
+        quote_number: proformaNumber,
+        created_at: now,
+        updated_at: now,
+        status: 'draft',
+        customer_info: customer,
+        items: mergedItems,
+        total_amount: documentTotal(mergedItems),
+        notes: `Proforma créé depuis les BL : ${blNums}`,
+        created_by: null,
+        document_type: 'proforma',
+        parent_document_id: null,
+        source_bl_ids: bls.map(b => b.id),
+        paid_amount: 0,
+        company_id: targetCompanyId,
+      };
+
+      const { data: newDoc, error: insertErr } = await (supabase.from('quotes') as any)
+        .insert(proformaData)
+        .select('*')
+        .single();
+      if (insertErr) throw new Error(`Erreur création Proforma: ${insertErr.message}`);
+      return mapDocRow(newDoc as DocRow);
+    } catch (e) {
+      await release();
+      throw e;
+    }
+  }
+
+  /** The proforma a BL was merged into, if any. */
+  static async findProformaForBL(blId: string): Promise<{ id: string; quoteNumber: string } | null> {
+    const { data } = await (supabase.from('quotes') as any)
+      .select('id, quote_number')
+      .eq('document_type', 'proforma')
+      .contains('source_bl_ids', [blId])
+      .limit(1);
+    const row = (data as { id: string; quote_number: string }[] | null)?.[0];
+    return row ? { id: row.id, quoteNumber: row.quote_number } : null;
+  }
+
+  // Billed amount of a proforma and its status, from its lines.
+  private static proformaBilling(items: QuoteItem[]) {
+    const billed = documentTotal(items.filter(i => i.is_billed === true));
+    const allBilled = items.length > 0 && items.every(i => i.is_billed === true);
+    const anyBilled = items.some(i => i.is_billed === true);
+    return { paid_amount: billed, status: allBilled ? 'solde' : anyBilled ? 'pending' : 'draft' };
+  }
+
+  // Write a proforma's lines only if nobody changed it since `updatedAt`.
+  private static async swapProformaItems(proformaId: string, updatedAt: string, items: QuoteItem[]): Promise<boolean> {
+    const { data, error } = await (supabase.from('quotes') as any)
+      .update({ items, ...this.proformaBilling(items), updated_at: new Date().toISOString() })
+      .eq('id', proformaId)
+      .eq('updated_at', updatedAt)
+      .select('id');
+    if (error) throw new Error(`Erreur mise à jour proforma: ${error.message}`);
+    return ((data as unknown[]) || []).length === 1;
+  }
+
+  /**
+   * Lines to save from a proforma edit. Billing state comes from the database,
+   * not from the edit: a line billed since the edit started stays billed, and
+   * one freed by a deleted invoice stays free.
+   */
+  static async keepBilledLines(proformaId: string, draft: QuoteItem[]): Promise<QuoteItem[]> {
+    const { data } = await (supabase.from('quotes') as any).select('items').eq('id', proformaId).maybeSingle();
+    const current = (Array.isArray(data?.items) ? data.items : []) as QuoteItem[];
+    const currentById = new Map(current.map(i => [i.id, i]));
+    const kept = draft.map(item => {
+      const now = currentById.get(item.id);
+      return now && (now.is_billed || item.is_billed) ? now : item;
+    });
+    const draftIds = new Set(draft.map(i => i.id));
+    return [...kept, ...current.filter(i => i.is_billed && !draftIds.has(i.id))];
   }
 
   // Generate an Invoice from selected Proforma items (by item id).
-  // Marks those items is_billed=true on the proforma.
-  // Updates proforma paid_amount. Auto-sets proforma status='solde' when all items billed.
+  // The lines are claimed on the proforma first (compare-and-swap), so the
+  // same line can never end up on two invoices.
   static async createInvoiceFromProforma(
     proformaId: string,
     selectedItemIds: string[],
     issuingCompanyId: string
   ): Promise<Quote> {
-    // Fetch proforma
     const { data: proformaData, error: pfErr } = await (supabase.from('quotes') as any)
       .select('*')
       .eq('id', proformaId)
       .single();
     if (pfErr || !proformaData) throw new Error('Proforma introuvable');
 
-    const proforma = mapDocRow(proformaData as DocRow);
-
-    // Validate selected items exist
+    const row = proformaData as DocRow;
+    const proforma = mapDocRow(row);
     const selectedItems = proforma.items.filter(item => selectedItemIds.includes(item.id));
     if (selectedItems.length === 0) throw new Error('Aucun article sélectionné');
-
-    // Total for selected items
-    const invoiceTotal = selectedItems.reduce((sum, i) => sum + i.subtotal, 0);
-
-    // Get next invoice number
-    const invoiceNumber = await this.nextNumber(issuingCompanyId, 'invoice');
-    const now = new Date().toISOString();
-
-    // Build invoice items (mark as billed + record issuing company)
-    const invoiceItems = selectedItems.map(i => ({ ...i, is_billed: true, billed_by_company_id: issuingCompanyId }));
+    const alreadyBilled = selectedItems.filter(i => i.is_billed === true);
+    if (alreadyBilled.length) {
+      throw new Error(`Déjà facturé : ${alreadyBilled.map(i => i.quoteName || i.product?.name || i.id).join(', ')}. Rechargez la page.`);
+    }
 
     const invoiceId = crypto.randomUUID();
-    const invoiceData: Record<string, unknown> = {
-      id: invoiceId,
-      quote_number: invoiceNumber,
-      created_at: now,
-      updated_at: now,
-      status: 'final',
-      customer_info: proforma.customer,
-      items: invoiceItems,
-      total_amount: invoiceTotal,
-      notes: `Facture générée depuis ${proforma.quoteNumber}`,
-      created_by: null,
-      document_type: 'invoice',
-      parent_document_id: proformaId,
-      source_bl_ids: [],
-      paid_amount: 0,
-      issuing_company_id: issuingCompanyId,
-      company_id: (proformaData as DocRow).company_id || null,
-    };
+    const mark = (i: QuoteItem): QuoteItem => ({ ...i, is_billed: true, billed_by_company_id: issuingCompanyId, billed_invoice_id: invoiceId });
+    const claimedItems = proforma.items.map(item => selectedItemIds.includes(item.id) ? mark(item) : item);
+    if (!await this.swapProformaItems(proformaId, row.updated_at, claimedItems)) {
+      throw new Error('Le proforma a été modifié entre-temps (autre onglet ou utilisateur). Rechargez la page et recommencez.');
+    }
 
-    const { data: newInvoice, error: invErr } = await (supabase.from('quotes') as any)
-      .insert(invoiceData)
-      .select('*')
-      .single();
-    if (invErr) throw new Error(`Erreur création Facture: ${invErr.message}`);
-
-    // Mark selected items as is_billed=true + record issuing company on proforma items
-    const updatedItems = proforma.items.map(item =>
-      selectedItemIds.includes(item.id)
-        ? { ...item, is_billed: true, billed_by_company_id: issuingCompanyId }
-        : item
-    );
-
-    // Recalculate paid_amount = sum of all invoices' total_amount for this proforma
-    const { data: allInvoices } = await (supabase.from('quotes') as any)
-      .select('total_amount')
-      .eq('parent_document_id', proformaId)
-      .eq('document_type', 'invoice');
-
-    const newPaidAmount = ((allInvoices as any[]) || []).reduce(
-      (sum: number, inv: any) => sum + Number(inv.total_amount), 0
-    );
-
-    // Determine if all items are now billed
-    const allBilled = updatedItems.every(item => item.is_billed === true);
-    const proformaStatus = allBilled ? 'solde' : 'pending';
-
-    await (supabase.from('quotes') as any)
-      .update({
-        items: updatedItems,
-        paid_amount: newPaidAmount,
-        status: proformaStatus,
+    try {
+      const invoiceNumber = await this.nextNumber(issuingCompanyId, 'invoice');
+      const now = new Date().toISOString();
+      const invoiceItems = selectedItems.map(mark);
+      const invoiceData: Record<string, unknown> = {
+        id: invoiceId,
+        quote_number: invoiceNumber,
+        created_at: now,
         updated_at: now,
-      })
-      .eq('id', proformaId);
+        status: 'final',
+        customer_info: proforma.customer,
+        items: invoiceItems,
+        total_amount: documentTotal(invoiceItems),
+        notes: `Facture générée depuis ${proforma.quoteNumber}`,
+        created_by: null,
+        document_type: 'invoice',
+        parent_document_id: proformaId,
+        source_bl_ids: [],
+        paid_amount: 0,
+        issuing_company_id: issuingCompanyId,
+        company_id: row.company_id || null,
+      };
+      const { data: newInvoice, error: invErr } = await (supabase.from('quotes') as any)
+        .insert(invoiceData)
+        .select('*')
+        .single();
+      if (invErr) throw new Error(`Erreur création Facture: ${invErr.message}`);
+      return mapDocRow(newInvoice as DocRow);
+    } catch (e) {
+      await this.releaseInvoiceLines(proformaId, invoiceId, selectedItemIds).catch(() => {});
+      throw e;
+    }
+  }
 
-    return mapDocRow(newInvoice as DocRow);
+  // Put a proforma's lines back to "not billed" after their invoice is gone.
+  // Lines billed before `billed_invoice_id` existed are matched by id.
+  private static async releaseInvoiceLines(proformaId: string, invoiceId: string, itemIds: string[]): Promise<void> {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const { data } = await (supabase.from('quotes') as any)
+        .select('items, updated_at')
+        .eq('id', proformaId)
+        .maybeSingle();
+      if (!data) return;
+      const items = (Array.isArray(data.items) ? data.items : []) as QuoteItem[];
+      const released = items.map(item => {
+        const ofThisInvoice = item.billed_invoice_id
+          ? item.billed_invoice_id === invoiceId
+          : itemIds.includes(item.id);
+        if (!item.is_billed || !ofThisInvoice) return item;
+        const { billed_by_company_id: _b, billed_invoice_id: _i, ...rest } = item;
+        return { ...rest, is_billed: false } as QuoteItem;
+      });
+      if (released.every((item, i) => item === items[i])) return;
+      if (await this.swapProformaItems(proformaId, data.updated_at, released)) return;
+    }
+    throw new Error('Le proforma est modifié en ce moment : impossible de remettre ses lignes à facturer.');
   }
 
   static async getAllByType(type: 'bl' | 'proforma' | 'invoice' | 'avoir' | 'bon_commande'): Promise<Quote[]> {
@@ -381,10 +449,36 @@ export class SupabaseDocumentsService {
 
   static async deleteDocument(id: string): Promise<void> {
     const { companyId, bypassFilter } = getCompanyContext();
+    const { data: doc } = await (supabase.from('quotes') as any)
+      .select('document_type, parent_document_id, source_bl_ids, items')
+      .eq('id', id)
+      .maybeSingle();
     let q = (supabase.from('quotes') as any).delete().eq('id', id);
     if (!bypassFilter && companyId) q = q.eq('company_id', companyId);
     const { error } = await q;
     if (error) throw new Error(`Erreur suppression: ${error.message}`);
+    if (!doc) return;
+
+    // What the document had consumed becomes available again.
+    if (doc.document_type === 'invoice' && doc.parent_document_id) {
+      const itemIds = ((Array.isArray(doc.items) ? doc.items : []) as QuoteItem[]).map(i => i.id);
+      await this.releaseInvoiceLines(doc.parent_document_id, id, itemIds);
+    }
+    const blIds = (doc.source_bl_ids || []) as string[];
+    if (doc.document_type === 'proforma' && blIds.length) {
+      const { data: others } = await (supabase.from('quotes') as any)
+        .select('source_bl_ids')
+        .eq('document_type', 'proforma')
+        .overlaps('source_bl_ids', blIds);
+      const stillUsed = new Set(((others as { source_bl_ids: string[] }[]) || []).flatMap(o => o.source_bl_ids || []));
+      const free = blIds.filter(b => !stillUsed.has(b));
+      if (free.length) {
+        await (supabase.from('quotes') as any)
+          .update({ status: 'draft', updated_at: new Date().toISOString() })
+          .in('id', free)
+          .eq('document_type', 'bl');
+      }
+    }
   }
 
   // Returns document counts per type for a client identified by phone number.
@@ -428,7 +522,8 @@ export class SupabaseDocumentsService {
 
   // Unified client financial view:
   // - Sources ALL clients from the clients table (registered clients always appear)
-  // - Enriches with aggregated proforma/invoice data (LEFT JOIN by phone)
+  // - Facturé = invoices − credit notes; Payé = money received on invoices
+  //   (advance + recorded payments); Reste = the difference
   // - Also appends legacy "quote-only" customers not in clients table
   static async getClientFinancialSummary(): Promise<ClientFinancialRow[]> {
     const { companyId, isSuperAdmin } = getCompanyContext();
@@ -441,112 +536,85 @@ export class SupabaseDocumentsService {
     const { data: clientRows, error: clientErr } = await clientQuery;
     if (clientErr) throw new Error(`Erreur clients: ${clientErr.message}`);
 
-    // ── 2. Quote documents (proformas + invoices) for aggregation ───────────
-    let docQuery = (supabase.from('quotes') as any)
-      .select('customer_info, total_amount, paid_amount, document_type')
-      .in('document_type', ['proforma', 'invoice']);
-    if (!isSuperAdmin && companyId) docQuery = docQuery.eq('company_id', companyId);
-    const { data: docData } = await docQuery;
+    // ── 2. Proformas, invoices and credit notes, every page ────────────────
+    const docs: any[] = [];
+    for (let from = 0; ; from += 1000) {
+      let docQuery = (supabase.from('quotes') as any)
+        .select('id, customer_info, total_amount, document_type, avance_amount, payment_methods_json')
+        .in('document_type', ['proforma', 'invoice', 'avoir'])
+        .order('id', { ascending: true })
+        .range(from, from + 999);
+      if (!isSuperAdmin && companyId) docQuery = docQuery.eq('company_id', companyId);
+      const { data, error } = await docQuery;
+      if (error) throw new Error(`Erreur documents: ${error.message}`);
+      docs.push(...(data || []));
+      if (!data || data.length < 1000) break;
+    }
 
-    // ── 3. Build aggregation map keyed by phone_number ──────────────────────
+    // ── 3. Aggregate by phone, or by name when there is no phone ───────────
     interface Agg {
       totalAmount: number; paidAmount: number;
       proformaCount: number; invoiceCount: number;
-      name: string; // client name from first encountered quote
+      name: string; // client name from first encountered document
     }
+    const empty = (name: string): Agg => ({ totalAmount: 0, paidAmount: 0, proformaCount: 0, invoiceCount: 0, name });
     const byPhone = new Map<string, Agg>();
-
-    for (const doc of (docData as any[]) || []) {
-      const info = doc.customer_info as CustomerInfo;
-      const phone = (info?.phoneNumber || '').trim();
-      const name  = (info?.fullName   || '').trim();
-      if (!phone) continue; // skip phone-less entries (handled separately below)
-
-      const existing = byPhone.get(phone) || {
-        totalAmount: 0, paidAmount: 0, proformaCount: 0, invoiceCount: 0, name,
-      };
-      if (doc.document_type === 'proforma') {
-        existing.totalAmount  += Number(doc.total_amount || 0);
-        existing.paidAmount   += Number(doc.paid_amount  || 0);
-        existing.proformaCount += 1;
-      } else {
-        existing.invoiceCount += 1;
-      }
-      if (!existing.name && name) existing.name = name;
-      byPhone.set(phone, existing);
-    }
-
-    // Also collect name-only (no phone) quote customers for legacy fallback
     const byName = new Map<string, Agg>();
-    for (const doc of (docData as any[]) || []) {
+
+    for (const doc of docs) {
       const info = doc.customer_info as CustomerInfo;
       const phone = (info?.phoneNumber || '').trim();
       const name  = (info?.fullName   || '').trim();
-      if (phone || !name) continue;
-      const existing = byName.get(name) || {
-        totalAmount: 0, paidAmount: 0, proformaCount: 0, invoiceCount: 0, name,
-      };
+      if (!phone && !name) continue;
+      const map = phone ? byPhone : byName;
+      const key = phone || name;
+      const agg = map.get(key) || empty(name);
+      const total = Number(doc.total_amount || 0);
       if (doc.document_type === 'proforma') {
-        existing.totalAmount  += Number(doc.total_amount || 0);
-        existing.paidAmount   += Number(doc.paid_amount  || 0);
-        existing.proformaCount += 1;
+        agg.proformaCount += 1;
+      } else if (doc.document_type === 'invoice') {
+        agg.invoiceCount += 1;
+        agg.totalAmount += total;
+        agg.paidAmount += invoicePayment({
+          totalAmount: total, avance_amount: Number(doc.avance_amount || 0),
+          payment_methods_json: Array.isArray(doc.payment_methods_json) ? doc.payment_methods_json : [],
+        }).paid;
       } else {
-        existing.invoiceCount += 1;
+        agg.totalAmount -= total;
       }
-      byName.set(name, existing);
+      if (!agg.name && name) agg.name = name;
+      map.set(key, agg);
     }
+
+    const toRow = (agg: Agg, extra: Partial<ClientFinancialRow> & { clientName: string; phoneNumber: string }): ClientFinancialRow => ({
+      fullName: extra.clientName,
+      totalAmount: round2(agg.totalAmount),
+      paidAmount: round2(agg.paidAmount),
+      remaining: round2(agg.totalAmount - agg.paidAmount),
+      proformaCount: agg.proformaCount,
+      invoiceCount: agg.invoiceCount,
+      ...extra,
+    });
 
     // ── 4. Build rows — registered clients first ────────────────────────────
     const rows: ClientFinancialRow[] = [];
     const seenPhones = new Set<string>();
-
     for (const c of (clientRows as any[]) || []) {
       const phone = (c.phone_number || '').trim();
-      const agg = (phone && byPhone.get(phone)) || {
-        totalAmount: 0, paidAmount: 0, proformaCount: 0, invoiceCount: 0, name: c.full_name,
-      };
+      const agg = (phone && byPhone.get(phone)) || empty(c.full_name);
       if (phone) seenPhones.add(phone);
-      rows.push({
-        clientId:    c.id,
-        clientCode:  c.client_code || undefined,
-        clientName:  c.full_name,
-        fullName:    c.full_name,
-        phoneNumber: phone,
-        totalAmount:  agg.totalAmount,
-        paidAmount:   agg.paidAmount,
-        remaining:    agg.totalAmount - agg.paidAmount,
-        proformaCount: agg.proformaCount,
-        invoiceCount:  agg.invoiceCount,
-      });
+      rows.push(toRow(agg, { clientId: c.id, clientCode: c.client_code || undefined, clientName: c.full_name, phoneNumber: phone }));
     }
 
-    // ── 5. Legacy: quote customers not in clients table (by phone) ──────────
+    // ── 5. Legacy: document customers not in clients table (by phone) ───────
     for (const [phone, agg] of byPhone) {
       if (seenPhones.has(phone)) continue;
-      rows.push({
-        clientName:  agg.name || phone,
-        fullName:    agg.name || phone,
-        phoneNumber: phone,
-        totalAmount:  agg.totalAmount,
-        paidAmount:   agg.paidAmount,
-        remaining:    agg.totalAmount - agg.paidAmount,
-        proformaCount: agg.proformaCount,
-        invoiceCount:  agg.invoiceCount,
-      });
+      rows.push(toRow(agg, { clientName: agg.name || phone, phoneNumber: phone }));
     }
 
-    // ── 6. Legacy: name-only quote customers (no phone) ─────────────────────
+    // ── 6. Legacy: name-only customers (no phone) ───────────────────────────
     for (const [name, agg] of byName) {
-      rows.push({
-        clientName:  name,
-        fullName:    name,
-        phoneNumber: '',
-        totalAmount:  agg.totalAmount,
-        paidAmount:   agg.paidAmount,
-        remaining:    agg.totalAmount - agg.paidAmount,
-        proformaCount: agg.proformaCount,
-        invoiceCount:  agg.invoiceCount,
-      });
+      rows.push(toRow(agg, { clientName: name, phoneNumber: '' }));
     }
 
     // Sort: clients with balance first, then alphabetical
@@ -701,6 +769,7 @@ export class SupabaseDocumentsService {
       avance_amount?: number | null;
       payment_methods_json?: unknown;
       quote_date?: string | null;
+      paid_amount?: number;
     }
   ): Promise<Quote> {
     const updateData: Record<string, unknown> = {
@@ -710,7 +779,7 @@ export class SupabaseDocumentsService {
     if (updates.customer !== undefined) updateData.customer_info = updates.customer;
     if (updates.items !== undefined) {
       updateData.items = updates.items;
-      updateData.total_amount = updates.items.reduce((s, i) => s + i.subtotal, 0);
+      updateData.total_amount = documentTotal(updates.items);
     }
     if (updates.notes !== undefined) updateData.notes = updates.notes;
     if (updates.notes2 !== undefined) updateData.notes2 = updates.notes2;
@@ -723,6 +792,7 @@ export class SupabaseDocumentsService {
     if (updates.avance_amount !== undefined) updateData.avance_amount = updates.avance_amount ?? 0;
     if (updates.payment_methods_json !== undefined) updateData.payment_methods_json = updates.payment_methods_json;
     if (updates.quote_date !== undefined) updateData.quote_date = updates.quote_date || null;
+    if (updates.paid_amount !== undefined) updateData.paid_amount = updates.paid_amount;
 
     const { companyId, bypassFilter } = getCompanyContext();
     let q = (supabase.from('quotes') as any).update(updateData).eq('id', id);
@@ -741,7 +811,9 @@ export class SupabaseDocumentsService {
 
     const src = srcData as DocRow;
     const docType = (src.document_type as string) || 'quote';
-    const companyId = src.company_id || src.issuing_company_id || getCompanyContext().companyId;
+    // An invoice is numbered in the series of the company that issues it.
+    const companyId = (docType === 'invoice' ? src.issuing_company_id || src.company_id : src.company_id || src.issuing_company_id)
+      || getCompanyContext().companyId;
 
     let newNumber: string;
     if (docType === 'invoice') {
@@ -765,7 +837,11 @@ export class SupabaseDocumentsService {
       status: 'draft',
       is_locked: false,
       customer_info: src.customer_info,
-      items: src.items,
+      // A copy starts unbilled: it has not been invoiced yet.
+      items: docType === 'invoice' ? src.items : ((Array.isArray(src.items) ? src.items : []) as QuoteItem[]).map(item => {
+        const { is_billed: _b, billed_by_company_id: _c, billed_invoice_id: _i, ...rest } = item;
+        return rest;
+      }),
       total_amount: src.total_amount,
       notes: src.notes || null,
       notes2: src.notes2 || null,
@@ -829,7 +905,33 @@ export class SupabaseDocumentsService {
     return mapDocRow(newDoc as DocRow);
   }
 
-  static async createAvoirFromInvoice(invoiceId: string, reason: string): Promise<Quote> {
+  /** Credit notes already issued against an invoice. */
+  static async getAvoirsForInvoice(invoiceId: string): Promise<Quote[]> {
+    const { data, error } = await (supabase.from('quotes') as any)
+      .select('*')
+      .eq('document_type', 'avoir')
+      .eq('parent_document_id', invoiceId)
+      .order('created_at', { ascending: true });
+    if (error) throw new Error(`Erreur avoirs: ${error.message}`);
+    return ((data as DocRow[]) || []).map(mapDocRow);
+  }
+
+  /** Quantity of each invoice line not yet credited by an avoir. */
+  static creditableQuantities(invoice: Quote, avoirs: Quote[]): Record<string, number> {
+    const credited: Record<string, number> = {};
+    for (const avoir of avoirs) {
+      for (const item of avoir.items) credited[item.id] = (credited[item.id] || 0) + (Number(item.quantity) || 0);
+    }
+    const left: Record<string, number> = {};
+    for (const item of invoice.items) left[item.id] = Math.max(0, (Number(item.quantity) || 0) - (credited[item.id] || 0));
+    return left;
+  }
+
+  /**
+   * Credit note for an invoice, for the given quantity of each line (all of
+   * what is left when `lines` is omitted). Never credits more than invoiced.
+   */
+  static async createAvoirFromInvoice(invoiceId: string, reason: string, lines?: Record<string, number>): Promise<Quote> {
     const { data: srcData, error: srcErr } = await (supabase.from('quotes') as any)
       .select('*')
       .eq('id', invoiceId)
@@ -837,9 +939,25 @@ export class SupabaseDocumentsService {
     if (srcErr || !srcData) throw new Error('Facture introuvable');
 
     const src = srcData as DocRow;
-    const companyId = src.company_id || src.issuing_company_id || getCompanyContext().companyId;
-    if (!companyId) throw new Error('Société non trouvée');
+    const invoice = mapDocRow(src);
+    if (invoice.document_type !== 'invoice') throw new Error('Un avoir se crée depuis une facture');
+    const left = this.creditableQuantities(invoice, await this.getAvoirsForInvoice(invoiceId));
+    const items = invoice.items
+      .map(item => {
+        const wanted = lines ? Number(lines[item.id]) || 0 : left[item.id];
+        return { item, quantity: Math.min(wanted, left[item.id]) };
+      })
+      .filter(l => l.quantity > 0)
+      .map(({ item, quantity }) => quantity === item.quantity ? item : recomputeLine({ ...item, quantity }));
+    if (items.length === 0) {
+      throw new Error(Object.values(left).some(q => q > 0)
+        ? 'Choisissez au moins une quantité à créditer.'
+        : 'Cette facture est déjà entièrement couverte par des avoirs.');
+    }
 
+    // Numbered in the series of the company that issued the invoice.
+    const companyId = src.issuing_company_id || src.company_id || getCompanyContext().companyId;
+    if (!companyId) throw new Error('Société non trouvée');
     const { data: numData, error: numErr } = await (supabase.rpc as any)('next_document_number', {
       p_company_id: companyId,
       p_doc_type: 'avoir',
@@ -848,17 +966,16 @@ export class SupabaseDocumentsService {
     const avoirNumber = `AV-${String(numData as number).padStart(4, '0')}`;
 
     const now = new Date().toISOString();
-    const newId = crypto.randomUUID();
     const insertData: Record<string, unknown> = {
-      id: newId,
+      id: crypto.randomUUID(),
       quote_number: avoirNumber,
       created_at: now,
       updated_at: now,
       status: 'final',
       is_locked: false,
       customer_info: src.customer_info,
-      items: src.items,
-      total_amount: src.total_amount,
+      items,
+      total_amount: documentTotal(items),
       notes: reason || null,
       notes2: null,
       document_type: 'avoir',

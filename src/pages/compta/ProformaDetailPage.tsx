@@ -12,6 +12,7 @@ import { ClientDropdown } from '../../components/ClientDropdown';
 import { ClientFormModal } from '../../components/ClientFormModal';
 import { ProductSearchModal } from '../../components/ProductSearchModal';
 import { PrintPreviewModal } from '../../components/PrintPreviewModal';
+import { discountRate, documentTotal, localDay, recomputeLine, toHT, toTTC, unitPriceHTInput } from '../../utils/documentLines';
 
 function fmt(n: number) {
   return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(n);
@@ -89,7 +90,7 @@ export default function ProformaDetailPage() {
   const startEdit = () => {
     if (!proforma) return;
     setDraftNumber(proforma.quoteNumber);
-    setDraftDate(proforma.quote_date || new Date(proforma.createdAt).toISOString().split('T')[0]);
+    setDraftDate(proforma.quote_date || localDay(new Date(proforma.createdAt)));
     setDraftCustomerName(proforma.customer?.fullName || '');
     setDraftCustomerPhone(proforma.customer?.phoneNumber || '');
     setDraftCustomerCity(proforma.customer?.city || '');
@@ -113,11 +114,13 @@ export default function ProformaDetailPage() {
     }
     setIsSaving(true);
     try {
+      // Lines invoiced meanwhile (another tab, another user) stay billed.
+      const items = await SupabaseDocumentsService.keepBilledLines(proforma.id, draftItems);
       await SupabaseDocumentsService.updateDocument(proforma.id, {
         quoteNumber: draftNumber,
         quote_date: draftDate || null,
         customer: { ...proforma.customer, fullName: draftCustomerName, phoneNumber: draftCustomerPhone, city: draftCustomerCity },
-        items: draftItems,
+        items,
         notes: draftNotes.trim() || null,
         status: draftStatus,
       });
@@ -140,15 +143,13 @@ export default function ProformaDetailPage() {
   const updateDraftItem = (idx: number, field: string, value: string | number) => {
     setDraftItems(prev => prev.map((item, i) => {
       if (i !== idx) return item;
-      const updated: any = { ...item, [field]: value };
-      if (field === 'quantity' || field === 'unitPrice') {
-        updated.subtotal = (updated.unitPrice || 0) * Math.max(1, updated.quantity || 1);
-      }
-      return updated as QuoteItem;
+      if (item.is_billed) return item; // billed lines are fixed by their invoice
+      const updated = { ...item, [field]: value } as QuoteItem;
+      return field === 'quantity' || field === 'unitPrice' || field === 'discount' ? recomputeLine(updated) : updated;
     }));
   };
 
-  const removeDraftItem = (idx: number) => setDraftItems(prev => prev.filter((_, i) => i !== idx));
+  const removeDraftItem = (idx: number) => setDraftItems(prev => prev.filter((item, i) => i !== idx || item.is_billed));
 
   const addBlankItem = () => setDraftItems(prev => [...prev, {
     id: crypto.randomUUID(),
@@ -179,7 +180,7 @@ export default function ProformaDetailPage() {
 
   const unbilledItems = proforma?.items.filter(i => !i.is_billed) || [];
   const selectedItems = proforma?.items.filter(i => selectedIds.includes(i.id)) || [];
-  const invoiceTotal = selectedItems.reduce((s, i) => s + i.subtotal, 0);
+  const invoiceTotal = documentTotal(selectedItems);
 
   const handleGenerateInvoice = async () => {
     if (!proforma || !issuingCompanyId || selectedIds.length === 0) return;
@@ -220,8 +221,12 @@ export default function ProformaDetailPage() {
   if (isLoading) return <div className="flex items-center justify-center min-h-[40vh]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>;
   if (!proforma) return <div className="text-center py-12 text-muted-foreground">Proforma introuvable.</div>;
 
+  // paid_amount on a proforma is the amount already invoiced from it.
   const remaining = proforma.totalAmount - (proforma.paid_amount || 0);
-  const draftTotal = draftItems.reduce((s, i) => s + i.subtotal, 0);
+  const draftTotal = documentTotal(draftItems);
+  const tvaRate = companies.find(c => c.id === proforma.company_id)?.tva_rate ?? 20;
+  const shownItems = isEditing ? draftItems : proforma.items;
+  const showDiscount = isEditing || shownItems.some(i => discountRate(i) > 0);
 
   return (
     <div className="space-y-4 max-w-7xl mx-auto">
@@ -259,7 +264,7 @@ export default function ProformaDetailPage() {
             <button onClick={() => setIsEditing(false)} className="p-1.5 hover:bg-accent rounded-lg text-muted-foreground" title="Annuler">
               <X className="h-4 w-4" />
             </button>
-            <button onClick={handleSave} disabled={isSaving}
+            <button onClick={() => handleSave()} disabled={isSaving}
               className="flex items-center space-x-1.5 px-3 py-1.5 text-sm bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg">
               {isSaving ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
               <span>{isSaving ? 'Sauvegarde...' : 'Sauvegarder'}</span>
@@ -334,11 +339,11 @@ export default function ProformaDetailPage() {
         </div>
         <div className="glass rounded-lg p-3 text-center">
           <div className="text-base font-bold text-emerald-600">{fmt(proforma.paid_amount || 0)} Dh</div>
-          <div className="text-[11px] text-muted-foreground mt-0.5">Payé</div>
+          <div className="text-[11px] text-muted-foreground mt-0.5">Facturé</div>
         </div>
         <div className="glass rounded-lg p-3 text-center">
           <div className="text-base font-bold text-destructive">{fmt(remaining)} Dh</div>
-          <div className="text-[11px] text-muted-foreground mt-0.5">Reste</div>
+          <div className="text-[11px] text-muted-foreground mt-0.5">Reste à facturer</div>
         </div>
       </div>
 
@@ -427,6 +432,7 @@ export default function ProformaDetailPage() {
                 <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Réf</th>
                 <th className="px-3 py-2 text-right text-[11px] font-medium text-muted-foreground uppercase">Qté</th>
                 <th className="px-3 py-2 text-right text-[11px] font-medium text-muted-foreground uppercase">PU HT</th>
+                {showDiscount && <th className="px-3 py-2 text-right text-[11px] font-medium text-muted-foreground uppercase">Remise</th>}
                 <th className="px-3 py-2 text-right text-[11px] font-medium text-muted-foreground uppercase">Total HT</th>
                 {!isEditing && <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Statut</th>}
                 {!isEditing && <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Facturé par</th>}
@@ -434,12 +440,11 @@ export default function ProformaDetailPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {(isEditing ? draftItems : proforma.items).map((item, idx) => {
+              {shownItems.map((item, idx) => {
                 const billed = item.is_billed === true;
                 const selected = selectedIds.includes(item.id);
-                const tvaRate = companies.find(c => c.id === proforma.company_id)?.tva_rate ?? 20;
-                const unitHT = item.unitPrice / (1 + tvaRate / 100);
-                const totalHT = unitHT * item.quantity;
+                const unitHT = toHT(item.unitPrice, tvaRate);
+                const totalHT = toHT(item.subtotal, tvaRate);
                 return (
                   <tr key={item.id} className={`hover:bg-accent/50 ${!isEditing && billed ? 'opacity-60' : ''}`}>
                     {!isEditing && (
@@ -450,14 +455,28 @@ export default function ProformaDetailPage() {
                       </td>
                     )}
                     <td className="px-3 py-2 text-[10px] text-muted-foreground">{idx + 1}</td>
-                    {isEditing ? (
+                    {isEditing && billed ? (
+                      <>
+                        <td className="px-3 py-2 text-xs text-foreground">{item.quoteName || item.product?.name || '—'}</td>
+                        <td className="px-3 py-2 text-[10px] text-muted-foreground">{item.quoteBrand || item.product?.brand || '—'}</td>
+                        <td className="px-3 py-2 text-[10px] font-mono text-muted-foreground">{item.quoteBarcode || item.product?.barcode || '—'}</td>
+                        <td className="px-3 py-2 text-right text-xs font-bold text-foreground">{item.quantity}</td>
+                        <td className="px-3 py-2 text-right text-xs font-mono text-foreground">{fmt(unitHT)} Dh</td>
+                        <td className="px-3 py-2 text-right text-xs text-muted-foreground">{discountRate(item) > 0 ? `${discountRate(item)} %` : '—'}</td>
+                        <td className="px-3 py-2 text-right text-xs font-mono text-muted-foreground">{fmt(totalHT)} Dh</td>
+                        <td className="px-2 py-1.5 text-center" title="Ligne facturée : non modifiable">
+                          <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300">Facturé</span>
+                        </td>
+                      </>
+                    ) : isEditing ? (
                       <>
                         <td className="px-2 py-1.5"><input value={item.quoteName || ''} onChange={e => updateDraftItem(idx, 'quoteName', e.target.value)} className={inputCls} placeholder="Désignation" /></td>
                         <td className="px-2 py-1.5"><input value={item.quoteBrand || ''} onChange={e => updateDraftItem(idx, 'quoteBrand', e.target.value)} className={inputCls} placeholder="Marque" /></td>
                         <td className="px-2 py-1.5"><input value={item.quoteBarcode || ''} onChange={e => updateDraftItem(idx, 'quoteBarcode', e.target.value)} className={inputCls} placeholder="Référence" /></td>
                         <td className="px-2 py-1.5"><input type="number" min="1" value={item.quantity} onChange={e => updateDraftItem(idx, 'quantity', Math.max(1, Number(e.target.value)))} className={`${inputCls} text-right w-20`} /></td>
-                        <td className="px-2 py-1.5"><input type="number" min="0" step="0.01" value={item.unitPrice} onChange={e => updateDraftItem(idx, 'unitPrice', Number(e.target.value))} className={`${inputCls} text-right w-24`} /></td>
-                        <td className="px-3 py-2 text-right text-xs font-mono text-muted-foreground">{fmt(item.subtotal / (1 + tvaRate / 100))} Dh</td>
+                        <td className="px-2 py-1.5"><input type="number" min="0" step="0.01" value={unitPriceHTInput(item, tvaRate)} onChange={e => updateDraftItem(idx, 'unitPrice', toTTC(Number(e.target.value), tvaRate))} className={`${inputCls} text-right w-24`} title="Prix unitaire hors taxes" /></td>
+                        <td className="px-2 py-1.5"><input type="number" min="0" max="100" step="0.5" value={discountRate(item)} onChange={e => updateDraftItem(idx, 'discount', Math.min(100, Math.max(0, Number(e.target.value))))} className={`${inputCls} text-right w-16`} title="Remise %" /></td>
+                        <td className="px-3 py-2 text-right text-xs font-mono text-muted-foreground">{fmt(totalHT)} Dh</td>
                         <td className="px-2 py-1.5 text-center">
                           <button onClick={() => removeDraftItem(idx)} className="p-1 text-destructive hover:bg-destructive/10 rounded">
                             <X className="h-3 w-3" />
@@ -471,6 +490,7 @@ export default function ProformaDetailPage() {
                         <td className="px-3 py-2.5 text-[10px] font-mono text-muted-foreground">{item.quoteBarcode || item.product?.barcode || '—'}</td>
                         <td className="px-3 py-2.5 text-right text-xs font-bold text-foreground">{item.quantity}</td>
                         <td className="px-3 py-2.5 text-right text-xs font-mono text-foreground">{fmt(unitHT)} Dh</td>
+                        {showDiscount && <td className="px-3 py-2.5 text-right text-xs text-muted-foreground">{discountRate(item) > 0 ? `${discountRate(item)} %` : '—'}</td>}
                         <td className="px-3 py-2.5 text-right text-xs font-mono font-bold text-foreground">{fmt(totalHT)} Dh</td>
                         <td className="px-3 py-2.5">
                           {billed
@@ -487,7 +507,7 @@ export default function ProformaDetailPage() {
               })}
               {isEditing && (
                 <tr>
-                  <td colSpan={8} className="px-3 py-2">
+                  <td colSpan={9} className="px-3 py-2">
                     <div className="flex items-center gap-3">
                       <button onClick={addBlankItem} className="flex items-center space-x-1.5 text-xs text-primary hover:underline">
                         <Plus className="h-3.5 w-3.5" /><span>Ligne vide</span>

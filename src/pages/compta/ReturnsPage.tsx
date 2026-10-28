@@ -56,6 +56,8 @@ export default function ReturnsPage() {
   const [showPinModal, setShowPinModal] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [pendingEditId, setPendingEditId] = useState<string | null>(null);
+  // What the PIN unlocks: opening a locked return, or unlocking it.
+  const [pinPurpose, setPinPurpose] = useState<'edit' | 'unlock'>('edit');
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -128,6 +130,7 @@ export default function ReturnsPage() {
   const requestEdit = (ret: Return) => {
     if (ret.is_locked) {
       setPendingEditId(ret.id);
+      setPinPurpose('edit');
       setPinInput('');
       setShowPinModal(true);
     } else {
@@ -146,15 +149,22 @@ export default function ReturnsPage() {
       }
       setShowPinModal(false);
       const ret = returns.find(r => r.id === pendingEditId);
-      if (ret) openEdit(ret);
+      if (!ret) return;
+      if (pinPurpose === 'unlock') {
+        await SupabaseReturnsService.update(ret.id, { is_locked: false });
+        await load();
+      } else {
+        openEdit(ret);
+      }
     } catch {
       showToast({ type: 'error', message: 'Erreur vérification PIN' });
     }
   };
 
-  const handleSave = async () => {
+  // The periodic autosave saves quietly and leaves the form open.
+  const handleSave = async (silent = false) => {
     if (!form.reference_number.trim() || !form.client_name.trim()) {
-      showToast({ type: 'error', message: 'Numéro de référence et client requis' });
+      if (!silent) showToast({ type: 'error', message: 'Numéro de référence et client requis' });
       return;
     }
     setIsSaving(true);
@@ -169,6 +179,7 @@ export default function ReturnsPage() {
       };
       if (editingId) {
         await SupabaseReturnsService.update(editingId, payload);
+        if (silent) return;
         showToast({ type: 'success', message: 'Retour mis à jour' });
       } else {
         await SupabaseReturnsService.create(payload);
@@ -177,13 +188,20 @@ export default function ReturnsPage() {
       setShowModal(false);
       await load();
     } catch (e: any) {
-      showToast({ type: 'error', message: e?.message || 'Erreur' });
+      if (!silent) showToast({ type: 'error', message: e?.message || 'Erreur' });
     } finally {
       setIsSaving(false);
     }
   };
 
   const toggleLock = async (ret: Return) => {
+    if (ret.is_locked) {
+      setPendingEditId(ret.id);
+      setPinPurpose('unlock');
+      setPinInput('');
+      setShowPinModal(true);
+      return;
+    }
     try {
       await SupabaseReturnsService.update(ret.id, { is_locked: !ret.is_locked });
       await load();
@@ -227,8 +245,8 @@ export default function ReturnsPage() {
     setProductSearchTarget(null);
   };
 
-  useKeyboardSave(handleSave, showModal && !isSaving);
-  useAutoSave(handleSave, showModal && !!editingId);
+  useKeyboardSave(() => handleSave(), showModal && !isSaving);
+  useAutoSave(() => handleSave(true), showModal && !!editingId && !isSaving);
   useEscapeKey(() => setShowModal(false), showModal);
   useEscapeKey(() => setShowPinModal(false), showPinModal);
 
@@ -452,7 +470,7 @@ export default function ReturnsPage() {
             </div>
             <div className="flex space-x-2 pt-1">
               <button onClick={() => setShowModal(false)} className="flex-1 px-3 py-1.5 text-sm border border-input rounded-lg hover:bg-accent text-foreground">Annuler</button>
-              <button onClick={handleSave} disabled={isSaving}
+              <button onClick={() => handleSave()} disabled={isSaving}
                 className="flex-1 flex items-center justify-center space-x-1.5 px-3 py-1.5 text-sm bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg disabled:opacity-50">
                 {isSaving ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
                 <span>{editingId ? 'Sauvegarder' : 'Créer'}</span>
@@ -475,7 +493,7 @@ export default function ReturnsPage() {
               <Lock className="h-4 w-4 text-amber-500" />
               <h2 className="text-sm font-bold text-foreground">Retour verrouillé</h2>
             </div>
-            <p className="text-xs text-muted-foreground">Saisissez le PIN spécial pour modifier ce retour.</p>
+            <p className="text-xs text-muted-foreground">{pinPurpose === 'unlock' ? 'Saisissez le PIN spécial pour déverrouiller ce retour.' : 'Saisissez le PIN spécial pour modifier ce retour.'}</p>
             <input
               type="password"
               value={pinInput}

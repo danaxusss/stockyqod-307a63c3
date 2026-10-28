@@ -4,6 +4,7 @@ import autoTable from 'jspdf-autotable';
 import { Quote } from '../types';
 import { CompanySettings, QuoteStyle } from './companySettings';
 import { getQuoteItemBarcode, getQuoteItemBrand, getQuoteItemName } from './quoteItemDisplay';
+import { discountRate, invoicePayment, lineSubtotal } from './documentLines';
 import { loadCurrentProductImages, resolveProductImageUrl } from './productImages';
 
 async function generateQRDataUrl(text: string): Promise<string | null> {
@@ -1109,8 +1110,9 @@ export class PdfExportService {
     } else if (isBL && showBLPrices) {
       tableHeaders = [['Marque', 'REF', 'DESCRIPTION', 'QTE', 'PU HT', 'TOTAL HT']];
       tableBody = quote.items.map(item => {
-        const unitPriceHT = item.unitPrice / (1 + tvaRate / 100);
-        const totalHTItem = unitPriceHT * item.quantity;
+        // Net of the line discount, so the BL agrees with the quote and invoice.
+        const unitPriceHT = item.unitPrice * (1 - discountRate(item) / 100) / (1 + tvaRate / 100);
+        const totalHTItem = lineSubtotal(item) / (1 + tvaRate / 100);
         return [
           getQuoteItemBrand(item) || '',
           getQuoteItemBarcode(item) || '',
@@ -1262,7 +1264,7 @@ export class PdfExportService {
 
     // BL with prices: simple HT total
     if (isBL && showBLPrices) {
-      const blTotalHT = quote.items.reduce((s, i) => s + (i.unitPrice / (1 + tvaRate / 100)) * i.quantity, 0);
+      const blTotalHT = quote.items.reduce((s, i) => s + lineSubtotal(i), 0) / (1 + tvaRate / 100);
       const totalsWidth = 75;
       const totalsX = pageWidth - margin - totalsWidth;
       doc.setFillColor(...ACCENT);
@@ -1602,11 +1604,11 @@ export class PdfExportService {
 
     const tvaDivisor = 1 + tvaRate / 100;
 
+    // Money received on each invoice: advance plus recorded payments.
     const getStatus = (inv: Quote): string => {
-      const total = inv.totalAmount;
-      const paid = inv.paid_amount || 0;
-      if (paid >= total) return 'Payé';
-      if (paid > 0) return 'Part. payé';
+      const { status } = invoicePayment(inv);
+      if (status === 'paid') return 'Payé';
+      if (status === 'partial') return 'Part. payé';
       return 'En attente';
     };
 
@@ -1615,8 +1617,7 @@ export class PdfExportService {
       const ttc = inv.totalAmount;
       const ht = ttc / tvaDivisor;
       const tva = ttc - ht;
-      const paid = inv.paid_amount || 0;
-      const reste = Math.max(0, ttc - paid);
+      const { paid, reste } = invoicePayment(inv);
       const dateStr = inv.quote_date ? inv.quote_date : inv.createdAt.toLocaleDateString('fr-FR');
       return [
         inv.quoteNumber || '-',
@@ -1631,7 +1632,7 @@ export class PdfExportService {
     });
 
     const totalTTC = invoices.reduce((s, i) => s + i.totalAmount, 0);
-    const totalPaid = invoices.reduce((s, i) => s + (i.paid_amount || 0), 0);
+    const totalPaid = invoices.reduce((s, i) => s + invoicePayment(i).paid, 0);
     const totalReste = Math.max(0, totalTTC - totalPaid);
     const totalHT = totalTTC / tvaDivisor;
     const totalTVA = totalTTC - totalHT;
