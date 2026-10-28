@@ -59,6 +59,47 @@ function gridColumns(value: unknown): number {
   return columns >= 2 && columns <= 6 ? columns : 0;
 }
 
+function boundedInt(value: unknown, min: number, max: number, fallback: number): number {
+  const number = Math.floor(Number(value));
+  return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback;
+}
+
+/** An https link (Google review page, uploaded slide media); anything else is dropped. */
+function httpsUrl(value: unknown, max = 500): string | null {
+  const raw = text(value, max);
+  try {
+    const url = new URL(raw);
+    return url.protocol === "https:" && !url.username && !url.password ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+type ShowcaseSlide = { id: string; media_url: string; media_type: "image" | "video"; kicker: string; title: string; text: string };
+
+/** Extra showcase slides: at most 20, each with an https image or video. */
+function showcaseSlides(value: unknown): ShowcaseSlide[] {
+  if (!Array.isArray(value)) return [];
+  const slides: ShowcaseSlide[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const input = item as Record<string, unknown>;
+    const mediaUrl = httpsUrl(input.media_url, 1000);
+    const title = text(input.title, 120);
+    if (!mediaUrl && !title) continue;
+    slides.push({
+      id: text(input.id, 60).replace(/[^a-zA-Z0-9_-]/g, "") || crypto.randomUUID(),
+      media_url: mediaUrl || "",
+      media_type: input.media_type === "video" ? "video" : "image",
+      kicker: text(input.kicker, 60),
+      title,
+      text: text(input.text, 300),
+    });
+    if (slides.length === 20) break;
+  }
+  return slides;
+}
+
 function isCompanyReviewer(user: StaffUser): boolean {
   return user.is_superadmin || user.is_admin || COMPANY_REVIEW_ROLES.has(user.new_role || "");
 }
@@ -99,6 +140,12 @@ function publicProfile(row: Record<string, unknown>) {
     require_email: row.require_email,
     show_availability: row.show_availability,
     inactivity_timeout_seconds: row.inactivity_timeout_seconds,
+    showcase_enabled: row.showcase_enabled === true,
+    showcase_idle_seconds: boundedInt(row.showcase_idle_seconds, 10, 600, 45),
+    showcase_slide_seconds: boundedInt(row.showcase_slide_seconds, 4, 30, 8),
+    showcase_builtin: row.showcase_builtin !== false,
+    showcase_slides: showcaseSlides(row.showcase_slides),
+    google_review_url: httpsUrl(row.google_review_url),
   };
 }
 
@@ -356,6 +403,12 @@ serve(async (req) => {
         visible_family_ids: [],
         visible_brands: stringArray(input.visible_brands),
         featured_barcodes: stringArray(input.featured_barcodes, 24),
+        showcase_enabled: input.showcase_enabled === true,
+        showcase_idle_seconds: boundedInt(input.showcase_idle_seconds, 10, 600, 45),
+        showcase_slide_seconds: boundedInt(input.showcase_slide_seconds, 4, 30, 8),
+        showcase_builtin: input.showcase_builtin !== false,
+        showcase_slides: showcaseSlides(input.showcase_slides),
+        google_review_url: httpsUrl(input.google_review_url),
       };
       const query = profileId
         ? supabase.from("kiosk_profiles").update(values).eq("id", profileId)
