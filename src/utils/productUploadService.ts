@@ -91,44 +91,53 @@ export class ProductUploadService {
       throw new Error('No valid products to upload after validation');
     }
 
+    // Stock is managed in Stocky (receptions, BLs, transfers, counts): the
+    // file's quantities only seed products that do not exist yet. Existing
+    // products keep their stock — the upsert below leaves the column out, so
+    // movements posted during the import are not erased either.
+    const newProducts = validProducts.filter(p => !existingMap.has(p.barcode));
+    const updatedProducts = validProducts.filter(p => existingMap.has(p.barcode));
+
     const BATCH_SIZE = 100;
     let totalUploaded = 0;
     let totalFailed = 0;
 
-    for (let i = 0; i < validProducts.length; i += BATCH_SIZE) {
-      const batch = validProducts.slice(i, i + BATCH_SIZE);
+    const upsert = async (list: Product[], withStock: boolean) => {
+      for (let i = 0; i < list.length; i += BATCH_SIZE) {
+        const batch = list.slice(i, i + BATCH_SIZE);
+        const rows = batch.map(p => ({
+          barcode: p.barcode,
+          name: p.name,
+          brand: p.brand,
+          image: p.image ?? null,
+          kiosk_category: p.kiosk_category ?? null,
+          techsheet: p.techsheet,
+          price: p.price,
+          buyprice: p.buyprice,
+          reseller_price: p.reseller_price,
+          provider: p.provider,
+          ...(withStock ? { stock_levels: p.stock_levels as unknown as import('@/integrations/supabase/types').Json } : {}),
+        }));
 
-      const rows = batch.map(p => ({
-        barcode: p.barcode,
-        name: p.name,
-        brand: p.brand,
-        image: p.image ?? null,
-        kiosk_category: p.kiosk_category ?? null,
-        techsheet: p.techsheet,
-        price: p.price,
-        buyprice: p.buyprice,
-        reseller_price: p.reseller_price,
-        provider: p.provider,
-        stock_levels: p.stock_levels as unknown as import('@/integrations/supabase/types').Json
-      }));
+        const { error } = await (supabase
+          .from('products') as any)
+          .upsert(rows, { onConflict: 'barcode', ignoreDuplicates: false });
 
-      const { error } = await (supabase
-        .from('products') as any)
-        .upsert(rows, { onConflict: 'barcode', ignoreDuplicates: false });
-
-      if (error) {
-        console.error(`Batch failed:`, error);
-        totalFailed += batch.length;
-      } else {
-        totalUploaded += batch.length;
+        if (error) {
+          console.error(`Batch failed:`, error);
+          totalFailed += batch.length;
+        } else {
+          totalUploaded += batch.length;
+        }
       }
-    }
+    };
+    await upsert(newProducts, true);
+    await upsert(updatedProducts, false);
 
-    // Log reconciling ledger movements for every changed (barcode, location) so
-    // the stock_movements journal stays consistent with the imported quantities.
+    // Record the opening stock of new products in the movements journal.
     // Best-effort: never fail the import if this step errors.
     try {
-      await this.logImportReconcile(validProducts, oldStockByBarcode);
+      await this.logImportReconcile(newProducts, oldStockByBarcode);
     } catch (e) {
       console.warn('Stock reconcile after import failed (non-blocking):', e);
     }
@@ -139,9 +148,9 @@ export class ProductUploadService {
   }
 
   /**
-   * After a catalogue import overwrites products.stock_levels with absolute
-   * values, record a 'count' movement for each (barcode, location) whose
-   * quantity changed. We insert directly (NOT via apply_stock_movement) because
+   * After a catalogue import creates products with their opening stock,
+   * record a 'count' movement for each (barcode, location) whose quantity
+   * changed. We insert directly (NOT via apply_stock_movement) because
    * the upsert already set the absolute level — the movement only records the
    * delta and the resulting balance for the audit journal.
    */
