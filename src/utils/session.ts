@@ -120,6 +120,12 @@ export function clearSession(opts: { keepRememberedUsername?: boolean } = {}): v
       [TOKEN_KEY, USER_KEY, EXPIRY_KEY, LAST_SEEN_KEY, ...LEGACY_KEYS].forEach(k => store.removeItem(k));
     } catch { /* */ }
   }
+  // The identity and rights cached by useAuth belong to this session too: on
+  // a shared computer the next person must not inherit them.
+  try {
+    localStorage.removeItem('inventory_current_user');
+    localStorage.removeItem('inventory_user_permissions');
+  } catch { /* */ }
   if (!opts.keepRememberedUsername) forgetRememberedUsername();
 }
 

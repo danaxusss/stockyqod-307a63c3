@@ -364,6 +364,9 @@ export function ExcelUploadModal({ onClose, onSuccess }: ExcelUploadModalProps) 
                 <span className="font-medium text-blue-600 dark:text-blue-400">• buy price (requis)</span>
                 <span className="font-medium">• provider</span>
               </div>
+              <p className="mt-3 text-xs text-gray-600 dark:text-gray-400">
+                Les quantités en stock ne servent qu’aux nouveaux produits : le stock des produits existants est géré dans Stocky (réceptions, BL, transferts, inventaires) et n’est pas modifié par l’import.
+              </p>
               <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
                 <p className="text-sm text-blue-700 dark:text-blue-300 font-medium">
                   ✨ Nouveau : Les prix de vente et revendeur sont calculés automatiquement !

@@ -3,18 +3,19 @@ import { useNavigate } from 'react-router-dom';
 import QRCode from 'qrcode';
 import {
   ArrowDown, ArrowLeft, ArrowUp, Check, ChevronLeft, ChevronRight, Clipboard, Download, ExternalLink, History, ImageOff,
-  Link2, Loader2, MonitorSmartphone, PackagePlus, Plus, QrCode, RefreshCw, RotateCw,
-  Save, Search, Settings2, ShoppingCart, Star, Trash2, Upload, UserRound, X,
+  Film, Link2, Loader2, MonitorSmartphone, PackagePlus, Plus, QrCode, RefreshCw, RotateCw,
+  Save, Search, Settings2, ShoppingCart, Sparkles, Star, Trash2, Upload, UserRound, X,
 } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../hooks/useAuth';
 import { useIsMobile } from '../../hooks/use-mobile';
 import {
   KioskService, type KioskAdminProduct, type KioskAdminProfile, type KioskCompanyOption,
-  type KioskLanguage, type KioskRequestDetail, type KioskRequestItem, type KioskRequestStatus,
+  type KioskLanguage, type KioskShowcaseSlide, type KioskRequestDetail, type KioskRequestItem, type KioskRequestStatus,
   type KioskRequestSummary, type KioskUserOption,
 } from '../../utils/kioskService';
 import { DEFAULT_KIOSK_ACCENT, isHexColor, readableTextOn } from '../../utils/kioskColors';
+import { useQrCode } from '../../hooks/useQrCode';
 
 type Tab = 'requests' | 'settings';
 
@@ -57,7 +58,19 @@ const EMPTY_PROFILE = (companyId = ''): KioskAdminProfile => ({
   visible_family_ids: [],
   visible_brands: [],
   featured_barcodes: [],
+  showcase_enabled: false,
+  showcase_idle_seconds: 45,
+  showcase_slide_seconds: 8,
+  showcase_builtin: true,
+  showcase_slides: [],
+  google_review_url: null,
 });
+
+const SHOWCASE_SLIDE_LIMIT = 20;
+const REVIEW_URL_MAX = 500;
+const isHttpsUrl = (value: string) => {
+  try { return new URL(value).protocol === 'https:'; } catch { return false; }
+};
 
 const LANGUAGE_OPTIONS: Array<{ value: KioskLanguage; label: string }> = [
   { value: 'fr', label: 'Français' }, { value: 'en', label: 'English' }, { value: 'ar', label: 'العربية' },
@@ -229,16 +242,19 @@ export default function KioskAdminPage() {
     setEditingProfile(profile ? { ...EMPTY_PROFILE(profile.company_id), ...profile } : EMPTY_PROFILE(companies[0]?.id || ''));
   };
 
-  const copyLink = async (profile: KioskAdminProfile) => {
+  const copyLink = async (profile: KioskAdminProfile, install = false) => {
     if (!profile.public_token) return;
-    const url = KioskService.publicUrl(profile.public_token);
+    const url = install ? KioskService.installUrl(profile.public_token) : KioskService.publicUrl(profile.public_token);
     try {
       await navigator.clipboard.writeText(url);
-      showToast({ type: 'success', title: 'Lien copié', message: 'Collez-le dans le navigateur de la tablette.' });
+      showToast({
+        type: 'success', title: install ? 'Lien d’installation copié' : 'Lien copié',
+        message: install ? 'Ouvrez-le sur la tablette pour installer le kiosque comme une application.' : 'Collez-le dans le navigateur de la tablette.',
+      });
     } catch {
       // Clipboard access is refused outside HTTPS or without permission:
       // show the link so it can still be copied by hand.
-      window.prompt('Copiez le lien du kiosque :', url);
+      window.prompt(install ? 'Copiez le lien d’installation :' : 'Copiez le lien du kiosque :', url);
     }
   };
 
@@ -379,7 +395,7 @@ function RequestsPanel({ requests, total, page, search, status, loading, onSearc
 
 function ProfilesPanel({ profiles, companies, canManage, onEdit, onCopy, onShowQr, onRotate }: {
   profiles: KioskAdminProfile[]; companies: KioskCompanyOption[]; canManage: boolean;
-  onEdit: (profile?: KioskAdminProfile) => void; onCopy: (profile: KioskAdminProfile) => void;
+  onEdit: (profile?: KioskAdminProfile) => void; onCopy: (profile: KioskAdminProfile, install?: boolean) => void;
   onShowQr: (profile: KioskAdminProfile) => void; onRotate: (profile: KioskAdminProfile) => void;
 }) {
   return (
@@ -394,6 +410,7 @@ function ProfilesPanel({ profiles, companies, canManage, onEdit, onCopy, onShowQ
               <button onClick={() => onCopy(profile)} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium hover:bg-accent"><Clipboard className="h-3.5 w-3.5" />Copier</button>
               {profile.public_token && <a href={KioskService.publicUrl(profile.public_token)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium hover:bg-accent"><ExternalLink className="h-3.5 w-3.5" />Ouvrir</a>}
               {profile.public_token && <button onClick={() => onShowQr(profile)} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium hover:bg-accent"><QrCode className="h-3.5 w-3.5" />QR code</button>}
+              {profile.public_token && <button onClick={() => onCopy(profile, true)} title="Copier le lien qui installe le kiosque comme une application sur la tablette" className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium hover:bg-accent"><Download className="h-3.5 w-3.5" />Lien d’installation</button>}
               {canManage && <><button onClick={() => onEdit(profile)} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium hover:bg-accent"><Settings2 className="h-3.5 w-3.5" />Régler</button><button onClick={() => onRotate(profile)} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium text-amber-700 hover:bg-amber-50"><RotateCw className="h-3.5 w-3.5" />Renouveler</button></>}
             </div>
           </article>
@@ -509,6 +526,8 @@ function ProfileEditor({ profile: initial, companies, users, isSuperadmin, onClo
   const patch = (values: Partial<KioskAdminProfile>) => setProfile(current => ({ ...current, ...values }));
   const profileUsers = users.filter(user => user.company_id === profile.company_id || (isSuperadmin && !user.company_id));
   const accentInvalid = !!profile.accent_color && !isHexColor(profile.accent_color);
+  const reviewUrl = profile.google_review_url?.trim() || '';
+  const reviewUrlInvalid = !!reviewUrl && (!isHttpsUrl(reviewUrl) || reviewUrl.length > REVIEW_URL_MAX);
   const previewAccent = isHexColor(profile.accent_color) ? profile.accent_color : DEFAULT_KIOSK_ACCENT;
 
   useEffect(() => {
@@ -545,6 +564,12 @@ function ProfileEditor({ profile: initial, companies, users, isSuperadmin, onClo
   const save = async () => {
     if (!profile.company_id || !profile.name.trim()) { setError('La société et le nom sont obligatoires.'); return; }
     if (accentInvalid) { setError('La couleur principale doit être au format #RRGGBB, par exemple #2563eb.'); return; }
+    if (reviewUrlInvalid) { setError(`Le lien d’avis Google doit commencer par https:// (${REVIEW_URL_MAX} caractères maximum).`); return; }
+    const slideWithoutMedia = profile.showcase_slides.find(slide => !slide.media_url.trim());
+    if (slideWithoutMedia) { setError(`Ajoutez une image ou une vidéo à la diapositive « ${slideWithoutMedia.title || 'sans titre'} », ou supprimez-la.`); return; }
+    // The server only keeps https media (the kiosk is served over https).
+    const slideWithBadMedia = profile.showcase_slides.find(slide => !isHttpsUrl(slide.media_url.trim()));
+    if (slideWithBadMedia) { setError(`L’adresse de la diapositive « ${slideWithBadMedia.title || 'sans titre'} » doit commencer par https://, ou importez le fichier.`); return; }
     setSaving(true); setError('');
     try { onSaved(await KioskService.saveProfile(profile)); }
     catch (err) { setError(err instanceof Error ? err.message : 'Enregistrement impossible'); }
@@ -565,6 +590,20 @@ function ProfileEditor({ profile: initial, companies, users, isSuperadmin, onClo
           <Section title="Parcours client" icon={<ShoppingCart className="h-4 w-4" />}>
             <div className="grid gap-3 sm:grid-cols-2"><Toggle label="Kiosque actif" description="Le lien accepte les visites et les demandes." checked={profile.enabled} onChange={enabled => patch({ enabled })} /><Toggle label="Afficher les prix" description="Masque entièrement les montants si désactivé." checked={profile.show_prices} onChange={show_prices => patch({ show_prices })} /><Toggle label="E-mail obligatoire" description="Le client doit fournir une adresse e-mail." checked={profile.require_email} onChange={require_email => patch({ require_email })} /><Toggle label="Afficher la disponibilité" description="Indique disponible ou sur demande." checked={profile.show_availability} onChange={show_availability => patch({ show_availability })} /><Toggle label="Inclure les ruptures" description="Autorise les produits sans stock actuel." checked={profile.show_out_of_stock} onChange={show_out_of_stock => patch({ show_out_of_stock })} /><Toggle label="Coordonnées plus tard" description="Le client peut envoyer sans nom ni téléphone ; un conseiller complète ensuite." checked={profile.allow_deferred_contact} onChange={allow_deferred_contact => patch({ allow_deferred_contact })} /></div>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4"><Field label="Tarif affiché"><select disabled={!profile.show_prices} value={profile.price_mode} onChange={e => patch({ price_mode: e.target.value as KioskAdminProfile['price_mode'] })} className="field"><option value="retail">Prix de vente</option><option value="reseller">Prix revendeur</option></select></Field><Field label="Effacement automatique"><select value={profile.inactivity_timeout_seconds} onChange={e => patch({ inactivity_timeout_seconds: Number(e.target.value) })} className="field"><option value={60}>1 minute</option><option value={120}>2 minutes</option><option value={180}>3 minutes</option><option value={300}>5 minutes</option><option value={600}>10 minutes</option><option value={900}>15 minutes</option></select></Field><Field label="Écran « Demande envoyée »"><select value={profile.success_screen_seconds} onChange={e => patch({ success_screen_seconds: Number(e.target.value) })} className="field"><option value={10}>10 secondes</option><option value={20}>20 secondes</option><option value={30}>30 secondes</option><option value={60}>1 minute</option><option value={120}>2 minutes</option></select></Field><Field label="Produits par ligne (tablette)"><select value={profile.grid_columns} onChange={e => patch({ grid_columns: Number(e.target.value) })} className="field"><option value={0}>Automatique</option><option value={2}>2 — très grandes cartes</option><option value={3}>3 — grandes cartes</option><option value={4}>4</option><option value={5}>5</option><option value={6}>6 — cartes compactes</option></select></Field><Field label="Assignation par défaut"><select value={profile.default_assignee_id || ''} onChange={e => patch({ default_assignee_id: e.target.value || null })} className="field"><option value="">File non assignée</option>{profileUsers.map(user => <option key={user.id} value={user.id}>{userLabel(user)}</option>)}</select></Field></div>
+          </Section>
+
+          <Section title="Vitrine & avis Google" icon={<Sparkles className="h-4 w-4" />}>
+            <p className="text-sm text-muted-foreground">Quand personne n’utilise le kiosque, la vitrine présente vos produits et services en plein écran (vidéos, photos, textes animés). Un simple toucher ouvre le catalogue pour créer une demande de devis.</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Toggle label="Activer la vitrine" description="Démarre à l’ouverture du kiosque puis après chaque période d’inactivité sur l’accueil." checked={profile.showcase_enabled} onChange={showcase_enabled => patch({ showcase_enabled })} />
+              <Toggle label="Présentation Cuisimat Groupe" description="Showroom en vidéo, équipements, mobilier, réalisations et chiffres clés, intégrés à l’application." checked={profile.showcase_builtin} onChange={showcase_builtin => patch({ showcase_builtin })} />
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="Démarrer la vitrine après"><select value={profile.showcase_idle_seconds} onChange={e => patch({ showcase_idle_seconds: Number(e.target.value) })} className="field"><option value={20}>20 secondes d’inactivité</option><option value={30}>30 secondes d’inactivité</option><option value={45}>45 secondes d’inactivité</option><option value={60}>1 minute d’inactivité</option><option value={120}>2 minutes d’inactivité</option><option value={300}>5 minutes d’inactivité</option></select></Field>
+              <Field label="Durée de chaque diapositive"><select value={profile.showcase_slide_seconds} onChange={e => patch({ showcase_slide_seconds: Number(e.target.value) })} className="field"><option value={6}>6 secondes</option><option value={8}>8 secondes</option><option value={10}>10 secondes</option><option value={12}>12 secondes</option><option value={15}>15 secondes</option></select></Field>
+            </div>
+            {profile.company_id && <ShowcaseSlidesEditor companyId={profile.company_id} slides={profile.showcase_slides} onChange={change => setProfile(current => ({ ...current, showcase_slides: change(current.showcase_slides) }))} onError={setError} />}
+            <ReviewLinkField value={profile.google_review_url || ''} invalid={reviewUrlInvalid} onChange={google_review_url => patch({ google_review_url: google_review_url || null })} />
           </Section>
 
           <Section title="Produits visibles" icon={<Search className="h-4 w-4" />}>
@@ -636,17 +675,22 @@ function FeaturedPicker({ companyId, barcodes, onChange }: { companyId: string; 
 }
 
 function QrDialog({ profile, onClose }: { profile: KioskAdminProfile; onClose: () => void }) {
-  const url = KioskService.publicUrl(profile.public_token || '');
+  const [install, setInstall] = useState(true);
+  const url = install ? KioskService.installUrl(profile.public_token || '') : KioskService.publicUrl(profile.public_token || '');
   const [dataUrl, setDataUrl] = useState('');
   useEffect(() => {
     QRCode.toDataURL(url, { width: 640, margin: 2, errorCorrectionLevel: 'M' }).then(setDataUrl).catch(() => setDataUrl(''));
   }, [url]);
-  const fileName = `qr-kiosque-${profile.name.toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'stocky'}.png`;
+  const fileName = `qr-kiosque${install ? '-installation' : ''}-${profile.name.toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'stocky'}.png`;
   return (
     <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4" onMouseDown={event => { if (event.currentTarget === event.target) onClose(); }}>
       <div className="w-full max-w-sm rounded-2xl bg-background p-5 text-center shadow-2xl">
         <div className="flex items-center justify-between"><h2 className="text-lg font-bold">{profile.name}</h2><button onClick={onClose} aria-label="Fermer" className="rounded-lg p-2 hover:bg-accent"><X className="h-5 w-5" /></button></div>
-        <p className="mt-1 text-sm text-muted-foreground">Scannez avec la tablette pour ouvrir le kiosque.</p>
+        <div role="group" aria-label="Type de lien" className="mt-3 grid grid-cols-2 gap-1 rounded-lg bg-muted p-1 text-sm font-medium">
+          <button onClick={() => setInstall(true)} aria-pressed={install} className={`rounded-md py-1.5 ${install ? 'bg-background shadow-sm' : 'text-muted-foreground'}`}>Installer l’app</button>
+          <button onClick={() => setInstall(false)} aria-pressed={!install} className={`rounded-md py-1.5 ${!install ? 'bg-background shadow-sm' : 'text-muted-foreground'}`}>Ouvrir le kiosque</button>
+        </div>
+        <p className="mt-2 text-sm text-muted-foreground">{install ? 'Scannez avec la tablette pour installer le kiosque en application plein écran.' : 'Scannez avec la tablette pour ouvrir le kiosque dans le navigateur.'}</p>
         <div className="mx-auto mt-4 flex aspect-square w-64 items-center justify-center rounded-xl border bg-white p-2">{dataUrl ? <img src={dataUrl} alt={`QR code du kiosque ${profile.name}`} className="h-full w-full" /> : <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />}</div>
         <p className="mt-3 break-all font-mono text-[11px] text-muted-foreground">{url}</p>
         {dataUrl && <a href={dataUrl} download={fileName} className="mt-4 inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground"><Download className="h-4 w-4" />Télécharger le PNG</a>}
@@ -673,6 +717,101 @@ function RequestEventRow({ event, users, companies }: { event: KioskRequestDetai
 function ProductImage({ image, name, size = 'md' }: { image: string | null; name: string; size?: 'sm' | 'md' }) {
   const url = KioskService.imageUrl(image);
   return <div className={`${size === 'sm' ? 'h-10 w-10' : 'h-14 w-14'} shrink-0 overflow-hidden rounded-lg border bg-white`}>{url ? <img src={url} alt={name} className="h-full w-full object-contain p-1" /> : <div className="flex h-full w-full items-center justify-center"><ImageOff className="h-4 w-4 text-muted-foreground/50" /></div>}</div>;
+}
+
+function ShowcaseSlidesEditor({ companyId, slides, onChange, onError }: {
+  companyId: string; slides: KioskShowcaseSlide[];
+  /** Changes apply to the latest slides, so an upload finishing late keeps edits made meanwhile. */
+  onChange: (change: (slides: KioskShowcaseSlide[]) => KioskShowcaseSlide[]) => void;
+  onError: (message: string) => void;
+}) {
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const target = useRef<string | null>(null);
+  const update = (id: string, values: Partial<KioskShowcaseSlide>) => onChange(current => current.map(slide => slide.id === id ? { ...slide, ...values } : slide));
+  const move = (id: string, delta: number) => onChange(current => {
+    const position = current.findIndex(slide => slide.id === id);
+    if (position < 0) return current;
+    const next = [...current];
+    const [slide] = next.splice(position, 1);
+    next.splice(Math.max(0, Math.min(next.length, position + delta)), 0, slide);
+    return next;
+  });
+  const add = () => onChange(current => current.length >= SHOWCASE_SLIDE_LIMIT ? current
+    : [...current, { id: crypto.randomUUID().slice(0, 12), media_url: '', media_type: 'image', kicker: '', title: '', text: '' }]);
+  const pick = (id: string) => { target.current = id; fileInput.current?.click(); };
+  const upload = async (file: File | undefined) => {
+    const id = target.current;
+    if (!file || !id) return;
+    setUploadingId(id); onError('');
+    try {
+      const media = await KioskService.uploadShowcaseMedia(companyId, file);
+      update(id, { media_url: media.url, media_type: media.type });
+    } catch (err) {
+      onError(err instanceof Error ? err.message : 'Import impossible');
+    } finally {
+      setUploadingId(null);
+      if (fileInput.current) fileInput.current.value = '';
+    }
+  };
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <div><h4 className="text-sm font-semibold">Diapositives personnalisées</h4><p className="text-xs text-muted-foreground">Ajoutées après la présentation intégrée : promotions, nouveautés, événements… Vidéo MP4 courte et sans son de préférence.</p></div>
+        <button type="button" onClick={add} disabled={slides.length >= SHOWCASE_SLIDE_LIMIT} className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium hover:bg-accent disabled:opacity-50"><Plus className="h-4 w-4" />Ajouter</button>
+      </div>
+      <input ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" className="hidden" onChange={e => upload(e.target.files?.[0])} />
+      {!slides.length && <p className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">Aucune diapositive personnalisée.</p>}
+      <div className="space-y-3">
+        {slides.map((slide, position) => (
+          <div key={slide.id} className="grid gap-3 rounded-lg border p-3 sm:grid-cols-[160px_1fr]">
+            <div>
+              <div className="flex aspect-video items-center justify-center overflow-hidden rounded-lg border bg-muted">
+                {slide.media_url
+                  ? slide.media_type === 'video'
+                    ? <video src={slide.media_url} muted loop autoPlay playsInline className="h-full w-full object-cover" />
+                    : <img src={slide.media_url} alt="" className="h-full w-full object-cover" />
+                  : <Film className="h-6 w-6 text-muted-foreground" />}
+              </div>
+              <button type="button" onClick={() => pick(slide.id)} disabled={!!uploadingId} className="mt-2 inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border text-xs font-medium hover:bg-accent disabled:opacity-50">
+                {uploadingId === slide.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}Image ou vidéo
+              </button>
+            </div>
+            <div className="space-y-2">
+              <div className="grid gap-2 sm:grid-cols-[1fr_2fr]">
+                <Field label="Surtitre" compact><input value={slide.kicker} maxLength={60} onChange={e => update(slide.id, { kicker: e.target.value })} className="field" placeholder="Nouveauté" /></Field>
+                <Field label="Titre" compact><input value={slide.title} maxLength={120} onChange={e => update(slide.id, { title: e.target.value })} className="field" placeholder="Les nouvelles machines à café sont arrivées" /></Field>
+              </div>
+              <Field label="Texte" compact><textarea rows={2} value={slide.text} maxLength={300} onChange={e => update(slide.id, { text: e.target.value })} className="field py-2" /></Field>
+              <div className="flex flex-wrap items-center gap-2">
+                <input value={slide.media_url} onChange={e => update(slide.id, { media_url: e.target.value.trim(), media_type: /\.(mp4|webm)(\?|$)/i.test(e.target.value) ? 'video' : slide.media_type })} aria-label="Adresse de l’image ou de la vidéo" className="field min-w-0 flex-1 text-xs" placeholder="https://… ou importez un fichier" />
+                <select value={slide.media_type} onChange={e => update(slide.id, { media_type: e.target.value as KioskShowcaseSlide['media_type'] })} aria-label="Type de média" className="field w-auto text-xs"><option value="image">Image</option><option value="video">Vidéo</option></select>
+                <button type="button" onClick={() => move(slide.id, -1)} disabled={position === 0} aria-label="Monter" className="rounded-lg border p-2 hover:bg-accent disabled:opacity-40"><ArrowUp className="h-4 w-4" /></button>
+                <button type="button" onClick={() => move(slide.id, 1)} disabled={position === slides.length - 1} aria-label="Descendre" className="rounded-lg border p-2 hover:bg-accent disabled:opacity-40"><ArrowDown className="h-4 w-4" /></button>
+                <button type="button" onClick={() => onChange(current => current.filter(item => item.id !== slide.id))} aria-label="Supprimer la diapositive" className="rounded-lg border border-red-200 p-2 text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ReviewLinkField({ value, invalid, onChange }: { value: string; invalid: boolean; onChange: (value: string) => void }) {
+  const qr = useQrCode(!invalid && value.trim() ? value.trim() : null, 240);
+  return (
+    <div className="grid gap-4 rounded-lg border p-3 sm:grid-cols-[1fr_auto]">
+      <div>
+        <Field label="Lien d’avis Google"><input value={value} onChange={e => onChange(e.target.value.trim())} placeholder="https://g.page/r/…/review" aria-invalid={invalid} className={`field ${invalid ? 'border-red-400 focus:ring-red-300' : ''}`} /></Field>
+        {invalid && <span className="mt-1 block text-xs text-red-600">Le lien doit commencer par https:// ({REVIEW_URL_MAX} caractères maximum).</span>}
+        <p className="mt-2 text-xs text-muted-foreground">Dans votre fiche Google Business Profile : <strong>Demander des avis</strong> → copiez le lien. Le kiosque affiche alors une page « Votre avis compte » avec ce QR code dans la vitrine, sur l’accueil et après l’envoi d’une demande.</p>
+        {value && !invalid && <a href={value} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"><ExternalLink className="h-3.5 w-3.5" />Tester le lien</a>}
+      </div>
+      {qr && <img src={qr} alt="QR code de l’avis Google" className="h-28 w-28 justify-self-center rounded-lg border bg-white p-1" />}
+    </div>
+  );
 }
 
 function ChoiceList({ title, values, selected, onToggle }: { title: string; values: Array<{ value: string; label: string }>; selected: string[]; onToggle: (value: string) => void }) {

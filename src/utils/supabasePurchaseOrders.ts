@@ -1,6 +1,5 @@
 import { supabase } from './supabaseClient';
 import { getCompanyContext } from './supabaseCompanyFilter';
-import { StockService } from './supabaseStock';
 import type { PurchaseOrder, PurchaseOrderItem, PurchaseOrderStatus } from '../types';
 
 export class PurchaseOrdersService {
@@ -23,12 +22,11 @@ export class PurchaseOrdersService {
     return po;
   }
 
+  /** Next number, unique per company and year (database counter). */
   private static async nextNumber(companyId: string | null): Promise<string> {
-    const year = new Date().getFullYear();
-    let q = (supabase as any).from('purchase_orders').select('id', { count: 'exact', head: true });
-    if (companyId) q = q.eq('company_id', companyId);
-    const { count } = await q;
-    return `BC-${year}-${String((count || 0) + 1).padStart(4, '0')}`;
+    const { data, error } = await (supabase as any).rpc('next_purchase_order_number', { p_company_id: companyId });
+    if (error) throw error;
+    return data as string;
   }
 
   static async create(
@@ -71,42 +69,38 @@ export class PurchaseOrdersService {
   }
 
   /**
-   * Receive quantities against a PO: posts 'in' stock movements (CMUP-aware),
-   * updates qty_received per line, and advances PO status to partial/received.
-   * `received` maps purchase_order_items.id → quantity received now.
+   * Receive quantities against a PO in one locked database transaction: posts
+   * 'in' stock movements (CMUP-aware), updates qty_received and the PO status.
+   * `received` maps purchase_order_items.id → quantity received now. More than
+   * what remains is refused unless allowOver (OverReceiptError otherwise).
    */
   static async receive(
     poId: string,
     received: Record<string, number>,
-    opts: { locationKey: string; locationId?: string | null; createdBy?: string | null }
-  ): Promise<void> {
-    const po = await this.getById(poId);
-    if (!po || !po.items) throw new Error('Bon de commande introuvable');
-
-    for (const it of po.items) {
-      const qty = received[it.id!] || 0;
-      if (qty <= 0) continue;
-      await StockService.applyMovement({
-        barcode: it.barcode,
-        locationKey: opts.locationKey,
-        type: 'in',
-        quantity: qty,
-        unitCost: it.unit_cost || null,
-        reason: `Réception ${po.po_number}`,
-        sourceType: 'receipt',
-        sourceId: po.id,
-        createdBy: opts.createdBy ?? null,
-        locationId: opts.locationId ?? null,
-      });
-      await (supabase as any).from('purchase_order_items')
-        .update({ qty_received: (it.qty_received || 0) + qty }).eq('id', it.id);
+    opts: { locationKeys: string[]; locationId?: string | null; createdBy?: string | null; allowOver?: boolean }
+  ): Promise<PurchaseOrderStatus> {
+    const { companyId } = getCompanyContext();
+    const { data, error } = await (supabase as any).rpc('receive_purchase_order', {
+      p_po_id: poId,
+      p_lines: received,
+      p_location_keys: opts.locationKeys,
+      p_location_id: opts.locationId ?? null,
+      p_allow_over: opts.allowOver === true,
+      p_company_id: companyId,
+      p_created_by: opts.createdBy ?? null,
+    });
+    if (error) {
+      if (error.hint === 'over_receipt') throw new OverReceiptError(error.message);
+      throw error;
     }
+    return data as PurchaseOrderStatus;
+  }
+}
 
-    // Recompute status from fresh line totals
-    const fresh = await this.getById(poId);
-    const allReceived = (fresh?.items || []).every(i => (i.qty_received || 0) >= i.qty_ordered);
-    const anyReceived = (fresh?.items || []).some(i => (i.qty_received || 0) > 0);
-    const status: PurchaseOrderStatus = allReceived ? 'received' : anyReceived ? 'partial' : po.status;
-    await this.setStatus(poId, status);
+/** A reception exceeds what remains on the order; ask before forcing it. */
+export class OverReceiptError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'OverReceiptError';
   }
 }

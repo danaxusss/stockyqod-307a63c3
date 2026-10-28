@@ -39,10 +39,14 @@ function json(req: Request, data: unknown, status = 200, extra: Record<string, s
   });
 }
 
+// Client IP for rate limiting (same rule as _shared/security.ts): the first
+// X-Forwarded-For entry is caller-controlled, so it is never trusted.
 function clientIp(req: Request): string {
-  const xff = req.headers.get("x-forwarded-for");
-  if (xff) return xff.split(",")[0].trim();
-  return req.headers.get("cf-connecting-ip") || req.headers.get("x-real-ip") || "unknown";
+  const cf = req.headers.get("cf-connecting-ip");
+  if (cf) return cf.trim();
+  const hops = (req.headers.get("x-forwarded-for") || "").split(",").map(h => h.trim()).filter(Boolean);
+  if (hops.length) return hops[hops.length - 1];
+  return req.headers.get("x-real-ip") || "unknown";
 }
 
 // ── Rate limiting ───────────────────────────────────────────────────────────
@@ -242,6 +246,24 @@ const LINE_KEYS = ["lines", "items", "operations", "transactions", "ecritures",
   "écritures", "entries", "rows", "mouvements", "line_items"];
 const ROW_KEYS = ["rows", "data", "lines", "items", "values"];
 
+// Only signed-in Stocky users may spend the AI budget. The session token is
+// checked by the verify-pin function, which keeps this file self-contained.
+async function hasLiveSession(token: unknown): Promise<boolean> {
+  if (typeof token !== "string" || !token) return false;
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
+  try {
+    const resp = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/verify-pin`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: anonKey, Authorization: `Bearer ${anonKey}` },
+      body: JSON.stringify({ action: "validate-session", session_token: token }),
+    });
+    const data = await resp.json().catch(() => null);
+    return data?.valid === true;
+  } catch {
+    return false;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders(req) });
 
@@ -254,6 +276,9 @@ serve(async (req) => {
 
     const body = await req.json();
     const { image_base64, mime, kind, model: requestedModel, action } = body;
+    if (!(await hasLiveSession(body?.session_token))) {
+      return json(req, { error: "Session expirée : reconnectez-vous." }, 401);
+    }
 
     const apiKeyEarly = Deno.env.get("OPENROUTER_API_KEY");
 

@@ -9,6 +9,9 @@ import {
 } from '../../utils/kioskService';
 import { DEFAULT_KIOSK_ACCENT, isHexColor, readableTextOn } from '../../utils/kioskColors';
 import { sectorLabel } from '../../utils/sectorLabel';
+import { SHOWCASE_COPY } from '../../utils/kioskShowcase';
+import { KioskReviewPage, KioskShowcase, ReviewInvite } from './KioskShowcase';
+import { rememberKioskToken } from '../../utils/kioskApp';
 
 type Stage = 'welcome' | 'catalog' | 'review' | 'submitted';
 type CartLine = { product: KioskProduct; quantity: number };
@@ -212,6 +215,11 @@ export default function KioskPage() {
   const [idleWarning, setIdleWarning] = useState(false);
   const [idleSecondsLeft, setIdleSecondsLeft] = useState(0);
   const [online, setOnline] = useState(navigator.onLine);
+  // Showcase ("vitrine"): the attract loop shown over an idle welcome screen.
+  const [showcase, setShowcase] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const showcaseStarted = useRef(false);
+  const showcaseEnabled = useRef(false);
   const idleWarningTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const idleResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const idleDeadline = useRef(0);
@@ -234,12 +242,16 @@ export default function KioskPage() {
   const sessionDirty = cartLines.length > 0 || Object.values(customer).some(value => value.trim() !== '');
   const canDeferContact = profile?.allow_deferred_contact !== false;
   const deferring = canDeferContact && deferContact;
+  showcaseEnabled.current = profile?.showcase_enabled === true;
+  const reviewUrl = profile?.google_review_url || null;
 
   const loadProfile = useCallback(async (quiet: boolean) => {
     if (!quiet) setLoading(true);
     try {
       const data = await KioskService.loadPublic(token);
       setProfile(data.profile);
+      // An app installed from this page starts on /kiosk/app and reopens this kiosk.
+      rememberKioskToken(token);
       setBrands(data.brands || []);
       setSectors(data.sectors || []);
       setFatal(null);
@@ -278,6 +290,8 @@ export default function KioskPage() {
     setOnlyAvailable(false);
     setSelectedProduct(null);
     setRequestNumber('');
+    setReviewOpen(false);
+    setShowcase(showcaseEnabled.current);
     setIdleWarning(false);
     setFormError('');
     setCatalogError('');
@@ -334,6 +348,36 @@ export default function KioskPage() {
   }, []);
 
   useEffect(() => { loadProfile(false); }, [loadProfile]);
+
+  // The showcase opens with the kiosk (unless a saved session is being
+  // resumed) and stops as soon as it is turned off from the settings.
+  useEffect(() => {
+    if (!profile) return;
+    if (!profile.showcase_enabled) { setShowcase(false); return; }
+    if (showcaseStarted.current) return;
+    showcaseStarted.current = true;
+    if (stage === 'welcome' && !sessionDirty) setShowcase(true);
+  }, [profile]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Back to the showcase once the welcome screen has been left untouched,
+  // through a full reset: the language, search and filters picked by the
+  // previous visitor must not greet the next one.
+  const showcaseIdleSeconds = profile?.showcase_idle_seconds || 45;
+  const showcaseAllowed = profile?.showcase_enabled === true;
+  useEffect(() => {
+    if (!showcaseAllowed || showcase || reviewOpen || stage !== 'welcome' || sessionDirty) return;
+    let timer = setTimeout(resetSession, showcaseIdleSeconds * 1000);
+    const restart = () => {
+      clearTimeout(timer);
+      timer = setTimeout(resetSession, showcaseIdleSeconds * 1000);
+    };
+    const events: Array<keyof WindowEventMap> = ['pointerdown', 'keydown', 'touchstart'];
+    events.forEach(event => window.addEventListener(event, restart, { passive: true }));
+    return () => {
+      clearTimeout(timer);
+      events.forEach(event => window.removeEventListener(event, restart));
+    };
+  }, [resetSession, reviewOpen, sessionDirty, showcase, showcaseAllowed, showcaseIdleSeconds, stage]);
 
   // An unattended tablet must recover by itself: keep retrying while the
   // kiosk is unavailable (network down, kiosk re-enabled later…).
@@ -520,7 +564,16 @@ export default function KioskPage() {
         </div>
       )}
 
-      {stage === 'welcome' && (
+      {stage === 'welcome' && showcase && showcaseAllowed && (
+        <KioskShowcase
+          profile={profile} language={language} languages={customerLanguages} accent={accent} onAccent={onAccent}
+          onLanguage={setChosenLanguage}
+          onStart={() => { setShowcase(false); setStage('catalog'); }}
+          onReview={() => setReviewOpen(true)}
+        />
+      )}
+
+      {stage === 'welcome' && !(showcase && showcaseAllowed) && (
         <main className="min-h-screen flex flex-col items-center justify-center px-6 py-12 text-center bg-gradient-to-br from-white via-slate-50 to-slate-100">
           <button onClick={requestFullscreen} className="absolute top-5 end-5 h-12 w-12 rounded-2xl bg-white shadow-sm border border-slate-200 flex items-center justify-center" aria-label="Fullscreen">
             <Expand className="h-5 w-5" />
@@ -538,6 +591,11 @@ export default function KioskPage() {
           <button onClick={() => setStage('catalog')} className="mt-12 min-h-16 min-w-64 rounded-2xl px-10 text-xl font-bold shadow-xl active:scale-[0.98] transition" style={{ backgroundColor: accent, color: onAccent }}>
             {t.start} <ChevronRight className="inline h-6 w-6 ms-2 rtl:rotate-180" />
           </button>
+          {reviewUrl && (
+            <button onClick={() => setReviewOpen(true)} className="mt-5 inline-flex min-h-14 items-center gap-2 rounded-2xl border-2 border-slate-200 bg-white px-7 text-lg font-bold text-slate-700 shadow-sm active:scale-[0.98]">
+              <Star className="h-5 w-5 fill-amber-400 text-amber-400" />{SHOWCASE_COPY[language].review}
+            </button>
+          )}
         </main>
       )}
 
@@ -644,12 +702,15 @@ export default function KioskPage() {
             <h1 className="mt-7 text-4xl font-black">{t.requestSent}</h1>
             <p className="mt-4 text-xl leading-relaxed text-slate-600">{t.requestMessage}</p>
             <div className="mx-auto mt-8 max-w-md rounded-2xl bg-slate-100 p-6"><p className="text-sm font-bold uppercase tracking-wider text-slate-500">{t.requestNumber}</p><p className="mt-2 text-3xl font-black tracking-wide">{requestNumber}</p></div>
+            {reviewUrl && <ReviewInvite url={reviewUrl} language={language} />}
             <button onClick={resetSession} className="mt-8 min-h-14 rounded-2xl px-8 text-lg font-bold" style={{ backgroundColor: accent, color: onAccent }}><RotateCcw className="inline h-5 w-5 me-2" />{t.reset}</button>
           </section>
         </main>
       )}
 
       {selectedProduct && <ProductDialog product={selectedProduct} quantity={cart[selectedProduct.barcode]?.quantity || 0} showPrice={profile.show_prices} showAvailability={profile.show_availability} placeholderLogo={profile.logo_url} t={t} accent={accent} onClose={() => setSelectedProduct(null)} onChange={delta => changeQuantity(selectedProduct, delta)} />}
+
+      {reviewOpen && reviewUrl && <KioskReviewPage url={reviewUrl} language={language} accent={accent} onAccent={onAccent} onClose={() => setReviewOpen(false)} />}
 
       {idleWarning && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/65 p-5 backdrop-blur-sm">

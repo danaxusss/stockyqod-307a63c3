@@ -66,7 +66,13 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const targetUrl = (event.notification.data && event.notification.data.url) || '/tasks';
+  // Only open pages of this app, whatever the notification carries.
+  const requested = (event.notification.data && event.notification.data.url) || '/tasks';
+  let targetUrl = '/tasks';
+  try {
+    const url = new URL(requested, self.location.origin);
+    if (url.origin === self.location.origin) targetUrl = url.pathname + url.search + url.hash;
+  } catch (e) { /* keep /tasks */ }
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientsArr) => {

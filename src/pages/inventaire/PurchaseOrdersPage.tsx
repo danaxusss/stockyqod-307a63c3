@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ClipboardList, Plus, Search, Trash2, Loader, Check, X } from 'lucide-react';
-import type { Product, Provider, StockLocation, PurchaseOrderItem, PurchaseOrderStatus } from '../../types';
+import type { Product, Provider, PurchaseOrderItem, PurchaseOrderStatus } from '../../types';
 import { StockService } from '../../utils/supabaseStock';
 import { StockLocationsService } from '../../utils/supabaseStockLocations';
 import { PurchaseOrdersService } from '../../utils/supabasePurchaseOrders';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
+import { useAccessibleLocations } from '../../inventory/hooks/useAccessibleLocations';
 
 const STATUS: Record<PurchaseOrderStatus, { label: string; cls: string }> = {
   draft:     { label: 'Brouillon', cls: 'bg-secondary text-muted-foreground' },
@@ -100,7 +101,7 @@ function CreatePOModal({ createdBy, initialBarcodes = [], onClose, onCreated }: 
   const { showToast } = useToast();
   const [products, setProducts] = useState<Product[]>([]);
   const [providers, setProviders] = useState<Provider[]>([]);
-  const [locations, setLocations] = useState<StockLocation[]>([]);
+  const { accessibleLocations: locations } = useAccessibleLocations();
   const [providerId, setProviderId] = useState('');
   const [locationKey, setLocationKey] = useState('');
   const [expected, setExpected] = useState('');
@@ -110,13 +111,16 @@ function CreatePOModal({ createdBy, initialBarcodes = [], onClose, onCreated }: 
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    if (!locationKey && locations.length > 0) setLocationKey(locations[0].abbreviation || locations[0].name);
+  }, [locationKey, locations]);
+
+  useEffect(() => {
     (async () => {
-      const [p, pr, l, settings] = await Promise.all([
+      const [p, pr, settings] = await Promise.all([
         StockService.getProducts(), StockLocationsService.getProviders(),
-        StockLocationsService.getStockLocations(), StockService.getStockSettings().catch(() => []),
+        StockService.getStockSettings().catch(() => []),
       ]);
-      setProducts(p); setProviders(pr); setLocations(l);
-      if (l.length > 0) setLocationKey(l[0].abbreviation || l[0].name);
+      setProducts(p); setProviders(pr);
       if (initialBarcodes.length > 0) {
         const reorderQty = new Map(settings.filter(s => !s.location_key).map(s => [s.barcode, s.reorder_qty]));
         const seeded = initialBarcodes

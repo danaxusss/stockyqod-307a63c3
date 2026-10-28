@@ -5,6 +5,10 @@ import { describeEdgeError } from './edgeError';
 const FUNCTION_NAME = 'kiosk';
 const KIOSK_LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'];
 const KIOSK_LOGO_MAX_BYTES = 2 * 1024 * 1024;
+const SHOWCASE_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
+const SHOWCASE_VIDEO_TYPES = ['video/mp4', 'video/webm'];
+const SHOWCASE_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
+const SHOWCASE_VIDEO_MAX_BYTES = 50 * 1024 * 1024;
 
 /**
  * Keeps the HTTP status of a failed kiosk call so the tablet can tell a
@@ -28,7 +32,30 @@ export type KioskPriceMode = 'retail' | 'reseller';
 export type KioskCategory = 'utensils' | 'furniture' | 'equipment';
 export type KioskRequestStatus = 'new' | 'assigned' | 'reviewing' | 'prepared' | 'contacted' | 'converted' | 'rejected';
 
-export interface KioskPublicProfile {
+/** An extra showcase slide set from the kiosk settings. */
+export interface KioskShowcaseSlide {
+  id: string;
+  media_url: string;
+  media_type: 'image' | 'video';
+  kicker: string;
+  title: string;
+  text: string;
+}
+
+/** Showcase ("vitrine") settings; absent until the showcase migration has run. */
+export interface KioskShowcaseSettings {
+  showcase_enabled: boolean;
+  /** Idle seconds on the welcome screen before the showcase starts. */
+  showcase_idle_seconds: number;
+  /** Seconds per slide. */
+  showcase_slide_seconds: number;
+  /** Include the built-in Cuisimat Groupe presentation. */
+  showcase_builtin: boolean;
+  showcase_slides: KioskShowcaseSlide[];
+  google_review_url: string | null;
+}
+
+export interface KioskPublicProfile extends Partial<KioskShowcaseSettings> {
   id: string;
   name: string;
   company_name: string;
@@ -68,7 +95,7 @@ export interface KioskProduct {
   featured?: boolean;
 }
 
-export interface KioskAdminProfile {
+export interface KioskAdminProfile extends KioskShowcaseSettings {
   id?: string;
   company_id: string;
   name: string;
@@ -196,6 +223,11 @@ export class KioskService {
     return new URL(`kiosk/${token}`, base).toString();
   }
 
+  /** Link that installs this kiosk as a full-screen app on a tablet. */
+  static installUrl(token: string): string {
+    return `${KioskService.publicUrl(token)}/install`;
+  }
+
   static async loadPublic(token: string): Promise<{ profile: KioskPublicProfile; brands: string[]; sectors?: KioskSector[] }> {
     return invoke({ action: 'public_profile', token });
   }
@@ -264,6 +296,20 @@ export class KioskService {
     const { error } = await supabase.storage.from('product-photos').upload(path, file, { upsert: false, contentType: file.type });
     if (error) throw error;
     return supabase.storage.from('product-photos').getPublicUrl(path).data.publicUrl;
+  }
+
+  /** Upload a showcase image or video; returns its public address. */
+  static async uploadShowcaseMedia(companyId: string, file: File): Promise<{ url: string; type: KioskShowcaseSlide['media_type'] }> {
+    const video = SHOWCASE_VIDEO_TYPES.includes(file.type);
+    if (!video && !SHOWCASE_IMAGE_TYPES.includes(file.type)) throw new Error('Format accepté : JPG, PNG, WEBP, MP4 ou WEBM.');
+    if (file.size > (video ? SHOWCASE_VIDEO_MAX_BYTES : SHOWCASE_IMAGE_MAX_BYTES)) {
+      throw new Error(video ? 'Vidéo trop volumineuse (50 Mo maximum).' : 'Image trop volumineuse (8 Mo maximum).');
+    }
+    const extension = file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || (video ? 'mp4' : 'jpg');
+    const path = `${companyId}/kiosk/showcase-${Date.now()}-${crypto.randomUUID().slice(0, 8)}.${extension}`;
+    const { error } = await supabase.storage.from('product-photos').upload(path, file, { upsert: false, contentType: file.type });
+    if (error) throw error;
+    return { url: supabase.storage.from('product-photos').getPublicUrl(path).data.publicUrl, type: video ? 'video' : 'image' };
   }
 
   static async rotateToken(profileId: string): Promise<string> {

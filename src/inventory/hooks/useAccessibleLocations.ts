@@ -20,10 +20,11 @@ export function useAccessibleLocations() {
   const { canAccessStockLocation } = useAuth();
   const [locations, setLocations] = useState<StockLocation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     StockLocationsService.getStockLocations()
-      .then(setLocations).catch(() => {}).finally(() => setLoading(false));
+      .then(setLocations).catch(() => setFailed(true)).finally(() => setLoading(false));
   }, []);
 
   const { bypassFilter } = getCompanyContext();
@@ -41,10 +42,13 @@ export function useAccessibleLocations() {
   const keyAllowed = useCallback((key: string): boolean => {
     if (!canAccessStockLocation(key)) return false;
     if (bypassFilter) return true;
+    // Until the company's locations are known (or if they could not be read),
+    // show nothing rather than every company's stock.
+    if (loading || failed) return false;
     if (companyTokens.size === 0) return true; // no locations configured → don't hide
     const k = key.toLowerCase();
     return companyTokens.has(k) || companyTokens.has(k.replace(/\s+/g, '_'));
-  }, [canAccessStockLocation, bypassFilter, companyTokens]);
+  }, [canAccessStockLocation, bypassFilter, companyTokens, loading, failed]);
 
   const filterLevels = useCallback((levels: Record<string, number> | undefined): Record<string, number> => {
     const out: Record<string, number> = {};
@@ -52,5 +56,11 @@ export function useAccessibleLocations() {
     return out;
   }, [keyAllowed]);
 
-  return { locations, loading, keyAllowed, filterLevels, bypassFilter };
+  /** Locations this user may count, receive into or transfer between. */
+  const accessibleLocations = useMemo(
+    () => locations.filter(l => keyAllowed(l.abbreviation || l.name) || keyAllowed(l.name)),
+    [locations, keyAllowed],
+  );
+
+  return { locations, accessibleLocations, loading, failed, keyAllowed, filterLevels, bypassFilter };
 }

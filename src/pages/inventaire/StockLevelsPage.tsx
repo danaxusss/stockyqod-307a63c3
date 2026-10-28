@@ -6,6 +6,7 @@ import { StockLocationsService } from '../../utils/supabaseStockLocations';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
 import { useAccessibleLocations } from '../../inventory/hooks/useAccessibleLocations';
+import { findLevelKey, locationCandidates } from '../../inventory/lib/locationKeys';
 
 function fmt(n: number) {
   return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(n);
@@ -61,6 +62,9 @@ export default function StockLevelsPage() {
       setProducts(p);
       setLocations(l);
       setSettings(s);
+      // Keep the open drawer on fresh levels, or a second adjustment would be
+      // computed from the first one's starting point.
+      setDetail(current => current ? (p.find(x => x.barcode === current.barcode) ?? current) : current);
     } catch (e: any) {
       showToast({ type: 'error', message: e?.message || 'Erreur de chargement du stock' });
     } finally {
@@ -239,7 +243,9 @@ function ProductStockDrawer({
 
   const keys = useMemo(() => {
     const s = new Set<string>(Object.keys(product.stock_levels || {}));
-    locations.forEach(l => s.add(l.abbreviation || l.name));
+    // A configured location the product has no stock key for yet; skipped when
+    // the product already stores it under another spelling ("Dépôt" vs "DEP").
+    locations.forEach(l => { if (!findLevelKey(product.stock_levels, locationCandidates(l))) s.add(l.abbreviation || l.name); });
     return Array.from(s).filter(k => keyAllowed(k)).sort((a, b) => resolve(a).localeCompare(resolve(b)));
   }, [product, locations, resolve, keyAllowed]);
 
@@ -279,22 +285,22 @@ function ProductStockDrawer({
     if (isNaN(target)) { showToast({ type: 'error', message: 'Quantité invalide' }); return; }
     if (!reason.trim()) { showToast({ type: 'error', message: 'Motif requis' }); return; }
     const current = Number(product.stock_levels?.[adjustKey] ?? 0);
-    const delta = target - current;
-    if (delta === 0) { showToast({ type: 'error', message: 'Aucun changement' }); return; }
+    if (target === current) { showToast({ type: 'error', message: 'Aucun changement' }); return; }
     setSaving(true);
     try {
-      const loc = locations.find(l => l.abbreviation === adjustKey || l.name === adjustKey);
-      await StockService.applyMovement({
+      const loc = locations.find(l => findLevelKey({ [adjustKey]: 0 }, locationCandidates(l)) === adjustKey);
+      // Sets the level to the target, measured against the live stock.
+      const result = await StockService.applyMovements(null, [{
         barcode: product.barcode,
-        locationKey: adjustKey,
+        locationKeys: [adjustKey],
         type: 'count',
-        quantity: delta,               // signed variance
+        counted: target,
         reason: reason.trim(),
         sourceType: 'count',
-        createdBy: currentUsername,
         locationId: loc?.id ?? null,
-      });
-      showToast({ type: 'success', message: `Stock ajusté (${delta > 0 ? '+' : ''}${delta})` });
+      }], currentUsername);
+      const delta = Number(result.movements[0]?.quantity ?? 0);
+      showToast({ type: 'success', message: delta ? `Stock ajusté (${delta > 0 ? '+' : ''}${delta})` : 'Stock déjà à cette quantité' });
       if (delta < 0) {
         const { notifyLowStock } = await import('../../inventory/lib/lowStockAlert');
         void notifyLowStock([product.barcode]);

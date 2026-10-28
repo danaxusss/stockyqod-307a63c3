@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { clientIp, guard } from "../_shared/security.ts";
+import { verifySessionLive } from "../_shared/session.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -67,6 +68,15 @@ serve(async (req) => {
 
     const body = await req.json();
     const { messages, company_id, username } = body;
+
+    // Only signed-in Stocky users may spend the AI budget.
+    const sessionCheck = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+    if (!(await verifySessionLive(sessionCheck, body?.session_token))) {
+      return new Response(JSON.stringify({ error: "Session expirée : reconnectez-vous." }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     if (!messages || !Array.isArray(messages)) {
       return new Response(JSON.stringify({ error: "messages array required" }), {

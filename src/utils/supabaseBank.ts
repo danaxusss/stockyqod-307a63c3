@@ -1,6 +1,7 @@
 import { supabase } from './supabaseClient';
 import { getCompanyContext } from './supabaseCompanyFilter';
 import { throwEdgeError } from './edgeError';
+import { getToken } from './session';
 
 export interface BankStatementLine {
   id?: string;
@@ -48,7 +49,7 @@ export class BankService {
   /** Send an image (base64 data URL or raw base64) to the AI parser edge function. */
   static async parseScan(imageBase64: string, mime: string, model?: string | null): Promise<{ model: string; data: ParsedStatement }> {
     const { data, error } = await supabase.functions.invoke('parse-bank-statement', {
-      body: { image_base64: imageBase64, mime, model: model || undefined },
+      body: { image_base64: imageBase64, mime, model: model || undefined, session_token: getToken() },
     });
     if (error) await throwEdgeError(error, 'parse-bank-statement');
     if ((data as any)?.error) throw new Error((data as any).error);

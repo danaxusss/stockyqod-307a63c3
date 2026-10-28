@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ClipboardCheck, Search, Loader, Check, Plus } from 'lucide-react';
-import type { Product, StockLocation } from '../../types';
+import type { Product } from '../../types';
 import { StockService } from '../../utils/supabaseStock';
-import { StockLocationsService } from '../../utils/supabaseStockLocations';
+import { useAccessibleLocations } from '../../inventory/hooks/useAccessibleLocations';
+import { levelAt, locationCandidates } from '../../inventory/lib/locationKeys';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
 
@@ -15,36 +16,41 @@ export default function StockCountPage() {
   const { showToast } = useToast();
 
   const [products, setProducts] = useState<Product[]>([]);
-  const [locations, setLocations] = useState<StockLocation[]>([]);
-  const [locationKey, setLocationKey] = useState('');
+  const { accessibleLocations: locations, loading: locationsLoading } = useAccessibleLocations();
+  const [locationId, setLocationId] = useState('');
   const [rows, setRows] = useState<CountRow[]>([]);
   const [query, setQuery] = useState('');
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const byBarcode = useMemo(() => new Map(products.map(p => [p.barcode, p])), [products]);
+  // One id per count sheet, kept across retries: the database applies a count
+  // once even if "Valider" is pressed again after a network error.
+  const sessionId = useRef(crypto.randomUUID());
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [p, l] = await Promise.all([StockService.getProducts(), StockLocationsService.getStockLocations()]);
-      setProducts(p); setLocations(l);
-      if (l.length > 0) setLocationKey(l[0].abbreviation || l[0].name);
+      setProducts(await StockService.getProducts());
     } catch (e: any) {
       showToast({ type: 'error', message: e?.message || 'Erreur de chargement' });
     } finally { setLoading(false); }
   }, [showToast]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (!locationId && locations.length > 0) setLocationId(locations[0].id); }, [locationId, locations]);
 
-  // Populate the sheet with products that have stock at the chosen location.
+  const loc = locations.find(l => l.id === locationId);
+  const candidates = useMemo(() => locationCandidates(loc), [loc]);
+
+  // Populate the sheet with products that have stock at the chosen location,
+  // whatever key (abbreviation, name…) the product stores it under.
   useEffect(() => {
-    if (!locationKey) return;
+    if (!candidates.length) return;
     const seed = products
-      .filter(p => Number(p.stock_levels?.[locationKey] ?? 0) !== 0)
-      .map(p => ({ barcode: p.barcode, name: p.name, expected: Number(p.stock_levels?.[locationKey] ?? 0), counted: '' }));
+      .filter(p => levelAt(p, candidates) !== 0)
+      .map(p => ({ barcode: p.barcode, name: p.name, expected: levelAt(p, candidates), counted: '' }));
     setRows(seed);
-  }, [locationKey, products]);
+  }, [candidates, products]);
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -56,29 +62,30 @@ export default function StockCountPage() {
   }, [products, query, rows]);
 
   const addRow = (p: Product) => {
-    setRows(prev => [...prev, { barcode: p.barcode, name: p.name, expected: Number(p.stock_levels?.[locationKey] ?? 0), counted: '' }]);
+    setRows(prev => [...prev, { barcode: p.barcode, name: p.name, expected: levelAt(p, candidates), counted: '' }]);
     setQuery('');
   };
   const setCounted = (i: number, v: string) => setRows(prev => prev.map((r, idx) => idx === i ? { ...r, counted: v } : r));
 
-  const changed = rows.filter(r => r.counted !== '' && !isNaN(parseFloat(r.counted)) && parseFloat(r.counted) !== r.expected);
-  const loc = locations.find(l => (l.abbreviation || l.name) === locationKey);
+  // Every counted line is sent with the quantity counted: the database sets the
+  // level to it, measured against the stock at that moment (not when the sheet
+  // was opened), so sales made during the count are not counted twice.
+  const counted = rows.filter(r => r.counted !== '' && !isNaN(parseFloat(r.counted)));
+  const changed = counted.filter(r => parseFloat(r.counted) !== r.expected);
 
   const validate = async () => {
-    if (changed.length === 0) { showToast({ type: 'info', message: 'Aucun écart à enregistrer' }); return; }
+    if (!loc) { showToast({ type: 'error', message: 'Choisissez un emplacement' }); return; }
+    if (counted.length === 0) { showToast({ type: 'info', message: 'Aucune quantité saisie' }); return; }
     setSaving(true);
-    const sessionId = crypto.randomUUID();
-    const ref = `Inventaire ${loc?.name || locationKey} ${new Date().toLocaleDateString('fr-FR')}`;
+    const ref = `Inventaire ${loc.name} ${new Date().toLocaleDateString('fr-FR')}`;
     try {
-      for (const r of changed) {
-        const delta = parseFloat(r.counted) - r.expected;
-        await StockService.applyMovement({
-          barcode: r.barcode, locationKey, type: 'count', quantity: delta,
-          reason: ref, sourceType: 'count', sourceId: sessionId,
-          createdBy: currentUser?.username || null, locationId: loc?.id ?? null,
-        });
-      }
-      showToast({ type: 'success', title: 'Inventaire validé', message: `${changed.length} écart(s) enregistré(s)` });
+      const result = await StockService.applyMovements(`count:${sessionId.current}`, counted.map(r => ({
+        barcode: r.barcode, locationKeys: candidates, type: 'count' as const, counted: parseFloat(r.counted),
+        reason: ref, sourceType: 'count' as const, sourceId: sessionId.current, locationId: loc.id,
+      })), currentUser?.username || null);
+      showToast(result.duplicate
+        ? { type: 'info', title: 'Inventaire déjà validé', message: 'Cet inventaire a déjà été enregistré.' }
+        : { type: 'success', title: 'Inventaire validé', message: `${result.movements.length} écart(s) enregistré(s)` });
       navigate('/inventaire/mouvements');
     } catch (e: any) {
       showToast({ type: 'error', title: 'Erreur', message: e?.message || 'Échec de l\'inventaire' });
@@ -95,16 +102,17 @@ export default function StockCountPage() {
         </div>
       </div>
 
-      {loading ? (
+      {loading || locationsLoading ? (
         <div className="flex items-center justify-center py-20 text-muted-foreground"><Loader className="h-5 w-5 animate-spin mr-2" />Chargement…</div>
       ) : (
         <div className="space-y-4">
           <div className="bg-card border border-border/60 rounded-xl p-4">
             <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Emplacement à inventorier</label>
-            <select value={locationKey} onChange={e => setLocationKey(e.target.value)}
+            <select value={locationId} onChange={e => setLocationId(e.target.value)}
               className="w-full px-3 py-2 text-sm rounded-lg bg-secondary border border-border focus:outline-none focus:ring-2 focus:ring-primary/30">
-              {locations.map(l => <option key={l.id} value={l.abbreviation || l.name}>{l.name}</option>)}
+              {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
             </select>
+            {!locationsLoading && locations.length === 0 && <p className="mt-2 text-xs text-amber-600">Aucun emplacement accessible avec votre compte.</p>}
           </div>
 
           <div className="bg-card border border-border/60 rounded-xl p-4">
@@ -161,10 +169,10 @@ export default function StockCountPage() {
           </div>
 
           <div className="flex justify-between items-center">
-            <span className="text-xs text-muted-foreground">{changed.length} écart(s) à enregistrer</span>
+            <span className="text-xs text-muted-foreground">{counted.length} article(s) compté(s) · {changed.length} écart(s)</span>
             <div className="flex gap-2">
               <button onClick={() => navigate('/inventaire')} className="px-4 py-2 rounded-lg bg-secondary text-foreground text-sm border border-border">Annuler</button>
-              <button onClick={validate} disabled={saving || changed.length === 0}
+              <button onClick={validate} disabled={saving || counted.length === 0}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50">
                 {saving ? <Loader className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                 Valider l'inventaire

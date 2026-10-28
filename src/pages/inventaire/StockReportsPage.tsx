@@ -19,6 +19,7 @@ const PERIODS = [
   { days: 90, label: '90 j' },
   { days: 365, label: '12 mois' },
 ];
+const LONGEST_PERIOD_DAYS = Math.max(...PERIODS.map(p => p.days));
 
 export default function StockReportsPage() {
   const { showToast } = useToast();
@@ -31,11 +32,15 @@ export default function StockReportsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [p, m] = await Promise.all([
+      // Every sale and credit-note return of the longest period offered (the
+      // API caps a single read at 1000 rows, which made busy items look dormant).
+      const since = new Date(Date.now() - LONGEST_PERIOD_DAYS * 86400000).toISOString();
+      const [p, out, returns] = await Promise.all([
         StockService.getProducts(),
-        StockService.getMovements({ type: 'out', limit: 5000 }),
+        StockService.getAllMovements({ type: 'out', from: since }),
+        StockService.getAllMovements({ type: 'return', sourceType: 'return', from: since }),
       ]);
-      setProducts(p); setMovements(m);
+      setProducts(p); setMovements([...out, ...returns]);
     } catch (e: any) {
       showToast({ type: 'error', message: e?.message || 'Erreur de chargement' });
     } finally { setLoading(false); }
@@ -52,9 +57,15 @@ export default function StockReportsPage() {
     for (const m of movements) {
       if (!keyAllowed(m.location_key)) continue;
       const t = new Date(m.created_at).getTime();
-      if (!lastOutBy.has(m.barcode)) lastOutBy.set(m.barcode, m.created_at);
-      if (t >= since) soldBy.set(m.barcode, (soldBy.get(m.barcode) || 0) + Math.abs(m.quantity));
+      if (m.type === 'out') {
+        const last = lastOutBy.get(m.barcode);
+        if (!last || last < m.created_at) lastOutBy.set(m.barcode, m.created_at);
+      }
+      // Goods returned on a credit note were not really sold.
+      const sold = m.type === 'out' ? Math.abs(m.quantity) : -Math.abs(m.quantity);
+      if (t >= since) soldBy.set(m.barcode, (soldBy.get(m.barcode) || 0) + sold);
     }
+    soldBy.forEach((qty, barcode) => { if (qty < 0) soldBy.set(barcode, 0); });
     return products.map(p => {
       const qty = Object.values(filterLevels(p.stock_levels)).reduce((s, v) => s + (Number(v) || 0), 0);
       const cmup = Number(p.buyprice) || 0;

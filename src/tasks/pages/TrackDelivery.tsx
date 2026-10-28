@@ -85,12 +85,10 @@ export default function TrackDelivery() {
         }
       }
 
-      const { data: driverData } = await supabase
-        .from('app_users')
-        .select('phone')
-        .eq('id', data.driver_id)
-        .maybeSingle();
-      if (driverData?.phone) setDriverPhone(driverData.phone);
+      // Users are not readable publicly: this returns only the phone of the
+      // driver of this (live) tracking link.
+      const { data: driverPhone } = await (supabase as any).rpc('get_tracking_driver_phone', { p_token: token });
+      if (typeof driverPhone === 'string' && driverPhone) setDriverPhone(driverPhone);
 
       const { data: locData } = await supabase
         .from('driver_locations')

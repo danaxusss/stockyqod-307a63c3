@@ -59,6 +59,55 @@ function gridColumns(value: unknown): number {
   return columns >= 2 && columns <= 6 ? columns : 0;
 }
 
+function boundedInt(value: unknown, min: number, max: number, fallback: number): number {
+  const number = Math.floor(Number(value));
+  return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback;
+}
+
+/** An https link (Google review page, uploaded slide media); anything else is dropped. */
+function httpsUrl(value: unknown, max = 500): string | null {
+  // Too long is invalid, never cut short: a truncated link makes a broken QR code.
+  const raw = typeof value === "string" ? value.trim() : "";
+  if (!raw || raw.length > max) return null;
+  try {
+    const url = new URL(raw);
+    const normalized = url.toString();
+    return url.protocol === "https:" && !url.username && !url.password && normalized.length <= max ? normalized : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Database not yet updated with the showcase migration. */
+function missingShowcaseColumns(error: { code?: string; message?: string } | null): boolean {
+  return !!error && (error.code === "PGRST204" || error.code === "42703") && /showcase|google_review_url/.test(error.message || "");
+}
+
+type ShowcaseSlide = { id: string; media_url: string; media_type: "image" | "video"; kicker: string; title: string; text: string };
+
+/** Extra showcase slides: at most 20, each with an https image or video. */
+function showcaseSlides(value: unknown): ShowcaseSlide[] {
+  if (!Array.isArray(value)) return [];
+  const slides: ShowcaseSlide[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const input = item as Record<string, unknown>;
+    const mediaUrl = httpsUrl(input.media_url, 1000);
+    const title = text(input.title, 120);
+    if (!mediaUrl && !title) continue;
+    slides.push({
+      id: text(input.id, 60).replace(/[^a-zA-Z0-9_-]/g, "") || crypto.randomUUID(),
+      media_url: mediaUrl || "",
+      media_type: input.media_type === "video" ? "video" : "image",
+      kicker: text(input.kicker, 60),
+      title,
+      text: text(input.text, 300),
+    });
+    if (slides.length === 20) break;
+  }
+  return slides;
+}
+
 function isCompanyReviewer(user: StaffUser): boolean {
   return user.is_superadmin || user.is_admin || COMPANY_REVIEW_ROLES.has(user.new_role || "");
 }
@@ -99,6 +148,12 @@ function publicProfile(row: Record<string, unknown>) {
     require_email: row.require_email,
     show_availability: row.show_availability,
     inactivity_timeout_seconds: row.inactivity_timeout_seconds,
+    showcase_enabled: row.showcase_enabled === true,
+    showcase_idle_seconds: boundedInt(row.showcase_idle_seconds, 10, 600, 45),
+    showcase_slide_seconds: boundedInt(row.showcase_slide_seconds, 4, 30, 8),
+    showcase_builtin: row.showcase_builtin !== false,
+    showcase_slides: showcaseSlides(row.showcase_slides),
+    google_review_url: httpsUrl(row.google_review_url),
   };
 }
 
@@ -357,10 +412,36 @@ serve(async (req) => {
         visible_brands: stringArray(input.visible_brands),
         featured_barcodes: stringArray(input.featured_barcodes, 24),
       };
-      const query = profileId
-        ? supabase.from("kiosk_profiles").update(values).eq("id", profileId)
-        : supabase.from("kiosk_profiles").insert({ ...values, created_by: staff.id });
-      const { data, error } = await query.select("*, company:companies!kiosk_profiles_company_id_fkey(name)").single();
+      // Showcase settings are only written when the page sends them, so an
+      // admin tab still on the previous version cannot wipe them.
+      const sendsShowcase = typeof input.showcase_enabled === "boolean";
+      const reviewInput = text(input.google_review_url, 2000);
+      const reviewUrl = httpsUrl(reviewInput);
+      if (sendsShowcase && reviewInput && !reviewUrl) {
+        return json(req, { error: "Lien d’avis Google invalide : il doit commencer par https:// (500 caractères maximum)." }, 400);
+      }
+      const showcase = sendsShowcase ? {
+        showcase_enabled: input.showcase_enabled === true,
+        showcase_idle_seconds: boundedInt(input.showcase_idle_seconds, 10, 600, 45),
+        showcase_slide_seconds: boundedInt(input.showcase_slide_seconds, 4, 30, 8),
+        showcase_builtin: input.showcase_builtin !== false,
+        showcase_slides: showcaseSlides(input.showcase_slides),
+        google_review_url: reviewUrl,
+      } : {};
+      const write = (row: Record<string, unknown>) => (profileId
+        ? supabase.from("kiosk_profiles").update(row).eq("id", profileId)
+        : supabase.from("kiosk_profiles").insert({ ...row, created_by: staff.id })
+      ).select("*, company:companies!kiosk_profiles_company_id_fkey(name)").single();
+      let { data, error } = await write({ ...values, ...showcase });
+      if (missingShowcaseColumns(error)) {
+        // Migration 20261028120000 not run yet: other settings still save,
+        // but showcase settings cannot be stored.
+        const usesShowcase = showcase.showcase_enabled === true || !!showcase.google_review_url || !!(showcase.showcase_slides as unknown[] | undefined)?.length;
+        if (usesShowcase) {
+          return json(req, { error: "La base de données n’a pas encore la vitrine : exécutez la migration 20261028120000_kiosk_showcase.sql dans Supabase, puis réessayez." }, 409);
+        }
+        ({ data, error } = await write(values));
+      }
       if (error) throw error;
       return json(req, { profile: data });
     }

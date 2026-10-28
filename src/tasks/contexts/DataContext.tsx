@@ -33,6 +33,7 @@ function mapAppUserToTaskUser(data: any): User | null {
     first_name: (data.custom_seller_name && String(data.custom_seller_name).trim()) || data.username || '—',
     last_name: '',
     role,
+    company_id: data.company_id ?? null,
     phone: data.phone || undefined,
     avatar_url: undefined,
     is_active: true,
@@ -127,6 +128,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const channel = supabase
       .channel('tasks-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, (payload) => {
+        // Live changes of every company arrive here: keep only this company's.
+        const ctx = getCompanyContext();
+        const row = (payload.eventType === 'DELETE' ? payload.old : payload.new) as { company_id?: string | null };
+        if (ctx.companyId && !ctx.bypassFilter && row?.company_id && row.company_id !== ctx.companyId) return;
         if (payload.eventType === 'INSERT') {
           const newTask = mapDbTask(payload.new);
           if (skipRealtimeRef.current.has(newTask.id)) {
@@ -149,10 +154,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  // Dispatch / oversight roles — notified of all task activity. Field staff
-  // (technician/driver) are excluded here; they get their own assignment pushes.
-  const getOverseerIds = useCallback(() => {
-    return users.filter(u => u.role === 'super_admin' || u.role === 'sales').map(u => u.id);
+  // Dispatch / oversight roles — notified of the task's activity: super admins,
+  // and sales staff of the task's company (never another company's). Field
+  // staff (technician/driver) get their own assignment pushes.
+  const getOverseerIds = useCallback((companyId: string | null | undefined) => {
+    return users
+      .filter(u => u.role === 'super_admin' || (u.role === 'sales' && (!companyId || !u.company_id || u.company_id === companyId)))
+      .map(u => u.id);
   }, [users]);
 
   const updateTaskStatus = useCallback(async (taskId: string, status: TaskStatus, comment?: string, extra?: Partial<Task>) => {
@@ -160,7 +168,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (!task) return;
 
     const statusLabels: Record<TaskStatus, string> = { pending: 'En attente', doing: 'En cours', done: 'Terminé', refused: 'Refusé' };
-    const notifyIds = new Set([task.created_by, task.assigned_to, ...getOverseerIds()]);
+    const notifyIds = new Set([task.created_by, task.assigned_to, ...getOverseerIds(task.company_id)]);
     if (currentUser) notifyIds.delete(currentUser.id);
     notifyIds.forEach(uid => {
       addNotification(uid, 'status_changed', 'Statut modifié', `${task.client_name}: ${statusLabels[status]}`, taskId);
@@ -174,7 +182,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     // Optimistic local update so the proof/status reflects immediately.
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...updateData } : t));
     await supabase.from('tasks').update(updateData).eq('id', taskId);
-  }, [tasks, addNotification, currentUser]);
+  }, [tasks, addNotification, currentUser, getOverseerIds]);
 
   const addTask = useCallback(async (task: Task) => {
     const ctx = getCompanyContext();
@@ -186,7 +194,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
     // Notify overseers (super_admin + sales) of the new task — skip the creator
     // and the assignee (who already got task_assigned).
-    getOverseerIds().forEach(oid => {
+    getOverseerIds(task.company_id ?? ctx.companyId).forEach(oid => {
       if (oid !== task.created_by && oid !== task.assigned_to) {
         addNotification(oid, 'task_created', 'Tâche créée', `${task.client_name} par ${currentUser?.first_name || 'un utilisateur'}`, task.id);
       }
@@ -219,7 +227,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const deleteTask = useCallback(async (taskId: string) => {
     const task = tasks.find(t => t.id === taskId);
     if (task) {
-      const notifyIds = new Set([task.created_by, task.assigned_to, ...getOverseerIds()]);
+      const notifyIds = new Set([task.created_by, task.assigned_to, ...getOverseerIds(task.company_id)]);
       if (currentUser) notifyIds.delete(currentUser.id);
       Array.from(notifyIds).forEach(uid => {
         addNotification(uid, 'status_changed', 'Tâche supprimée', `${task.client_name} a été supprimée`, taskId);
@@ -243,7 +251,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (updates.address && updates.address !== oldTask.address) significantChanges.push('Adresse modifiée');
 
       if (significantChanges.length > 0) {
-        const notifyIds = new Set([oldTask.created_by, oldTask.assigned_to, ...getOverseerIds()]);
+        const notifyIds = new Set([oldTask.created_by, oldTask.assigned_to, ...getOverseerIds(oldTask.company_id)]);
         if (updates.assigned_to) notifyIds.add(updates.assigned_to);
         if (currentUser) notifyIds.delete(currentUser.id);
         const changeMsg = `${oldTask.client_name}: ${significantChanges.join(', ')}`;

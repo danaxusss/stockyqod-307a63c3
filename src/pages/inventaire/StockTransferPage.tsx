@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeftRight, Search, Trash2, Loader, Check, ArrowRight } from 'lucide-react';
-import type { Product, StockLocation } from '../../types';
+import type { Product } from '../../types';
 import { StockService } from '../../utils/supabaseStock';
-import { StockLocationsService } from '../../utils/supabaseStockLocations';
+import { useAccessibleLocations } from '../../inventory/hooks/useAccessibleLocations';
+import { levelAt, locationCandidates } from '../../inventory/lib/locationKeys';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
 
@@ -15,9 +16,13 @@ export default function StockTransferPage() {
   const { showToast } = useToast();
 
   const [products, setProducts] = useState<Product[]>([]);
-  const [locations, setLocations] = useState<StockLocation[]>([]);
-  const [fromKey, setFromKey] = useState('');
-  const [toKey, setToKey] = useState('');
+  // Stock can only leave a location the user has access to; it may be sent to
+  // any of the company's locations.
+  const { locations, accessibleLocations } = useAccessibleLocations();
+  const [fromId, setFromId] = useState('');
+  const [toId, setToId] = useState('');
+  // Kept across retries so a transfer is never applied twice.
+  const transferId = useRef(crypto.randomUUID());
   const [lines, setLines] = useState<Line[]>([]);
   const [query, setQuery] = useState('');
   const [saving, setSaving] = useState(false);
@@ -28,67 +33,68 @@ export default function StockTransferPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [p, l] = await Promise.all([StockService.getProducts(), StockLocationsService.getStockLocations()]);
-      setProducts(p); setLocations(l);
-      if (l.length > 0) setFromKey(l[0].abbreviation || l[0].name);
-      if (l.length > 1) setToKey(l[1].abbreviation || l[1].name);
+      setProducts(await StockService.getProducts());
     } catch (e: any) {
       showToast({ type: 'error', message: e?.message || 'Erreur de chargement' });
     } finally { setLoading(false); }
   }, [showToast]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (!fromId && accessibleLocations.length > 0) setFromId(accessibleLocations[0].id); }, [accessibleLocations, fromId]);
+  useEffect(() => {
+    if (!toId && locations.length > 1) setToId((locations.find(l => l.id !== fromId) || locations[0]).id);
+  }, [fromId, locations, toId]);
+
+  const fromLoc = accessibleLocations.find(l => l.id === fromId);
+  const toLoc = locations.find(l => l.id === toId);
+  const fromCandidates = useMemo(() => locationCandidates(fromLoc), [fromLoc]);
 
   // When source changes, refresh available quantities on existing lines.
   useEffect(() => {
-    setLines(prev => prev.map(l => ({ ...l, available: Number(byBarcode.get(l.barcode)?.stock_levels?.[fromKey] ?? 0) })));
-  }, [fromKey, byBarcode]);
+    setLines(prev => prev.map(l => ({ ...l, available: levelAt(byBarcode.get(l.barcode), fromCandidates) })));
+  }, [fromCandidates, byBarcode]);
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return [];
     return products.filter(p =>
-      (Number(p.stock_levels?.[fromKey] ?? 0) > 0) &&
+      levelAt(p, fromCandidates) > 0 &&
       (p.name.toLowerCase().includes(q) || p.barcode.toLowerCase().includes(q) || (p.brand || '').toLowerCase().includes(q))
     ).slice(0, 8);
-  }, [products, query, fromKey]);
+  }, [products, query, fromCandidates]);
 
   const addLine = (p: Product) => {
     if (lines.some(l => l.barcode === p.barcode)) { setQuery(''); return; }
-    const available = Number(p.stock_levels?.[fromKey] ?? 0);
+    const available = levelAt(p, fromCandidates);
     setLines(prev => [...prev, { barcode: p.barcode, name: p.name, qty: Math.min(1, available), available }]);
     setQuery('');
   };
   const updateQty = (i: number, v: number) => setLines(prev => prev.map((l, idx) => idx === i ? { ...l, qty: v } : l));
   const removeLine = (i: number) => setLines(prev => prev.filter((_, idx) => idx !== i));
 
-  const fromLoc = locations.find(l => (l.abbreviation || l.name) === fromKey);
-  const toLoc = locations.find(l => (l.abbreviation || l.name) === toKey);
   const hasOverdraw = lines.some(l => l.qty > l.available);
 
   const validate = async () => {
-    if (!fromKey || !toKey) { showToast({ type: 'error', message: 'Choisissez les emplacements' }); return; }
-    if (fromKey === toKey) { showToast({ type: 'error', message: 'Source et destination identiques' }); return; }
+    if (!fromLoc || !toLoc) { showToast({ type: 'error', message: 'Choisissez les emplacements' }); return; }
+    if (fromLoc.id === toLoc.id) { showToast({ type: 'error', message: 'Source et destination identiques' }); return; }
     if (lines.length === 0) { showToast({ type: 'error', message: 'Ajoutez au moins un article' }); return; }
     if (lines.some(l => l.qty <= 0)) { showToast({ type: 'error', message: 'Quantités invalides' }); return; }
     if (hasOverdraw && !confirm('Certaines quantités dépassent le stock disponible à la source. Continuer (stock négatif) ?')) return;
     setSaving(true);
-    const group = crypto.randomUUID();
-    const ref = `Transfert ${fromLoc?.name || fromKey} → ${toLoc?.name || toKey}`;
+    const group = transferId.current;
+    const ref = `Transfert ${fromLoc.name} → ${toLoc.name}`;
     try {
-      for (const l of lines) {
-        await StockService.applyMovement({
-          barcode: l.barcode, locationKey: fromKey, type: 'transfer_out', quantity: l.qty,
-          reason: ref, sourceType: 'transfer', sourceId: group, transferGroupId: group,
-          createdBy: currentUser?.username || null, locationId: fromLoc?.id ?? null,
-        });
-        await StockService.applyMovement({
-          barcode: l.barcode, locationKey: toKey, type: 'transfer_in', quantity: l.qty,
-          reason: ref, sourceType: 'transfer', sourceId: group, transferGroupId: group,
-          createdBy: currentUser?.username || null, locationId: toLoc?.id ?? null,
-        });
-      }
-      showToast({ type: 'success', title: 'Transfert validé', message: `${lines.length} article(s) transférés` });
+      // Both sides of every line in one transaction: stock cannot leave the
+      // source without arriving at the destination, and a retry is ignored.
+      const result = await StockService.applyMovements(`transfer:${group}`, lines.flatMap(l => [
+        { barcode: l.barcode, locationKeys: fromCandidates, type: 'transfer_out' as const, quantity: l.qty,
+          reason: ref, sourceType: 'transfer' as const, sourceId: group, transferGroupId: group, locationId: fromLoc.id },
+        { barcode: l.barcode, locationKeys: locationCandidates(toLoc), type: 'transfer_in' as const, quantity: l.qty,
+          reason: ref, sourceType: 'transfer' as const, sourceId: group, transferGroupId: group, locationId: toLoc.id },
+      ]), currentUser?.username || null);
+      showToast(result.duplicate
+        ? { type: 'info', title: 'Transfert déjà enregistré', message: 'Ce transfert a déjà été appliqué.' }
+        : { type: 'success', title: 'Transfert validé', message: `${lines.length} article(s) transférés` });
       navigate('/inventaire/mouvements');
     } catch (e: any) {
       showToast({ type: 'error', title: 'Erreur', message: e?.message || 'Échec du transfert' });
@@ -112,17 +118,17 @@ export default function StockTransferPage() {
           <div className="bg-card border border-border/60 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] gap-3 items-end">
             <div>
               <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Depuis</label>
-              <select value={fromKey} onChange={e => setFromKey(e.target.value)}
+              <select value={fromId} onChange={e => setFromId(e.target.value)}
                 className="w-full px-3 py-2 text-sm rounded-lg bg-secondary border border-border focus:outline-none focus:ring-2 focus:ring-primary/30">
-                {locations.map(l => <option key={l.id} value={l.abbreviation || l.name}>{l.name}</option>)}
+                {accessibleLocations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
               </select>
             </div>
             <ArrowRight className="h-5 w-5 text-muted-foreground mx-auto hidden sm:block" />
             <div>
               <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Vers</label>
-              <select value={toKey} onChange={e => setToKey(e.target.value)}
+              <select value={toId} onChange={e => setToId(e.target.value)}
                 className="w-full px-3 py-2 text-sm rounded-lg bg-secondary border border-border focus:outline-none focus:ring-2 focus:ring-primary/30">
-                {locations.map(l => <option key={l.id} value={l.abbreviation || l.name}>{l.name}</option>)}
+                {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
               </select>
             </div>
           </div>
@@ -138,7 +144,7 @@ export default function StockTransferPage() {
                   {results.map(p => (
                     <button key={p.barcode} onClick={() => addLine(p)} className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-secondary text-sm">
                       <span className="truncate">{p.name}</span>
-                      <span className="text-[10px] text-muted-foreground ml-2 shrink-0">dispo {Number(p.stock_levels?.[fromKey] ?? 0)}</span>
+                      <span className="text-[10px] text-muted-foreground ml-2 shrink-0">dispo {levelAt(p, fromCandidates)}</span>
                     </button>
                   ))}
                 </div>

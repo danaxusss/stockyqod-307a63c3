@@ -170,6 +170,8 @@ export function useUserAuth() {
 
   const logout = useCallback((): void => {
     ActivityLogger.log('logout', 'User logged out');
+    // This device stops receiving the signed-out user's notifications.
+    import('../tasks/lib/push').then(({ disablePush }) => disablePush()).catch(() => undefined);
     clearSession();
     setIsAuthenticated(false);
     setAuthenticatedUser(null);

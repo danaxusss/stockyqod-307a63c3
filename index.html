@@ -9,6 +9,27 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Stocky" />
+    <script>
+      // Kiosk pages install as their own full-screen "Kiosque" app (see
+      // /kiosk-manifest.webmanifest), separate from the Stocky staff app.
+      (function () {
+        var path = location.pathname;
+        if (path.indexOf('/kiosk/') !== 0) return;
+        var manifest = document.querySelector('link[rel="manifest"]');
+        var ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+        // iOS home-screen apps do not share storage with Safari, so the
+        // /kiosk/app launcher could not find the kiosk: without a manifest,
+        // Safari keeps the page's own address, which carries the kiosk link.
+        if (ios) manifest.parentNode.removeChild(manifest);
+        else manifest.setAttribute('href', '/kiosk-manifest.webmanifest');
+        document.querySelector('meta[name="apple-mobile-web-app-title"]').setAttribute('content', 'Kiosque');
+        document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0f172a');
+        var icon = document.createElement('link');
+        icon.rel = 'apple-touch-icon';
+        icon.href = '/kiosk-apple-touch-icon.png';
+        document.head.appendChild(icon);
+      })();
+    </script>
     <title>Stocky - Gestion Commercial</title>
     <meta name="description" content="Système professionnel de gestion d&#39;inventaire - By QodWeb">
     

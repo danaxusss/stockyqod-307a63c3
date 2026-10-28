@@ -1,9 +1,10 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import webpush from 'npm:web-push@3.6.7';
 import { clientIp, guard } from '../_shared/security.ts';
+import { verifySessionLive } from '../_shared/session.ts';
 
-// verify_jwt is false for this function (the browser calls it), so rate limits
-// are the only thing standing between a stranger and push-spamming every user.
+// verify_jwt is false for this function (the browser calls it): callers must
+// present a live Stocky session, and rate limits cap what one session can do.
 const LIMITS = {
   burst: { max: 30,  window: 60 },
   hour:  { max: 300, window: 60 * 60 },
@@ -17,6 +18,7 @@ const corsHeaders = {
 };
 
 interface PushPayload {
+  session_token?: string;
   user_ids: string[];
   title: string;
   body: string;
@@ -47,6 +49,10 @@ Deno.serve(async (req) => {
     const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
     const payload = (await req.json()) as PushPayload;
+    // Only signed-in users may notify colleagues (user ids are not secret).
+    if (!(await verifySessionLive(supabase, payload.session_token))) {
+      return new Response(JSON.stringify({ error: 'Session required' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
     const userIds = Array.from(new Set((payload.user_ids || []).filter(Boolean))).slice(0, MAX_RECIPIENTS);
     if (!userIds.length) {
       return new Response(JSON.stringify({ success: true, sent: 0 }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -62,7 +68,9 @@ Deno.serve(async (req) => {
       title: payload.title || 'Notification',
       body: payload.body || '',
       task_id: payload.task_id || null,
-      url: payload.url || '/tasks',
+      // A link inside the app only: a notification must not send people to
+      // another site.
+      url: typeof payload.url === 'string' && /^\/(?!\/)/.test(payload.url) ? payload.url : '/tasks',
       tag: payload.tag || payload.task_id || undefined,
       requireInteraction: payload.requireInteraction || false,
     });

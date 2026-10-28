@@ -12,7 +12,7 @@ const BACKUP_TABLES = [
   'companies',
   'catalog_families',
   'company_settings',
-  'app_users',
+  // app_users is not backed up: users and PIN hashes are server-only.
   'kiosk_profiles',
   'clients',
   'document_counters',

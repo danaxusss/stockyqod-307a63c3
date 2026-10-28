@@ -83,6 +83,8 @@ const WhatsappAnalyticsPage = React.lazy(() => import('./pages/whatsapp/Analytic
 const ConverterPage = React.lazy(() => import('./pages/tools/ConverterPage'));
 const KioskPage = React.lazy(() => import('./pages/kiosk/KioskPage'));
 const KioskAdminPage = React.lazy(() => import('./pages/kiosk/KioskAdminPage'));
+const KioskInstallPage = React.lazy(() => import('./pages/kiosk/KioskInstallPage'));
+const KioskAppLauncher = React.lazy(() => import('./pages/kiosk/KioskInstallPage').then(module => ({ default: module.KioskAppLauncher })));
 const TasksLayout = React.lazy(() => import('./tasks/TasksLayout'));
 const TasksDashboard = React.lazy(() => import('./tasks/pages/Dashboard'));
 const TasksList = React.lazy(() => import('./tasks/pages/SalesTasks'));
@@ -119,7 +121,11 @@ function AppContent() {
   if (window.location.pathname.startsWith('/kiosk/')) {
     return (
       <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-400" /></div>}>
-        <Routes><Route path="/kiosk/:token" element={<KioskPage />} /></Routes>
+        <Routes>
+          <Route path="/kiosk/:token" element={<KioskPage />} />
+          <Route path="/kiosk/:token/install" element={<KioskInstallPage />} />
+          <Route path="/kiosk/app" element={<KioskAppLauncher />} />
+        </Routes>
       </Suspense>
     );
   }

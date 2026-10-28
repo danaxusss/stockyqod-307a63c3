@@ -1,4 +1,5 @@
 import { supabase } from '../../utils/supabaseClient';
+import { getToken } from '../../utils/session';
 import { StockService, totalStock } from '../../utils/supabaseStock';
 
 /**
@@ -38,7 +39,7 @@ export async function notifyLowStock(barcodes: string[]): Promise<void> {
       : `${flagged.length} articles sous le seuil : ${names}${flagged.length > 5 ? '…' : ''}`;
 
     await supabase.functions.invoke('send-push', {
-      body: { user_ids: managerIds, title: '⚠️ Stock bas', body },
+      body: { session_token: getToken(), user_ids: managerIds, title: '⚠️ Stock bas', body },
     });
   } catch (e) {
     console.warn('notifyLowStock failed:', e);

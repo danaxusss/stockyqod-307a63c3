@@ -19,6 +19,9 @@ const LIMITS = {
   // "does this PIN match ANY user" — the jackpot query, keep it tight
   anyUserIp:       { max: 10,  window: 15 * 60 },
   anyUserDaily:    { max: 60,  window: 24 * 60 * 60 },
+  // across ALL callers: bounds guessing even from many IPs (a whole office
+  // logging in by PIN stays far below this)
+  anyUserGlobal:   { max: 300, window: 60 * 60 },
   // PBKDF2 at 100k iterations is CPU-heavy: unlimited calls are a DoS vector
   hashIp:          { max: 20,  window: 60 * 60 },
 };
@@ -153,6 +156,7 @@ serve(async (req) => {
       const blocked = await guard(req, [
         { bucket: "verify-pin:any:ip", id: ip, max: LIMITS.anyUserIp.max, window: LIMITS.anyUserIp.window, failClosed: true, message: TOO_MANY_MSG },
         { bucket: "verify-pin:any:day", id: ip, max: LIMITS.anyUserDaily.max, window: LIMITS.anyUserDaily.window, failClosed: true, message: TOO_MANY_MSG },
+        { bucket: "verify-pin:any:global", id: "all", max: LIMITS.anyUserGlobal.max, window: LIMITS.anyUserGlobal.window, failClosed: true, message: TOO_MANY_MSG },
       ]);
       if (blocked) return blocked;
 

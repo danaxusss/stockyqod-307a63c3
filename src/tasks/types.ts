@@ -15,6 +15,7 @@ export interface User {
   first_name: string;
   last_name: string;
   role: UserRole;
+  company_id?: string | null;
   phone?: string;
   avatar_url?: string;
   is_active: boolean;

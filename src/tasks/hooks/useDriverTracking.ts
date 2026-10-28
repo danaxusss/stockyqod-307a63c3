@@ -40,6 +40,8 @@ export function useDriverTracking({ driverId, enabled = true }: UseDriverTrackin
   const startTracking = useCallback(
     (sessionId: string, taskId?: string) => {
       if (!driverId || !navigator.geolocation) return;
+      // One delivery at a time: never leave a previous timer running.
+      if (intervalRef.current) clearInterval(intervalRef.current);
 
       setActiveSessionId(sessionId);
       setActiveTaskId(taskId || null);
@@ -176,6 +178,10 @@ export function useDriverTracking({ driverId, enabled = true }: UseDriverTrackin
     async (taskId: string, clientName: string, clientPhone?: string, address?: string) => {
       if (!driverId) return null;
 
+      // Earlier deliveries' links stop showing this driver's position.
+      await (supabase as any).from('tracking_sessions').update({ is_active: false })
+        .eq('driver_id', driverId).eq('is_active', true);
+
       const { data, error } = await supabase
         .from('tracking_sessions')
         .insert({
@@ -228,7 +234,15 @@ export function useDriverTracking({ driverId, enabled = true }: UseDriverTrackin
     [driverId, startTracking, stopBackgroundTracking]
   );
 
+  /** A delivery is finished (done or refused): stop sharing the position for it. */
+  const endTaskTracking = useCallback(async (taskId: string) => {
+    if (activeTaskId === taskId) stopTracking();
+    await (supabase as any).from('tracking_sessions').update({ is_active: false })
+      .eq('task_id', taskId).eq('is_active', true);
+  }, [activeTaskId, stopTracking]);
+
   return {
+    endTaskTracking,
     isTracking,
     isBackgroundTracking,
     activeSessionId,

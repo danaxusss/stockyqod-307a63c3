@@ -20,8 +20,9 @@ export default function TasksHeader() {
       if (!active) return;
       setEnabled(on);
       // If permission was already granted, make sure this device's subscription
-      // is stored under the current user (handles new devices / cleared rows).
-      if (!on && user && pushPermission() === 'granted') {
+      // is stored under the current user: new devices, cleared rows, and a
+      // shared device where someone else was signed in before.
+      if (user && pushPermission() === 'granted') {
         try {
           const ok = await enablePush(user.id);
           if (active) setEnabled(ok);

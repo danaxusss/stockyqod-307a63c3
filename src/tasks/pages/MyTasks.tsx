@@ -40,7 +40,7 @@ export default function MyTasks() {
   const [gpsDialogOpen, setGpsDialogOpen] = useState(false);
   const [forcedGpsDialog, setForcedGpsDialog] = useState(false);
   const [pendingTrackingTask, setPendingTrackingTask] = useState<typeof tasks[0] | null>(null);
-  const { createTrackingSession, isTracking, activeTaskId, startBackgroundTracking, isBackgroundTracking, stopBackgroundTracking } = useDriverTracking({ driverId: user?.id });
+  const { createTrackingSession, isTracking, activeTaskId, startBackgroundTracking, isBackgroundTracking, stopBackgroundTracking, endTaskTracking } = useDriverTracking({ driverId: user?.id });
 
   const myTasks = tasks.filter(t => t.assigned_to === user?.id);
   const isDriverRole = user?.role === 'driver' || user?.role === 'technician';
@@ -243,6 +243,7 @@ export default function MyTasks() {
         if (!error) extra.proof_signature_url = supabase.storage.from('task-proofs').getPublicUrl(path).data.publicUrl;
       }
       updateTaskStatus(proofTaskId, 'done', undefined, extra);
+      void endTaskTracking(proofTaskId);
       confetti({ particleCount: 80, spread: 60, origin: { y: 0.7 } });
       toast.success(t('myTasks.finishedToast'));
     } catch (e: any) {
@@ -257,6 +258,7 @@ export default function MyTasks() {
   const handleRefuse = () => {
     if (!refuseTaskId) return;
     updateTaskStatus(refuseTaskId, 'refused', refuseComment);
+    void endTaskTracking(refuseTaskId);
     setRefuseTaskId(null);
     setRefuseComment('');
     toast(t('myTasks.refusedToast'));

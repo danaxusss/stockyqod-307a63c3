@@ -140,16 +140,21 @@ export default function BLDetailPage() {
     try {
       const { postDocumentStockOut } = await import('../../inventory/lib/stockPosting');
       const res = await postDocumentStockOut(bl, { createdBy: currentUser?.username || null });
-      if (res.posted === 0 && res.skipped === 0) {
+      const skippedNames = res.skippedItems.slice(0, 5).join(', ') + (res.skippedItems.length > 5 ? '…' : '');
+      if (res.alreadyPosted) {
         showToast({ type: 'info', title: 'Déjà décompté', message: 'Le stock de ce BL a déjà été décompté.' });
+        setStockPosted(true);
+      } else if (res.posted === 0) {
+        // Nothing could be posted: leave the button available once fixed.
+        showToast({ type: 'warning', title: 'Rien à décompter', message: res.skipped > 0 ? `Emplacement ou code produit manquant pour : ${skippedNames}` : 'Aucun article à décompter.' });
       } else {
-        const skipMsg = res.skipped > 0 ? ` · ${res.skipped} ignoré(s) (emplacement/code manquant)` : '';
+        const skipMsg = res.skipped > 0 ? ` · non décomptés (emplacement/code manquant) : ${skippedNames}` : '';
         showToast({ type: 'success', title: 'Stock décompté', message: `${res.posted} mouvement(s) de sortie${skipMsg}` });
         if (res.negatives && res.negatives > 0) {
           showToast({ type: 'warning', title: 'Stock négatif', message: `${res.negatives} article(s) passent en stock négatif — vérifiez les réceptions.` });
         }
+        setStockPosted(true);
       }
-      setStockPosted(true);
     } catch (e) {
       showToast({ type: 'error', title: 'Erreur stock', message: String((e as any)?.message || e) });
     } finally {

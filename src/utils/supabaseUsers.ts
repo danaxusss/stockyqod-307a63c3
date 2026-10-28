@@ -1,4 +1,6 @@
 import { supabase } from './supabaseClient';
+import { getToken } from './session';
+import { describeEdgeError } from './edgeError';
 import { AppUser, AppUserRole, CreateAppUserRequest, UpdateAppUserRequest } from '../types';
 
 type SafeAppUserRow = {
@@ -23,58 +25,28 @@ type SafeAppUserRow = {
   updated_at: string;
 };
 
-// Hash a PIN client-side using the same PBKDF2 algorithm as verify-pin edge function
-async function hashPin(pin: string): Promise<string> {
-  const ITERATIONS = 100000;
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const key = await crypto.subtle.importKey(
-    'raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveBits']
-  );
-  const derived = await crypto.subtle.deriveBits(
-    { name: 'PBKDF2', salt, iterations: ITERATIONS, hash: 'SHA-256' },
-    key, 256
-  );
-  const saltHex = [...salt].map(b => b.toString(16).padStart(2, '0')).join('');
-  const hashHex = [...new Uint8Array(derived)].map(b => b.toString(16).padStart(2, '0')).join('');
-  return `pbkdf2:${ITERATIONS}:${saltHex}:${hashHex}`;
+/**
+ * User management goes through the admin-users edge function: it checks the
+ * signed session (superadmin only) and hashes PINs server-side. The browser
+ * never writes app_users itself.
+ */
+async function adminUsers<T>(action: string, body: Record<string, unknown>): Promise<T> {
+  const session_token = getToken();
+  if (!session_token) throw new Error('Session expirée : reconnectez-vous.');
+  const { data, error } = await supabase.functions.invoke('admin-users', { body: { ...body, action, session_token } });
+  if (error) {
+    const failure = await describeEdgeError(error, 'admin-users');
+    throw new Error(failure.serverMessage || failure.message);
+  }
+  if (data?.error) throw new Error(data.error);
+  return data as T;
 }
 
 export class SupabaseUsersService {
   static async createUser(userData: CreateAppUserRequest): Promise<AppUser> {
     if (!userData.pin) throw new Error('PIN requis');
-    const hashedPin = await hashPin(userData.pin);
-
-    const { data, error } = await supabase
-      .from('app_users')
-      .insert({
-        username: userData.username.trim(),
-        pin: hashedPin,
-        new_role: userData.new_role || null,
-        cross_branch_read: userData.cross_branch_read || false,
-        is_admin: userData.is_admin || false,
-        is_superadmin: userData.is_superadmin || false,
-        is_compta: userData.is_compta || false,
-        company_id: userData.company_id || null,
-        can_create_quote: userData.can_create_quote !== undefined ? userData.can_create_quote : true,
-        allowed_stock_locations: userData.allowed_stock_locations || [],
-        allowed_brands: userData.allowed_brands || [],
-        price_display_type: userData.price_display_type || 'normal',
-        custom_seller_name: userData.custom_seller_name || '',
-        phone: userData.phone || '',
-        tasks_role: userData.tasks_role || null,
-        tasks_only: userData.tasks_only || false,
-        // Only sent when granted, so creating users keeps working on a
-        // database that has not run the can_edit_products migration yet.
-        ...(userData.can_edit_products ? { can_edit_products: true } : {}),
-      })
-      .select('id, username, is_admin, is_superadmin, is_compta, new_role, cross_branch_read, company_id, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, phone, tasks_role, tasks_only, created_at, updated_at')
-      .single();
-
-    if (error) {
-      if (error.code === '23505') throw new Error("Ce nom d'utilisateur existe déjà");
-      throw new Error(error.message);
-    }
-    return { ...this.mapRow(data as SafeAppUserRow), can_edit_products: userData.can_edit_products === true };
+    const { user } = await adminUsers<{ user: SafeAppUserRow }>('create_user', { ...userData });
+    return { ...this.mapRow(user), can_edit_products: userData.can_edit_products === true };
   }
 
   static async getUserByUsername(username: string): Promise<AppUser | null> {
@@ -104,52 +76,23 @@ export class SupabaseUsersService {
   }
 
   static async updateUser(id: string, updates: UpdateAppUserRequest): Promise<AppUser> {
-    const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
-
-    if (updates.username !== undefined) updateData.username = updates.username.trim();
-    if (updates.pin !== undefined) updateData.pin = await hashPin(updates.pin);
-    if (updates.new_role !== undefined) updateData.new_role = updates.new_role;
-    if (updates.cross_branch_read !== undefined) updateData.cross_branch_read = updates.cross_branch_read;
-    if (updates.is_admin !== undefined) updateData.is_admin = updates.is_admin;
-    if (updates.is_superadmin !== undefined) updateData.is_superadmin = updates.is_superadmin;
-    if (updates.is_compta !== undefined) updateData.is_compta = updates.is_compta;
-    if (updates.company_id !== undefined) updateData.company_id = updates.company_id || null;
-    if (updates.can_create_quote !== undefined) updateData.can_create_quote = updates.can_create_quote;
-    if (updates.allowed_stock_locations !== undefined) updateData.allowed_stock_locations = updates.allowed_stock_locations;
-    if (updates.allowed_brands !== undefined) updateData.allowed_brands = updates.allowed_brands;
-    if (updates.price_display_type !== undefined) updateData.price_display_type = updates.price_display_type;
-    if (updates.custom_seller_name !== undefined) updateData.custom_seller_name = updates.custom_seller_name;
-    if (updates.phone !== undefined) updateData.phone = updates.phone;
-    if (updates.tasks_role !== undefined) updateData.tasks_role = updates.tasks_role || null;
-    if (updates.tasks_only !== undefined) updateData.tasks_only = updates.tasks_only || false;
-    if (updates.can_edit_products !== undefined) updateData.can_edit_products = updates.can_edit_products;
-
-    const { data, error } = await supabase
-      .from('app_users')
-      .update(updateData)
-      .eq('id', id)
-      .select('id, username, is_admin, is_superadmin, is_compta, new_role, cross_branch_read, company_id, can_create_quote, allowed_stock_locations, allowed_brands, price_display_type, custom_seller_name, phone, tasks_role, tasks_only, created_at, updated_at')
-      .single();
-
-    if (error) {
-      if (error.code === '23505') throw new Error("Ce nom d'utilisateur existe déjà");
-      throw new Error(error.message);
-    }
-    const updated = this.mapRow(data as SafeAppUserRow);
+    const { user } = await adminUsers<{ user: SafeAppUserRow }>('update_user', { ...updates, user_id: id });
+    const updated = this.mapRow(user);
     return updates.can_edit_products !== undefined ? { ...updated, can_edit_products: updates.can_edit_products } : updated;
   }
 
+  /** Seller name shown on the signed-in user's own quotes (any role). */
+  static async updateOwnSellerName(name: string): Promise<void> {
+    await adminUsers('update_own_profile', { custom_seller_name: name });
+  }
+
   static async deleteUser(id: string): Promise<void> {
-    const { error } = await supabase.from('app_users').delete().eq('id', id);
-    if (error) throw new Error(error.message);
+    await adminUsers('delete_user', { user_id: id });
   }
 
   static async isUsernameAvailable(username: string, excludeId?: string): Promise<boolean> {
-    let query = supabase.from('app_users').select('id').eq('username', username);
-    if (excludeId) query = query.neq('id', excludeId);
-    const { data, error } = await query;
-    if (error) throw new Error(error.message);
-    return !data || data.length === 0;
+    const { available } = await adminUsers<{ available: boolean }>('check_username', { username, exclude_id: excludeId });
+    return available;
   }
 
   static async getAvailableStockLocations(): Promise<string[]> {
