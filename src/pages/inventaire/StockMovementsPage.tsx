@@ -51,7 +51,8 @@ export default function StockMovementsPage() {
       const [m, prods, locs] = await Promise.all([
         StockService.getMovements({
           type: type || undefined,
-          from: from ? new Date(from).toISOString() : undefined,
+          // With a time the date is local (like "to"); alone it would be UTC midnight.
+          from: from ? new Date(from + 'T00:00:00').toISOString() : undefined,
           to: to ? new Date(to + 'T23:59:59').toISOString() : undefined,
           limit: 800,
         }),

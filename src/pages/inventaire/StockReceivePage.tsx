@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PackagePlus, Search, Trash2, Plus, Loader, Check } from 'lucide-react';
-import type { Product, StockLocation } from '../../types';
+import type { Product } from '../../types';
 import { StockService } from '../../utils/supabaseStock';
-import { StockLocationsService } from '../../utils/supabaseStockLocations';
+import { useAccessibleLocations } from '../../inventory/hooks/useAccessibleLocations';
+import { locationCandidates } from '../../inventory/lib/locationKeys';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
 
@@ -15,8 +16,10 @@ export default function StockReceivePage() {
   const { showToast } = useToast();
 
   const [products, setProducts] = useState<Product[]>([]);
-  const [locations, setLocations] = useState<StockLocation[]>([]);
-  const [locationKey, setLocationKey] = useState('');
+  const { accessibleLocations: locations } = useAccessibleLocations();
+  const [locationId, setLocationId] = useState('');
+  // Kept across retries so a reception is never entered twice.
+  const receiptId = useRef(crypto.randomUUID());
   const [lines, setLines] = useState<Line[]>([]);
   const [query, setQuery] = useState('');
   const [saving, setSaving] = useState(false);
@@ -25,16 +28,14 @@ export default function StockReceivePage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [p, l] = await Promise.all([StockService.getProducts(), StockLocationsService.getStockLocations()]);
-      setProducts(p);
-      setLocations(l);
-      if (l.length > 0) setLocationKey(l[0].abbreviation || l[0].name);
+      setProducts(await StockService.getProducts());
     } catch (e: any) {
       showToast({ type: 'error', message: e?.message || 'Erreur de chargement' });
     } finally { setLoading(false); }
   }, [showToast]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (!locationId && locations.length > 0) setLocationId(locations[0].id); }, [locationId, locations]);
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -55,31 +56,30 @@ export default function StockReceivePage() {
   const removeLine = (i: number) => setLines(prev => prev.filter((_, idx) => idx !== i));
 
   const total = lines.reduce((s, l) => s + l.qty * l.unitCost, 0);
-  const locId = locations.find(l => (l.abbreviation || l.name) === locationKey)?.id ?? null;
+  const location = locations.find(l => l.id === locationId);
 
   const validate = async () => {
-    if (!locationKey) { showToast({ type: 'error', message: 'Choisissez un emplacement' }); return; }
+    if (!location) { showToast({ type: 'error', message: 'Choisissez un emplacement' }); return; }
     if (lines.length === 0) { showToast({ type: 'error', message: 'Ajoutez au moins un article' }); return; }
     if (lines.some(l => l.qty <= 0)) { showToast({ type: 'error', message: 'Quantités invalides' }); return; }
     setSaving(true);
-    const receiptId = crypto.randomUUID();
     const ref = `Réception ${new Date().toLocaleDateString('fr-FR')}`;
     try {
-      for (const l of lines) {
-        await StockService.applyMovement({
-          barcode: l.barcode,
-          locationKey,
-          type: 'in',
-          quantity: l.qty,
-          unitCost: l.unitCost || null,
-          reason: ref,
-          sourceType: 'receipt',
-          sourceId: receiptId,
-          createdBy: currentUser?.username || null,
-          locationId: locId,
-        });
-      }
-      showToast({ type: 'success', title: 'Réception validée', message: `${lines.length} article(s) entrés en stock` });
+      // The whole reception in one transaction, once (retries are ignored).
+      const result = await StockService.applyMovements(`receipt:${receiptId.current}`, lines.map(l => ({
+        barcode: l.barcode,
+        locationKeys: locationCandidates(location),
+        type: 'in' as const,
+        quantity: l.qty,
+        unitCost: l.unitCost || null,
+        reason: ref,
+        sourceType: 'receipt' as const,
+        sourceId: receiptId.current,
+        locationId: location.id,
+      })), currentUser?.username || null);
+      showToast(result.duplicate
+        ? { type: 'info', title: 'Réception déjà enregistrée', message: 'Cette réception a déjà été entrée en stock.' }
+        : { type: 'success', title: 'Réception validée', message: `${lines.length} article(s) entrés en stock` });
       navigate('/inventaire/mouvements');
     } catch (e: any) {
       showToast({ type: 'error', title: 'Erreur', message: e?.message || 'Échec de la réception' });
@@ -105,11 +105,11 @@ export default function StockReceivePage() {
           {/* Location */}
           <div className="bg-card border border-border/60 rounded-xl p-4">
             <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Emplacement de réception</label>
-            <select value={locationKey} onChange={e => setLocationKey(e.target.value)}
+            <select value={locationId} onChange={e => setLocationId(e.target.value)}
               className="w-full px-3 py-2 text-sm rounded-lg bg-secondary border border-border focus:outline-none focus:ring-2 focus:ring-primary/30">
-              {locations.length === 0 && <option value="">Aucun emplacement configuré</option>}
+              {locations.length === 0 && <option value="">Aucun emplacement accessible</option>}
               {locations.map(l => (
-                <option key={l.id} value={l.abbreviation || l.name}>{l.name}{l.abbreviation ? ` (${l.abbreviation})` : ''}</option>
+                <option key={l.id} value={l.id}>{l.name}{l.abbreviation ? ` (${l.abbreviation})` : ''}</option>
               ))}
             </select>
           </div>

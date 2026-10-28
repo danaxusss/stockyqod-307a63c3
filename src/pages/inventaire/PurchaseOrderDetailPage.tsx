@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Loader, PackageCheck, Send, Ban } from 'lucide-react';
-import type { PurchaseOrder, PurchaseOrderStatus, StockLocation } from '../../types';
-import { PurchaseOrdersService } from '../../utils/supabasePurchaseOrders';
-import { StockLocationsService } from '../../utils/supabaseStockLocations';
+import type { PurchaseOrder, PurchaseOrderStatus } from '../../types';
+import { OverReceiptError, PurchaseOrdersService } from '../../utils/supabasePurchaseOrders';
+import { useAccessibleLocations } from '../../inventory/hooks/useAccessibleLocations';
+import { findLevelKey, locationCandidates } from '../../inventory/lib/locationKeys';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
 
@@ -22,7 +23,7 @@ export default function PurchaseOrderDetailPage() {
   const { showToast } = useToast();
 
   const [po, setPo] = useState<PurchaseOrder | null>(null);
-  const [locations, setLocations] = useState<StockLocation[]>([]);
+  const { accessibleLocations: locations } = useAccessibleLocations();
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [receiving, setReceiving] = useState(false);
@@ -33,14 +34,18 @@ export default function PurchaseOrderDetailPage() {
     if (!id) return;
     setLoading(true);
     try {
-      const [p, l] = await Promise.all([PurchaseOrdersService.getById(id), StockLocationsService.getStockLocations()]);
-      setPo(p); setLocations(l);
-      setRecvLocation(p?.location_key || (l[0] ? (l[0].abbreviation || l[0].name) : ''));
+      const p = await PurchaseOrdersService.getById(id);
+      setPo(p);
+      if (p?.location_key) setRecvLocation(p.location_key);
     } catch (e: any) {
       showToast({ type: 'error', message: e?.message || 'Erreur' });
     } finally { setLoading(false); }
   }, [id, showToast]);
   useEffect(() => { load(); }, [load]);
+  // Default to the first location the user can receive into.
+  useEffect(() => {
+    if (!recvLocation && locations.length > 0) setRecvLocation(locations[0].abbreviation || locations[0].name);
+  }, [locations, recvLocation]);
 
   const setStatus = async (status: PurchaseOrderStatus) => {
     if (!po) return;
@@ -63,16 +68,25 @@ export default function PurchaseOrderDetailPage() {
     Object.entries(recvQty).forEach(([k, v]) => { const n = parseFloat(v); if (!isNaN(n) && n > 0) received[k] = n; });
     if (Object.keys(received).length === 0) { showToast({ type: 'error', message: 'Aucune quantité à réceptionner' }); return; }
     if (!recvLocation) { showToast({ type: 'error', message: 'Choisissez un emplacement' }); return; }
+    const loc = locations.find(l => findLevelKey({ [recvLocation]: 0 }, locationCandidates(l)) === recvLocation);
+    if (!loc) { showToast({ type: 'error', message: 'Emplacement non accessible' }); return; }
     setBusy(true);
+    const receive = (allowOver: boolean) => PurchaseOrdersService.receive(po.id, received, {
+      locationKeys: locationCandidates(loc, recvLocation), locationId: loc.id, createdBy: currentUser?.username || null, allowOver,
+    });
     try {
-      const loc = locations.find(l => (l.abbreviation || l.name) === recvLocation);
-      await PurchaseOrdersService.receive(po.id, received, {
-        locationKey: recvLocation, locationId: loc?.id ?? null, createdBy: currentUser?.username || null,
-      });
+      try {
+        await receive(false);
+      } catch (e) {
+        // More than ordered (or than what remains after someone else's reception).
+        if (!(e instanceof OverReceiptError) || !confirm(`${e.message}.\nRéceptionner quand même cette quantité ?`)) throw e;
+        await receive(true);
+      }
       showToast({ type: 'success', title: 'Réception enregistrée', message: 'Stock mis à jour (CMUP)' });
       setReceiving(false); await load();
     } catch (e: any) {
       showToast({ type: 'error', title: 'Erreur', message: e?.message || 'Échec' });
+      await load();
     } finally { setBusy(false); }
   };
 

@@ -73,13 +73,17 @@ export default function AvoirDetailPage() {
     try {
       const { postDocumentStockReturn } = await import('../../inventory/lib/stockPosting');
       const res = await postDocumentStockReturn(avoir, { createdBy: currentUser?.username || null });
-      if (res.posted === 0 && res.skipped === 0) {
+      const skippedNames = res.skippedItems.slice(0, 5).join(', ') + (res.skippedItems.length > 5 ? '…' : '');
+      if (res.alreadyPosted) {
         showToast({ type: 'info', title: 'Déjà remis', message: 'Le stock de cet avoir a déjà été remis.' });
+        setStockReturned(true);
+      } else if (res.posted === 0) {
+        showToast({ type: 'warning', title: 'Rien à remettre', message: res.skipped > 0 ? `Emplacement ou code produit manquant pour : ${skippedNames}` : 'Aucun article à remettre en stock.' });
       } else {
-        const skipMsg = res.skipped > 0 ? ` · ${res.skipped} ignoré(s)` : '';
+        const skipMsg = res.skipped > 0 ? ` · non remis (emplacement/code manquant) : ${skippedNames}` : '';
         showToast({ type: 'success', title: 'Stock remis', message: `${res.posted} retour(s) en stock${skipMsg}` });
+        setStockReturned(true);
       }
-      setStockReturned(true);
     } catch (e) {
       showToast({ type: 'error', title: 'Erreur stock', message: String((e as any)?.message || e) });
     } finally {

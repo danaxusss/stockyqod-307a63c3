@@ -16,6 +16,24 @@ export interface ApplyMovementParams {
   transferGroupId?: string | null;
 }
 
+/** One line of a document posted through apply_stock_movements. */
+export interface BatchMovement {
+  barcode: string;
+  /** Keys the location may be stored under; the product's existing one is used. */
+  locationKeys: string[];
+  type: StockMovementType;
+  /** Magnitude (signed for adjustments). Omit when `counted` is given. */
+  quantity?: number;
+  /** Sets the level to this value (physical count / adjustment). */
+  counted?: number;
+  unitCost?: number | null;
+  reason?: string | null;
+  sourceType?: StockSourceType;
+  sourceId?: string | null;
+  locationId?: string | null;
+  transferGroupId?: string | null;
+}
+
 export interface MovementFilters {
   barcode?: string;
   locationKey?: string;
@@ -29,15 +47,52 @@ export interface MovementFilters {
 export class StockService {
   /** Fresh product read from Supabase (stock changes frequently — bypass cache). */
   static async getProducts(): Promise<Product[]> {
-    const { data, error } = await supabase
-      .from('products')
-      .select('barcode, name, brand, image, price, buyprice, reseller_price, provider, stock_levels, updated_at')
-      .order('name', { ascending: true });
-    if (error) throw error;
-    return (data || []).map((p: any) => ({
+    // The API returns at most 1000 rows per request: read every page.
+    const pageSize = 1000;
+    const rows: any[] = [];
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await supabase
+        .from('products')
+        .select('barcode, name, brand, image, price, buyprice, reseller_price, provider, stock_levels, updated_at')
+        .order('name', { ascending: true })
+        .order('barcode', { ascending: true })
+        .range(from, from + pageSize - 1);
+      if (error) throw error;
+      rows.push(...(data || []));
+      if (!data || data.length < pageSize) break;
+    }
+    return rows.map((p: any) => ({
       ...p,
       stock_levels: (p.stock_levels || {}) as Record<string, number>,
     })) as Product[];
+  }
+
+  /**
+   * Post a whole document at once: every line or none. `postingKey` (e.g.
+   * "bl-out:<id>") makes it idempotent — posting it again (retry, double click,
+   * a second user) returns duplicate: true and moves nothing.
+   */
+  static async applyMovements(postingKey: string | null, movements: BatchMovement[], createdBy?: string | null): Promise<{ duplicate: boolean; movements: StockMovement[] }> {
+    const { companyId } = getCompanyContext();
+    const { data, error } = await (supabase as any).rpc('apply_stock_movements', {
+      p_posting_key: postingKey,
+      p_movements: movements.map(m => ({
+        barcode: m.barcode,
+        location_keys: m.locationKeys,
+        type: m.type,
+        ...(m.counted !== undefined ? { counted: m.counted } : { quantity: m.quantity ?? 0 }),
+        unit_cost: m.unitCost ?? null,
+        reason: m.reason ?? null,
+        source_type: m.sourceType ?? 'manual',
+        source_id: m.sourceId ?? null,
+        location_id: m.locationId ?? null,
+        transfer_group_id: m.transferGroupId ?? null,
+      })),
+      p_company_id: companyId,
+      p_created_by: createdBy ?? null,
+    });
+    if (error) throw error;
+    return { duplicate: !!data?.duplicate, movements: (data?.movements || []) as StockMovement[] };
   }
 
   /** Apply a stock movement through the RPC (the only writer of stock_levels). */
@@ -59,6 +114,28 @@ export class StockService {
     });
     if (error) throw error;
     return data as StockMovement;
+  }
+
+  /** All movements matching the filters (paged past the 1000-row API limit). */
+  static async getAllMovements(filters: Omit<MovementFilters, 'limit'> = {}, max = 50_000): Promise<StockMovement[]> {
+    const pageSize = 1000;
+    const rows: StockMovement[] = [];
+    for (let from = 0; from < max; from += pageSize) {
+      let q = (supabase as any).from('stock_movements').select('*')
+        .order('created_at', { ascending: false }).order('id', { ascending: true })
+        .range(from, from + pageSize - 1);
+      if (filters.barcode) q = q.eq('barcode', filters.barcode);
+      if (filters.locationKey) q = q.eq('location_key', filters.locationKey);
+      if (filters.type) q = q.eq('type', filters.type);
+      if (filters.sourceType) q = q.eq('source_type', filters.sourceType);
+      if (filters.from) q = q.gte('created_at', filters.from);
+      if (filters.to) q = q.lte('created_at', filters.to);
+      const { data, error } = await q;
+      if (error) throw error;
+      rows.push(...((data || []) as StockMovement[]));
+      if (!data || data.length < pageSize) break;
+    }
+    return rows;
   }
 
   static async getMovements(filters: MovementFilters = {}): Promise<StockMovement[]> {
