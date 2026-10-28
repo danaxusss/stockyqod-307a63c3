@@ -67,6 +67,7 @@ const EMPTY_PROFILE = (companyId = ''): KioskAdminProfile => ({
 });
 
 const SHOWCASE_SLIDE_LIMIT = 20;
+const REVIEW_URL_MAX = 500;
 const isHttpsUrl = (value: string) => {
   try { return new URL(value).protocol === 'https:'; } catch { return false; }
 };
@@ -525,7 +526,8 @@ function ProfileEditor({ profile: initial, companies, users, isSuperadmin, onClo
   const patch = (values: Partial<KioskAdminProfile>) => setProfile(current => ({ ...current, ...values }));
   const profileUsers = users.filter(user => user.company_id === profile.company_id || (isSuperadmin && !user.company_id));
   const accentInvalid = !!profile.accent_color && !isHexColor(profile.accent_color);
-  const reviewUrlInvalid = !!profile.google_review_url?.trim() && !isHttpsUrl(profile.google_review_url.trim());
+  const reviewUrl = profile.google_review_url?.trim() || '';
+  const reviewUrlInvalid = !!reviewUrl && (!isHttpsUrl(reviewUrl) || reviewUrl.length > REVIEW_URL_MAX);
   const previewAccent = isHexColor(profile.accent_color) ? profile.accent_color : DEFAULT_KIOSK_ACCENT;
 
   useEffect(() => {
@@ -562,9 +564,12 @@ function ProfileEditor({ profile: initial, companies, users, isSuperadmin, onClo
   const save = async () => {
     if (!profile.company_id || !profile.name.trim()) { setError('La société et le nom sont obligatoires.'); return; }
     if (accentInvalid) { setError('La couleur principale doit être au format #RRGGBB, par exemple #2563eb.'); return; }
-    if (reviewUrlInvalid) { setError('Le lien d’avis Google doit commencer par https://'); return; }
+    if (reviewUrlInvalid) { setError(`Le lien d’avis Google doit commencer par https:// (${REVIEW_URL_MAX} caractères maximum).`); return; }
     const slideWithoutMedia = profile.showcase_slides.find(slide => !slide.media_url.trim());
     if (slideWithoutMedia) { setError(`Ajoutez une image ou une vidéo à la diapositive « ${slideWithoutMedia.title || 'sans titre'} », ou supprimez-la.`); return; }
+    // The server only keeps https media (the kiosk is served over https).
+    const slideWithBadMedia = profile.showcase_slides.find(slide => !isHttpsUrl(slide.media_url.trim()));
+    if (slideWithBadMedia) { setError(`L’adresse de la diapositive « ${slideWithBadMedia.title || 'sans titre'} » doit commencer par https://, ou importez le fichier.`); return; }
     setSaving(true); setError('');
     try { onSaved(await KioskService.saveProfile(profile)); }
     catch (err) { setError(err instanceof Error ? err.message : 'Enregistrement impossible'); }
@@ -597,7 +602,7 @@ function ProfileEditor({ profile: initial, companies, users, isSuperadmin, onClo
               <Field label="Démarrer la vitrine après"><select value={profile.showcase_idle_seconds} onChange={e => patch({ showcase_idle_seconds: Number(e.target.value) })} className="field"><option value={20}>20 secondes d’inactivité</option><option value={30}>30 secondes d’inactivité</option><option value={45}>45 secondes d’inactivité</option><option value={60}>1 minute d’inactivité</option><option value={120}>2 minutes d’inactivité</option><option value={300}>5 minutes d’inactivité</option></select></Field>
               <Field label="Durée de chaque diapositive"><select value={profile.showcase_slide_seconds} onChange={e => patch({ showcase_slide_seconds: Number(e.target.value) })} className="field"><option value={6}>6 secondes</option><option value={8}>8 secondes</option><option value={10}>10 secondes</option><option value={12}>12 secondes</option><option value={15}>15 secondes</option></select></Field>
             </div>
-            {profile.company_id && <ShowcaseSlidesEditor companyId={profile.company_id} slides={profile.showcase_slides} onChange={showcase_slides => patch({ showcase_slides })} onError={setError} />}
+            {profile.company_id && <ShowcaseSlidesEditor companyId={profile.company_id} slides={profile.showcase_slides} onChange={change => setProfile(current => ({ ...current, showcase_slides: change(current.showcase_slides) }))} onError={setError} />}
             <ReviewLinkField value={profile.google_review_url || ''} invalid={reviewUrlInvalid} onChange={google_review_url => patch({ google_review_url: google_review_url || null })} />
           </Section>
 
@@ -715,19 +720,25 @@ function ProductImage({ image, name, size = 'md' }: { image: string | null; name
 }
 
 function ShowcaseSlidesEditor({ companyId, slides, onChange, onError }: {
-  companyId: string; slides: KioskShowcaseSlide[]; onChange: (slides: KioskShowcaseSlide[]) => void; onError: (message: string) => void;
+  companyId: string; slides: KioskShowcaseSlide[];
+  /** Changes apply to the latest slides, so an upload finishing late keeps edits made meanwhile. */
+  onChange: (change: (slides: KioskShowcaseSlide[]) => KioskShowcaseSlide[]) => void;
+  onError: (message: string) => void;
 }) {
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const target = useRef<string | null>(null);
-  const update = (id: string, values: Partial<KioskShowcaseSlide>) => onChange(slides.map(slide => slide.id === id ? { ...slide, ...values } : slide));
-  const move = (position: number, delta: number) => {
-    const next = [...slides];
+  const update = (id: string, values: Partial<KioskShowcaseSlide>) => onChange(current => current.map(slide => slide.id === id ? { ...slide, ...values } : slide));
+  const move = (id: string, delta: number) => onChange(current => {
+    const position = current.findIndex(slide => slide.id === id);
+    if (position < 0) return current;
+    const next = [...current];
     const [slide] = next.splice(position, 1);
-    next.splice(position + delta, 0, slide);
-    onChange(next);
-  };
-  const add = () => onChange([...slides, { id: crypto.randomUUID().slice(0, 12), media_url: '', media_type: 'image', kicker: '', title: '', text: '' }]);
+    next.splice(Math.max(0, Math.min(next.length, position + delta)), 0, slide);
+    return next;
+  });
+  const add = () => onChange(current => current.length >= SHOWCASE_SLIDE_LIMIT ? current
+    : [...current, { id: crypto.randomUUID().slice(0, 12), media_url: '', media_type: 'image', kicker: '', title: '', text: '' }]);
   const pick = (id: string) => { target.current = id; fileInput.current?.click(); };
   const upload = async (file: File | undefined) => {
     const id = target.current;
@@ -776,9 +787,9 @@ function ShowcaseSlidesEditor({ companyId, slides, onChange, onError }: {
               <div className="flex flex-wrap items-center gap-2">
                 <input value={slide.media_url} onChange={e => update(slide.id, { media_url: e.target.value.trim(), media_type: /\.(mp4|webm)(\?|$)/i.test(e.target.value) ? 'video' : slide.media_type })} aria-label="Adresse de l’image ou de la vidéo" className="field min-w-0 flex-1 text-xs" placeholder="https://… ou importez un fichier" />
                 <select value={slide.media_type} onChange={e => update(slide.id, { media_type: e.target.value as KioskShowcaseSlide['media_type'] })} aria-label="Type de média" className="field w-auto text-xs"><option value="image">Image</option><option value="video">Vidéo</option></select>
-                <button type="button" onClick={() => move(position, -1)} disabled={position === 0} aria-label="Monter" className="rounded-lg border p-2 hover:bg-accent disabled:opacity-40"><ArrowUp className="h-4 w-4" /></button>
-                <button type="button" onClick={() => move(position, 1)} disabled={position === slides.length - 1} aria-label="Descendre" className="rounded-lg border p-2 hover:bg-accent disabled:opacity-40"><ArrowDown className="h-4 w-4" /></button>
-                <button type="button" onClick={() => onChange(slides.filter(item => item.id !== slide.id))} aria-label="Supprimer la diapositive" className="rounded-lg border border-red-200 p-2 text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>
+                <button type="button" onClick={() => move(slide.id, -1)} disabled={position === 0} aria-label="Monter" className="rounded-lg border p-2 hover:bg-accent disabled:opacity-40"><ArrowUp className="h-4 w-4" /></button>
+                <button type="button" onClick={() => move(slide.id, 1)} disabled={position === slides.length - 1} aria-label="Descendre" className="rounded-lg border p-2 hover:bg-accent disabled:opacity-40"><ArrowDown className="h-4 w-4" /></button>
+                <button type="button" onClick={() => onChange(current => current.filter(item => item.id !== slide.id))} aria-label="Supprimer la diapositive" className="rounded-lg border border-red-200 p-2 text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>
               </div>
             </div>
           </div>
@@ -794,7 +805,7 @@ function ReviewLinkField({ value, invalid, onChange }: { value: string; invalid:
     <div className="grid gap-4 rounded-lg border p-3 sm:grid-cols-[1fr_auto]">
       <div>
         <Field label="Lien d’avis Google"><input value={value} onChange={e => onChange(e.target.value.trim())} placeholder="https://g.page/r/…/review" aria-invalid={invalid} className={`field ${invalid ? 'border-red-400 focus:ring-red-300' : ''}`} /></Field>
-        {invalid && <span className="mt-1 block text-xs text-red-600">Le lien doit commencer par https://</span>}
+        {invalid && <span className="mt-1 block text-xs text-red-600">Le lien doit commencer par https:// ({REVIEW_URL_MAX} caractères maximum).</span>}
         <p className="mt-2 text-xs text-muted-foreground">Dans votre fiche Google Business Profile : <strong>Demander des avis</strong> → copiez le lien. Le kiosque affiche alors une page « Votre avis compte » avec ce QR code dans la vitrine, sur l’accueil et après l’envoi d’une demande.</p>
         {value && !invalid && <a href={value} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"><ExternalLink className="h-3.5 w-3.5" />Tester le lien</a>}
       </div>

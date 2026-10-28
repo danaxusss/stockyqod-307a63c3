@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import KioskInstallPage, { KioskAppLauncher } from '../pages/kiosk/KioskInstallPage';
 import { KioskRequestError, KioskService } from '../utils/kioskService';
 import { installPlatform, rememberKioskToken, rememberedKioskToken } from '../utils/kioskApp';
+import manifest from '../../public/kiosk-manifest.webmanifest?raw';
 
 vi.mock('../utils/kioskService', () => ({
   KioskRequestError: class KioskRequestError extends Error {
@@ -27,7 +28,7 @@ function renderAt(path: string) {
       <Routes>
         <Route path="/kiosk/:token" element={<Where />} />
         <Route path="/kiosk/:token/install" element={<KioskInstallPage />} />
-        <Route path="/kiosk-app" element={<KioskAppLauncher />} />
+        <Route path="/kiosk/app" element={<KioskAppLauncher />} />
       </Routes>
     </MemoryRouter>,
   );
@@ -76,11 +77,14 @@ describe('KioskInstallPage', () => {
     expect(screen.getByRole('link', { name: /Ouvrir le kiosque sans l’installer/ })).toHaveAttribute('href', `/kiosk/${TOKEN}`);
   });
 
-  it('says when the link no longer exists', async () => {
+  it('says when the link no longer exists, and keeps the kiosk the tablet already opens', async () => {
+    const WORKING = '11111111-1111-4111-8111-111111111111';
+    rememberKioskToken(WORKING);
     load.mockRejectedValue(new KioskRequestError('gone', 404, null));
     renderAt(`/kiosk/${TOKEN}/install`);
     expect(await screen.findByText(/n’existe plus ou a été renouvelé/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Installer/ })).not.toBeInTheDocument();
+    expect(rememberedKioskToken()).toBe(WORKING);
   });
 
   it('goes straight to the kiosk when opened from the home-screen icon', async () => {
@@ -96,15 +100,25 @@ describe('KioskInstallPage', () => {
   });
 });
 
+describe('kiosk app manifest', () => {
+  it('starts inside its own scope, which leaves the staff pages out', () => {
+    const data = JSON.parse(manifest) as { start_url: string; scope: string; display: string };
+    expect(data.start_url.startsWith(data.scope)).toBe(true);
+    expect('/kiosk-admin'.startsWith(data.scope)).toBe(false);
+    expect(`/kiosk/${TOKEN}`.startsWith(data.scope)).toBe(true);
+    expect(data.display).toBe('fullscreen');
+  });
+});
+
 describe('KioskAppLauncher', () => {
   it('opens the kiosk this tablet was set up with', async () => {
     rememberKioskToken(TOKEN);
-    renderAt('/kiosk-app');
+    renderAt('/kiosk/app');
     expect(await screen.findByTestId('where')).toHaveTextContent(`/kiosk/${TOKEN}`);
   });
 
   it('asks for the install link on a tablet that was never set up', () => {
-    renderAt('/kiosk-app');
+    renderAt('/kiosk/app');
     expect(screen.getByRole('heading', { name: 'Kiosque à configurer' })).toBeInTheDocument();
   });
 });

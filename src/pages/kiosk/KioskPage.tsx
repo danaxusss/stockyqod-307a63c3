@@ -250,7 +250,7 @@ export default function KioskPage() {
     try {
       const data = await KioskService.loadPublic(token);
       setProfile(data.profile);
-      // An app installed from this page starts on /kiosk-app and reopens this kiosk.
+      // An app installed from this page starts on /kiosk/app and reopens this kiosk.
       rememberKioskToken(token);
       setBrands(data.brands || []);
       setSectors(data.sectors || []);
@@ -359,15 +359,17 @@ export default function KioskPage() {
     if (stage === 'welcome' && !sessionDirty) setShowcase(true);
   }, [profile]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Back to the showcase once the welcome screen has been left untouched.
+  // Back to the showcase once the welcome screen has been left untouched,
+  // through a full reset: the language, search and filters picked by the
+  // previous visitor must not greet the next one.
   const showcaseIdleSeconds = profile?.showcase_idle_seconds || 45;
   const showcaseAllowed = profile?.showcase_enabled === true;
   useEffect(() => {
     if (!showcaseAllowed || showcase || reviewOpen || stage !== 'welcome' || sessionDirty) return;
-    let timer = setTimeout(() => setShowcase(true), showcaseIdleSeconds * 1000);
+    let timer = setTimeout(resetSession, showcaseIdleSeconds * 1000);
     const restart = () => {
       clearTimeout(timer);
-      timer = setTimeout(() => setShowcase(true), showcaseIdleSeconds * 1000);
+      timer = setTimeout(resetSession, showcaseIdleSeconds * 1000);
     };
     const events: Array<keyof WindowEventMap> = ['pointerdown', 'keydown', 'touchstart'];
     events.forEach(event => window.addEventListener(event, restart, { passive: true }));
@@ -375,7 +377,7 @@ export default function KioskPage() {
       clearTimeout(timer);
       events.forEach(event => window.removeEventListener(event, restart));
     };
-  }, [reviewOpen, sessionDirty, showcase, showcaseAllowed, showcaseIdleSeconds, stage]);
+  }, [resetSession, reviewOpen, sessionDirty, showcase, showcaseAllowed, showcaseIdleSeconds, stage]);
 
   // An unattended tablet must recover by itself: keep retrying while the
   // kiosk is unavailable (network down, kiosk re-enabled later…).

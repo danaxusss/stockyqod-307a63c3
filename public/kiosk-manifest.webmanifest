@@ -1,10 +1,10 @@
 {
-  "id": "/kiosk-app",
+  "id": "/kiosk/app",
   "name": "Kiosque Cuisimat",
   "short_name": "Kiosque",
   "description": "Kiosque client : catalogue et demandes de devis en libre-service.",
-  "start_url": "/kiosk-app",
-  "scope": "/kiosk",
+  "start_url": "/kiosk/app",
+  "scope": "/kiosk/",
   "display": "fullscreen",
   "display_override": ["fullscreen", "standalone"],
   "orientation": "any",

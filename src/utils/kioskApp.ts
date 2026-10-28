@@ -1,4 +1,4 @@
-// The installed kiosk app always starts on /kiosk-app (see
+// The installed kiosk app always starts on /kiosk/app (see
 // public/kiosk-manifest.webmanifest); it opens the kiosk this tablet was set
 // up with, remembered here.
 const TOKEN_KEY = 'stocky-kiosk-app-token';

@@ -108,6 +108,22 @@ describe('KioskPage showcase', () => {
     expect(screen.getByRole('heading', { name: INTRO })).toBeInTheDocument();
   });
 
+  it('greets the next visitor in the default language with a fresh catalogue', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    mockKiosk({ showcase_idle_seconds: 30 });
+    renderKiosk();
+    await screen.findByRole('heading', { name: INTRO });
+    fireEvent.click(screen.getByRole('button', { name: 'EN' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Browse products/ }));
+    fireEvent.change(await screen.findByPlaceholderText(/Search product/), { target: { value: 'perceuse' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Home' }));
+
+    act(() => { vi.advanceTimersByTime(30_000); });
+    expect(await screen.findByRole('heading', { name: INTRO })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Découvrir nos produits/ }));
+    expect(await screen.findByPlaceholderText(/Rechercher un produit/)).toHaveValue('');
+  });
+
   it('keeps the classic welcome screen when the showcase is off', async () => {
     mockKiosk({ showcase_enabled: false });
     renderKiosk();

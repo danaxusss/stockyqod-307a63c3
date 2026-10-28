@@ -14,11 +14,11 @@
       // /kiosk-manifest.webmanifest), separate from the Stocky staff app.
       (function () {
         var path = location.pathname;
-        if (path.indexOf('/kiosk/') !== 0 && path !== '/kiosk-app') return;
+        if (path.indexOf('/kiosk/') !== 0) return;
         var manifest = document.querySelector('link[rel="manifest"]');
         var ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
         // iOS home-screen apps do not share storage with Safari, so the
-        // /kiosk-app launcher could not find the kiosk: without a manifest,
+        // /kiosk/app launcher could not find the kiosk: without a manifest,
         // Safari keeps the page's own address, which carries the kiosk link.
         if (ios) manifest.parentNode.removeChild(manifest);
         else manifest.setAttribute('href', '/kiosk-manifest.webmanifest');

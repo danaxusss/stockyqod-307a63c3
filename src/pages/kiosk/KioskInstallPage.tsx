@@ -24,7 +24,6 @@ export default function KioskInstallPage() {
   const kioskPath = `/kiosk/${token}`;
 
   useEffect(() => {
-    rememberKioskToken(token);
     // Opened from the home-screen icon (Safari starts on this page): go straight to the kiosk.
     if (isInstalledApp()) navigate(kioskPath, { replace: true });
   }, [kioskPath, navigate, token]);
@@ -32,8 +31,20 @@ export default function KioskInstallPage() {
   useEffect(() => {
     let active = true;
     KioskService.loadPublic(token)
-      .then(data => { if (active) { setProfile(data.profile); setState('ready'); } })
-      .catch(error => { if (active) setState(error instanceof KioskRequestError && error.status === 404 ? 'invalid' : 'offline'); });
+      .then(data => {
+        if (!active) return;
+        rememberKioskToken(token);
+        setProfile(data.profile);
+        setState('ready');
+      })
+      .catch(error => {
+        if (!active) return;
+        const gone = error instanceof KioskRequestError && error.status === 404;
+        // A dead link (renewed kiosk, old printed QR code) must not replace
+        // the kiosk this tablet already opens; a network hiccup may.
+        if (!gone) rememberKioskToken(token);
+        setState(gone ? 'invalid' : 'offline');
+      });
     return () => { active = false; };
   }, [token]);
 
@@ -132,7 +143,7 @@ export default function KioskInstallPage() {
   );
 }
 
-/** Where the installed app starts: the kiosk this tablet was set up with. */
+/** Where the installed app starts (/kiosk/app): the kiosk this tablet was set up with. */
 export function KioskAppLauncher() {
   const navigate = useNavigate();
   const token = rememberedKioskToken();

@@ -118,13 +118,13 @@ function AppContent() {
 
   // A kiosk is a standalone, public tablet experience even when a Stocky
   // administrator happens to be signed in on the same device.
-  if (window.location.pathname.startsWith('/kiosk/') || window.location.pathname === '/kiosk-app') {
+  if (window.location.pathname.startsWith('/kiosk/')) {
     return (
       <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-400" /></div>}>
         <Routes>
           <Route path="/kiosk/:token" element={<KioskPage />} />
           <Route path="/kiosk/:token/install" element={<KioskInstallPage />} />
-          <Route path="/kiosk-app" element={<KioskAppLauncher />} />
+          <Route path="/kiosk/app" element={<KioskAppLauncher />} />
         </Routes>
       </Suspense>
     );

@@ -149,9 +149,12 @@ function StartButton({ label, accent, onAccent, onClick, large = false }: { labe
         className={`relative flex w-full items-center justify-center gap-3 rounded-2xl font-black shadow-2xl active:scale-[0.98] ${large ? 'min-h-20 px-10 text-2xl md:text-3xl' : 'min-h-14 px-7 text-lg'}`}
         style={{ backgroundColor: accent, color: onAccent }}>
         {label}
-        <motion.span animate={{ x: [0, 6, 0] }} transition={{ duration: 1.4, repeat: Infinity }} className="inline-flex rtl:-scale-x-100">
-          <ChevronRight className={large ? 'h-8 w-8' : 'h-6 w-6'} />
-        </motion.span>
+        {/* The flip sits on a wrapper: framer-motion's inline transform would override it. */}
+        <span className="inline-flex rtl:-scale-x-100">
+          <motion.span animate={{ x: [0, 6, 0] }} transition={{ duration: 1.4, repeat: Infinity }} className="inline-flex">
+            <ChevronRight className={large ? 'h-8 w-8' : 'h-6 w-6'} />
+          </motion.span>
+        </span>
       </button>
     </span>
   );

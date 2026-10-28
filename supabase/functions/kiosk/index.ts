@@ -66,13 +66,21 @@ function boundedInt(value: unknown, min: number, max: number, fallback: number):
 
 /** An https link (Google review page, uploaded slide media); anything else is dropped. */
 function httpsUrl(value: unknown, max = 500): string | null {
-  const raw = text(value, max);
+  // Too long is invalid, never cut short: a truncated link makes a broken QR code.
+  const raw = typeof value === "string" ? value.trim() : "";
+  if (!raw || raw.length > max) return null;
   try {
     const url = new URL(raw);
-    return url.protocol === "https:" && !url.username && !url.password ? url.toString() : null;
+    const normalized = url.toString();
+    return url.protocol === "https:" && !url.username && !url.password && normalized.length <= max ? normalized : null;
   } catch {
     return null;
   }
+}
+
+/** Database not yet updated with the showcase migration. */
+function missingShowcaseColumns(error: { code?: string; message?: string } | null): boolean {
+  return !!error && (error.code === "PGRST204" || error.code === "42703") && /showcase|google_review_url/.test(error.message || "");
 }
 
 type ShowcaseSlide = { id: string; media_url: string; media_type: "image" | "video"; kicker: string; title: string; text: string };
@@ -403,17 +411,37 @@ serve(async (req) => {
         visible_family_ids: [],
         visible_brands: stringArray(input.visible_brands),
         featured_barcodes: stringArray(input.featured_barcodes, 24),
+      };
+      // Showcase settings are only written when the page sends them, so an
+      // admin tab still on the previous version cannot wipe them.
+      const sendsShowcase = typeof input.showcase_enabled === "boolean";
+      const reviewInput = text(input.google_review_url, 2000);
+      const reviewUrl = httpsUrl(reviewInput);
+      if (sendsShowcase && reviewInput && !reviewUrl) {
+        return json(req, { error: "Lien d’avis Google invalide : il doit commencer par https:// (500 caractères maximum)." }, 400);
+      }
+      const showcase = sendsShowcase ? {
         showcase_enabled: input.showcase_enabled === true,
         showcase_idle_seconds: boundedInt(input.showcase_idle_seconds, 10, 600, 45),
         showcase_slide_seconds: boundedInt(input.showcase_slide_seconds, 4, 30, 8),
         showcase_builtin: input.showcase_builtin !== false,
         showcase_slides: showcaseSlides(input.showcase_slides),
-        google_review_url: httpsUrl(input.google_review_url),
-      };
-      const query = profileId
-        ? supabase.from("kiosk_profiles").update(values).eq("id", profileId)
-        : supabase.from("kiosk_profiles").insert({ ...values, created_by: staff.id });
-      const { data, error } = await query.select("*, company:companies!kiosk_profiles_company_id_fkey(name)").single();
+        google_review_url: reviewUrl,
+      } : {};
+      const write = (row: Record<string, unknown>) => (profileId
+        ? supabase.from("kiosk_profiles").update(row).eq("id", profileId)
+        : supabase.from("kiosk_profiles").insert({ ...row, created_by: staff.id })
+      ).select("*, company:companies!kiosk_profiles_company_id_fkey(name)").single();
+      let { data, error } = await write({ ...values, ...showcase });
+      if (missingShowcaseColumns(error)) {
+        // Migration 20261028120000 not run yet: other settings still save,
+        // but showcase settings cannot be stored.
+        const usesShowcase = showcase.showcase_enabled === true || !!showcase.google_review_url || !!(showcase.showcase_slides as unknown[] | undefined)?.length;
+        if (usesShowcase) {
+          return json(req, { error: "La base de données n’a pas encore la vitrine : exécutez la migration 20261028120000_kiosk_showcase.sql dans Supabase, puis réessayez." }, 409);
+        }
+        ({ data, error } = await write(values));
+      }
       if (error) throw error;
       return json(req, { profile: data });
     }
