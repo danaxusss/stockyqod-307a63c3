@@ -287,8 +287,9 @@ serve(async (req) => {
         lastErr = `${model}: ${resp.status} ${await resp.text()}`;
         continue;
       }
-      const json = await resp.json();
-      const content: string = json?.choices?.[0]?.message?.content || "";
+      // Not named `json`: that would hide the json() response helper below.
+      const completion = await resp.json();
+      const content: string = completion?.choices?.[0]?.message?.content || "";
       // Accept the operations array under any of the usual names, at the top
       // level or nested — insisting on exactly "lines" rejected good answers.
       let parsed: any = null;

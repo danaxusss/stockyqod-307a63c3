@@ -36,6 +36,10 @@ export default function AttestationsPage() {
 
   const emp = employees.find(e => e.id === employeeId);
   const company = settings?.company_name || 'La société';
+  // Companies have no city field: the town is the last part of the address
+  // ("12 Bd Zerktouni, 20000 Casablanca" → "Casablanca").
+  const addressParts = (settings?.address || '').split(/[,\n]/).map(x => x.replace(/\b\d{5}\b/g, '').trim()).filter(Boolean);
+  const town = addressParts.length > 1 ? addressParts[addressParts.length - 1] : '';
   const genre = emp?.gender === 'F' ? 'Madame' : 'Monsieur';
   const hire = emp?.hire_date ? new Date(emp.hire_date).toLocaleDateString('fr-FR') : '…';
 
@@ -69,7 +73,7 @@ export default function AttestationsPage() {
               {settings?.address && <div className="text-xs text-gray-600">{settings.address}</div>}
               {settings?.ice && <div className="text-xs text-gray-600">ICE : {settings.ice}</div>}
             </div>
-            <div className="text-xs text-gray-600 text-right">{settings?.city || ''}, le {today()}</div>
+            <div className="text-xs text-gray-600 text-right">{town ? `${town}, le ${today()}` : `Le ${today()}`}</div>
           </div>
 
           <h2 className="text-center font-bold text-base underline mb-8 tracking-wide">{title}</h2>

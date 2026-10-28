@@ -579,6 +579,9 @@ export interface Payslip {
   cnss_employer: number;
   amo_employer: number;
   alloc_familiales: number;
+  tfp_employer?: number;
+  is_locked?: boolean;
+  run_id?: string | null;
   notes?: string;
   items: PayslipItem[];
   created_at: string;

@@ -43,6 +43,11 @@ class Query implements PromiseLike<{ data: any; error: any }> {
   upsert(values: Row | Row[]) { return this.insert(values); }
   delete() { this.op = 'delete'; return this; }
   eq(col: string, v: unknown) { this.filters.push(r => String(getPath(r, col)) === String(v)); return this; }
+  gt(col: string, v: number) { this.filters.push(r => Number(getPath(r, col)) > v); return this; }
+  not(col: string, op: string, v: unknown) {
+    if (op === 'is' && v === null) this.filters.push(r => getPath(r, col) != null);
+    return this;
+  }
   neq(col: string, v: unknown) { this.filters.push(r => String(getPath(r, col)) !== String(v)); return this; }
   in(col: string, vs: unknown[]) { this.filters.push(r => vs.map(String).includes(String(getPath(r, col)))); return this; }
   overlaps(col: string, vs: unknown[]) { this.filters.push(r => (r[col] || []).some((x: unknown) => vs.includes(x))); return this; }

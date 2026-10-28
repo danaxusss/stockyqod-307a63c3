@@ -5,6 +5,10 @@ import { AccountingService } from '../../utils/supabaseAccounting';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
 
+const r2 = (n: number) => Math.round(n * 100) / 100;
+const day = (y: number, m: number, d: number) => `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+const lastDay = (y: number, m: number) => new Date(y, m + 1, 0).getDate();
+
 function fmtMad(n: number) { return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(n) + ' MAD'; }
 const MONTHS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
 
@@ -39,29 +43,37 @@ export default function TvaPage() {
   useEffect(() => { load(); }, [load]);
 
   const year = fy ? Number(fy.label) : new Date().getFullYear();
+  // Periods as calendar days (YYYY-MM-DD), compared with entry dates as text:
+  // no time zone can push the last day of the month out of its period.
   const range = useMemo(() => {
     if (periodType === 'M') {
-      const start = new Date(year, month, 1), end = new Date(year, month + 1, 0);
-      return { start, end, label: `${year}-${String(month + 1).padStart(2, '0')}`, human: `${MONTHS[month]} ${year}` };
+      return { start: day(year, month, 1), end: day(year, month, lastDay(year, month)), label: `${year}-${String(month + 1).padStart(2, '0')}`, human: `${MONTHS[month]} ${year}` };
     }
-    const start = new Date(year, quarter * 3, 1), end = new Date(year, quarter * 3 + 3, 0);
-    return { start, end, label: `${year}-T${quarter + 1}`, human: `T${quarter + 1} ${year}` };
+    const m0 = quarter * 3, m1 = m0 + 2;
+    return { start: day(year, m0, 1), end: day(year, m1, lastDay(year, m1)), label: `${year}-T${quarter + 1}`, human: `T${quarter + 1} ${year}` };
   }, [periodType, month, quarter, year]);
 
   const calc = useMemo(() => {
-    const inRange = (d: string) => { const t = new Date(d); return t >= range.start && t <= range.end; };
-    let facturee = 0, recupBiens = 0, recupCharges = 0;
+    let facturee = 0, recupBiens = 0, recupCharges = 0, before4456 = 0;
     for (const l of lines) {
-      if (!l.entry_date || !inRange(l.entry_date)) continue;
+      const d = String(l.entry_date || '').slice(0, 10);
+      if (!d) continue;
       const code = String(l.account_code);
-      const d = Number(l.debit) || 0, c = Number(l.credit) || 0;
-      if (code.startsWith('4455')) facturee += c - d;
-      else if (code.startsWith('34551')) recupBiens += d - c;
-      else if (code.startsWith('3455')) recupCharges += d - c;
+      const debit = Number(l.debit) || 0, credit = Number(l.credit) || 0;
+      // 4456 before the period: a debit balance is a TVA credit carried forward
+      // (opening balances count as "before" even when dated on day one).
+      if (code.startsWith('4456') && (d < range.start || l.source_type === 'anouveaux')) before4456 += debit - credit;
+      // Declaration entries settle 4455/3455; they are not new TVA.
+      if (String(l.source_id || '').startsWith('tva:') || d < range.start || d > range.end) continue;
+      if (code.startsWith('4455')) facturee += credit - debit;
+      else if (code.startsWith('34551')) recupBiens += debit - credit;
+      else if (code.startsWith('3455')) recupCharges += debit - credit;
     }
     const recup = recupBiens + recupCharges;
-    const net = facturee - recup;
-    return { facturee, recupBiens, recupCharges, recup, due: net > 0 ? net : 0, credit: net < 0 ? -net : 0, net };
+    const net = facturee - recup;            // the period alone
+    const carried = Math.max(0, r2(before4456)); // crédit de TVA from earlier periods
+    const total = net - carried;
+    return { facturee, recupBiens, recupCharges, recup, carried, net, due: total > 0 ? total : 0, credit: total < 0 ? -total : 0 };
   }, [lines, range]);
 
   const existing = useMemo(() => decls.find(d => d.period === range.label), [decls, range]);
@@ -71,16 +83,25 @@ export default function TvaPage() {
     if (Math.abs(calc.net) < 0.005 && calc.facturee === 0 && calc.recup === 0) { showToast({ type: 'error', message: 'Aucune TVA sur la période' }); return; }
     setBusy(true);
     try {
+      // "Régénérer" replaces the earlier draft; a validated one must be reversed first.
+      const previous = await AccountingService.entriesForSource(`tva:${range.label}`);
+      if (previous.some(e => e.status === 'posted')) {
+        throw new Error('La déclaration de cette période est déjà validée en comptabilité : contre-passez son écriture avant de la refaire.');
+      }
+      for (const e of previous.filter(e => e.status === 'draft')) await AccountingService.deleteDraft(e.id);
+
       const lines2: JournalEntryLine[] = [];
       if (calc.facturee > 0) lines2.push({ account_code: '4455', label: 'TVA facturée', debit: Math.round(calc.facturee * 100) / 100, credit: 0 });
       if (calc.recupBiens > 0) lines2.push({ account_code: '34551', label: 'TVA récup. immobilisations', debit: 0, credit: Math.round(calc.recupBiens * 100) / 100 });
       if (calc.recupCharges > 0) lines2.push({ account_code: '34552', label: 'TVA récup. charges', debit: 0, credit: Math.round(calc.recupCharges * 100) / 100 });
+      // The period's TVA goes to 4456; a credit carried there from earlier
+      // periods offsets it in the account balance.
       if (calc.net > 0) lines2.push({ account_code: '4456', label: 'TVA due', debit: 0, credit: Math.round(calc.net * 100) / 100 });
       else if (calc.net < 0) lines2.push({ account_code: '4456', label: 'Crédit de TVA', debit: Math.round(-calc.net * 100) / 100, credit: 0 });
 
       const entry = await AccountingService.createFromDraft(
-        { journalType: 'od', date: range.end.toISOString().slice(0, 10), reference: `TVA ${range.label}`, label: `Déclaration TVA ${range.human}`, sourceType: 'manual', sourceId: `tva:${range.label}`, lines: lines2 },
-        fy.id, journals, { post: false, createdBy: currentUser?.username || null },
+        { journalType: 'od', date: range.end, reference: `TVA ${range.label}`, label: `Déclaration TVA ${range.human}`, sourceType: 'manual', sourceId: `tva:${range.label}`, lines: lines2 },
+        journals, { post: false, createdBy: currentUser?.username || null },
       );
 
       await AccountingService.saveVatDeclaration({
@@ -156,9 +177,12 @@ export default function TvaPage() {
         <div className="flex justify-between py-1"><span className="text-muted-foreground">TVA facturée (comptes 4455…)</span><span className="tabular-nums">{fmtMad(calc.facturee)}</span></div>
         <div className="flex justify-between py-1"><span className="text-muted-foreground">TVA récupérable / immobilisations (34551)</span><span className="tabular-nums">{fmtMad(calc.recupBiens)}</span></div>
         <div className="flex justify-between py-1"><span className="text-muted-foreground">TVA récupérable / charges (34552…)</span><span className="tabular-nums">{fmtMad(calc.recupCharges)}</span></div>
+        {calc.carried > 0 && (
+          <div className="flex justify-between py-1"><span className="text-muted-foreground">Crédit de TVA des périodes précédentes (4456)</span><span className="tabular-nums">− {fmtMad(calc.carried)}</span></div>
+        )}
         <div className="flex justify-between py-2 border-t border-border/60 mt-1 font-semibold">
-          <span>{calc.net >= 0 ? 'TVA due' : 'Crédit de TVA reportable'}</span>
-          <span className="tabular-nums">{fmtMad(Math.abs(calc.net))}</span>
+          <span>{calc.due > 0 ? 'TVA à payer' : 'Crédit de TVA reportable'}</span>
+          <span className="tabular-nums">{fmtMad(calc.due > 0 ? calc.due : calc.credit)}</span>
         </div>
       </div>
 

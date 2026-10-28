@@ -4,6 +4,9 @@ import { SupabaseEmployeesService } from '../../utils/supabaseEmployees';
 import { LeaveService } from '../../utils/supabasePayrollHr';
 import { PayrollSettingsService } from '../../utils/supabasePayrollSettings';
 import type { Employee } from '../../types';
+import { computePayroll } from '../../utils/payrollCalc';
+import type { PayrollSettings } from '../../utils/payrollDefaults';
+import { localDay } from '../../utils/documentLines';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
 
@@ -31,10 +34,11 @@ export default function StcPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [leaveDays, setLeaveDays] = useState<Map<string, number>>(new Map());
   const [daysPerMonth, setDaysPerMonth] = useState(1.5);
+  const [settings, setSettings] = useState<PayrollSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [employeeId, setEmployeeId] = useState('');
   const [motif, setMotif] = useState('licenciement');
-  const [sortieDate, setSortieDate] = useState(new Date().toISOString().slice(0, 10));
+  const [sortieDate, setSortieDate] = useState(localDay());
   const [preavisMonths, setPreavisMonths] = useState('1');
   const [congesNonPris, setCongesNonPris] = useState('0');
 
@@ -43,7 +47,7 @@ export default function StcPage() {
     try {
       const [emps, leaves, s] = await Promise.all([SupabaseEmployeesService.list(), LeaveService.list(), PayrollSettingsService.get(new Date().getFullYear()).catch(() => null)]);
       setEmployees(emps);
-      if (s) setDaysPerMonth(s.conges_days_per_month);
+      if (s) { setDaysPerMonth(s.conges_days_per_month); setSettings(s); }
       const map = new Map<string, number>();
       const year = new Date().getFullYear();
       leaves.filter(l => l.type === 'paye' && l.status === 'approved' && new Date(l.start_date).getFullYear() === year).forEach(l => map.set(l.employee_id, (map.get(l.employee_id) || 0) + Number(l.days)));
@@ -70,19 +74,29 @@ export default function StcPage() {
     const acquired = Math.max(0, monthsWorked) * daysPerMonth;
     const taken = leaveDays.get(emp.id) || 0;
     setCongesNonPris(String(Math.max(0, Math.round((acquired - taken) * 10) / 10)));
-    setPreavisMonths(years >= 5 ? '2' : '1');
-  }, [employeeId, sortieDate, daysPerMonth, leaveDays, emp, years]);
+    // Notice pay is owed by the employer only on dismissal (when the notice is
+    // not worked). A resignation or the end of a fixed-term contract has none.
+    setPreavisMonths(motif === 'licenciement' ? (years >= 5 ? '2' : '1') : '0');
+  }, [employeeId, sortieDate, daysPerMonth, leaveDays, emp, years, motif]);
 
   const calc = useMemo(() => {
     if (!emp) return null;
     const monthly = emp.base_salary;
     const daily = monthly / 26;
     const indemnite = motif === 'licenciement' ? indemniteLicenciement(monthly, years) : 0;
-    const preavis = Number(preavisMonths) * monthly;
-    const conges = Number(congesNonPris) * daily;
-    const total = Math.round((indemnite + preavis + conges) * 100) / 100;
-    return { monthly, daily: Math.round(daily * 100) / 100, indemnite, preavis, conges: Math.round(conges * 100) / 100, total };
-  }, [emp, motif, years, preavisMonths, congesNonPris]);
+    const preavis = Math.round(Number(preavisMonths) * monthly * 100) / 100;
+    const conges = Math.round(Number(congesNonPris) * daily * 100) / 100;
+    // Notice and leave pay are salary: CNSS, AMO and IR apply (estimated here
+    // as one month's pay). The legal dismissal indemnity is exempt.
+    const taxable = preavis + conges;
+    const ded = taxable > 0
+      ? computePayroll({ base_salary: taxable, anciennete_amount: 0, cimr_rate: emp.cimr_rate ?? 0, dependents_count: emp.dependents_count ?? 0, settings: settings || undefined })
+      : null;
+    const retenues = ded ? Math.round((ded.cnss_employee + ded.amo_employee + ded.cimr_employee + ded.ir_amount) * 100) / 100 : 0;
+    const brut = Math.round((indemnite + taxable) * 100) / 100;
+    const total = Math.round((brut - retenues) * 100) / 100;
+    return { monthly, daily: Math.round(daily * 100) / 100, indemnite, preavis, conges, brut, retenues, total };
+  }, [emp, motif, years, preavisMonths, congesNonPris, settings]);
 
   if (!isPaie && !isSuperAdmin) return <div className="text-center py-12 text-muted-foreground">Accès réservé au rôle Paie.</div>;
   if (loading) return <div className="flex items-center justify-center py-24 text-muted-foreground"><Loader className="h-5 w-5 animate-spin mr-2" />Chargement…</div>;
@@ -116,9 +130,11 @@ export default function StcPage() {
           <div className="text-sm max-w-md mx-auto">
             <Row label="Salaire mensuel de référence" value={calc.monthly} />
             {motif === 'licenciement' && <Row label={`Indemnité de licenciement (${years.toFixed(1)} ans)`} value={calc.indemnite} />}
-            <Row label={`Indemnité de préavis (${preavisMonths} mois)`} value={calc.preavis} />
+            {calc.preavis > 0 && <Row label={`Indemnité compensatrice de préavis (${preavisMonths} mois)`} value={calc.preavis} />}
             <Row label={`Congés payés non pris (${congesNonPris} j)`} value={calc.conges} />
-            <div className="flex justify-between py-2 border-t-2 border-border mt-1 font-bold text-base"><span>Total à percevoir</span><span className="tabular-nums">{fmt(calc.total)} MAD</span></div>
+            <div className="flex justify-between py-1 border-t border-border mt-1 font-semibold"><span>Total brut</span><span className="tabular-nums">{fmt(calc.brut)}</span></div>
+            {calc.retenues > 0 && <Row label="Retenues CNSS, AMO, IR (estimation)" value={-calc.retenues} />}
+            <div className="flex justify-between py-2 border-t-2 border-border mt-1 font-bold text-base"><span>Net à percevoir</span><span className="tabular-nums">{fmt(calc.total)} MAD</span></div>
           </div>
           <p className="text-[11px] text-muted-foreground mt-4 text-center print:mt-16">Barème indicatif (art. 52-53 Code du travail) — à faire valider par votre conseil.</p>
         </div>

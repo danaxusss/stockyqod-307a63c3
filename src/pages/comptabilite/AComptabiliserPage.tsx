@@ -6,11 +6,18 @@ import { SupabaseDocumentsService } from '../../utils/supabaseDocuments';
 import { SupabasePayslipsService } from '../../utils/supabasePayslips';
 import { CompanySettingsService } from '../../utils/companySettings';
 import { getCompanyContext } from '../../utils/supabaseCompanyFilter';
-import { buildInvoiceEntry, buildAvoirEntry, buildPaymentEntry, buildPayslipEntry } from '../../accounting/postingRules';
+import { buildInvoiceEntry, buildAvoirEntry, buildPaymentEntries, buildPayslipEntry, type EntryDraft } from '../../accounting/postingRules';
+import { invoicePayment } from '../../utils/documentLines';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
 
 function fmtMad(n: number) { return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(n) + ' MAD'; }
+
+// Documents for the signed-in company's books (the issuer's books).
+const ledgerDocs = (type: 'invoice' | 'avoir') => {
+  const { companyId } = getCompanyContext();
+  return companyId ? SupabaseDocumentsService.getForLedger(type, companyId) : SupabaseDocumentsService.getAllByType(type);
+};
 
 export default function AComptabiliserPage() {
   const { currentUser } = useAuth();
@@ -22,6 +29,8 @@ export default function AComptabiliserPage() {
   const [avoirs, setAvoirs] = useState<Quote[]>([]);
   const [payslips, setPayslips] = useState<Payslip[]>([]);
   const [postedIds, setPostedIds] = useState<Set<string>>(new Set());
+  const [paymentTotals, setPaymentTotals] = useState<Map<string, { amount: number; count: number }>>(new Map());
+  const [loanAmounts, setLoanAmounts] = useState<Map<string, number>>(new Map());
   const [tvaRate, setTvaRate] = useState(20);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -30,15 +39,17 @@ export default function AComptabiliserPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [year, j, inv, av, ps, posted] = await Promise.all([
+      const [year, j, inv, av, ps, posted, payTotals] = await Promise.all([
         AccountingService.ensureCurrentFiscalYear(),
         AccountingService.listJournals(),
-        SupabaseDocumentsService.getAllByType('invoice'),
-        SupabaseDocumentsService.getAllByType('avoir'),
+        ledgerDocs('invoice'),
+        ledgerDocs('avoir'),
         SupabasePayslipsService.list().catch(() => [] as Payslip[]),
         AccountingService.postedSourceIds(),
+        AccountingService.paymentPostedTotals(),
       ]);
-      setFy(year); setJournals(j); setInvoices(inv); setAvoirs(av); setPayslips(ps); setPostedIds(posted);
+      setFy(year); setJournals(j); setInvoices(inv); setAvoirs(av); setPayslips(ps); setPostedIds(posted); setPaymentTotals(payTotals);
+      setLoanAmounts(await SupabasePayslipsService.loanDeductions(ps).catch(() => new Map()));
       const { companyId } = getCompanyContext();
       if (companyId) {
         const s = await CompanySettingsService.getSettings(companyId).catch(() => null);
@@ -51,39 +62,52 @@ export default function AComptabiliserPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const generate = async (draft: ReturnType<typeof buildInvoiceEntry> | null, key: string) => {
-    if (!draft || !fy) return;
+  const opts = () => ({ post: autoPost, createdBy: currentUser?.username || null });
+
+  // Each entry goes into the fiscal year of its own date.
+  const generate = async (drafts: EntryDraft[], key: string) => {
+    if (drafts.length === 0) return;
     setBusy(key);
     try {
-      await AccountingService.createFromDraft(draft, fy.id, journals, { post: autoPost, createdBy: currentUser?.username || null });
+      for (const d of drafts) await AccountingService.createFromDraft(d, journals, opts());
       showToast({ type: 'success', message: autoPost ? 'Écriture validée' : 'Brouillon généré' });
-      setPostedIds(prev => new Set(prev).add(draft.sourceId));
+      await load();
     } catch (e: any) {
       showToast({ type: 'error', title: 'Erreur', message: e?.message || 'Échec' });
     } finally { setBusy(null); }
   };
 
+  const paymentDrafts = useCallback((q: Quote) => {
+    const t = paymentTotals.get(q.id) || { amount: 0, count: 0 };
+    return buildPaymentEntries(q, t.amount, t.count);
+  }, [paymentTotals]);
+  // A payslip posted through its pay run is already in the books.
+  const inPostedRun = useCallback((p: Payslip) => !!p.run_id && postedIds.has(`run:${p.run_id}`), [postedIds]);
+  const payslipDraft = (p: Payslip) => buildPayslipEntry(p, (p as any).employee?.full_name, loanAmounts.get(p.id) || 0);
+
   const pending = useMemo(() => {
     const inv = invoices.filter(q => !postedIds.has(q.id));
-    const invPay = invoices.filter(q => (q.paid_amount || 0) > 0 && !postedIds.has(`${q.id}:pay`));
+    const invPay = invoices.filter(q => paymentDrafts(q).length > 0);
     const av = avoirs.filter(q => !postedIds.has(q.id));
-    const ps = payslips.filter(p => !postedIds.has(p.id));
+    const ps = payslips.filter(p => !postedIds.has(p.id) && !inPostedRun(p));
     return { inv, invPay, av, ps, total: inv.length + invPay.length + av.length + ps.length };
-  }, [invoices, avoirs, payslips, postedIds]);
+  }, [invoices, avoirs, payslips, postedIds, paymentDrafts, inPostedRun]);
 
   const genAll = async () => {
-    if (!fy) return;
     setBusy('all');
     try {
-      let n = 0;
-      for (const q of pending.inv) { await AccountingService.createFromDraft(buildInvoiceEntry(q, tvaRate), fy.id, journals, { post: autoPost, createdBy: currentUser?.username || null }); n++; }
-      for (const q of pending.invPay) { const d = buildPaymentEntry(q); if (d) { await AccountingService.createFromDraft(d, fy.id, journals, { post: autoPost, createdBy: currentUser?.username || null }); n++; } }
-      for (const q of pending.av) { await AccountingService.createFromDraft(buildAvoirEntry(q, tvaRate), fy.id, journals, { post: autoPost, createdBy: currentUser?.username || null }); n++; }
-      for (const p of pending.ps) { await AccountingService.createFromDraft(buildPayslipEntry(p, (p as any).employee?.full_name), fy.id, journals, { post: autoPost, createdBy: currentUser?.username || null }); n++; }
-      showToast({ type: 'success', title: 'Terminé', message: `${n} écriture(s) ${autoPost ? 'validées' : 'en brouillon'}` });
+      const drafts: EntryDraft[] = [
+        ...pending.inv.map(q => buildInvoiceEntry(q, tvaRate)),
+        ...pending.invPay.flatMap(paymentDrafts),
+        ...pending.av.map(q => buildAvoirEntry(q, tvaRate)),
+        ...pending.ps.map(payslipDraft),
+      ];
+      for (const d of drafts) await AccountingService.createFromDraft(d, journals, opts());
+      showToast({ type: 'success', title: 'Terminé', message: `${drafts.length} écriture(s) ${autoPost ? 'validées' : 'en brouillon'}` });
       await load();
     } catch (e: any) {
       showToast({ type: 'error', title: 'Erreur', message: e?.message || 'Échec' });
+      await load();
     } finally { setBusy(null); }
   };
 
@@ -136,19 +160,24 @@ export default function AComptabiliserPage() {
             <Row key={q.id} k={q.id}
               label={`Facture ${q.quoteNumber}`} sub={q.customer?.fullName || ''}
               amount={q.totalAmount} done={postedIds.has(q.id)}
-              onGen={() => generate(buildInvoiceEntry(q, tvaRate), q.id)} />
+              onGen={() => generate([buildInvoiceEntry(q, tvaRate)], q.id)} />
           ))}
           {invoices.length === 0 && <Empty />}
         </Section>
 
         <Section title="Encaissements (factures réglées)" count={pending.invPay.length}>
-          {invoices.filter(q => (q.paid_amount || 0) > 0).map(q => (
-            <Row key={`${q.id}:pay`} k={`${q.id}:pay`}
-              label={`Règlement ${q.quoteNumber}`} sub={`${q.customer?.fullName || ''} · ${q.payment_method || 'banque'}`}
-              amount={q.paid_amount || q.totalAmount} done={postedIds.has(`${q.id}:pay`)}
-              onGen={() => generate(buildPaymentEntry(q), `${q.id}:pay`)} />
-          ))}
-          {invoices.filter(q => (q.paid_amount || 0) > 0).length === 0 && <Empty />}
+          {invoices.filter(q => invoicePayment(q).paid > 0).map(q => {
+            const drafts = paymentDrafts(q);
+            const toBook = drafts.reduce((s, d) => s + d.lines[0].debit, 0);
+            return (
+              <Row key={`${q.id}:pay`} k={`${q.id}:pay`}
+                label={`Règlement ${q.quoteNumber}`}
+                sub={`${q.customer?.fullName || ''} · reçu ${fmtMad(invoicePayment(q).paid)}${drafts.length ? ` · ${drafts.length} à comptabiliser` : ''}`}
+                amount={drafts.length ? toBook : invoicePayment(q).paid} done={drafts.length === 0}
+                onGen={() => generate(drafts, `${q.id}:pay`)} />
+            );
+          })}
+          {invoices.filter(q => invoicePayment(q).paid > 0).length === 0 && <Empty />}
         </Section>
 
         <Section title="Avoirs" count={pending.av.length}>
@@ -156,7 +185,7 @@ export default function AComptabiliserPage() {
             <Row key={q.id} k={q.id}
               label={`Avoir ${q.quoteNumber}`} sub={q.customer?.fullName || ''}
               amount={q.totalAmount} done={postedIds.has(q.id)}
-              onGen={() => generate(buildAvoirEntry(q, tvaRate), q.id)} />
+              onGen={() => generate([buildAvoirEntry(q, tvaRate)], q.id)} />
           ))}
           {avoirs.length === 0 && <Empty />}
         </Section>
@@ -165,9 +194,9 @@ export default function AComptabiliserPage() {
           {payslips.map(p => (
             <Row key={p.id} k={p.id}
               label={`Paie ${String(p.period_month).padStart(2, '0')}/${p.period_year}`}
-              sub={(p as any).employee?.full_name || p.payslip_number}
-              amount={p.net_salary} done={postedIds.has(p.id)}
-              onGen={() => generate(buildPayslipEntry(p, (p as any).employee?.full_name), p.id)} />
+              sub={`${(p as any).employee?.full_name || p.payslip_number}${inPostedRun(p) ? ' · comptabilisé avec son lot' : ''}`}
+              amount={p.net_salary} done={postedIds.has(p.id) || inPostedRun(p)}
+              onGen={() => generate([payslipDraft(p)], p.id)} />
           ))}
           {payslips.length === 0 && <Empty />}
         </Section>

@@ -435,6 +435,20 @@ export class SupabaseDocumentsService {
     return ((data as DocRow[]) || []).map(mapDocRow);
   }
 
+  /**
+   * Invoices or credit notes for one company's books: those it issued
+   * (documents without an issuer belong to their owning company).
+   */
+  static async getForLedger(type: 'invoice' | 'avoir', companyId: string): Promise<Quote[]> {
+    const { data, error } = await (supabase.from('quotes') as any)
+      .select('*')
+      .eq('document_type', type)
+      .or(`issuing_company_id.eq.${companyId},and(issuing_company_id.is.null,company_id.eq.${companyId})`)
+      .order('created_at', { ascending: false });
+    if (error) throw new Error(`Erreur chargement documents: ${error.message}`);
+    return ((data as DocRow[]) || []).map(mapDocRow);
+  }
+
   static async getById(id: string): Promise<Quote | null> {
     const { companyId, bypassFilter } = getCompanyContext();
     let q = (supabase.from('quotes') as any).select('*').eq('id', id);

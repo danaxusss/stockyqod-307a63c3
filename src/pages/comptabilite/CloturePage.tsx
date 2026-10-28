@@ -20,10 +20,14 @@ export default function CloturePage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const fy = await AccountingService.ensureCurrentFiscalYear();
+      // The year to close is the oldest one still open.
+      await AccountingService.ensureCurrentFiscalYear();
+      const all = await AccountingService.listFiscalYears();
+      const fy = [...all].filter(y => y.status === 'open').sort((a, b) => a.start_date.localeCompare(b.start_date))[0];
+      if (!fy) { setYears(all); setOpenFy(null); return; }
       setOpenFy(fy);
       const [ys, drafts, lines] = await Promise.all([
-        AccountingService.listFiscalYears(),
+        Promise.resolve(all),
         AccountingService.listEntries({ fiscalYearId: fy.id, status: 'draft', limit: 1000 }),
         AccountingService.getPostedLines(fy.id),
       ]);
@@ -37,7 +41,10 @@ export default function CloturePage() {
   }, [showToast]);
   useEffect(() => { load(); }, [load]);
 
-  const canClose = draftCount === 0;
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const yearOver = !!openFy && openFy.end_date < today;
+  const canClose = draftCount === 0 && yearOver;
 
   const close = async () => {
     if (!openFy) return;
@@ -75,7 +82,12 @@ export default function CloturePage() {
         </div>
       </div>
 
-      {!canClose && (
+      {openFy && !yearOver && (
+        <p className="text-xs text-amber-600 dark:text-amber-400 mb-3">
+          L'exercice {openFy.label} se termine le {openFy.end_date.split('-').reverse().join('/')} : la clôture sera possible après cette date.
+        </p>
+      )}
+      {draftCount > 0 && (
         <p className="text-xs text-amber-600 dark:text-amber-400 mb-3">
           Validez ou supprimez les écritures en brouillon avant de clôturer (Saisie / Journaux).
         </p>

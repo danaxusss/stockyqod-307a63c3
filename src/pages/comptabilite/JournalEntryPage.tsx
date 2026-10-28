@@ -4,9 +4,10 @@ import type { Account, FiscalYear, Journal, JournalEntry, JournalEntryLine } fro
 import { AccountingService } from '../../utils/supabaseAccounting';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
+import { localDay } from '../../utils/documentLines';
 
 function fmt(n: number) { return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n); }
-const todayStr = () => new Date().toISOString().slice(0, 10);
+const todayStr = () => localDay();
 
 type Editing = { entry: JournalEntry | null; date: string; reference: string; label: string; lines: JournalEntryLine[] } | null;
 
@@ -88,7 +89,7 @@ export default function JournalEntryPage() {
       return editing.entry.id;
     }
     const created = await AccountingService.createEntry(
-      { fiscal_year_id: fy.id, journal_id: journalId, entry_date: editing.date, reference: editing.reference || null, label: editing.label || null, created_by: currentUser?.username || null },
+      { journal_id: journalId, entry_date: editing.date, reference: editing.reference || null, label: editing.label || null, created_by: currentUser?.username || null },
       lines,
     );
     return created.id;

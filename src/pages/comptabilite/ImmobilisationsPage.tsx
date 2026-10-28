@@ -5,6 +5,7 @@ import { AccountingService } from '../../utils/supabaseAccounting';
 import type { FiscalYear, Journal } from '../../types';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
+import { localDay } from '../../utils/documentLines';
 
 function fmt(n: number) { return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(n); }
 
@@ -17,7 +18,7 @@ export default function ImmobilisationsPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState(false);
-  const [form, setForm] = useState({ label: '', account_code: '2340', acquisition_date: new Date().toISOString().slice(0, 10), amount: '', duration_years: '5', depreciation_account_code: '2834', expense_account_code: '6191' });
+  const [form, setForm] = useState({ label: '', account_code: '2340', acquisition_date: localDay(), amount: '', duration_years: '5', depreciation_account_code: '2834', expense_account_code: '6191' });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -52,7 +53,7 @@ export default function ImmobilisationsPage() {
     if (!fy) return;
     setBusy(true);
     try {
-      await AssetsService.generateDotation(a, year, fy.id, journals, currentUser?.username || null);
+      await AssetsService.generateDotation(a, year, journals, currentUser?.username || null);
       showToast({ type: 'success', title: 'Dotation générée', message: `Amortissement ${year} comptabilisé` });
       await load();
     } catch (e: any) { showToast({ type: 'error', title: 'Erreur', message: e?.message || 'Échec' }); }
@@ -117,7 +118,7 @@ export default function ImmobilisationsPage() {
             </thead>
             <tbody>
               {assets.map(a => {
-                const annual = AssetsService.annualAmount(a);
+                const annual = AssetsService.dotationForYear(a, year) || AssetsService.annualAmount(a);
                 const cum = AssetsService.cumulative(a);
                 const vnc = Math.max(0, Number(a.amount) - cum);
                 const doneThisYear = (a.depreciations || []).some(d => d.year === year);

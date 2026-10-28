@@ -7,7 +7,8 @@ import { CompanySettingsService } from '../../utils/companySettings';
 import { RubriquesService, type Rubrique } from '../../utils/supabaseRubriques';
 import { PayrollSettingsService } from '../../utils/supabasePayrollSettings';
 import { exportPayslipToPdf, generatePayslipPdfBlob } from '../../utils/pdfExport';
-import { computeAnciennete, computePayroll } from '../../utils/payrollCalc';
+import { computeAnciennete, computePayroll, periodEnd } from '../../utils/payrollCalc';
+import { LOAN_LINE } from '../../utils/supabasePayrollRun';
 import { DEFAULT_PAYROLL_SETTINGS, type PayrollSettings } from '../../utils/payrollDefaults';
 import { PrintPreviewModal } from '../../components/PrintPreviewModal';
 import { useAuth } from '../../hooks/useAuth';
@@ -58,7 +59,13 @@ export default function PayslipDetailPage() {
         setLines(vars.map((v: any) => ({ rubrique_id: v.rubrique_id, code: v.code, label: v.label, type: v.type, amount: Number(v.amount), soumis_cnss: v.soumis_cnss, soumis_ir: v.soumis_ir, soumis_cimr: v.soumis_cimr, inclus_anciennete: v.inclus_anciennete })));
       } else {
         // migrate legacy free-text items → variables (soumis by default)
-        setLines(doc.items.map(it => ({ rubrique_id: null, code: null, label: it.label, type: it.item_type === 'earning' ? 'gain' : 'retenue', amount: it.amount, soumis_cnss: true, soumis_ir: true, soumis_cimr: false, inclus_anciennete: it.included_in_anciennete_base })));
+        const legacy: Line[] = doc.items.map(it => ({ rubrique_id: null, code: null, label: it.label, type: it.item_type === 'earning' ? 'gain' : 'retenue', amount: it.amount, soumis_cnss: true, soumis_ir: true, soumis_cimr: false, inclus_anciennete: it.included_in_anciennete_base }));
+        // Older run payslips held the loan repayment only in other_deductions:
+        // show it as a line so a save does not drop it.
+        const listed = legacy.filter(l => l.type === 'retenue').reduce((s, l) => s + l.amount, 0);
+        const missing = r2(doc.other_deductions - listed);
+        if (missing > 0) legacy.push({ rubrique_id: null, code: LOAN_LINE.code, label: LOAN_LINE.label, type: 'retenue', amount: missing, soumis_cnss: false, soumis_ir: false, soumis_cimr: false, inclus_anciennete: false });
+        setLines(legacy);
       }
     } catch (e) {
       showToast({ type: 'error', title: 'Erreur', message: (e as any)?.message || String(e) });
@@ -73,7 +80,8 @@ export default function PayslipDetailPage() {
     const gains = lines.filter(l => l.type === 'gain');
     const retenues = lines.filter(l => l.type === 'retenue');
     const ancienneteBase = emp.base_salary + gains.filter(g => g.inclus_anciennete).reduce((s, g) => s + g.amount, 0);
-    const anc = computeAnciennete(emp.hire_date, ancienneteBase);
+    // Seniority as at the end of the pay month, not today.
+    const anc = computeAnciennete(emp.hire_date, ancienneteBase, periodEnd(payslip.period_month, payslip.period_year));
     // "soumis" = enters brut imposable (CNSS+IR); exonéré if neither flag set.
     const primesSoumises = r2(gains.filter(g => g.soumis_cnss || g.soumis_ir).reduce((s, g) => s + g.amount, 0));
     const primesNon = r2(gains.filter(g => !g.soumis_cnss && !g.soumis_ir).reduce((s, g) => s + g.amount, 0));
@@ -82,8 +90,11 @@ export default function PayslipDetailPage() {
     return { anc, res, otherEarnings: r2(primesSoumises + primesNon) };
   }, [payslip, lines, settings]);
 
+  const locked = payslip?.is_locked === true;
+
   const save = useCallback(async () => {
-    if (!payslip || !computed) return;
+    // A validated payslip is final: its cumuls, loan repayments and entries are booked.
+    if (!payslip || !computed || payslip.is_locked) return;
     const { anc, res, otherEarnings } = computed;
     const companyId = payslip.company_id || ctxCompanyId || null;
     try {
@@ -107,8 +118,16 @@ export default function PayslipDetailPage() {
     }
   }, [payslip, computed, lines, ctxCompanyId, showToast]);
 
-  useKeyboardSave(save, !!payslip && !isLoading);
-  useAutoSave(save, !!payslip && !isLoading && dirty);
+  useKeyboardSave(save, !!payslip && !isLoading && !locked);
+  useAutoSave(save, !!payslip && !isLoading && dirty && !locked);
+
+  // What the PDF shows: the stored figures of a locked payslip, else the live calculation.
+  const pdfPayslip = () => {
+    if (!payslip || !computed) return null;
+    const items = lines.map((l, i) => ({ id: `v${i}`, label: l.label, item_type: l.type === 'gain' ? 'earning' : 'deduction', amount: l.amount, included_in_anciennete_base: l.inclus_anciennete, sort_order: i }));
+    if (locked) return { ...payslip, items } as any;
+    return { ...payslip, ...computed.res, total_gross: computed.res.brut_global, items } as any;
+  };
 
   const addLine = (type: 'gain' | 'retenue') => {
     setLines(prev => [...prev, { rubrique_id: null, code: null, label: '', type, amount: 0, soumis_cnss: type === 'gain', soumis_ir: type === 'gain', soumis_cimr: false, inclus_anciennete: false }]);
@@ -131,21 +150,19 @@ export default function PayslipDetailPage() {
 
   const handleExportPdf = async () => {
     if (!payslip || !computed) return;
-    await save();
+    if (dirty) await save();
     try {
       const settings2 = await getSettings();
-      const items = lines.map((l, i) => ({ id: `v${i}`, label: l.label, item_type: l.type === 'gain' ? 'earning' : 'deduction', amount: l.amount, included_in_anciennete_base: l.inclus_anciennete, sort_order: i }));
-      await exportPayslipToPdf({ ...payslip, ...computed.res, total_gross: computed.res.brut_global, items } as any, settings2);
+      await exportPayslipToPdf(pdfPayslip(), settings2);
     } catch (e) { showToast({ type: 'error', title: 'Erreur PDF', message: (e as any)?.message || String(e) }); }
   };
 
   const handlePreview = async () => {
     if (!payslip || !computed) return;
-    await save();
+    if (dirty) await save();
     try {
       const settings2 = await getSettings();
-      const items = lines.map((l, i) => ({ id: `v${i}`, label: l.label, item_type: l.type === 'gain' ? 'earning' : 'deduction', amount: l.amount, included_in_anciennete_base: l.inclus_anciennete, sort_order: i }));
-      const { blob, filename } = await generatePayslipPdfBlob({ ...payslip, ...computed.res, total_gross: computed.res.brut_global, items } as any, settings2);
+      const { blob, filename } = await generatePayslipPdfBlob(pdfPayslip(), settings2);
       setPreviewBlob(blob); setPreviewFilename(filename); setShowPrintPreview(true);
     } catch (e) { showToast({ type: 'error', title: 'Erreur aperçu', message: (e as any)?.message || String(e) }); }
   };
@@ -159,7 +176,6 @@ export default function PayslipDetailPage() {
   const gains = lines.map((l, i) => ({ l, i })).filter(x => x.l.type === 'gain');
   const retenues = lines.map((l, i) => ({ l, i })).filter(x => x.l.type === 'retenue');
   const inputCls = 'text-xs px-2 py-1 border border-input rounded bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary';
-  const locked = (payslip as any).is_locked;
 
   const RubSelect = ({ line, idx }: { line: Line; idx: number }) => (
     <select value={line.rubrique_id || ''} onChange={e => pickRubrique(idx, e.target.value)} className={`${inputCls} max-w-[150px]`} disabled={locked}>

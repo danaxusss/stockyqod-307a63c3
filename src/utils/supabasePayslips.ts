@@ -30,6 +30,9 @@ function mapRow(row: Record<string, unknown>, items: PayslipItem[] = []): Paysli
     cnss_employer: Number(row.cnss_employer ?? 0),
     amo_employer: Number(row.amo_employer ?? 0),
     alloc_familiales: Number(row.alloc_familiales ?? 0),
+    tfp_employer: Number(row.tfp_employer ?? 0),
+    is_locked: row.is_locked === true,
+    run_id: (row.run_id as string) || null,
     notes: (row.notes as string) || undefined,
     items,
     created_at: row.created_at as string,
@@ -53,11 +56,8 @@ export class SupabasePayslipsService {
       .order('period_year', { ascending: false })
       .order('period_month', { ascending: false });
 
-    if (companyId && !ctx.bypassFilter) {
-      query = query.eq('company_id', companyId);
-    } else if (filters?.companyId) {
-      query = query.eq('company_id', filters.companyId);
-    }
+    // Payroll is per company, for every role.
+    if (companyId) query = query.eq('company_id', companyId);
 
     if (filters?.employeeId) query = query.eq('employee_id', filters.employeeId);
     if (filters?.year) query = query.eq('period_year', filters.year);
@@ -127,6 +127,30 @@ export class SupabasePayslipsService {
   static async delete(id: string): Promise<void> {
     const { error } = await supabase.from('payslips').delete().eq('id', id);
     if (error) throw error;
+  }
+
+  /**
+   * Loan / advance repayments withheld on each payslip (AVANCE lines). Run
+   * payslips from before those lines existed put only loans in other_deductions.
+   */
+  static async loanDeductions(payslips: Pick<Payslip, 'id' | 'run_id' | 'other_deductions'>[]): Promise<Map<string, number>> {
+    const out = new Map<string, number>();
+    if (payslips.length === 0) return out;
+    const withLines = new Set<string>();
+    for (let i = 0; i < payslips.length; i += 300) {
+      const ids = payslips.slice(i, i + 300).map(p => p.id);
+      const { data, error } = await (supabase as any).from('payslip_variables')
+        .select('payslip_id, code, type, amount').in('payslip_id', ids);
+      if (error) throw error;
+      for (const v of (data || []) as { payslip_id: string; code: string | null; type: string; amount: number }[]) {
+        withLines.add(v.payslip_id);
+        if (v.type === 'retenue' && v.code === 'AVANCE') out.set(v.payslip_id, (out.get(v.payslip_id) || 0) + (Number(v.amount) || 0));
+      }
+    }
+    for (const p of payslips) {
+      if (!withLines.has(p.id) && p.run_id && p.other_deductions > 0) out.set(p.id, p.other_deductions);
+    }
+    return out;
   }
 
   static async getVariables(payslipId: string): Promise<any[]> {
