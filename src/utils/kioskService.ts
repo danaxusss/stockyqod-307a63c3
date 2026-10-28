@@ -223,6 +223,11 @@ export class KioskService {
     return new URL(`kiosk/${token}`, base).toString();
   }
 
+  /** Link that installs this kiosk as a full-screen app on a tablet. */
+  static installUrl(token: string): string {
+    return `${KioskService.publicUrl(token)}/install`;
+  }
+
   static async loadPublic(token: string): Promise<{ profile: KioskPublicProfile; brands: string[]; sectors?: KioskSector[] }> {
     return invoke({ action: 'public_profile', token });
   }

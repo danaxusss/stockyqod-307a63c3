@@ -241,16 +241,19 @@ export default function KioskAdminPage() {
     setEditingProfile(profile ? { ...EMPTY_PROFILE(profile.company_id), ...profile } : EMPTY_PROFILE(companies[0]?.id || ''));
   };
 
-  const copyLink = async (profile: KioskAdminProfile) => {
+  const copyLink = async (profile: KioskAdminProfile, install = false) => {
     if (!profile.public_token) return;
-    const url = KioskService.publicUrl(profile.public_token);
+    const url = install ? KioskService.installUrl(profile.public_token) : KioskService.publicUrl(profile.public_token);
     try {
       await navigator.clipboard.writeText(url);
-      showToast({ type: 'success', title: 'Lien copié', message: 'Collez-le dans le navigateur de la tablette.' });
+      showToast({
+        type: 'success', title: install ? 'Lien d’installation copié' : 'Lien copié',
+        message: install ? 'Ouvrez-le sur la tablette pour installer le kiosque comme une application.' : 'Collez-le dans le navigateur de la tablette.',
+      });
     } catch {
       // Clipboard access is refused outside HTTPS or without permission:
       // show the link so it can still be copied by hand.
-      window.prompt('Copiez le lien du kiosque :', url);
+      window.prompt(install ? 'Copiez le lien d’installation :' : 'Copiez le lien du kiosque :', url);
     }
   };
 
@@ -391,7 +394,7 @@ function RequestsPanel({ requests, total, page, search, status, loading, onSearc
 
 function ProfilesPanel({ profiles, companies, canManage, onEdit, onCopy, onShowQr, onRotate }: {
   profiles: KioskAdminProfile[]; companies: KioskCompanyOption[]; canManage: boolean;
-  onEdit: (profile?: KioskAdminProfile) => void; onCopy: (profile: KioskAdminProfile) => void;
+  onEdit: (profile?: KioskAdminProfile) => void; onCopy: (profile: KioskAdminProfile, install?: boolean) => void;
   onShowQr: (profile: KioskAdminProfile) => void; onRotate: (profile: KioskAdminProfile) => void;
 }) {
   return (
@@ -406,6 +409,7 @@ function ProfilesPanel({ profiles, companies, canManage, onEdit, onCopy, onShowQ
               <button onClick={() => onCopy(profile)} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium hover:bg-accent"><Clipboard className="h-3.5 w-3.5" />Copier</button>
               {profile.public_token && <a href={KioskService.publicUrl(profile.public_token)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium hover:bg-accent"><ExternalLink className="h-3.5 w-3.5" />Ouvrir</a>}
               {profile.public_token && <button onClick={() => onShowQr(profile)} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium hover:bg-accent"><QrCode className="h-3.5 w-3.5" />QR code</button>}
+              {profile.public_token && <button onClick={() => onCopy(profile, true)} title="Copier le lien qui installe le kiosque comme une application sur la tablette" className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium hover:bg-accent"><Download className="h-3.5 w-3.5" />Lien d’installation</button>}
               {canManage && <><button onClick={() => onEdit(profile)} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium hover:bg-accent"><Settings2 className="h-3.5 w-3.5" />Régler</button><button onClick={() => onRotate(profile)} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium text-amber-700 hover:bg-amber-50"><RotateCw className="h-3.5 w-3.5" />Renouveler</button></>}
             </div>
           </article>
@@ -666,17 +670,22 @@ function FeaturedPicker({ companyId, barcodes, onChange }: { companyId: string; 
 }
 
 function QrDialog({ profile, onClose }: { profile: KioskAdminProfile; onClose: () => void }) {
-  const url = KioskService.publicUrl(profile.public_token || '');
+  const [install, setInstall] = useState(true);
+  const url = install ? KioskService.installUrl(profile.public_token || '') : KioskService.publicUrl(profile.public_token || '');
   const [dataUrl, setDataUrl] = useState('');
   useEffect(() => {
     QRCode.toDataURL(url, { width: 640, margin: 2, errorCorrectionLevel: 'M' }).then(setDataUrl).catch(() => setDataUrl(''));
   }, [url]);
-  const fileName = `qr-kiosque-${profile.name.toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'stocky'}.png`;
+  const fileName = `qr-kiosque${install ? '-installation' : ''}-${profile.name.toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'stocky'}.png`;
   return (
     <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4" onMouseDown={event => { if (event.currentTarget === event.target) onClose(); }}>
       <div className="w-full max-w-sm rounded-2xl bg-background p-5 text-center shadow-2xl">
         <div className="flex items-center justify-between"><h2 className="text-lg font-bold">{profile.name}</h2><button onClick={onClose} aria-label="Fermer" className="rounded-lg p-2 hover:bg-accent"><X className="h-5 w-5" /></button></div>
-        <p className="mt-1 text-sm text-muted-foreground">Scannez avec la tablette pour ouvrir le kiosque.</p>
+        <div role="group" aria-label="Type de lien" className="mt-3 grid grid-cols-2 gap-1 rounded-lg bg-muted p-1 text-sm font-medium">
+          <button onClick={() => setInstall(true)} aria-pressed={install} className={`rounded-md py-1.5 ${install ? 'bg-background shadow-sm' : 'text-muted-foreground'}`}>Installer l’app</button>
+          <button onClick={() => setInstall(false)} aria-pressed={!install} className={`rounded-md py-1.5 ${!install ? 'bg-background shadow-sm' : 'text-muted-foreground'}`}>Ouvrir le kiosque</button>
+        </div>
+        <p className="mt-2 text-sm text-muted-foreground">{install ? 'Scannez avec la tablette pour installer le kiosque en application plein écran.' : 'Scannez avec la tablette pour ouvrir le kiosque dans le navigateur.'}</p>
         <div className="mx-auto mt-4 flex aspect-square w-64 items-center justify-center rounded-xl border bg-white p-2">{dataUrl ? <img src={dataUrl} alt={`QR code du kiosque ${profile.name}`} className="h-full w-full" /> : <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />}</div>
         <p className="mt-3 break-all font-mono text-[11px] text-muted-foreground">{url}</p>
         {dataUrl && <a href={dataUrl} download={fileName} className="mt-4 inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground"><Download className="h-4 w-4" />Télécharger le PNG</a>}

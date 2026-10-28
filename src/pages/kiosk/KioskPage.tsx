@@ -11,6 +11,7 @@ import { DEFAULT_KIOSK_ACCENT, isHexColor, readableTextOn } from '../../utils/ki
 import { sectorLabel } from '../../utils/sectorLabel';
 import { SHOWCASE_COPY } from '../../utils/kioskShowcase';
 import { KioskReviewPage, KioskShowcase, ReviewInvite } from './KioskShowcase';
+import { rememberKioskToken } from '../../utils/kioskApp';
 
 type Stage = 'welcome' | 'catalog' | 'review' | 'submitted';
 type CartLine = { product: KioskProduct; quantity: number };
@@ -249,6 +250,8 @@ export default function KioskPage() {
     try {
       const data = await KioskService.loadPublic(token);
       setProfile(data.profile);
+      // An app installed from this page starts on /kiosk-app and reopens this kiosk.
+      rememberKioskToken(token);
       setBrands(data.brands || []);
       setSectors(data.sectors || []);
       setFatal(null);
