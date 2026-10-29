@@ -12,11 +12,8 @@ export class SupabaseEmployeesService {
       .select('*')
       .order('full_name');
 
-    if (scopedCompanyId && !ctx.bypassFilter) {
-      query = query.eq('company_id', scopedCompanyId);
-    } else if (companyId) {
-      query = query.eq('company_id', companyId);
-    }
+    // Payroll is per company, for every role (a super admin included).
+    if (scopedCompanyId) query = query.eq('company_id', scopedCompanyId);
 
     const { data, error } = await query;
     if (error) throw error;

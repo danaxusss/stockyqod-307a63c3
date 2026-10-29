@@ -8,6 +8,8 @@ import { PdfExportService } from '../../utils/pdfExport';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../hooks/useAuth';
 import { exportToCSV } from '../../utils/csvExport';
+import { getCompanyContext } from '../../utils/supabaseCompanyFilter';
+import { documentDay, formatDay } from '../../utils/documentLines';
 
 function statusBadge(status: string) {
   if (status === 'final') return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300">Finalisé</span>;
@@ -64,7 +66,8 @@ export default function BLDirectoryPage() {
   };
 
   const handleNewBL = async () => {
-    const compId = companies[0]?.id;
+    // Same company as the other "Nouveau" buttons: the user's own.
+    const compId = getCompanyContext().companyId || companies[0]?.id;
     if (!compId) { showToast({ type: 'error', message: 'Aucune société disponible' }); return; }
     setIsCreatingNew(true);
     try {
@@ -119,7 +122,8 @@ export default function BLDirectoryPage() {
   // Create proforma — handles both single-row and multi-select
   const handleConfirmProforma = async () => {
     if (!targetCompanyId) return;
-    const ids = singleProformaBL ? [singleProformaBL.id] : selectedIds;
+    // Only BLs the user can see in the list: a search may hide earlier ticks.
+    const ids = singleProformaBL ? [singleProformaBL.id] : selectedEligible;
     if (ids.length === 0) return;
     setIsCreating(true);
     try {
@@ -157,7 +161,7 @@ export default function BLDirectoryPage() {
       'Société': (b.company_id && companyMap[b.company_id]) || '',
       'Total TTC': b.totalAmount,
       'Statut': b.status,
-      'Date': new Date(b.createdAt).toLocaleDateString('fr-FR'),
+      'Date': formatDay(documentDay(b)),
     }));
     exportToCSV(rows, `bls-${new Date().toISOString().slice(0, 10)}`);
   };
@@ -282,7 +286,7 @@ export default function BLDirectoryPage() {
                           : statusBadge(bl.status)}
                       </td>
                       <td className="px-3 py-2.5 text-[10px] text-muted-foreground">
-                        {new Date(bl.createdAt).toLocaleDateString('fr-FR')}
+                        {formatDay(documentDay(bl))}
                       </td>
                       <td className="px-3 py-2.5">
                         <div className="flex items-center space-x-1">

@@ -14,6 +14,7 @@ export default function ComptabiliteHome() {
   const { showToast } = useToast();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [fy, setFy] = useState<FiscalYear | null>(null);
+  const [years, setYears] = useState<FiscalYear[]>([]);
   const [lines, setLines] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [initializing, setInitializing] = useState(false);
@@ -23,6 +24,7 @@ export default function ComptabiliteHome() {
     try {
       const year = await AccountingService.ensureCurrentFiscalYear();
       setFy(year);
+      setYears(await AccountingService.listFiscalYears());
       const [a, l] = await Promise.all([
         AccountingService.listAccounts(),
         AccountingService.getPostedLines(year.id).catch(() => []),
@@ -109,7 +111,19 @@ export default function ComptabiliteHome() {
           <div className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-primary/10"><BookMarked className="h-5 w-5 text-primary" /></div>
           <div>
             <h1 className="text-lg font-bold text-foreground leading-tight">Comptabilité générale</h1>
-            <p className="text-xs text-muted-foreground">Exercice {fy?.label} · {accounts.length} comptes</p>
+            <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+              Exercice
+              {/* The year every accounting page shows; entries always go to the year of their date. */}
+              <select
+                value={fy?.id || ''}
+                onChange={e => { AccountingService.setDisplayedFiscalYear(e.target.value); load(); }}
+                className="text-xs bg-transparent border border-border rounded px-1 py-0.5 text-foreground"
+                aria-label="Exercice affiché"
+              >
+                {years.map(y => <option key={y.id} value={y.id}>{y.label}{y.status === 'closed' ? ' (clôturé)' : ''}</option>)}
+              </select>
+              · {accounts.length} comptes
+            </p>
           </div>
         </div>
       </div>

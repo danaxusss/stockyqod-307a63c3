@@ -3,11 +3,19 @@ import { getCompanyContext } from './supabaseCompanyFilter';
 import { PCM_SEED, DEFAULT_JOURNALS } from '../accounting/pcmSeed';
 import type { Account, FiscalYear, Journal, JournalEntry, JournalEntryLine } from '../types';
 
+// A ledger belongs to one company: even users who see every company's
+// documents work in the books of the company they are signed in to.
 function scope<T>(q: any): any {
-  const { companyId, bypassFilter } = getCompanyContext();
-  if (!bypassFilter && companyId) return q.eq('company_id', companyId);
+  const { companyId } = getCompanyContext();
+  if (companyId) return q.eq('company_id', companyId);
   return q;
 }
+
+const localDay = (d = new Date()) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const frDay = (day: string) => day.split('-').reverse().join('/');
+const contains = (y: FiscalYear, day: string) => y.start_date <= day && day <= y.end_date;
+const choiceKey = () => `stocky_fiscal_year:${getCompanyContext().companyId || ''}`;
 
 export class AccountingService {
   // ── Fiscal years ──────────────────────────────────────────────────────────
@@ -17,17 +25,54 @@ export class AccountingService {
     return (data || []) as FiscalYear[];
   }
 
-  /** Return the open fiscal year for the company, creating the current-year one if none exists. */
+  /**
+   * The fiscal year the accounting pages show: the one picked on the home
+   * page, else the one containing today (created when missing).
+   */
   static async ensureCurrentFiscalYear(): Promise<FiscalYear> {
-    const { companyId } = getCompanyContext();
     const years = await this.listFiscalYears();
-    const open = years.find(y => y.status === 'open');
-    if (open) return open;
-    const y = new Date().getFullYear();
+    let chosen: string | null = null;
+    try { chosen = localStorage.getItem(choiceKey()); } catch { /* storage unavailable */ }
+    const picked = chosen ? years.find(y => y.id === chosen) : undefined;
+    if (picked) return picked;
+    const today = localDay();
+    return years.find(y => contains(y, today)) || this.fiscalYearFor(today, years);
+  }
+
+  /** Remember which fiscal year the accounting pages show (null: the current one). */
+  static setDisplayedFiscalYear(id: string | null): void {
+    try {
+      if (id) localStorage.setItem(choiceKey(), id);
+      else localStorage.removeItem(choiceKey());
+    } catch { /* storage unavailable */ }
+  }
+
+  /**
+   * The open fiscal year an entry dated `day` (YYYY-MM-DD) belongs to. The
+   * calendar year is created when no year covers that date yet.
+   */
+  static async fiscalYearFor(day: string, known?: FiscalYear[]): Promise<FiscalYear> {
+    const years = known || await this.listFiscalYears();
+    const found = years.find(y => contains(y, day));
+    if (found) {
+      if (found.status !== 'open') throw new Error(`L'exercice ${found.label} est clôturé : aucune écriture ne peut y être passée au ${frDay(day)}.`);
+      return found;
+    }
+    const y = Number(day.slice(0, 4));
+    const start = `${y}-01-01`, end = `${y}-12-31`;
+    if (years.some(x => x.start_date <= end && start <= x.end_date)) {
+      throw new Error(`Aucun exercice ne couvre le ${frDay(day)} : créez-le avant de comptabiliser.`);
+    }
+    const { companyId } = getCompanyContext();
     const { data, error } = await (supabase as any).from('accounting_fiscal_years').insert({
-      company_id: companyId, label: String(y), start_date: `${y}-01-01`, end_date: `${y}-12-31`, status: 'open',
+      company_id: companyId, label: String(y), start_date: start, end_date: end, status: 'open',
     }).select().single();
-    if (error) throw error;
+    if (error) {
+      // Created meanwhile by another tab.
+      const again = (await this.listFiscalYears()).find(x => contains(x, day));
+      if (again) return again;
+      throw error;
+    }
     return data as FiscalYear;
   }
 
@@ -44,6 +89,9 @@ export class AccountingService {
    */
   static async closeExercice(fy: FiscalYear, user: string | null): Promise<{ newYearLabel: string; carried: number }> {
     const r2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
+    if (localDay() <= fy.end_date) {
+      throw new Error(`L'exercice ${fy.label} se termine le ${frDay(fy.end_date)} : clôturez-le après cette date.`);
+    }
     const drafts = await this.listEntries({ fiscalYearId: fy.id, status: 'draft', limit: 1 });
     if (drafts.length > 0) throw new Error('Des écritures en brouillon existent — validez-les ou supprimez-les avant la clôture.');
 
@@ -74,8 +122,8 @@ export class AccountingService {
     if (anLines.length > 0) {
       const journals = await this.listJournals();
       await this.createFromDraft(
-        { journalType: 'anouveaux', date: `${y + 1}-01-01`, reference: `AN ${y + 1}`, label: `À-nouveaux ${y + 1}`, sourceType: 'anouveaux', sourceId: `an:${next.id}`, lines: anLines },
-        next.id, journals, { post: true, createdBy: user },
+        { journalType: 'anouveaux', date: next.start_date, reference: `AN ${y + 1}`, label: `À-nouveaux ${y + 1}`, sourceType: 'anouveaux', sourceId: `an:${next.id}`, lines: anLines },
+        journals, { post: true, createdBy: user },
       );
     }
     await this.closeFiscalYear(fy.id, user);
@@ -155,13 +203,15 @@ export class AccountingService {
     return e;
   }
 
+  /** New draft entry, filed in the fiscal year that contains its date. */
   static async createEntry(
-    header: { fiscal_year_id: string; journal_id: string; entry_date: string; reference?: string | null; label?: string | null; source_type?: string; source_id?: string | null; created_by?: string | null },
+    header: { journal_id: string; entry_date: string; reference?: string | null; label?: string | null; source_type?: string; source_id?: string | null; created_by?: string | null },
     lines: JournalEntryLine[]
   ): Promise<JournalEntry> {
     const { companyId } = getCompanyContext();
+    const fy = await this.fiscalYearFor(header.entry_date);
     const { data: entry, error } = await (supabase as any).from('journal_entries').insert({
-      company_id: companyId, fiscal_year_id: header.fiscal_year_id, journal_id: header.journal_id,
+      company_id: companyId, fiscal_year_id: fy.id, journal_id: header.journal_id,
       entry_date: header.entry_date, reference: header.reference ?? null, label: header.label ?? null,
       status: 'draft', source_type: header.source_type ?? 'manual', source_id: header.source_id ?? null, created_by: header.created_by ?? null,
     }).select().single();
@@ -190,7 +240,10 @@ export class AccountingService {
     lines: JournalEntryLine[]
   ): Promise<void> {
     const { companyId } = getCompanyContext();
-    const { error } = await (supabase as any).from('journal_entries').update(header).eq('id', id);
+    // A new date may move the draft to another fiscal year.
+    const patch: Record<string, unknown> = { ...header };
+    if (header.entry_date) patch.fiscal_year_id = (await this.fiscalYearFor(header.entry_date)).id;
+    const { error } = await (supabase as any).from('journal_entries').update(patch).eq('id', id).eq('status', 'draft');
     if (error) throw error;
     await this.replaceLines(id, companyId, lines);
   }
@@ -215,12 +268,41 @@ export class AccountingService {
   // ── Auto-posting (Phase 2) ────────────────────────────────────────────────
   /** Set of source_ids that already have a journal entry (for double-post guard). */
   static async postedSourceIds(): Promise<Set<string>> {
-    let q = (supabase as any).from('journal_entries').select('source_id').not('source_id', 'is', null);
-    const { companyId, bypassFilter } = getCompanyContext();
-    if (!bypassFilter && companyId) q = q.eq('company_id', companyId);
+    const q = scope((supabase as any).from('journal_entries').select('source_id').not('source_id', 'is', null));
     const { data, error } = await q.limit(20000);
     if (error) throw error;
     return new Set((data || []).map((r: any) => r.source_id as string));
+  }
+
+  /**
+   * Customer payments already booked, per invoice: the amount (reversed
+   * entries excluded, their reversal cancels them) and how many entries exist.
+   */
+  static async paymentPostedTotals(): Promise<Map<string, { amount: number; count: number }>> {
+    const { data, error } = await scope((supabase as any).from('journal_entries')
+      .select('id, source_id, status').eq('source_type', 'payment')).limit(20000);
+    if (error) throw error;
+    const entries = (data || []) as { id: string; source_id: string | null; status: string }[];
+    const lines = await this.linesForEntries(entries.filter(e => e.status !== 'reversed').map(e => e.id));
+    const debitByEntry = new Map<string, number>();
+    for (const l of lines) debitByEntry.set(l.entry_id, (debitByEntry.get(l.entry_id) || 0) + (Number(l.debit) || 0));
+    const out = new Map<string, { amount: number; count: number }>();
+    for (const e of entries) {
+      if (!e.source_id || !e.source_id.includes(':pay')) continue;
+      const invoiceId = e.source_id.split(':pay')[0];
+      const cur = out.get(invoiceId) || { amount: 0, count: 0 };
+      cur.count += 1;
+      cur.amount = Math.round((cur.amount + (debitByEntry.get(e.id) || 0)) * 100) / 100;
+      out.set(invoiceId, cur);
+    }
+    return out;
+  }
+
+  /** Entries generated from one source (a document, a period declaration…). */
+  static async entriesForSource(sourceId: string): Promise<JournalEntry[]> {
+    const { data, error } = await scope((supabase as any).from('journal_entries').select('*').eq('source_id', sourceId));
+    if (error) throw error;
+    return (data || []) as JournalEntry[];
   }
 
   /**
@@ -230,14 +312,13 @@ export class AccountingService {
    */
   static async createFromDraft(
     draft: { journalType: string; date: string; reference: string; label: string; sourceType: string; sourceId: string; lines: JournalEntryLine[] },
-    fiscalYearId: string,
     journals: Journal[],
     opts: { post?: boolean; createdBy?: string | null } = {}
   ): Promise<JournalEntry> {
     const journal = journals.find(j => j.type === draft.journalType) || journals.find(j => j.type === 'od');
     if (!journal) throw new Error(`Journal introuvable pour le type ${draft.journalType}`);
     const entry = await this.createEntry(
-      { fiscal_year_id: fiscalYearId, journal_id: journal.id, entry_date: draft.date, reference: draft.reference, label: draft.label, source_type: draft.sourceType, source_id: draft.sourceId, created_by: opts.createdBy ?? null },
+      { journal_id: journal.id, entry_date: draft.date, reference: draft.reference, label: draft.label, source_type: draft.sourceType, source_id: draft.sourceId, created_by: opts.createdBy ?? null },
       draft.lines,
     );
     if (opts.post) return this.postEntry(entry.id, opts.createdBy ?? null);
@@ -245,10 +326,12 @@ export class AccountingService {
   }
 
   // ── Posted-entries helper (two-step: entries → lines, avoids embedded filters) ─
+  // A reversed entry stays in the books next to its reversal: reading only
+  // 'posted' would keep the mirror and drop the original.
   private static async postedEntryMap(fiscalYearId?: string): Promise<Map<string, any>> {
     let q = (supabase as any).from('journal_entries')
-      .select('id, entry_date, entry_number, journal_id, reference, label')
-      .eq('status', 'posted');
+      .select('id, entry_date, entry_number, journal_id, reference, label, source_type, source_id')
+      .in('status', ['posted', 'reversed']);
     q = scope(q);
     if (fiscalYearId) q = q.eq('fiscal_year_id', fiscalYearId);
     const { data, error } = await q.limit(20000);
@@ -284,10 +367,20 @@ export class AccountingService {
     if (error) throw error;
   }
 
-  static async unletter(code: string, accountCode: string): Promise<void> {
+  /** Remove a lettrage: only the lines of that group, nothing else sharing its code. */
+  static async unletterLines(lineIds: string[]): Promise<void> {
+    if (lineIds.length === 0) return;
     const { error } = await (supabase as any).from('journal_entry_lines')
-      .update({ lettrage_code: null, lettered_at: null }).eq('lettrage_code', code).eq('account_code', accountCode);
+      .update({ lettrage_code: null, lettered_at: null }).in('id', lineIds);
     if (error) throw error;
+  }
+
+  /** Lettrage codes already used on an account, every fiscal year included. */
+  static async usedLettrageCodes(accountCode: string): Promise<string[]> {
+    const { data, error } = await scope((supabase as any).from('journal_entry_lines')
+      .select('lettrage_code').eq('account_code', accountCode).not('lettrage_code', 'is', null)).limit(20000);
+    if (error) throw error;
+    return Array.from(new Set(((data || []) as { lettrage_code: string }[]).map(r => r.lettrage_code)));
   }
 
   // ── TVA declarations ──────────────────────────────────────────────────────
@@ -312,7 +405,7 @@ export class AccountingService {
     const lines = await this.linesForEntries(Array.from(entries.keys()));
     return lines.map((r: any) => {
       const e = entries.get(r.entry_id);
-      return { ...r, entry_date: e?.entry_date, entry_number: e?.entry_number, journal_id: e?.journal_id, reference: e?.reference, entry_label: e?.label };
+      return { ...r, entry_date: e?.entry_date, entry_number: e?.entry_number, journal_id: e?.journal_id, reference: e?.reference, entry_label: e?.label, source_type: e?.source_type, source_id: e?.source_id };
     });
   }
 }

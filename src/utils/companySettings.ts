@@ -268,30 +268,15 @@ export class CompanySettingsService {
   }
 
   /**
-   * Resolve the special PIN for a given context.
-   * Falls through: document's company → user's context company → any company with a PIN set.
-   * This handles old documents (no company_id), superadmin users (no personal company), and all edge cases.
+   * The special PIN that unlocks a document: its own company's PIN. Only a
+   * document with no company (old data) falls back to the user's company.
+   * Another company's PIN never unlocks it.
    */
   static async resolveSpecialPin(docCompanyId?: string | null): Promise<string | null> {
-    // 1. Document's own company
-    if (docCompanyId) {
-      const s = await this.getSettings(docCompanyId).catch(() => null);
-      if (s?.special_pin) return s.special_pin;
-    }
-    // 2. User's company from module-level context (may differ from document's)
-    const { companyId: ctxId } = getCompanyContext();
-    if (ctxId && ctxId !== docCompanyId) {
-      const s = await this.getSettings(ctxId).catch(() => null);
-      if (s?.special_pin) return s.special_pin;
-    }
-    // 3. Last resort: any company in the DB that has a PIN configured
-    const { data } = await supabase
-      .from('companies')
-      .select('special_pin')
-      .neq('special_pin', '')
-      .limit(1)
-      .maybeSingle();
-    return (data as any)?.special_pin || null;
+    const companyId = docCompanyId || getCompanyContext().companyId;
+    if (!companyId) return null;
+    const s = await this.getSettings(companyId).catch(() => null);
+    return s?.special_pin || null;
   }
 
   static async updateCompanySettings(companyId: string, settings: Partial<CompanySettings>): Promise<void> {

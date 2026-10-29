@@ -99,7 +99,7 @@ export default function ProformaDirectoryPage() {
         quote_visible_fields: company.quote_visible_fields,
         quote_style: { accentColor: company.accent_color, fontFamily: company.font_family, showBorders: true, borderRadius: 1, headerSize: 'large', totalsStyle: 'highlighted' },
       } as any : null;
-      await PdfExportService.exportQuoteToPdf(proforma, settings, undefined, undefined, undefined, 'proforma');
+      await PdfExportService.exportQuoteToPdf(proforma, settings, undefined, undefined, undefined, 'proforma', undefined, false);
     } catch (e) {
       showToast({ type: 'error', title: 'Erreur PDF', message: String(e) });
     }
@@ -172,8 +172,8 @@ export default function ProformaDirectoryPage() {
                   'Client': p.customer?.fullName || '',
                   'Téléphone': p.customer?.phoneNumber || '',
                   'Total TTC': p.totalAmount,
-                  'Payé': p.paid_amount || 0,
-                  'Reste': p.totalAmount - (p.paid_amount || 0),
+                  'Facturé': p.paid_amount || 0,
+                  'Reste à facturer': p.totalAmount - (p.paid_amount || 0),
                   'Statut': p.status,
                   'Date': new Date(p.createdAt).toLocaleDateString('fr-FR'),
                 }));
@@ -223,9 +223,9 @@ export default function ProformaDirectoryPage() {
                   <th className="px-3 py-2 text-right text-[11px] font-medium text-muted-foreground uppercase cursor-pointer" onClick={() => handleSort('total')}>
                     Total TTC <SortIcon k="total" />
                   </th>
-                  <th className="px-3 py-2 text-right text-[11px] font-medium text-muted-foreground uppercase">Payé</th>
+                  <th className="px-3 py-2 text-right text-[11px] font-medium text-muted-foreground uppercase">Facturé</th>
                   <th className="px-3 py-2 text-right text-[11px] font-medium text-muted-foreground uppercase cursor-pointer" onClick={() => handleSort('remaining')}>
-                    Reste <SortIcon k="remaining" />
+                    Reste à facturer <SortIcon k="remaining" />
                   </th>
                   <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Statut</th>
                   <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase cursor-pointer" onClick={() => handleSort('date')}>

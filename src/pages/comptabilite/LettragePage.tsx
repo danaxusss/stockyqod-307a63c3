@@ -69,7 +69,8 @@ export default function LettragePage() {
     if (!selTotals.balanced) { showToast({ type: 'error', message: 'Sélection déséquilibrée (débit ≠ crédit)' }); return; }
     setBusy(true);
     try {
-      const code = nextCode(lines.filter(l => l.lettrage_code).map(l => l.lettrage_code));
+      // Codes used on this account in any fiscal year stay unique.
+      const code = nextCode(await AccountingService.usedLettrageCodes(accountCode));
       await AccountingService.letterLines(Array.from(selected), code);
       showToast({ type: 'success', message: `Lettré (${code})` });
       if (fy) await loadLines(accountCode, fy.id);
@@ -79,7 +80,9 @@ export default function LettragePage() {
 
   const doUnletter = async (code: string) => {
     setBusy(true);
-    try { await AccountingService.unletter(code, accountCode); if (fy) await loadLines(accountCode, fy.id); }
+    // Only this group's lines: the same code may exist in another year.
+    const ids = lines.filter(l => l.lettrage_code === code).map(l => l.id);
+    try { await AccountingService.unletterLines(ids); if (fy) await loadLines(accountCode, fy.id); }
     catch (e: any) { showToast({ type: 'error', message: e?.message || 'Échec' }); }
     finally { setBusy(false); }
   };

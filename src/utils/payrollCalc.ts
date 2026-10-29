@@ -39,11 +39,22 @@ export interface AncienneteResult {
   amount: number;
 }
 
-export function computeAnciennete(hireDateStr: string | undefined, basePlusRegularPrimes: number): AncienneteResult {
+/** Last day of a pay period, the date seniority is measured at. */
+export function periodEnd(month: number, year: number): Date {
+  return new Date(year, month, 0);
+}
+
+/**
+ * Seniority bonus. `asOf` is the end of the pay period (default: today), so a
+ * payslip keeps the rate of its own month however late it is computed.
+ */
+export function computeAnciennete(hireDateStr: string | undefined, basePlusRegularPrimes: number, asOf: Date = new Date()): AncienneteResult {
   if (!hireDateStr) return { rate: 0, amount: 0 };
-  const hire = new Date(hireDateStr);
-  const now = new Date();
-  const years = (now.getTime() - hire.getTime()) / (365.25 * 24 * 3600 * 1000);
+  const [hy, hm, hd] = hireDateStr.slice(0, 10).split('-').map(Number);
+  if (!hy || !hm || !hd) return { rate: 0, amount: 0 };
+  // Completed years, by calendar date.
+  let years = asOf.getFullYear() - hy;
+  if (asOf.getMonth() + 1 < hm || (asOf.getMonth() + 1 === hm && asOf.getDate() < hd)) years -= 1;
 
   let rate = 0;
   if (years >= 25) rate = 0.25;

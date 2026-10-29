@@ -14,6 +14,7 @@ import { ClientFormModal } from '../../components/ClientFormModal';
 import { SupabaseUsersService } from '../../utils/supabaseUsers';
 import { ProductSearchModal } from '../../components/ProductSearchModal';
 import { PrintPreviewModal } from '../../components/PrintPreviewModal';
+import { discountRate, invoicePayment, localDay, recomputeLine, toHT, toTTC, unitPriceHTInput, documentTotal } from '../../utils/documentLines';
 
 function fmt(n: number) {
   return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(n);
@@ -75,6 +76,8 @@ export default function InvoiceDetailPage() {
   const [showAvoirModal, setShowAvoirModal] = useState(false);
   const [avoirReason, setAvoirReason] = useState('');
   const [avoirLoading, setAvoirLoading] = useState(false);
+  const [avoirLeft, setAvoirLeft] = useState<Record<string, number> | null>(null);
+  const [avoirQty, setAvoirQty] = useState<Record<string, number>>({});
 
   const paymentSummary = useMemo(() => {
     if (!invoice) return null;
@@ -118,7 +121,7 @@ export default function InvoiceDetailPage() {
   const startEdit = () => {
     if (!invoice) return;
     setDraftNumber(invoice.quoteNumber);
-    setDraftDate(invoice.quote_date || new Date(invoice.createdAt).toISOString().split('T')[0]);
+    setDraftDate(invoice.quote_date || localDay(new Date(invoice.createdAt)));
     setDraftCustomerName(invoice.customer?.fullName || '');
     setDraftCustomerPhone(invoice.customer?.phoneNumber || '');
     setDraftCustomerCity(invoice.customer?.city || '');
@@ -164,6 +167,12 @@ export default function InvoiceDetailPage() {
         avance_amount: showAvance ? draftAvance : 0,
         payment_methods_json: draftPaymentMethods.length > 0 ? draftPaymentMethods : [],
         quote_date: draftDate || null,
+        // Money received so far, for the client balance and accounting.
+        paid_amount: invoicePayment({
+          totalAmount: documentTotal(draftItems),
+          avance_amount: showAvance ? draftAvance : 0,
+          payment_methods_json: draftPaymentMethods,
+        }).paid,
       });
       if (!isAutoSave) {
         showToast({ type: 'success', title: 'Facture mise à jour', message: 'Modifications sauvegardées' });
@@ -184,11 +193,8 @@ export default function InvoiceDetailPage() {
   const updateDraftItem = (idx: number, field: string, value: string | number) => {
     setDraftItems(prev => prev.map((item, i) => {
       if (i !== idx) return item;
-      const updated: any = { ...item, [field]: value };
-      if (field === 'quantity' || field === 'unitPrice') {
-        updated.subtotal = (updated.unitPrice || 0) * Math.max(1, updated.quantity || 1);
-      }
-      return updated as QuoteItem;
+      const updated = { ...item, [field]: value } as QuoteItem;
+      return field === 'quantity' || field === 'unitPrice' || field === 'discount' ? recomputeLine(updated) : updated;
     }));
   };
 
@@ -299,7 +305,11 @@ export default function InvoiceDetailPage() {
   if (!invoice) return <div className="text-center py-12 text-muted-foreground">Facture introuvable.</div>;
 
   const tvaRate = companySettings?.tva_rate ?? 20;
-  const draftTotal = draftItems.reduce((s, i) => s + i.subtotal, 0);
+  const draftTotal = documentTotal(draftItems);
+  // Lines invoiced from a proforma stay as billed there; corrections go through an avoir.
+  const linesLocked = !!invoice.parent_document_id;
+  const shownItems = isEditing ? draftItems : invoice.items;
+  const showDiscount = isEditing ? !linesLocked : shownItems.some(i => discountRate(i) > 0);
 
   return (
     <div className="space-y-4 max-w-7xl mx-auto">
@@ -356,7 +366,7 @@ export default function InvoiceDetailPage() {
             <button onClick={() => setIsEditing(false)} className="p-1.5 hover:bg-accent rounded-lg text-muted-foreground" title="Annuler">
               <X className="h-4 w-4" />
             </button>
-            <button onClick={handleSave} disabled={isSaving}
+            <button onClick={() => handleSave()} disabled={isSaving}
               className="flex items-center space-x-1.5 px-3 py-1.5 text-sm bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg">
               {isSaving ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
               <span>{isSaving ? 'Sauvegarde...' : 'Sauvegarder'}</span>
@@ -400,7 +410,8 @@ export default function InvoiceDetailPage() {
             <button
               onClick={async () => {
                 if (!invoice) return;
-                const freshSettings = await CompanySettingsService.getSettings(invoice.company_id!);
+                // Same letterhead as the downloaded PDF: the issuing company.
+                const freshSettings = await CompanySettingsService.getSettings(invoice.issuing_company_id || invoice.company_id || undefined);
                 const { blob, filename } = await PdfExportService.generatePdfBlob(invoice, freshSettings, undefined, undefined, useStamp, 'invoice', undefined, printTTCOnly);
                 setPreviewBlob(blob);
                 setPreviewFilename(filename);
@@ -463,7 +474,19 @@ export default function InvoiceDetailPage() {
             </button>
             {(isSuperAdmin || isCompta) && invoice.status === 'final' && (
               <button
-                onClick={() => { setAvoirReason(''); setShowAvoirModal(true); }}
+                onClick={async () => {
+                  setAvoirReason('');
+                  setAvoirLeft(null);
+                  setShowAvoirModal(true);
+                  try {
+                    const left = SupabaseDocumentsService.creditableQuantities(invoice, await SupabaseDocumentsService.getAvoirsForInvoice(invoice.id));
+                    setAvoirLeft(left);
+                    setAvoirQty(left);
+                  } catch (e) {
+                    setShowAvoirModal(false);
+                    showToast({ type: 'error', message: String(e) });
+                  }
+                }}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs bg-primary hover:bg-primary/90 text-white rounded-lg"
                 title="Créer un avoir (note de crédit)"
               >
@@ -735,14 +758,15 @@ export default function InvoiceDetailPage() {
                 <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Réf</th>
                 <th className="px-3 py-2 text-right text-[11px] font-medium text-muted-foreground uppercase">Qté</th>
                 <th className="px-3 py-2 text-right text-[11px] font-medium text-muted-foreground uppercase">PU HT</th>
+                {showDiscount && <th className="px-3 py-2 text-right text-[11px] font-medium text-muted-foreground uppercase">Remise</th>}
                 <th className="px-3 py-2 text-right text-[11px] font-medium text-muted-foreground uppercase">Total HT</th>
-                {isEditing && <th className="px-3 py-2 w-8" />}
+                {isEditing && !linesLocked && <th className="px-3 py-2 w-8" />}
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {(isEditing ? draftItems : invoice.items).map((item, idx) => {
-                const unitHT = item.unitPrice / (1 + tvaRate / 100);
-                const totalHT = unitHT * item.quantity;
+              {shownItems.map((item, idx) => {
+                const unitHT = toHT(item.unitPrice, tvaRate);
+                const totalHT = toHT(item.subtotal, tvaRate);
                 return (
                   <tr key={item.id} className="hover:bg-accent/50">
                     <td className="px-3 py-2 text-[10px] text-muted-foreground">{idx + 1}</td>
@@ -751,14 +775,26 @@ export default function InvoiceDetailPage() {
                         <td className="px-2 py-1.5"><input value={item.quoteName || ''} onChange={e => updateDraftItem(idx, 'quoteName', e.target.value)} className={inputCls} placeholder="Désignation" /></td>
                         <td className="px-2 py-1.5"><input value={item.quoteBrand || ''} onChange={e => updateDraftItem(idx, 'quoteBrand', e.target.value)} className={inputCls} placeholder="Marque" /></td>
                         <td className="px-2 py-1.5"><input value={item.quoteBarcode || ''} onChange={e => updateDraftItem(idx, 'quoteBarcode', e.target.value)} className={inputCls} placeholder="Référence" /></td>
-                        <td className="px-2 py-1.5"><input type="number" min="1" value={item.quantity} onChange={e => updateDraftItem(idx, 'quantity', Math.max(1, Number(e.target.value)))} className={`${inputCls} text-right w-20`} /></td>
-                        <td className="px-2 py-1.5"><input type="number" min="0" step="0.01" value={item.unitPrice} onChange={e => updateDraftItem(idx, 'unitPrice', Number(e.target.value))} className={`${inputCls} text-right w-24`} /></td>
-                        <td className="px-3 py-2 text-right text-xs font-mono text-muted-foreground">{fmt(item.subtotal / (1 + tvaRate / 100))} Dh</td>
-                        <td className="px-2 py-1.5 text-center">
-                          <button onClick={() => removeDraftItem(idx)} className="p-1 text-destructive hover:bg-destructive/10 rounded">
-                            <X className="h-3 w-3" />
-                          </button>
-                        </td>
+                        {linesLocked ? (
+                          <>
+                            <td className="px-3 py-2 text-right text-xs font-bold text-foreground">{item.quantity}</td>
+                            <td className="px-3 py-2 text-right text-xs font-mono text-foreground">{fmt(unitHT)} Dh</td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="px-2 py-1.5"><input type="number" min="1" value={item.quantity} onChange={e => updateDraftItem(idx, 'quantity', Math.max(1, Number(e.target.value)))} className={`${inputCls} text-right w-20`} /></td>
+                            <td className="px-2 py-1.5"><input type="number" min="0" step="0.01" value={unitPriceHTInput(item, tvaRate)} onChange={e => updateDraftItem(idx, 'unitPrice', toTTC(Number(e.target.value), tvaRate))} className={`${inputCls} text-right w-24`} title="Prix unitaire hors taxes" /></td>
+                            <td className="px-2 py-1.5"><input type="number" min="0" max="100" step="0.5" value={discountRate(item)} onChange={e => updateDraftItem(idx, 'discount', Math.min(100, Math.max(0, Number(e.target.value))))} className={`${inputCls} text-right w-16`} title="Remise %" /></td>
+                          </>
+                        )}
+                        <td className="px-3 py-2 text-right text-xs font-mono text-muted-foreground">{fmt(totalHT)} Dh</td>
+                        {!linesLocked && (
+                          <td className="px-2 py-1.5 text-center">
+                            <button onClick={() => removeDraftItem(idx)} className="p-1 text-destructive hover:bg-destructive/10 rounded">
+                              <X className="h-3 w-3" />
+                            </button>
+                          </td>
+                        )}
                       </>
                     ) : (
                       <>
@@ -767,15 +803,23 @@ export default function InvoiceDetailPage() {
                         <td className="px-3 py-2.5 text-[10px] font-mono text-muted-foreground">{item.quoteBarcode || item.product?.barcode || '—'}</td>
                         <td className="px-3 py-2.5 text-right text-xs font-bold text-foreground">{item.quantity}</td>
                         <td className="px-3 py-2.5 text-right text-xs font-mono text-foreground">{fmt(unitHT)} Dh</td>
+                        {showDiscount && <td className="px-3 py-2.5 text-right text-xs text-muted-foreground">{discountRate(item) > 0 ? `${discountRate(item)} %` : '—'}</td>}
                         <td className="px-3 py-2.5 text-right text-xs font-mono font-bold text-foreground">{fmt(totalHT)} Dh</td>
                       </>
                     )}
                   </tr>
                 );
               })}
-              {isEditing && (
+              {isEditing && linesLocked && (
                 <tr>
-                  <td colSpan={8} className="px-3 py-2">
+                  <td colSpan={9} className="px-3 py-2 text-[11px] text-muted-foreground">
+                    Quantités et prix viennent du proforma : pour corriger un montant, créez un avoir.
+                  </td>
+                </tr>
+              )}
+              {isEditing && !linesLocked && (
+                <tr>
+                  <td colSpan={9} className="px-3 py-2">
                     <div className="flex items-center gap-3">
                       <button onClick={addBlankItem} className="flex items-center space-x-1.5 text-xs text-primary hover:underline">
                         <Plus className="h-3.5 w-3.5" /><span>Ligne vide</span>
@@ -791,16 +835,14 @@ export default function InvoiceDetailPage() {
             {!isEditing && invoice.items.length > 0 && (
               <tfoot className="bg-secondary">
                 <tr>
-                  <td colSpan={5} className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">Total HT</td>
+                  <td colSpan={showDiscount ? 7 : 6} className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">Total HT</td>
                   <td className="px-3 py-2 text-right text-xs font-mono font-bold text-foreground">
-                    {fmt(invoice.items.reduce((s, i) => s + (i.unitPrice / (1 + tvaRate / 100)) * i.quantity, 0))} Dh
+                    {fmt(toHT(invoice.totalAmount, tvaRate))} Dh
                   </td>
-                  <td />
                 </tr>
                 <tr>
-                  <td colSpan={5} className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">Total TTC</td>
+                  <td colSpan={showDiscount ? 7 : 6} className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">Total TTC</td>
                   <td className="px-3 py-2 text-right text-sm font-mono font-bold text-foreground">{fmt(invoice.totalAmount)} Dh</td>
-                  <td />
                 </tr>
               </tfoot>
             )}
@@ -951,14 +993,38 @@ export default function InvoiceDetailPage() {
       {/* Avoir modal */}
       {showAvoirModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-sm p-5 space-y-4">
+          <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-md p-5 space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
                 <X className="h-4 w-4 text-primary" />Créer un avoir
               </h2>
               <button onClick={() => setShowAvoirModal(false)} className="p-1 rounded hover:bg-secondary text-muted-foreground"><X className="h-4 w-4" /></button>
             </div>
-            <p className="text-xs text-muted-foreground">Un avoir sera créé pour la facture <span className="font-mono font-semibold text-foreground">{invoice.quoteNumber}</span>.</p>
+            <p className="text-xs text-muted-foreground">Avoir sur la facture <span className="font-mono font-semibold text-foreground">{invoice.quoteNumber}</span> : choisissez les quantités à créditer.</p>
+            {!avoirLeft ? (
+              <div className="flex justify-center py-3"><Loader className="h-4 w-4 animate-spin text-muted-foreground" /></div>
+            ) : Object.values(avoirLeft).every(q => q <= 0) ? (
+              <p className="text-xs text-amber-600 dark:text-amber-400">Cette facture est déjà entièrement couverte par des avoirs.</p>
+            ) : (
+              <div className="max-h-56 overflow-y-auto space-y-1.5">
+                {invoice.items.filter(item => (avoirLeft[item.id] || 0) > 0).map(item => (
+                  <label key={item.id} className="flex items-center gap-2 text-xs">
+                    <span className="flex-1 min-w-0 truncate text-foreground">{item.quoteName || item.product?.name || '—'}</span>
+                    <input
+                      type="number" min={0} max={avoirLeft[item.id]} step="1"
+                      value={avoirQty[item.id] ?? 0}
+                      onChange={e => setAvoirQty(q => ({ ...q, [item.id]: Math.min(avoirLeft[item.id], Math.max(0, Number(e.target.value) || 0)) }))}
+                      className={`${inputCls} text-right w-16`}
+                    />
+                    <span className="w-10 text-muted-foreground">/ {avoirLeft[item.id]}</span>
+                  </label>
+                ))}
+                <div className="border-t border-border pt-1.5 flex justify-between text-xs font-semibold">
+                  <span>Total avoir</span>
+                  <span className="font-mono">{fmt(documentTotal(invoice.items.map(item => recomputeLine({ ...item, quantity: Math.min(avoirQty[item.id] || 0, avoirLeft[item.id] || 0) }))))} Dh TTC</span>
+                </div>
+              </div>
+            )}
             <div>
               <label className="text-[11px] text-muted-foreground block mb-1">Motif de l'avoir</label>
               <textarea
@@ -976,7 +1042,7 @@ export default function InvoiceDetailPage() {
                 onClick={async () => {
                   setAvoirLoading(true);
                   try {
-                    const avoir = await SupabaseDocumentsService.createAvoirFromInvoice(invoice.id, avoirReason);
+                    const avoir = await SupabaseDocumentsService.createAvoirFromInvoice(invoice.id, avoirReason, avoirQty);
                     setShowAvoirModal(false);
                     navigate(`/compta/avoirs/${avoir.id}`);
                   } catch (e: any) {
@@ -985,7 +1051,7 @@ export default function InvoiceDetailPage() {
                     setAvoirLoading(false);
                   }
                 }}
-                disabled={avoirLoading}
+                disabled={avoirLoading || !avoirLeft || !Object.values(avoirQty).some(q => q > 0)}
                 className="flex-1 px-3 py-2 text-sm bg-primary hover:bg-primary/90 disabled:opacity-50 text-white rounded-lg"
               >
                 {avoirLoading ? 'Création...' : 'Créer l\'avoir'}

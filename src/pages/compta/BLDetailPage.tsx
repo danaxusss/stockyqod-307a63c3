@@ -13,6 +13,7 @@ import { ClientDropdown } from '../../components/ClientDropdown';
 import { ClientFormModal } from '../../components/ClientFormModal';
 import { ProductSearchModal } from '../../components/ProductSearchModal';
 import { PrintPreviewModal } from '../../components/PrintPreviewModal';
+import { localDay, recomputeLine } from '../../utils/documentLines';
 
 const inputCls = 'w-full px-2 py-1 text-xs border border-input rounded bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary';
 
@@ -52,6 +53,7 @@ export default function BLDetailPage() {
   const [blPricesOverride, setBlPricesOverride] = useState<boolean | null>(null);
   const [showClientForm, setShowClientForm] = useState(false);
   const [clientFormInitialName, setClientFormInitialName] = useState('');
+  const [proformaOf, setProformaOf] = useState<{ id: string; quoteNumber: string } | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -63,6 +65,7 @@ export default function BLDetailPage() {
       ]);
       setBl(doc);
       setCompanies(allCompanies);
+      setProformaOf(doc?.id ? await SupabaseDocumentsService.findProformaForBL(doc.id).catch(() => null) : null);
       if (doc?.id) {
         import('../../inventory/lib/stockPosting')
           .then(m => m.isDocumentStockPosted(doc.id))
@@ -94,7 +97,7 @@ export default function BLDetailPage() {
     setDraftCustomerName(bl.customer?.fullName || '');
     setDraftCustomerPhone(bl.customer?.phoneNumber || '');
     setDraftCustomerCity(bl.customer?.city || '');
-    setDraftDate(bl.quote_date || new Date(bl.createdAt).toISOString().split('T')[0]);
+    setDraftDate(bl.quote_date || localDay(new Date(bl.createdAt)));
     setDraftNotes(bl.notes || '');
     setDraftStatus(bl.status);
     setDraftItems(bl.items.map(i => ({
@@ -120,7 +123,8 @@ export default function BLDetailPage() {
         customer: { ...bl.customer, fullName: draftCustomerName, phoneNumber: draftCustomerPhone, city: draftCustomerCity },
         items: draftItems,
         notes: draftNotes.trim() || null,
-        status: draftStatus,
+        // A BL merged into a proforma stays converted.
+        status: proformaOf ? 'final' : draftStatus,
       });
       if (!isAutoSave) {
         showToast({ type: 'success', title: 'BL mis à jour', message: 'Modifications sauvegardées' });
@@ -169,9 +173,8 @@ export default function BLDetailPage() {
   const updateDraftItem = (idx: number, field: string, value: string | number) => {
     setDraftItems(prev => prev.map((item, i) => {
       if (i !== idx) return item;
-      const updated: any = { ...item, [field]: value };
-      if (field === 'quantity') updated.subtotal = (updated.unitPrice || 0) * Math.max(1, Number(value));
-      return updated as QuoteItem;
+      const updated = { ...item, [field]: value } as QuoteItem;
+      return field === 'quantity' ? recomputeLine(updated) : updated;
     }));
   };
 
@@ -257,8 +260,9 @@ export default function BLDetailPage() {
           )}
         </div>
         {isEditing ? (
-          <select value={draftStatus} onChange={e => setDraftStatus(e.target.value)}
-            className="text-xs border border-input rounded px-2 py-1 bg-background text-foreground">
+          <select value={proformaOf ? 'final' : draftStatus} onChange={e => setDraftStatus(e.target.value)} disabled={!!proformaOf}
+            title={proformaOf ? `Ce BL est dans le proforma ${proformaOf.quoteNumber}` : undefined}
+            className="text-xs border border-input rounded px-2 py-1 bg-background text-foreground disabled:opacity-60">
             <option value="draft">Brouillon</option>
             <option value="final">Finalisé</option>
           </select>
@@ -272,7 +276,7 @@ export default function BLDetailPage() {
             <button onClick={() => setIsEditing(false)} className="p-1.5 hover:bg-accent rounded-lg text-muted-foreground" title="Annuler">
               <X className="h-4 w-4" />
             </button>
-            <button onClick={handleSave} disabled={isSaving}
+            <button onClick={() => handleSave()} disabled={isSaving}
               className="flex items-center space-x-1.5 px-3 py-1.5 text-sm bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg">
               {isSaving ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
               <span>{isSaving ? 'Sauvegarde...' : 'Sauvegarder'}</span>
@@ -330,7 +334,13 @@ export default function BLDetailPage() {
             >
               <Printer className="h-3.5 w-3.5" /><span>Aperçu</span>
             </button>
-            {!isFinal && (
+            {proformaOf && (
+              <button onClick={() => navigate(`/compta/proformas/${proformaOf.id}`)}
+                className="px-3 py-1.5 text-sm text-primary hover:underline font-mono" title="Proforma qui contient ce BL">
+                {proformaOf.quoteNumber} →
+              </button>
+            )}
+            {!isFinal && !proformaOf && (
               <button onClick={() => setShowModal(true)}
                 className="flex items-center space-x-1.5 px-3 py-1.5 text-sm bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg">
                 <FileText className="h-3.5 w-3.5" /><span>→ Proforma</span>

@@ -51,20 +51,26 @@ export class LeaveService {
 
 export class LoanService {
   static async list(): Promise<EmployeeLoan[]> {
-    const { companyId, bypassFilter } = getCompanyContext();
+    const { companyId } = getCompanyContext();
     let q = (supabase as any).from('employee_loans').select('*, employee:employees(full_name)').order('created_at', { ascending: false });
-    if (!bypassFilter && companyId) q = q.eq('company_id', companyId);
+    if (companyId) q = q.eq('company_id', companyId);
     const { data, error } = await q;
     if (error) throw error;
     return (data || []) as EmployeeLoan[];
   }
 
-  /** Active loans for an employee with a remaining balance (for payroll deduction). */
-  static async activeForEmployee(employeeId: string): Promise<EmployeeLoan[]> {
+  /**
+   * Active loans for an employee with a remaining balance (for payroll
+   * deduction). With a period, only loans whose repayments have started by then.
+   */
+  static async activeForEmployee(employeeId: string, period?: { month: number; year: number }): Promise<EmployeeLoan[]> {
     const { data, error } = await (supabase as any).from('employee_loans')
       .select('*').eq('employee_id', employeeId).eq('active', true).gt('remaining', 0);
     if (error) throw error;
-    return (data || []) as EmployeeLoan[];
+    const loans = (data || []) as EmployeeLoan[];
+    if (!period) return loans;
+    const at = period.year * 12 + period.month;
+    return loans.filter(l => !l.start_year || !l.start_month || l.start_year * 12 + l.start_month <= at);
   }
 
   static async create(l: Partial<EmployeeLoan> & { employee_id: string; amount: number; monthly_installment: number }): Promise<void> {

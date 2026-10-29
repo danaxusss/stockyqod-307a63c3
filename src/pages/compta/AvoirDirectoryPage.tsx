@@ -119,7 +119,7 @@ export default function AvoirDirectoryPage() {
         const c = await SupabaseCompaniesService.getCompanyById(compId);
         return c ? { company_name: c.name, address: c.address, phone: c.phone, email: c.email, ice: c.ice } as any : null;
       })() : null);
-      await PdfExportService.exportQuoteToPdf(av, companySettings, undefined, undefined, undefined, 'avoir');
+      await PdfExportService.exportQuoteToPdf(av, companySettings, undefined, undefined, undefined, 'avoir', undefined, false);
     } catch (e) {
       showToast({ type: 'error', title: 'Erreur PDF', message: String(e) });
     }

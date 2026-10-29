@@ -26,6 +26,7 @@ export default function DeclarationsPage() {
   const [payslips, setPayslips] = useState<Payslip[]>([]);
   const [employees, setEmployees] = useState<Map<string, Employee>>(new Map());
   const [cap, setCap] = useState(6000);
+  const [cnssRate, setCnssRate] = useState(0);
   const [loading, setLoading] = useState(true);
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [year, setYear] = useState(currentYear);
@@ -41,7 +42,7 @@ export default function DeclarationsPage() {
       ]);
       setPayslips(ps);
       setEmployees(new Map(emps.map(e => [e.id, e])));
-      if (s) setCap(s.cnss_cap);
+      if (s) { setCap(s.cnss_cap); setCnssRate(s.cnss_rate_emp); }
     } catch (e: any) { showToast({ type: 'error', message: e?.message || 'Erreur' }); }
     finally { setLoading(false); }
   }, [year, month, showToast]);
@@ -49,7 +50,11 @@ export default function DeclarationsPage() {
 
   const rows = useMemo(() => payslips.map(p => {
     const e = employees.get(p.employee_id);
-    const brutPlafonne = Math.min(p.total_gross, cap);
+    // The CNSS base leaves out exempt allowances: read it back from the
+    // employee contribution (base × rate, already capped).
+    const brutPlafonne = cnssRate > 0 && p.cnss_employee > 0
+      ? Math.min(cap, Math.round(p.cnss_employee / cnssRate * 100) / 100)
+      : Math.min(p.total_gross, cap);
     return {
       name: e?.full_name || (p.employee as any)?.full_name || '—',
       cnss: e?.cnss_number || '', rib: e?.bank_iban || '', cimr_no: e?.cimr_number || '',
@@ -58,7 +63,7 @@ export default function DeclarationsPage() {
       af: p.alloc_familiales, tfp: (p as any).tfp_employer || 0,
       ir: p.ir_amount, cimr: p.cimr_employee, net: p.net_salary,
     };
-  }), [payslips, employees, cap]);
+  }), [payslips, employees, cap, cnssRate]);
 
   const totals = useMemo(() => rows.reduce((t, r) => ({
     brut: t.brut + r.brut, cnss_emp: t.cnss_emp + r.cnss_emp, amo_emp: t.amo_emp + r.amo_emp,

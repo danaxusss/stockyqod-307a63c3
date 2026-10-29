@@ -5,6 +5,7 @@ import { AccountingService } from '../../utils/supabaseAccounting';
 import type { Account, FiscalYear, Journal } from '../../types';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
+import { localDay } from '../../utils/documentLines';
 
 function fmt(n: number) { return n ? new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(n) : ''; }
 const readAsDataURL = (f: File) => new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result as string); r.onerror = rej; r.readAsDataURL(f); });
@@ -240,8 +241,8 @@ function DetailView({ statement, onReload, createdBy }: { statement: BankStateme
         ? [{ account_code: treasury, label: bl.label || 'Encaissement', debit: amount, credit: 0 }, { account_code: counterpart, label: bl.label || '', debit: 0, credit: amount }]
         : [{ account_code: counterpart, label: bl.label || 'Décaissement', debit: amount, credit: 0 }, { account_code: treasury, label: bl.label || '', debit: 0, credit: amount }];
       const entry = await AccountingService.createFromDraft(
-        { journalType: 'banque', date: bl.line_date || new Date().toISOString().slice(0, 10), reference: bl.reference || '', label: bl.label || 'Opération bancaire', sourceType: 'manual', sourceId: `bank:${bl.id}`, lines },
-        fy.id, journals, { post: true, createdBy },
+        { journalType: 'banque', date: bl.line_date || localDay(), reference: bl.reference || '', label: bl.label || 'Opération bancaire', sourceType: 'manual', sourceId: `bank:${bl.id}`, lines },
+        journals, { post: true, createdBy },
       );
       const full = await AccountingService.getEntry(entry.id);
       const treasuryLine = full?.lines?.find(l => l.account_code === treasury);

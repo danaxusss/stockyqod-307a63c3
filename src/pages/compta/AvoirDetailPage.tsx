@@ -7,6 +7,7 @@ import { PdfExportService } from '../../utils/pdfExport';
 import { CompanySettingsService } from '../../utils/companySettings';
 import { SupabaseCompaniesService } from '../../utils/supabaseCompanies';
 import { PrintPreviewModal } from '../../components/PrintPreviewModal';
+import { discountRate, localDay, toHT } from '../../utils/documentLines';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../hooks/useAuth';
 import { useKeyboardSave, useAutoSave } from '../../hooks/useShortcuts';
@@ -30,6 +31,7 @@ export default function AvoirDetailPage() {
   const [showPrintPreview, setShowPrintPreview] = useState(false);
   const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
   const [previewFilename, setPreviewFilename] = useState('');
+  const [tvaRate, setTvaRate] = useState(20);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -37,7 +39,12 @@ export default function AvoirDetailPage() {
     try {
       const doc = await SupabaseDocumentsService.getById(id);
       setAvoir(doc);
-      setAvoirDate(doc?.quote_date || new Date(doc?.createdAt || Date.now()).toISOString().split('T')[0]);
+      setAvoirDate(doc?.quote_date || localDay(new Date(doc?.createdAt || Date.now())));
+      const compId = doc?.issuing_company_id || doc?.company_id;
+      if (compId) {
+        const settings = await CompanySettingsService.getSettings(compId).catch(() => null);
+        if (settings?.tva_rate != null) setTvaRate(settings.tva_rate);
+      }
       if (doc?.id) {
         import('../../inventory/lib/stockPosting')
           .then(m => m.isDocumentStockPosted(doc.id))
@@ -233,10 +240,13 @@ export default function AvoirDetailPage() {
             <tbody className="divide-y divide-border">
               {avoir.items.map((item, i) => (
                 <tr key={i} className="hover:bg-accent/20">
-                  <td className="px-4 py-2.5 text-foreground font-medium">{item.name}</td>
+                  <td className="px-4 py-2.5 text-foreground font-medium">
+                    {item.quoteName || item.product?.name || (item as { name?: string }).name || '—'}
+                    {discountRate(item) > 0 && <span className="ml-1.5 text-[10px] text-muted-foreground">(remise {discountRate(item)} %)</span>}
+                  </td>
                   <td className="px-4 py-2.5 text-center text-foreground">{item.quantity}</td>
-                  <td className="px-4 py-2.5 text-right font-mono text-foreground">{fmt(item.unitPrice)} Dh</td>
-                  <td className="px-4 py-2.5 text-right font-mono font-semibold text-foreground">{fmt(item.quantity * item.unitPrice)} Dh</td>
+                  <td className="px-4 py-2.5 text-right font-mono text-foreground">{fmt(toHT(item.unitPrice, tvaRate))} Dh</td>
+                  <td className="px-4 py-2.5 text-right font-mono font-semibold text-foreground">{fmt(toHT(item.subtotal ?? item.quantity * item.unitPrice, tvaRate))} Dh</td>
                 </tr>
               ))}
             </tbody>

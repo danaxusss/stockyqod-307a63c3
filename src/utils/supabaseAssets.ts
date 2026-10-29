@@ -64,6 +64,22 @@ export class AssetsService {
     return a.duration_years > 0 ? r2(base / a.duration_years) : 0;
   }
 
+  /**
+   * Straight-line dotation for one year, prorated by month in the year of
+   * acquisition (from the 1st of the acquisition month); the last year takes
+   * what is left.
+   */
+  static dotationForYear(a: FixedAsset, year: number): number {
+    const [ay, am] = String(a.acquisition_date).slice(0, 10).split('-').map(Number);
+    if (!ay || year < ay) return 0;
+    const base = (Number(a.amount) || 0) - (Number(a.salvage) || 0);
+    const before = (a.depreciations || []).filter(d => d.year < year).reduce((s, d) => s + (Number(d.amount) || 0), 0);
+    const remaining = r2(base - before);
+    if (remaining <= 0) return 0;
+    const months = year === ay ? 13 - (am || 1) : 12;
+    return r2(Math.min(this.annualAmount(a) * months / 12, remaining));
+  }
+
   /** Cumulative depreciation already booked. */
   static cumulative(a: FixedAsset): number {
     return r2((a.depreciations || []).reduce((s, d) => s + (Number(d.amount) || 0), 0));
@@ -73,14 +89,14 @@ export class AssetsService {
    * Generate + post the dotation for a given year: D 619x / C 28xx, then record
    * the depreciation row. Caps the last annuity to not exceed the base.
    */
-  static async generateDotation(asset: FixedAsset, year: number, fiscalYearId: string, journals: Journal[], user: string | null): Promise<void> {
+  static async generateDotation(asset: FixedAsset, year: number, journals: Journal[], user: string | null): Promise<void> {
     if ((asset.depreciations || []).some(d => d.year === year)) throw new Error(`Dotation ${year} déjà générée`);
     const { companyId } = getCompanyContext();
+    if (year < Number(String(asset.acquisition_date).slice(0, 4))) throw new Error(`Immobilisation acquise après ${year}`);
     const base = (Number(asset.amount) || 0) - (Number(asset.salvage) || 0);
-    const already = this.cumulative(asset);
-    const remaining = r2(base - already);
-    if (remaining <= 0) throw new Error('Immobilisation totalement amortie');
-    const amount = r2(Math.min(this.annualAmount(asset), remaining));
+    if (r2(base - this.cumulative(asset)) <= 0) throw new Error('Immobilisation totalement amortie');
+    const amount = this.dotationForYear(asset, year);
+    if (amount <= 0) throw new Error('Rien à amortir pour cet exercice');
 
     const entry = await AccountingService.createFromDraft(
       {
@@ -91,7 +107,7 @@ export class AssetsService {
           { account_code: asset.depreciation_account_code, label: `Amort. ${asset.label}`, debit: 0, credit: amount },
         ],
       },
-      fiscalYearId, journals, { post: true, createdBy: user },
+      journals, { post: true, createdBy: user },
     );
 
     const { error } = await (supabase as any).from('fixed_asset_depreciations').insert({

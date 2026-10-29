@@ -75,6 +75,7 @@ export interface QuoteItem {
   quoteBarcode?: string;
   is_billed?: boolean; // used in proforma items for invoice tracking
   billed_by_company_id?: string; // issuing company that generated the invoice for this item
+  billed_invoice_id?: string; // invoice that billed this proforma line
   dispatch?: Array<{
     stock_location_id: string;
     stock_location_name?: string;
@@ -578,6 +579,9 @@ export interface Payslip {
   cnss_employer: number;
   amo_employer: number;
   alloc_familiales: number;
+  tfp_employer?: number;
+  is_locked?: boolean;
+  run_id?: string | null;
   notes?: string;
   items: PayslipItem[];
   created_at: string;
