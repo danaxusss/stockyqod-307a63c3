@@ -91,6 +91,7 @@ describe('KioskPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /Envoyer la demande/i }));
 
     expect(await screen.findByText('KSK-TEST-001')).toBeInTheDocument();
+    expect(screen.getByText('Nouvelle demande dans 20 s')).toBeInTheDocument();
     await waitFor(() => expect(service.submit).toHaveBeenCalledWith(
       TOKEN,
       expect.objectContaining({ name: 'Client Test', phone: '+212 600-000000', email: 'client@example.com' }),
@@ -129,11 +130,24 @@ describe('KioskPage', () => {
       expect.objectContaining({ category: 'equipment', page: 0, pageSize: 48 }),
     ));
 
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Stocky' } });
-    fireEvent.click(screen.getByLabelText('Disponibles uniquement'));
+    // Brand and availability live in the filters panel.
+    fireEvent.click(screen.getByRole('button', { name: /Filtres/ }));
+    const panel = screen.getByRole('dialog', { name: 'Filtres' });
+    fireEvent.click(within(within(panel).getByRole('group', { name: 'Marque' })).getByRole('button', { name: 'Stocky' }));
+    fireEvent.click(within(panel).getByLabelText('Disponibles uniquement'));
     await waitFor(() => expect(service.listPublicProducts).toHaveBeenLastCalledWith(
       TOKEN,
       expect.objectContaining({ category: 'equipment', brand: 'Stocky', onlyAvailable: true }),
+    ));
+    fireEvent.click(within(panel).getByRole('button', { name: /Voir les 1 produits/ }));
+    expect(screen.queryByRole('dialog', { name: 'Filtres' })).not.toBeInTheDocument();
+
+    // Active filters show as removable pills and on the filters button.
+    expect(screen.getByRole('button', { name: /Filtres/ })).toHaveTextContent('2');
+    fireEvent.click(screen.getByRole('button', { name: 'Retirer Stocky' }));
+    await waitFor(() => expect(service.listPublicProducts).toHaveBeenLastCalledWith(
+      TOKEN,
+      expect.objectContaining({ brand: '', onlyAvailable: true }),
     ));
   });
 
@@ -248,6 +262,7 @@ describe('KioskPage', () => {
     ]);
     renderKiosk();
     fireEvent.click(await screen.findByRole('button', { name: /Start/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Filters/ }));
     const sectors = await screen.findByRole('group', { name: 'Sector' });
     expect(within(sectors).getByRole('button', { name: 'Boucherie' })).toBeInTheDocument();
 
@@ -266,7 +281,39 @@ describe('KioskPage', () => {
     renderKiosk();
     fireEvent.click(await screen.findByRole('button', { name: /Commencer/i }));
     expect(await screen.findByText('Perceuse de test')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Filtres/ }));
+    expect(screen.getByRole('group', { name: 'Marque' })).toBeInTheDocument();
     expect(screen.queryByRole('group', { name: 'Secteur' })).not.toBeInTheDocument();
+  });
+
+  it('opens a product photo full screen from the catalogue and the product sheet', async () => {
+    mockKiosk();
+    service.imageUrl.mockImplementation((image: string | null) => (image ? `https://cdn.test/${image}` : null) as never);
+    service.listPublicProducts.mockResolvedValue({ products: [{ ...DRILL, image: 'drill.jpg' }], total: 1, page: 0, page_size: 48 });
+    renderKiosk();
+    fireEvent.click(await screen.findByRole('button', { name: /Commencer/i }));
+    expect(await screen.findByText('Perceuse de test')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Agrandir l’image' }));
+    const viewer = screen.getByRole('dialog', { name: 'Perceuse de test' });
+    expect(within(viewer).getByRole('img', { name: 'Perceuse de test' })).toHaveAttribute('src', 'https://cdn.test/drill.jpg');
+    fireEvent.click(within(viewer).getByRole('button', { name: 'Fermer' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    // From the product sheet, tapping the photo opens the same viewer.
+    fireEvent.click(screen.getByText('Perceuse de test'));
+    const sheet = screen.getByRole('dialog', { name: 'Perceuse de test' });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Agrandir l’image' }));
+    expect(screen.getAllByRole('dialog', { name: 'Perceuse de test' })).toHaveLength(2);
+    fireEvent.keyDown(window, { key: 'Escape' });
+  });
+
+  it('has no zoom button for a product without a photo', async () => {
+    mockKiosk();
+    renderKiosk();
+    fireEvent.click(await screen.findByRole('button', { name: /Commencer/i }));
+    expect(await screen.findByText('Perceuse de test')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Agrandir l’image' })).not.toBeInTheDocument();
   });
 
   it('lays out the catalogue with the configured number of products per row', async () => {
