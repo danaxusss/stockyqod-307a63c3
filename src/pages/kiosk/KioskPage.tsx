@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { useParams } from 'react-router-dom';
 import {
   AlertTriangle, ArrowLeft, Check, ChevronRight, Expand, Languages, Loader2,
-  Minus, Package, Plus, RotateCcw, Search, ShoppingCart, Star, Trash2, UserRound, WifiOff, X,
+  Package, RotateCcw, Search, ShoppingCart, Star, UserRound, WifiOff, X,
 } from 'lucide-react';
 import {
   KioskRequestError, KioskService, type KioskCategory, type KioskLanguage, type KioskProduct, type KioskPublicProfile, type KioskSector,
@@ -12,6 +12,11 @@ import { sectorLabel } from '../../utils/sectorLabel';
 import { SHOWCASE_COPY } from '../../utils/kioskShowcase';
 import { KioskReviewPage, KioskShowcase, ReviewInvite } from './KioskShowcase';
 import { rememberKioskToken } from '../../utils/kioskApp';
+import { copy, fmt, LANGUAGE_NAMES, withCount, type KioskCopy } from './kioskCopy';
+import {
+  Chip, FilterGroup, FiltersButton, FiltersPanel, ImageViewer, KioskInput, ProductCard, ProductDialog, ReviewLine, Steps,
+} from './KioskParts';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
 
 type Stage = 'welcome' | 'catalog' | 'review' | 'submitted';
 type CartLine = { product: KioskProduct; quantity: number };
@@ -27,99 +32,15 @@ type SavedSession = {
 };
 
 const EMPTY_CUSTOMER: CustomerDetails = { name: '', phone: '', email: '', note: '' };
-const LANGUAGE_NAMES: Record<KioskLanguage, string> = { fr: 'Français', en: 'English', ar: 'العربية' };
-
-const copy = {
-  fr: {
-    start: 'Commencer', home: 'Accueil', details: 'Vos coordonnées', name: 'Nom complet', phone: 'Téléphone', email: 'E-mail',
-    note: 'Précision sur votre demande (facultatif)', continue: 'Ouvrir le catalogue', search: 'Rechercher un produit, une marque ou une référence…',
-    all: 'Tous', add: 'Ajouter', cart: 'Voir ma demande', products: 'produits', review: 'Vérifier la demande',
-    confirm: 'Envoyer la demande', back: 'Retour au catalogue', requestSent: 'Demande envoyée',
-    requestMessage: 'Un conseiller vérifiera votre sélection avant de préparer le devis.', requestNumber: 'Numéro de demande',
-    reset: 'Nouvelle demande', required: 'Veuillez renseigner votre nom et votre téléphone.', emailRequired: "L'adresse e-mail est obligatoire.",
-    invalidPhone: 'Veuillez saisir un numéro de téléphone valide.', invalidEmail: 'Veuillez saisir une adresse e-mail valide.',
-    contactPrompt: 'Indiquez vos coordonnées avant l’envoi, ou demandez à un conseiller de les compléter avec vous.',
-    detailsLater: 'Je renseignerai mes coordonnées plus tard', detailsLaterHelp: 'La demande sera enregistrée, mais un conseiller devra compléter vos coordonnées avant de créer le devis.',
-    empty: 'Votre sélection est vide.', noProducts: 'Aucun produit ne correspond à votre recherche.', loadMore: 'Afficher plus',
-    available: 'Disponible', onRequest: 'Sur demande', total: 'Total indicatif', nonBinding: "Cette demande n'est pas encore un devis. Les prix et disponibilités seront confirmés par un conseiller.",
-    idleTitle: 'Toujours là ?', idleText: 'Cette session sera effacée dans quelques secondes pour protéger vos informations.', stay: 'Continuer',
-    offline: 'Connexion interrompue — votre sélection reste affichée.', loading: 'Chargement du kiosque…', unavailable: 'Ce kiosque est indisponible.',
-    privacy: 'Vos coordonnées servent uniquement au traitement de cette demande de devis.',
-    sector: 'Secteur', allSectors: 'Tous les secteurs',
-    categories: 'Type de produit', utensils: 'Ustensiles', furniture: 'Mobilier', equipment: 'Équipement',
-    allBrands: 'Toutes les marques', availableOnly: 'Disponibles uniquement', clearFilters: 'Réinitialiser les filtres',
-    retry: 'Réessayer', catalogError: 'Le catalogue n’a pas pu être chargé.',
-    networkError: 'Connexion impossible. Vérifiez le réseau puis réessayez.',
-    tooManyRequests: 'Le kiosque est très sollicité. Patientez un instant puis réessayez.',
-    productsUnavailable: 'Un ou plusieurs produits ne sont plus disponibles. Retirez-les puis renvoyez la demande.',
-    genericError: 'Une erreur est survenue. Réessayez ou demandez à un conseiller.',
-    temporarilyUnavailable: 'Le kiosque est momentanément indisponible. Nouvelle tentative automatique…',
-    featured: 'Sélection', remove: 'Retirer', seconds: 's', language: 'Langue',
-  },
-  en: {
-    start: 'Start', home: 'Home', details: 'Your details', name: 'Full name', phone: 'Phone', email: 'Email',
-    note: 'Request details (optional)', continue: 'Open catalogue', search: 'Search product, brand or reference…',
-    all: 'All', add: 'Add', cart: 'View request', products: 'products', review: 'Review request',
-    confirm: 'Send request', back: 'Back to catalogue', requestSent: 'Request sent',
-    requestMessage: 'A sales representative will review your selection before preparing the quote.', requestNumber: 'Request number',
-    reset: 'New request', required: 'Please enter your name and phone number.', emailRequired: 'Email is required.',
-    invalidPhone: 'Please enter a valid phone number.', invalidEmail: 'Please enter a valid email address.',
-    contactPrompt: 'Enter your contact details before sending, or ask a sales representative to complete them with you.',
-    detailsLater: 'I will provide my details later', detailsLaterHelp: 'The request will be saved, but a sales representative must complete your details before creating the quote.',
-    empty: 'Your selection is empty.', noProducts: 'No products match your search.', loadMore: 'Show more',
-    available: 'Available', onRequest: 'On request', total: 'Estimated total', nonBinding: 'This is not a final quote. Prices and availability will be confirmed by a sales representative.',
-    idleTitle: 'Still there?', idleText: 'This session will be cleared in a few seconds to protect your information.', stay: 'Continue',
-    offline: 'Connection lost — your selection is still displayed.', loading: 'Loading kiosk…', unavailable: 'This kiosk is unavailable.',
-    privacy: 'Your contact details are used only to process this quote request.',
-    sector: 'Sector', allSectors: 'All sectors',
-    categories: 'Product type', utensils: 'Utensils', furniture: 'Furniture', equipment: 'Equipment',
-    allBrands: 'All brands', availableOnly: 'Available only', clearFilters: 'Reset filters',
-    retry: 'Try again', catalogError: 'The catalogue could not be loaded.',
-    networkError: 'Unable to connect. Check the network and try again.',
-    tooManyRequests: 'The kiosk is very busy. Please wait a moment and try again.',
-    productsUnavailable: 'One or more products are no longer available. Remove them and send the request again.',
-    genericError: 'Something went wrong. Try again or ask a sales representative.',
-    temporarilyUnavailable: 'The kiosk is temporarily unavailable. Retrying automatically…',
-    featured: 'Featured', remove: 'Remove', seconds: 's', language: 'Language',
-  },
-  ar: {
-    start: 'ابدأ', home: 'الرئيسية', details: 'معلوماتك', name: 'الاسم الكامل', phone: 'الهاتف', email: 'البريد الإلكتروني',
-    note: 'تفاصيل الطلب (اختياري)', continue: 'فتح الكتالوج', search: 'ابحث عن منتج أو علامة أو مرجع…',
-    all: 'الكل', add: 'إضافة', cart: 'عرض الطلب', products: 'منتجات', review: 'مراجعة الطلب',
-    confirm: 'إرسال الطلب', back: 'العودة إلى الكتالوج', requestSent: 'تم إرسال الطلب',
-    requestMessage: 'سيراجع مستشار المبيعات اختيارك قبل إعداد عرض السعر.', requestNumber: 'رقم الطلب',
-    reset: 'طلب جديد', required: 'يرجى إدخال الاسم ورقم الهاتف.', emailRequired: 'البريد الإلكتروني مطلوب.',
-    invalidPhone: 'يرجى إدخال رقم هاتف صالح.', invalidEmail: 'يرجى إدخال بريد إلكتروني صالح.',
-    contactPrompt: 'أدخل معلومات الاتصال قبل الإرسال، أو اطلب من مستشار المبيعات إكمالها معك.',
-    detailsLater: 'سأضيف معلومات الاتصال لاحقاً', detailsLaterHelp: 'سيتم حفظ الطلب، لكن يجب على مستشار المبيعات إكمال معلوماتك قبل إنشاء عرض السعر.',
-    empty: 'اختيارك فارغ.', noProducts: 'لا توجد منتجات مطابقة.', loadMore: 'عرض المزيد',
-    available: 'متوفر', onRequest: 'حسب الطلب', total: 'المجموع التقديري', nonBinding: 'هذا ليس عرض سعر نهائياً. سيتم تأكيد الأسعار والتوفر من طرف المستشار.',
-    idleTitle: 'هل ما زلت هنا؟', idleText: 'سيتم مسح هذه الجلسة خلال ثوانٍ لحماية معلوماتك.', stay: 'متابعة',
-    offline: 'انقطع الاتصال — ما زال اختيارك ظاهراً.', loading: 'جارٍ تحميل الكشك…', unavailable: 'هذا الكشك غير متاح.',
-    privacy: 'تُستخدم معلومات الاتصال فقط لمعالجة طلب عرض السعر.',
-    sector: 'القطاع', allSectors: 'كل القطاعات',
-    categories: 'نوع المنتج', utensils: 'أدوات', furniture: 'أثاث', equipment: 'معدات',
-    allBrands: 'كل العلامات التجارية', availableOnly: 'المتوفر فقط', clearFilters: 'إعادة ضبط الفلاتر',
-    retry: 'إعادة المحاولة', catalogError: 'تعذر تحميل الكتالوج.',
-    networkError: 'تعذر الاتصال. تحقق من الشبكة ثم أعد المحاولة.',
-    tooManyRequests: 'الكشك مشغول جداً. يرجى الانتظار قليلاً ثم إعادة المحاولة.',
-    productsUnavailable: 'منتج واحد أو أكثر لم يعد متوفراً. احذفه ثم أعد إرسال الطلب.',
-    genericError: 'حدث خطأ. أعد المحاولة أو اطلب مساعدة مستشار المبيعات.',
-    temporarilyUnavailable: 'الكشك غير متاح مؤقتاً. ستتم إعادة المحاولة تلقائياً…',
-    featured: 'مختارات', remove: 'حذف', seconds: 'ث', language: 'اللغة',
-  },
-} as const;
-
-type KioskCopy = Record<keyof typeof copy.fr, string>;
-
-const fmt = (value: number) => new Intl.NumberFormat('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const PHONE_RE = /^\+?[0-9\s().-]{7,24}$/;
 const PAGE_SIZE = 48;
 // Products per row on a landscape tablet (lg and up), scaled down on smaller
 // screens. 0 keeps the automatic layout that grows with the screen width.
+// Automatic: as many ~170 px columns as the screen holds (4 on a portrait
+// tablet, 5–6 on a vertical 1080 px display, 7 on a landscape tablet).
 const GRID_CLASSES: Record<number, string> = {
-  0: 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6',
+  0: 'grid-cols-[repeat(auto-fill,minmax(10.5rem,1fr))]',
   2: 'grid-cols-1 sm:grid-cols-2',
   3: 'grid-cols-2 lg:grid-cols-3',
   4: 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4',
@@ -205,6 +126,12 @@ export default function KioskPage() {
   const [sector, setSector] = useState<string | null>(null);
   const [cart, setCart] = useState<Record<string, CartLine>>(saved?.cart || {});
   const [selectedProduct, setSelectedProduct] = useState<KioskProduct | null>(null);
+  const [zoomProduct, setZoomProduct] = useState<KioskProduct | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [resetSecondsLeft, setResetSecondsLeft] = useState(0);
+  // Two-column review only on a wide landscape screen; vertical screens get
+  // one column and a send bar pinned to the bottom.
+  const wideReview = useMediaQuery('(orientation: landscape) and (min-width: 1024px)');
   const [loading, setLoading] = useState(true);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState('');
@@ -289,6 +216,8 @@ export default function KioskPage() {
     setBrand('');
     setOnlyAvailable(false);
     setSelectedProduct(null);
+    setZoomProduct(null);
+    setFiltersOpen(false);
     setRequestNumber('');
     setReviewOpen(false);
     setShowcase(showcaseEnabled.current);
@@ -440,11 +369,17 @@ export default function KioskPage() {
     };
   }, [armIdleReset, clearIdleTimers]);
 
+  const successSeconds = profile?.success_screen_seconds || 20;
   useEffect(() => {
     if (stage !== 'submitted') return;
-    const timer = setTimeout(resetSession, (profile?.success_screen_seconds || 20) * 1000);
-    return () => clearTimeout(timer);
-  }, [profile?.success_screen_seconds, resetSession, stage]);
+    const deadline = Date.now() + successSeconds * 1000;
+    const timer = setTimeout(resetSession, successSeconds * 1000);
+    // Visible countdown, so the next customer knows the screen clears itself.
+    const tick = () => setResetSecondsLeft(Math.max(0, Math.ceil((deadline - Date.now()) / 1000)));
+    tick();
+    const ticker = setInterval(tick, 1000);
+    return () => { clearTimeout(timer); clearInterval(ticker); };
+  }, [successSeconds, resetSession, stage]);
 
   const changeQuantity = (product: KioskProduct, delta: number) => {
     setCart(current => {
@@ -556,6 +491,16 @@ export default function KioskPage() {
     );
   }
 
+  const sendButton = (
+    <button onClick={submit} disabled={!cartLines.length || submitting || !online} className="min-h-16 w-full rounded-2xl px-6 text-xl font-bold disabled:opacity-40 active:scale-[0.99]" style={{ backgroundColor: accent, color: onAccent }}>
+      {submitting ? <Loader2 className="mx-auto h-7 w-7 animate-spin" /> : <><Check className="inline h-6 w-6 me-2" />{t.confirm}</>}
+    </button>
+  );
+
+  const activeFilterCount = (sector ? 1 : 0) + (brand ? 1 : 0) + (onlyAvailable ? 1 : 0);
+  const clearFilters = () => { selectCategory(null); setSector(null); setBrand(''); setOnlyAvailable(false); };
+  const sectorName = (id: string) => { const item = sectors.find(s => s.id === id); return item ? sectorLabel(item, language) : ''; };
+
   return (
     <div dir={dir} className="min-h-screen bg-slate-50 text-slate-900 select-none" style={{ '--kiosk-accent': accent, '--kiosk-on-accent': onAccent } as CSSProperties}>
       {!online && (
@@ -574,25 +519,34 @@ export default function KioskPage() {
       )}
 
       {stage === 'welcome' && !(showcase && showcaseAllowed) && (
-        <main className="min-h-screen flex flex-col items-center justify-center px-6 py-12 text-center bg-gradient-to-br from-white via-slate-50 to-slate-100">
-          <button onClick={requestFullscreen} className="absolute top-5 end-5 h-12 w-12 rounded-2xl bg-white shadow-sm border border-slate-200 flex items-center justify-center" aria-label="Fullscreen">
+        <main className="relative min-h-screen flex flex-col items-center justify-center px-6 py-16 text-center bg-gradient-to-br from-white via-slate-50 to-slate-100">
+          {/* Staff control, kept out of the customer's way. */}
+          <button onClick={requestFullscreen} className="absolute top-5 end-5 h-12 w-12 rounded-2xl flex items-center justify-center text-slate-300 active:bg-slate-100" aria-label="Fullscreen">
             <Expand className="h-5 w-5" />
           </button>
           {customerLanguages.length > 1 && (
             <div role="group" aria-label={t.language} className="absolute top-5 start-5 flex items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
               <Languages className="mx-2 h-5 w-5 text-slate-400" />
-              {customerLanguages.map(code => <button key={code} lang={code} onClick={() => setChosenLanguage(code)} aria-pressed={language === code} className={`min-h-10 rounded-xl px-3 text-base font-bold ${language === code ? 'bg-[var(--kiosk-accent)] text-[color:var(--kiosk-on-accent)]' : 'text-slate-600'}`}>{LANGUAGE_NAMES[code]}</button>)}
+              {customerLanguages.map(code => <button key={code} lang={code} onClick={() => setChosenLanguage(code)} aria-pressed={language === code} className={`min-h-11 rounded-xl px-3 text-base font-bold ${language === code ? 'bg-slate-900 text-white' : 'text-slate-600'}`}>{LANGUAGE_NAMES[code]}</button>)}
             </div>
           )}
           {profile.logo_url ? <img src={profile.logo_url} alt={profile.company_name} className="mb-8 h-28 w-56 object-contain" /> : <div className="mb-8 h-24 w-24 rounded-3xl flex items-center justify-center shadow-xl" style={{ backgroundColor: accent, color: onAccent }}><Package className="h-12 w-12" /></div>}
           <p className="mb-3 text-lg font-semibold tracking-wide text-slate-500">{profile.company_name}</p>
           <h1 className="max-w-3xl text-4xl md:text-6xl font-black tracking-tight">{profile.greeting_title}</h1>
           <p className="mt-5 max-w-2xl text-xl md:text-2xl leading-relaxed text-slate-600">{profile.greeting_message}</p>
-          <button onClick={() => setStage('catalog')} className="mt-12 min-h-16 min-w-64 rounded-2xl px-10 text-xl font-bold shadow-xl active:scale-[0.98] transition" style={{ backgroundColor: accent, color: onAccent }}>
+          <ol className="mt-10 grid w-full max-w-3xl gap-3 text-start sm:grid-cols-3">
+            {[t.how1, t.how2, t.how3].map((step, i) => (
+              <li key={step} className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white/80 p-4">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-900 text-base font-black text-white">{i + 1}</span>
+                <span className="text-base font-bold leading-snug text-slate-700">{step}</span>
+              </li>
+            ))}
+          </ol>
+          <button onClick={() => setStage('catalog')} className="mt-10 min-h-16 min-w-64 rounded-2xl px-10 text-xl font-bold shadow-xl active:scale-[0.98] transition" style={{ backgroundColor: accent, color: onAccent }}>
             {t.start} <ChevronRight className="inline h-6 w-6 ms-2 rtl:rotate-180" />
           </button>
           {reviewUrl && (
-            <button onClick={() => setReviewOpen(true)} className="mt-5 inline-flex min-h-14 items-center gap-2 rounded-2xl border-2 border-slate-200 bg-white px-7 text-lg font-bold text-slate-700 shadow-sm active:scale-[0.98]">
+            <button onClick={() => setReviewOpen(true)} className="mt-4 inline-flex min-h-14 items-center gap-2 rounded-2xl border-2 border-slate-200 bg-white px-7 text-lg font-bold text-slate-700 shadow-sm active:scale-[0.98]">
               <Star className="h-5 w-5 fill-amber-400 text-amber-400" />{SHOWCASE_COPY[language].review}
             </button>
           )}
@@ -600,50 +554,43 @@ export default function KioskPage() {
       )}
 
       {stage === 'catalog' && (
-        <div className="min-h-screen pb-28">
+        <div className="min-h-screen pb-[calc(6.5rem+env(safe-area-inset-bottom))]">
+          {/* Compact sticky header: search and product type stay at hand,
+              the other filters live in a panel so products fill the screen. */}
           <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
-            <div className="mx-auto flex max-w-[1600px] items-center gap-3 px-4 py-3">
-              <button onClick={() => setStage('welcome')} aria-label={t.home} className="h-12 w-12 shrink-0 rounded-xl border border-slate-200 flex items-center justify-center"><ArrowLeft className="h-5 w-5 rtl:rotate-180" /></button>
-              {profile.logo_url ? <img src={profile.logo_url} alt="" className="hidden sm:block h-10 w-28 object-contain" /> : <Package className="hidden sm:block h-8 w-8" style={{ color: accent }} />}
-              <div className="relative flex-1"><Search className="absolute start-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" /><input value={query} onChange={e => setQuery(e.target.value)} placeholder={t.search} className="h-14 w-full rounded-2xl border-2 border-slate-200 bg-slate-50 ps-12 pe-12 text-lg outline-none focus:bg-white focus:border-[var(--kiosk-accent)]" />{query && <button onClick={() => setQuery('')} className="absolute end-2 top-1/2 h-10 w-10 -translate-y-1/2 flex items-center justify-center"><X className="h-5 w-5" /></button>}</div>
-              <button onClick={requestFullscreen} className="hidden sm:flex h-12 w-12 rounded-xl border border-slate-200 items-center justify-center"><Expand className="h-5 w-5" /></button>
+            <div className="mx-auto flex max-w-[1800px] items-center gap-2 px-3 pt-3 sm:gap-3">
+              <button onClick={() => setStage('welcome')} aria-label={t.home} className="h-14 w-14 shrink-0 rounded-2xl border-2 border-slate-200 bg-white flex items-center justify-center"><ArrowLeft className="h-6 w-6 rtl:rotate-180" /></button>
+              {profile.logo_url && <img src={profile.logo_url} alt="" className="hidden md:block h-10 w-24 object-contain" />}
+              <div className="relative min-w-0 flex-1">
+                <Search className="absolute start-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                <input value={query} onChange={e => setQuery(e.target.value)} placeholder={t.search} className="h-14 w-full rounded-2xl border-2 border-slate-200 bg-slate-50 ps-12 pe-12 text-lg outline-none focus:bg-white focus:border-slate-900" />
+                {query && <button onClick={() => setQuery('')} aria-label={t.close} className="absolute end-2 top-1/2 h-10 w-10 -translate-y-1/2 flex items-center justify-center"><X className="h-5 w-5" /></button>}
+              </div>
+              <FiltersButton count={activeFilterCount} label={t.filters} onClick={() => setFiltersOpen(true)} />
+              <div className="hidden xl:block ps-2"><Steps current={0} t={t} accent={accent} onAccent={onAccent} /></div>
             </div>
-            <div className="mx-auto max-w-[1600px] px-4 pb-4">
-              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">{t.categories}</p>
-              <div className="overflow-x-auto"><div className="flex min-w-max gap-2">
-                <FilterButton active={!category && !featuredOnly} label={t.all} onClick={() => selectCategory(null)} />
-                {featured.length > 0 && <FilterButton active={featuredOnly} label={`★ ${t.featured}`} onClick={() => selectCategory(null, true)} />}
-                <FilterButton active={category === 'utensils'} label={t.utensils} onClick={() => selectCategory('utensils')} />
-                <FilterButton active={category === 'furniture'} label={t.furniture} onClick={() => selectCategory('furniture')} />
-                <FilterButton active={category === 'equipment'} label={t.equipment} onClick={() => selectCategory('equipment')} />
-              </div></div>
-              {sectors.length > 0 && (
-                <>
-                  <p className="mb-2 mt-3 text-xs font-bold uppercase tracking-wide text-slate-400">{t.sector}</p>
-                  <div className="overflow-x-auto"><div role="group" aria-label={t.sector} className="flex min-w-max gap-2">
-                    <FilterButton active={!sector} label={t.allSectors} onClick={() => setSector(null)} />
-                    {sectors.map(item => <FilterButton key={item.id} active={sector === item.id} label={sectorLabel(item, language)} onClick={() => setSector(item.id)} />)}
-                  </div></div>
-                </>
-              )}
-              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-                <select aria-label={t.allBrands} value={brand} onChange={event => setBrand(event.target.value)} className="min-h-12 flex-1 rounded-xl border-2 border-slate-200 bg-white px-4 text-base font-semibold outline-none focus:border-[var(--kiosk-accent)]">
-                  <option value="">{t.allBrands}</option>
-                  {brands.map(value => <option key={value} value={value}>{value}</option>)}
-                </select>
-                <label className="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border-2 border-slate-200 bg-white px-4 font-semibold">
-                  <input type="checkbox" checked={onlyAvailable} onChange={event => setOnlyAvailable(event.target.checked)} className="h-5 w-5" />
-                  {t.availableOnly}
-                </label>
-                {(category || featuredOnly || sector || brand || onlyAvailable) && <button onClick={() => { selectCategory(null); setSector(null); setBrand(''); setOnlyAvailable(false); }} className="min-h-12 rounded-xl px-4 text-sm font-bold text-slate-500 active:bg-slate-100">{t.clearFilters}</button>}
+            <div className="mx-auto max-w-[1800px] overflow-x-auto px-3 py-2.5">
+              <div role="group" aria-label={t.categories} className="flex min-w-max gap-2">
+                <Chip active={!category && !featuredOnly} label={t.all} onClick={() => selectCategory(null)} />
+                {featured.length > 0 && <Chip active={featuredOnly} label={`★ ${t.featured}`} onClick={() => selectCategory(null, true)} />}
+                <Chip active={category === 'utensils'} label={t.utensils} onClick={() => selectCategory('utensils')} />
+                <Chip active={category === 'furniture'} label={t.furniture} onClick={() => selectCategory('furniture')} />
+                <Chip active={category === 'equipment'} label={t.equipment} onClick={() => selectCategory('equipment')} />
               </div>
             </div>
           </header>
 
-          <main className="mx-auto max-w-[1600px] p-4 md:p-6">
-            <div className="mb-4 flex items-center justify-between"><p className="text-sm font-semibold text-slate-500">{totalProducts} {t.products}</p>{catalogLoading && <Loader2 className="h-5 w-5 animate-spin" style={{ color: accent }} />}</div>
+          <main className="mx-auto max-w-[1800px] px-3 pt-3">
+            <div className="mb-3 flex min-h-9 flex-wrap items-center gap-2">
+              <p className="text-sm font-semibold text-slate-500">{totalProducts} {t.products}</p>
+              {sector && <ActivePill label={sectorName(sector)} onRemove={() => setSector(null)} removeLabel={t.remove} />}
+              {brand && <ActivePill label={brand} onRemove={() => setBrand('')} removeLabel={t.remove} />}
+              {onlyAvailable && <ActivePill label={t.availableOnly} onRemove={() => setOnlyAvailable(false)} removeLabel={t.remove} />}
+              {(category || featuredOnly || activeFilterCount > 0) && <button onClick={clearFilters} className="min-h-9 rounded-lg px-2 text-sm font-bold text-slate-500 underline-offset-2 active:bg-slate-100">{t.clearFilters}</button>}
+              {catalogLoading && <Loader2 className="ms-auto h-5 w-5 animate-spin" style={{ color: accent }} />}
+            </div>
             {catalogError && (
-              <div role="alert" className="mb-4 flex flex-col gap-3 rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 text-amber-900 sm:flex-row sm:items-center sm:justify-between">
+              <div role="alert" className="mb-3 flex flex-col gap-3 rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 text-amber-900 sm:flex-row sm:items-center sm:justify-between">
                 <p className="flex items-center gap-3 font-semibold"><AlertTriangle className="h-6 w-6 shrink-0" />{products.length ? catalogError : `${t.catalogError} ${catalogError}`}</p>
                 <button onClick={retryCatalog} disabled={catalogLoading} className="min-h-12 shrink-0 rounded-xl bg-amber-600 px-6 font-bold text-white disabled:opacity-50"><RotateCcw className="inline h-5 w-5 me-2" />{t.retry}</button>
               </div>
@@ -651,64 +598,135 @@ export default function KioskPage() {
             {!catalogLoading && !catalogError && products.length === 0 ? (
               <div className="rounded-3xl border-2 border-dashed border-slate-200 bg-white py-24 text-center"><Search className="mx-auto h-12 w-12 text-slate-300" /><p className="mt-4 text-xl font-semibold text-slate-500">{t.noProducts}</p></div>
             ) : (
-              <div data-testid="kiosk-grid" className={`grid gap-3 ${GRID_CLASSES[profile.grid_columns] || GRID_CLASSES[0]}`}>
-                {products.map(product => <ProductCard key={product.barcode} product={product} quantity={cart[product.barcode]?.quantity || 0} showPrice={profile.show_prices} showAvailability={profile.show_availability} placeholderLogo={profile.logo_url} t={t} accent={accent} onOpen={() => setSelectedProduct(product)} onChange={delta => changeQuantity(product, delta)} />)}
+              <div data-testid="kiosk-grid" className={`grid gap-2.5 ${GRID_CLASSES[profile.grid_columns] || GRID_CLASSES[0]}`}>
+                {products.map(product => (
+                  <ProductCard
+                    key={product.barcode} product={product} quantity={cart[product.barcode]?.quantity || 0}
+                    showPrice={profile.show_prices} showAvailability={profile.show_availability} placeholderLogo={profile.logo_url}
+                    t={t} accent={accent}
+                    onOpen={() => setSelectedProduct(product)} onZoom={() => setZoomProduct(product)}
+                    onChange={delta => changeQuantity(product, delta)}
+                  />
+                ))}
               </div>
             )}
-            {products.length < totalProducts && <button onClick={loadMore} disabled={catalogLoading} className="mx-auto mt-8 flex min-h-14 min-w-52 items-center justify-center rounded-2xl border-2 border-slate-300 bg-white px-8 text-lg font-bold disabled:opacity-50">{catalogLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : t.loadMore}</button>}
+            {products.length < totalProducts && <button onClick={loadMore} disabled={catalogLoading} className="mx-auto mt-6 flex min-h-14 min-w-52 items-center justify-center rounded-2xl border-2 border-slate-300 bg-white px-8 text-lg font-bold disabled:opacity-50">{catalogLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : t.loadMore}</button>}
           </main>
 
-          {cartQuantity > 0 && <button onClick={openReview} className="fixed inset-x-4 bottom-4 z-50 mx-auto flex min-h-16 max-w-2xl items-center justify-between rounded-2xl px-5 shadow-2xl active:scale-[0.99]" style={{ backgroundColor: accent, color: onAccent }}><span className="flex items-center gap-3 text-lg font-bold"><span className="h-10 min-w-10 rounded-xl bg-white/20 px-2 flex items-center justify-center">{cartQuantity}</span><ShoppingCart className="h-6 w-6" />{t.cart}</span>{profile.show_prices && <strong className="text-lg">{fmt(cartTotal)} DH</strong>}</button>}
+          <FiltersPanel
+            open={filtersOpen} title={t.filters} closeLabel={t.close}
+            onClose={() => setFiltersOpen(false)} onReset={clearFilters}
+            resetLabel={t.clearFilters} showLabel={withCount(t.showResults, totalProducts)}
+          >
+            {sectors.length > 0 && (
+              <FilterGroup label={t.sector}>
+                <Chip active={!sector} label={t.allSectors} onClick={() => setSector(null)} />
+                {sectors.map(item => <Chip key={item.id} active={sector === item.id} label={sectorLabel(item, language)} onClick={() => setSector(item.id)} />)}
+              </FilterGroup>
+            )}
+            {brands.length > 0 && (
+              <FilterGroup label={t.brand}>
+                <Chip active={!brand} label={t.allBrands} onClick={() => setBrand('')} />
+                {brands.map(value => <Chip key={value} active={brand === value} label={value} onClick={() => setBrand(value)} />)}
+              </FilterGroup>
+            )}
+            <label className="flex min-h-14 cursor-pointer items-center justify-between gap-4 rounded-2xl border-2 border-slate-200 px-4 text-base font-bold">
+              {t.availableOnly}
+              <input type="checkbox" checked={onlyAvailable} onChange={event => setOnlyAvailable(event.target.checked)} className="h-6 w-6 accent-slate-900" />
+            </label>
+          </FiltersPanel>
+
+          {cartQuantity > 0 && <button onClick={openReview} className="fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-50 mx-auto flex min-h-16 max-w-2xl items-center justify-between rounded-2xl px-5 shadow-2xl active:scale-[0.99]" style={{ backgroundColor: accent, color: onAccent }}><span className="flex items-center gap-3 text-lg font-bold"><span className="h-10 min-w-10 rounded-xl bg-white/20 px-2 flex items-center justify-center">{cartQuantity}</span><ShoppingCart className="h-6 w-6" />{t.cart}</span>{profile.show_prices && <strong className="text-lg tabular-nums">{fmt(cartTotal)} DH</strong>}</button>}
         </div>
       )}
 
       {stage === 'review' && (
-        <main className="mx-auto min-h-screen max-w-5xl p-4 pb-32 md:p-8">
-          <button onClick={() => setStage('catalog')} className="mb-6 min-h-12 inline-flex items-center gap-2 rounded-xl bg-white border border-slate-200 px-4 font-semibold"><ArrowLeft className="h-5 w-5 rtl:rotate-180" /> {t.back}</button>
-          <h1 className="text-3xl md:text-4xl font-black">{t.review}</h1>
-          <div className="mt-8 space-y-3">
-            {cartLines.map(line => <ReviewLine key={line.product.barcode} line={line} showPrice={profile.show_prices} placeholderLogo={profile.logo_url} accent={accent} removeLabel={t.remove} onSet={quantity => setQuantity(line.product, quantity)} />)}
-          </div>
-          {!cartLines.length && <div className="mt-8 rounded-2xl bg-white p-12 text-center text-lg text-slate-500">{t.empty}</div>}
-          <section className="mt-8 rounded-3xl border border-slate-200 bg-white p-5 md:p-7">
-            <div className="flex items-center gap-4"><div className="h-12 w-12 shrink-0 rounded-2xl flex items-center justify-center" style={{ backgroundColor: accent, color: onAccent }}><UserRound className="h-6 w-6" /></div><div><h2 className="text-2xl font-black">{t.details}</h2><p className="mt-1 text-slate-500">{t.contactPrompt}</p></div></div>
-            {canDeferContact && (
-              <label className="mt-6 flex cursor-pointer items-start gap-3 rounded-2xl border-2 border-slate-200 bg-slate-50 p-4">
-                <input type="checkbox" checked={deferContact} onChange={event => { setDeferContact(event.target.checked); setFormError(''); }} className="mt-1 h-6 w-6 shrink-0" />
-                <span><span className="block text-base font-bold">{t.detailsLater}</span><span className="mt-1 block text-sm leading-relaxed text-slate-500">{t.detailsLaterHelp}</span></span>
-              </label>
-            )}
-            <div className={`mt-6 grid gap-5 md:grid-cols-2 ${deferring ? 'opacity-45' : ''}`}>
-              <KioskInput label={t.name} value={customer.name} onChange={name => { setCustomer(c => ({ ...c, name })); setFormError(''); }} required={!deferring} disabled={deferring} autoFocus={!deferring} />
-              <KioskInput label={t.phone} value={customer.phone} onChange={phone => { setCustomer(c => ({ ...c, phone })); setFormError(''); }} required={!deferring} disabled={deferring} inputMode="tel" />
-              <KioskInput label={t.email} value={customer.email} onChange={email => { setCustomer(c => ({ ...c, email })); setFormError(''); }} required={!deferring && profile.require_email} disabled={deferring} inputMode="email" />
+        <div className="min-h-screen">
+          <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
+            <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-3 px-4 py-3">
+              <button onClick={() => setStage('catalog')} className="min-h-14 inline-flex items-center gap-2 rounded-2xl border-2 border-slate-200 bg-white px-4 text-base font-bold"><ArrowLeft className="h-5 w-5 rtl:rotate-180" /> {t.back}</button>
+              <div className="hidden sm:block"><Steps current={1} t={t} accent={accent} onAccent={onAccent} /></div>
             </div>
-            <label className="mt-5 block"><span className="mb-2 block text-base font-bold">{t.note}</span><textarea value={customer.note} onChange={e => setCustomer(c => ({ ...c, note: e.target.value.slice(0, 500) }))} rows={3} className="w-full rounded-2xl border-2 border-slate-200 bg-white px-5 py-4 text-lg outline-none focus:border-[var(--kiosk-accent)]" /></label>
-            <p className="mt-5 text-sm leading-relaxed text-slate-500">{t.privacy}</p>
-          </section>
-          {formError && <p role="alert" className="mt-5 rounded-xl bg-red-50 p-4 font-semibold text-red-700">{formError}</p>}
-          <div className="mt-8 rounded-2xl bg-white border border-slate-200 p-5">
-            {profile.show_prices && <div className="flex items-center justify-between text-xl font-black"><span>{t.total}</span><span>{fmt(cartTotal)} DH</span></div>}
-            <p className={`${profile.show_prices ? 'mt-4' : ''} text-sm leading-relaxed text-slate-500`}>{t.nonBinding}</p>
-          </div>
-          <button onClick={submit} disabled={!cartLines.length || submitting || !online} className="mt-7 min-h-16 w-full rounded-2xl px-6 text-xl font-bold disabled:opacity-40" style={{ backgroundColor: accent, color: onAccent }}>{submitting ? <Loader2 className="mx-auto h-7 w-7 animate-spin" /> : <><Check className="inline h-6 w-6 me-2" />{t.confirm}</>}</button>
-        </main>
+          </header>
+          {/* Landscape: selection on the left, details and sending on the right.
+              Vertical screens: one column with the send button pinned below. */}
+          <main className={`mx-auto max-w-[1400px] p-4 md:p-6 ${wideReview ? 'grid grid-cols-[minmax(0,1fr)_460px] items-start gap-6' : 'pb-[calc(9rem+env(safe-area-inset-bottom))]'}`}>
+            <section>
+              <h1 className="text-3xl md:text-4xl font-black">{t.review}</h1>
+              <p className="mt-1 text-base font-semibold text-slate-500">{t.selection} · {cartQuantity} {t.items}</p>
+              <div className="mt-5 space-y-2.5">
+                {cartLines.map(line => <ReviewLine key={line.product.barcode} line={line} showPrice={profile.show_prices} placeholderLogo={profile.logo_url} accent={accent} removeLabel={t.remove} zoomLabel={t.zoom} onSet={quantity => setQuantity(line.product, quantity)} onZoom={() => setZoomProduct(line.product)} />)}
+              </div>
+              {!cartLines.length && <div className="mt-5 rounded-2xl bg-white p-12 text-center text-lg text-slate-500">{t.empty}</div>}
+            </section>
+
+            <aside className={wideReview ? 'sticky top-24 flex max-h-[calc(100vh-7.5rem)] flex-col gap-4' : 'mt-6 space-y-4'}>
+              <section className={`rounded-3xl border border-slate-200 bg-white p-5 ${wideReview ? 'min-h-0 overflow-y-auto' : ''}`}>
+                <div className="flex items-center gap-3"><div className="h-11 w-11 shrink-0 rounded-2xl bg-slate-900 text-white flex items-center justify-center"><UserRound className="h-5 w-5" /></div><h2 className="text-xl font-black">{t.details}</h2></div>
+                <p className="mt-2 text-sm leading-relaxed text-slate-500">{t.contactPrompt}</p>
+                <div className={`mt-4 grid gap-4 sm:grid-cols-2 ${deferring ? 'opacity-45' : ''}`}>
+                  <KioskInput label={t.name} value={customer.name} onChange={name => { setCustomer(c => ({ ...c, name })); setFormError(''); }} required={!deferring} disabled={deferring} />
+                  <KioskInput label={t.phone} value={customer.phone} onChange={phone => { setCustomer(c => ({ ...c, phone })); setFormError(''); }} required={!deferring} disabled={deferring} inputMode="tel" />
+                  <div className={wideReview ? 'sm:col-span-2' : ''}><KioskInput label={t.email} value={customer.email} onChange={email => { setCustomer(c => ({ ...c, email })); setFormError(''); }} required={!deferring && profile.require_email} disabled={deferring} inputMode="email" /></div>
+                </div>
+                <label className="mt-4 block"><span className="mb-1.5 block text-base font-bold">{t.note}</span><textarea value={customer.note} onChange={e => setCustomer(c => ({ ...c, note: e.target.value.slice(0, 500) }))} rows={2} className="w-full rounded-2xl border-2 border-slate-200 bg-white px-4 py-3 text-lg outline-none focus:border-slate-900 focus:ring-4 focus:ring-slate-900/10" /></label>
+                {canDeferContact && (
+                  <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl p-1">
+                    <input type="checkbox" checked={deferContact} onChange={event => { setDeferContact(event.target.checked); setFormError(''); }} className="mt-0.5 h-6 w-6 shrink-0 accent-slate-900" />
+                    <span><span className="block text-sm font-bold text-slate-700">{t.detailsLater}</span><span className="mt-0.5 block text-xs leading-relaxed text-slate-500">{t.detailsLaterHelp}</span></span>
+                  </label>
+                )}
+                <p className="mt-4 text-xs leading-relaxed text-slate-400">{t.privacy}</p>
+              </section>
+
+              {wideReview ? (
+                <section className="shrink-0 rounded-3xl border border-slate-200 bg-white p-5">
+                  {profile.show_prices && <div className="flex items-center justify-between text-xl font-black"><span>{t.total}</span><span className="tabular-nums">{fmt(cartTotal)} DH</span></div>}
+                  <p className={`${profile.show_prices ? 'mt-2' : ''} text-xs leading-relaxed text-slate-500`}>{t.nonBinding}</p>
+                  {formError && <p role="alert" className="mt-4 rounded-xl bg-red-50 p-3 font-semibold text-red-700">{formError}</p>}
+                  <div className="mt-4">{sendButton}</div>
+                </section>
+              ) : (
+                <p className="px-1 text-xs leading-relaxed text-slate-500">{t.nonBinding}</p>
+              )}
+            </aside>
+          </main>
+
+          {!wideReview && (
+            <div className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-white/95 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur">
+              <div className="mx-auto max-w-3xl">
+                {formError && <p role="alert" className="mb-3 rounded-xl bg-red-50 p-3 font-semibold text-red-700">{formError}</p>}
+                <div className="flex items-center gap-4">
+                  {profile.show_prices && <div className="shrink-0"><p className="text-xs font-bold uppercase text-slate-500">{t.total}</p><p className="text-xl font-black tabular-nums">{fmt(cartTotal)} DH</p></div>}
+                  <div className="flex-1">{sendButton}</div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {stage === 'submitted' && (
         <main className="min-h-screen flex items-center justify-center p-6 text-center">
           <section className="w-full max-w-2xl rounded-3xl bg-white p-8 md:p-12 shadow-xl border border-slate-200">
+            <div className="mx-auto mb-6 flex justify-center"><Steps current={2} t={t} accent={accent} onAccent={onAccent} /></div>
             <div className="mx-auto h-24 w-24 rounded-full flex items-center justify-center" style={{ backgroundColor: accent, color: onAccent }}><Check className="h-12 w-12" /></div>
             <h1 className="mt-7 text-4xl font-black">{t.requestSent}</h1>
             <p className="mt-4 text-xl leading-relaxed text-slate-600">{t.requestMessage}</p>
             <div className="mx-auto mt-8 max-w-md rounded-2xl bg-slate-100 p-6"><p className="text-sm font-bold uppercase tracking-wider text-slate-500">{t.requestNumber}</p><p className="mt-2 text-3xl font-black tracking-wide">{requestNumber}</p></div>
             {reviewUrl && <ReviewInvite url={reviewUrl} language={language} />}
             <button onClick={resetSession} className="mt-8 min-h-14 rounded-2xl px-8 text-lg font-bold" style={{ backgroundColor: accent, color: onAccent }}><RotateCcw className="inline h-5 w-5 me-2" />{t.reset}</button>
+            <p className="mt-4 text-sm font-semibold text-slate-400" aria-live="off">{withCount(t.resetIn, resetSecondsLeft)}</p>
+            <div className="mx-auto mt-2 h-1 max-w-xs overflow-hidden rounded-full bg-slate-100">
+              <div className="h-full rounded-full bg-slate-300 transition-[width] duration-1000 ease-linear" style={{ width: `${(resetSecondsLeft / successSeconds) * 100}%` }} />
+            </div>
           </section>
         </main>
       )}
 
-      {selectedProduct && <ProductDialog product={selectedProduct} quantity={cart[selectedProduct.barcode]?.quantity || 0} showPrice={profile.show_prices} showAvailability={profile.show_availability} placeholderLogo={profile.logo_url} t={t} accent={accent} onClose={() => setSelectedProduct(null)} onChange={delta => changeQuantity(selectedProduct, delta)} />}
+      {selectedProduct && <ProductDialog product={selectedProduct} quantity={cart[selectedProduct.barcode]?.quantity || 0} showPrice={profile.show_prices} showAvailability={profile.show_availability} placeholderLogo={profile.logo_url} t={t} accent={accent} onClose={() => setSelectedProduct(null)} onZoom={() => setZoomProduct(selectedProduct)} onChange={delta => changeQuantity(selectedProduct, delta)} />}
+
+      {zoomProduct && <ImageViewer product={zoomProduct} t={t} onClose={() => setZoomProduct(null)} />}
 
       {reviewOpen && reviewUrl && <KioskReviewPage url={reviewUrl} language={language} accent={accent} onAccent={onAccent} onClose={() => setReviewOpen(false)} />}
 
@@ -721,35 +739,15 @@ export default function KioskPage() {
   );
 }
 
+function ActivePill({ label, onRemove, removeLabel }: { label: string; onRemove: () => void; removeLabel: string }) {
+  return (
+    <span className="inline-flex min-h-9 items-center gap-1 rounded-full bg-slate-900 ps-3 pe-1 text-sm font-bold text-white">
+      {label}
+      <button onClick={onRemove} aria-label={`${removeLabel} ${label}`} className="flex h-7 w-7 items-center justify-center rounded-full active:bg-white/20"><X className="h-4 w-4" /></button>
+    </span>
+  );
+}
+
 function KioskCentered({ children }: { children: ReactNode }) {
   return <main className="min-h-screen flex flex-col items-center justify-center gap-4 bg-slate-50 p-6 text-center text-slate-600">{children}</main>;
-}
-
-function KioskInput({ label, value, onChange, required, disabled, inputMode, autoFocus }: { label: string; value: string; onChange: (value: string) => void; required?: boolean; disabled?: boolean; inputMode?: 'text' | 'tel' | 'email'; autoFocus?: boolean }) {
-  return <label className="block"><span className="mb-2 block text-base font-bold">{label}{required && <span className="text-red-500"> *</span>}</span><input autoFocus={autoFocus} disabled={disabled} inputMode={inputMode} type={inputMode === 'email' ? 'email' : 'text'} value={value} onChange={e => onChange(e.target.value)} className="h-16 w-full rounded-2xl border-2 border-slate-200 bg-white px-5 text-xl outline-none focus:border-[var(--kiosk-accent)] disabled:cursor-not-allowed disabled:bg-slate-100" /></label>;
-}
-
-function FilterButton({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
-  return <button onClick={onClick} className={`min-h-12 rounded-xl border-2 px-5 text-base font-bold transition active:scale-95 ${active ? 'border-[var(--kiosk-accent)] bg-[var(--kiosk-accent)] text-[color:var(--kiosk-on-accent)]' : 'border-slate-200 bg-white text-slate-700'}`}>{label}</button>;
-}
-
-function ProductImage({ image, name, placeholderLogo }: { image: string | null; name: string; placeholderLogo?: string | null }) {
-  const url = KioskService.imageUrl(image);
-  return <div className="aspect-square w-full overflow-hidden rounded-2xl bg-white border border-slate-100 flex items-center justify-center">{url ? <img src={url} alt={name} loading="lazy" className="h-full w-full object-contain p-3" /> : placeholderLogo ? <img src={placeholderLogo} alt="" className="h-1/2 w-1/2 object-contain opacity-30 grayscale" /> : <img src={`${import.meta.env.BASE_URL || '/'}stocky-logo.png`} alt="" className="h-1/2 w-1/2 object-contain opacity-25 grayscale" />}</div>;
-}
-
-function ProductCard({ product, quantity, showPrice, showAvailability, placeholderLogo, t, accent, onOpen, onChange }: { product: KioskProduct; quantity: number; showPrice: boolean; showAvailability: boolean; placeholderLogo?: string | null; t: KioskCopy; accent: string; onOpen: () => void; onChange: (delta: number) => void }) {
-  return <article className="rounded-3xl border border-slate-200 bg-white p-2.5 shadow-sm flex flex-col"><button onClick={onOpen} className="relative text-start">{product.featured && <span className="absolute start-2 top-2 z-10 inline-flex items-center gap-1 rounded-full bg-[var(--kiosk-accent)] px-2.5 py-1 text-xs font-bold text-[color:var(--kiosk-on-accent)] shadow"><Star className="h-3 w-3" />{t.featured}</span>}<ProductImage image={product.image} name={product.name} placeholderLogo={placeholderLogo} /><div className="px-1 pt-3"><p className="min-h-5 truncate text-xs font-bold uppercase tracking-wide text-slate-400">{product.brand || '—'}</p><h2 className="mt-1 line-clamp-2 min-h-12 text-base sm:text-lg font-bold leading-snug">{product.name}</h2><p className="mt-1 truncate font-mono text-xs text-slate-400">{product.barcode}</p>{showAvailability && <p className={`mt-2 text-xs font-bold ${product.available ? 'text-emerald-600' : 'text-amber-600'}`}>{product.available ? t.available : t.onRequest}</p>}{showPrice && <p className="mt-2 text-lg font-black" style={{ color: accent }}>{fmt(product.price || 0)} DH</p>}</div></button><div className="mt-auto pt-3">{quantity > 0 ? <QuantityStepper quantity={quantity} onMinus={() => onChange(-1)} onPlus={() => onChange(1)} accent={accent} /> : <button onClick={() => onChange(1)} className="min-h-12 w-full rounded-xl bg-[var(--kiosk-accent)] text-base font-bold text-[color:var(--kiosk-on-accent)]"><Plus className="inline h-5 w-5 me-1" />{t.add}</button>}</div></article>;
-}
-
-function QuantityStepper({ quantity, onMinus, onPlus, accent }: { quantity: number; onMinus: () => void; onPlus: () => void; accent: string }) {
-  return <div className="grid min-h-12 grid-cols-[48px_1fr_48px] overflow-hidden rounded-xl border-2" style={{ borderColor: accent }}><button onClick={onMinus} className="flex items-center justify-center bg-white"><Minus className="h-5 w-5" /></button><span className="flex items-center justify-center bg-[var(--kiosk-accent)] text-lg font-black text-[color:var(--kiosk-on-accent)]">{quantity}</span><button onClick={onPlus} className="flex items-center justify-center bg-white"><Plus className="h-5 w-5" /></button></div>;
-}
-
-function ReviewLine({ line, showPrice, placeholderLogo, accent, removeLabel, onSet }: { line: CartLine; showPrice: boolean; placeholderLogo?: string | null; accent: string; removeLabel: string; onSet: (quantity: number) => void }) {
-  return <div className="grid grid-cols-[88px_1fr] gap-4 rounded-2xl border border-slate-200 bg-white p-3 sm:grid-cols-[100px_1fr_auto_auto] sm:items-center"><ProductImage image={line.product.image} name={line.product.name} placeholderLogo={placeholderLogo} /><div><p className="text-xs font-bold uppercase text-slate-400">{line.product.brand}</p><h2 className="mt-1 text-lg font-bold">{line.product.name}</h2><p className="mt-1 font-mono text-xs text-slate-400">{line.product.barcode}</p>{showPrice && <p className="mt-2 font-black" style={{ color: accent }}>{fmt((line.product.price || 0) * line.quantity)} DH</p>}</div><div className="col-span-2 sm:col-span-1 sm:w-44"><div className="grid h-14 grid-cols-[52px_1fr_52px] overflow-hidden rounded-xl border-2" style={{ borderColor: accent }}><button onClick={() => onSet(line.quantity - 1)} className="flex items-center justify-center"><Minus className="h-5 w-5" /></button><input type="number" min={1} max={999} value={line.quantity} onChange={e => onSet(Number(e.target.value) || 1)} className="w-full bg-[var(--kiosk-accent)] text-center text-xl font-black text-[color:var(--kiosk-on-accent)] outline-none" /><button onClick={() => onSet(line.quantity + 1)} className="flex items-center justify-center"><Plus className="h-5 w-5" /></button></div></div><button onClick={() => onSet(0)} aria-label={removeLabel} className="col-span-2 flex min-h-12 items-center justify-center gap-2 rounded-xl border-2 border-red-200 px-4 font-bold text-red-600 active:bg-red-50 sm:col-span-1 sm:w-14 sm:px-0"><Trash2 className="h-5 w-5" /><span className="sm:hidden">{removeLabel}</span></button></div>;
-}
-
-function ProductDialog({ product, quantity, showPrice, showAvailability, placeholderLogo, t, accent, onClose, onChange }: { product: KioskProduct; quantity: number; showPrice: boolean; showAvailability: boolean; placeholderLogo?: string | null; t: KioskCopy; accent: string; onClose: () => void; onChange: (delta: number) => void }) {
-  return <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm" onClick={onClose}><section className="relative max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white p-5 shadow-2xl" onClick={e => e.stopPropagation()}><button onClick={onClose} className="absolute end-4 top-4 z-10 h-12 w-12 rounded-full bg-white/95 shadow flex items-center justify-center"><X className="h-6 w-6" /></button><div className="grid gap-6 sm:grid-cols-2"><ProductImage image={product.image} name={product.name} placeholderLogo={placeholderLogo} /><div className="flex flex-col"><p className="text-sm font-bold uppercase tracking-wide text-slate-400">{product.brand}</p><h2 className="mt-2 text-3xl font-black leading-tight">{product.name}</h2><p className="mt-3 font-mono text-sm text-slate-400">{product.barcode}</p>{showAvailability && <p className={`mt-4 font-bold ${product.available ? 'text-emerald-600' : 'text-amber-600'}`}>{product.available ? t.available : t.onRequest}</p>}{showPrice && <p className="mt-4 text-3xl font-black" style={{ color: accent }}>{fmt(product.price || 0)} DH</p>}<div className="mt-auto pt-8">{quantity ? <QuantityStepper quantity={quantity} onMinus={() => onChange(-1)} onPlus={() => onChange(1)} accent={accent} /> : <button onClick={() => onChange(1)} className="min-h-14 w-full rounded-2xl bg-[var(--kiosk-accent)] text-lg font-bold text-[color:var(--kiosk-on-accent)]"><Plus className="inline h-5 w-5 me-2" />{t.add}</button>}</div></div></div></section></div>;
 }
