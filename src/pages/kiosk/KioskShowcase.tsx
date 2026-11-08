@@ -475,13 +475,20 @@ export function KioskReviewPage({ url, language, accent, onAccent, onClose, auto
   );
 }
 
-/** Small review invitation for the "request sent" screen. */
-export function ReviewInvite({ url, language }: { url: string; language: KioskLanguage }) {
+/**
+ * QR invitation to leave a Google review. `aside` stacks it with a larger
+ * code, for a column of its own on landscape screens.
+ */
+export function ReviewInvite({ url, language, aside = false }: { url: string; language: KioskLanguage; aside?: boolean }) {
   const qr = useQrCode(url, 360);
   const copy = SHOWCASE_COPY[language];
+  const box = aside
+    ? 'flex w-full flex-col items-center justify-center gap-5 rounded-2xl border border-amber-200 bg-amber-50 p-6 text-center'
+    : 'mx-auto mt-8 flex max-w-md items-center gap-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-start';
+  const qrSize = aside ? 'h-52 w-52' : 'h-28 w-28';
   return (
-    <div className="mx-auto mt-8 flex max-w-md items-center gap-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-start">
-      {qr ? <img src={qr} alt="QR code" className="h-28 w-28 shrink-0 rounded-xl bg-white p-1" /> : <div className="h-28 w-28 shrink-0 animate-pulse rounded-xl bg-white" />}
+    <div className={box}>
+      {qr ? <img src={qr} alt="QR code" className={`${qrSize} shrink-0 rounded-xl bg-white p-1`} /> : <div className={`${qrSize} shrink-0 animate-pulse rounded-xl bg-white`} />}
       <div>
         <Stars size="h-5 w-5" delay={0.3} />
         <p className="mt-2 text-base font-bold text-slate-800">{copy.reviewInvite}</p>
