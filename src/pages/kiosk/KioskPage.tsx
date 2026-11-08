@@ -132,6 +132,7 @@ export default function KioskPage() {
   // Two-column review only on a wide landscape screen; vertical screens get
   // one column and a send bar pinned to the bottom.
   const wideReview = useMediaQuery('(orientation: landscape) and (min-width: 1024px)');
+  const landscape = useMediaQuery('(orientation: landscape)');
   const [loading, setLoading] = useState(true);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState('');
@@ -708,18 +709,23 @@ export default function KioskPage() {
 
       {stage === 'submitted' && (
         <main className="min-h-screen flex items-center justify-center p-6 text-center">
-          <section className="w-full max-w-2xl rounded-3xl bg-white p-8 md:p-12 shadow-xl border border-slate-200">
-            <div className="mx-auto mb-6 flex justify-center"><Steps current={2} t={t} accent={accent} onAccent={onAccent} /></div>
-            <div className="mx-auto h-24 w-24 rounded-full flex items-center justify-center" style={{ backgroundColor: accent, color: onAccent }}><Check className="h-12 w-12" /></div>
-            <h1 className="mt-7 text-4xl font-black">{t.requestSent}</h1>
-            <p className="mt-4 text-xl leading-relaxed text-slate-600">{t.requestMessage}</p>
-            <div className="mx-auto mt-8 max-w-md rounded-2xl bg-slate-100 p-6"><p className="text-sm font-bold uppercase tracking-wider text-slate-500">{t.requestNumber}</p><p className="mt-2 text-3xl font-black tracking-wide">{requestNumber}</p></div>
-            {reviewUrl && <ReviewInvite url={reviewUrl} language={language} />}
-            <button onClick={resetSession} className="mt-8 min-h-14 rounded-2xl px-8 text-lg font-bold" style={{ backgroundColor: accent, color: onAccent }}><RotateCcw className="inline h-5 w-5 me-2" />{t.reset}</button>
-            <p className="mt-4 text-sm font-semibold text-slate-400" aria-live="off">{withCount(t.resetIn, resetSecondsLeft)}</p>
-            <div className="mx-auto mt-2 h-1 max-w-xs overflow-hidden rounded-full bg-slate-100">
-              <div className="h-full rounded-full bg-slate-300 transition-[width] duration-1000 ease-linear" style={{ width: `${(resetSecondsLeft / successSeconds) * 100}%` }} />
+          {/* Landscape: the review QR gets its own column, so the card fits a
+              short screen (1280×720 at 150 % scaling) without scrolling. */}
+          <section className={`w-full rounded-3xl bg-white p-8 shadow-xl border border-slate-200 ${reviewUrl && landscape ? 'grid max-w-5xl grid-cols-[minmax(0,1fr)_minmax(0,360px)] items-stretch gap-8' : 'max-w-2xl md:p-12'}`}>
+            <div>
+              <div className="mx-auto mb-5 flex justify-center"><Steps current={2} t={t} accent={accent} onAccent={onAccent} /></div>
+              <div className="mx-auto h-20 w-20 rounded-full flex items-center justify-center" style={{ backgroundColor: accent, color: onAccent }}><Check className="h-10 w-10" /></div>
+              <h1 className="mt-5 text-4xl font-black">{t.requestSent}</h1>
+              <p className="mt-3 text-xl leading-relaxed text-slate-600">{t.requestMessage}</p>
+              <div className="mx-auto mt-6 max-w-md rounded-2xl bg-slate-100 p-5"><p className="text-sm font-bold uppercase tracking-wider text-slate-500">{t.requestNumber}</p><p className="mt-2 text-3xl font-black tracking-wide">{requestNumber}</p></div>
+              {reviewUrl && !landscape && <ReviewInvite url={reviewUrl} language={language} />}
+              <button onClick={resetSession} className="mt-6 min-h-14 rounded-2xl px-8 text-lg font-bold" style={{ backgroundColor: accent, color: onAccent }}><RotateCcw className="inline h-5 w-5 me-2" />{t.reset}</button>
+              <p className="mt-3 text-sm font-semibold text-slate-400" aria-live="off">{withCount(t.resetIn, resetSecondsLeft)}</p>
+              <div className="mx-auto mt-2 h-1 max-w-xs overflow-hidden rounded-full bg-slate-100">
+                <div className="h-full rounded-full bg-slate-300 transition-[width] duration-1000 ease-linear" style={{ width: `${(resetSecondsLeft / successSeconds) * 100}%` }} />
+              </div>
             </div>
+            {reviewUrl && landscape && <div className="flex"><ReviewInvite url={reviewUrl} language={language} aside /></div>}
           </section>
         </main>
       )}
