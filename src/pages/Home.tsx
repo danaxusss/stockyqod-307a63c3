@@ -1,537 +1,357 @@
-import React, { useState, useEffect } from 'react';
-import {
-  Search, RefreshCw, Package, Upload, Bug, Trash2, BarChart3, FileText,
-  ShoppingCart, Users, Settings, FolderOpen, ChevronDown, ChevronUp,
-  Receipt, Calculator, Truck, Database, Activity, ArrowRight,
-  RotateCcw, FileX, ClipboardList, Images, Wifi, WifiOff, Boxes, ChevronRight,
-} from 'lucide-react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import {
+  Search, Plus, Receipt, Send, CircleAlert, Truck, Wrench, PackageX, ArrowRight, ChevronRight, MessageCircle,
+  ShoppingBag, Users, BookMarked, BookOpen, Package, RefreshCw, type LucideIcon,
+} from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import { useAccess } from '../hooks/useAccess';
+import { useHomeData } from '../hooks/useHomeData';
+import { useAccessibleLocations } from '../inventory/hooks/useAccessibleLocations';
 import { useAppContext } from '../context/AppContext';
 import { useToast } from '../context/ToastContext';
-import { ExcelUploadModal } from '../components/ExcelUploadModal';
-import { ProductUploadService } from '../utils/productUploadService';
-import { StorageManager } from '../utils/storage';
-import { supabase } from '../utils/supabaseClient';
+import { Panel } from '../components/PageHeader';
+import { StockService } from '../utils/supabaseStock';
+import { SupabaseDocumentsService } from '../utils/supabaseDocuments';
+import { getCompanyContext } from '../utils/supabaseCompanyFilter';
+import { resolveProductImageUrl } from '../utils/productImages';
+import { normalizePhone } from '../utils/phone';
+import { openSearch } from '../utils/searchEvents';
+import { formatMoney, formatRelativeDay, daysSince } from '../utils/format';
+import { DOC_LABEL, docPath, docStatus, type HomeDoc, type Tone } from '../utils/homeData';
+import type { Product, ProductStockSetting } from '../types';
 
-interface ActivityLog {
-  id: string; username: string; action: string; details: string | null;
-  entity_type: string | null; entity_id: string | null; created_at: string;
-}
-
-/* ─── Circle Nav ─────────────────────────────────────────────────────────────*/
-interface NavItem { to: string; icon: React.ElementType; label: string; sub?: string; accent: string; color: string; }
-
-const hexAlpha = (hex: string, a: number) => {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return `rgba(${r},${g},${b},${a})`;
+const TONE: Record<Tone, string> = {
+  red: 'bg-red-500/10 text-red-700 ring-red-600/20 dark:text-red-300',
+  amber: 'bg-amber-500/10 text-amber-800 ring-amber-600/20 dark:text-amber-300',
+  blue: 'bg-blue-500/10 text-blue-700 ring-blue-600/20 dark:text-blue-300',
+  green: 'bg-emerald-500/10 text-emerald-700 ring-emerald-600/20 dark:text-emerald-300',
+  gray: 'bg-secondary text-foreground/80 ring-border',
+};
+const DOC_TONE: Record<string, string> = {
+  quote: 'bg-primary/10 text-primary', invoice: 'bg-violet-500/10 text-violet-700 dark:text-violet-300',
+  bl: 'bg-teal-500/10 text-teal-700 dark:text-teal-300', proforma: 'bg-sky-500/10 text-sky-700 dark:text-sky-300',
+  avoir: 'bg-rose-500/10 text-rose-700 dark:text-rose-300', bon_commande: 'bg-amber-500/10 text-amber-800 dark:text-amber-300',
 };
 
-function CircleNav({ items }: { items: NavItem[] }) {
-  const [hovered, setHovered] = useState<number | null>(null);
+function Pill({ tone, children }: { tone: Tone; children: ReactNode }) {
+  return <span className={`inline-flex shrink-0 items-center whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${TONE[tone]}`}>{children}</span>;
+}
+
+function Kpi({ to, icon: Icon, tone, label, value, sub, cta, loading }: {
+  to: string; icon: LucideIcon; tone: string; label: string; value: ReactNode; sub: ReactNode; cta: string; loading: boolean;
+}) {
+  return (
+    <Link to={to} className="group flex min-w-0 flex-col rounded-xl border border-border bg-card p-3 shadow-sm transition hover:border-primary/40 hover:shadow-md sm:p-4">
+      <span className="flex min-w-0 items-center gap-2 text-[13px] font-medium text-muted-foreground sm:text-sm">
+        <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${tone}`}><Icon className="h-4 w-4" aria-hidden="true" /></span>
+        <span className="truncate">{label}</span>
+      </span>
+      {loading
+        ? <span className="mt-3 h-7 w-24 animate-pulse rounded bg-secondary" aria-hidden="true" />
+        : <span className="mt-2 truncate text-lg font-bold tabular-nums tracking-tight text-foreground sm:mt-3 sm:text-2xl">{value}</span>}
+      <span className="mt-0.5 line-clamp-2 text-xs text-muted-foreground sm:text-sm">{loading ? ' ' : sub}</span>
+      <span className="mt-3 hidden items-center gap-1 text-sm font-semibold text-primary sm:flex">{cta}<ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" aria-hidden="true" /></span>
+    </Link>
+  );
+}
+
+function SeeAll({ to, children }: { to: string; children: ReactNode }) {
+  return <Link to={to} className="text-sm font-semibold text-primary hover:underline">{children}</Link>;
+}
+
+function Empty({ children }: { children: ReactNode }) {
+  return <p className="px-4 py-6 text-center text-sm text-muted-foreground sm:px-5">{children}</p>;
+}
+
+function Failed() {
+  return <Empty>Impossible de charger cette liste pour le moment.</Empty>;
+}
+
+function whatsappFollowUp(doc: HomeDoc): string | null {
+  const phone = normalizePhone(doc.phone);
+  if (!phone) return null;
+  const text = `Bonjour ${doc.client}, nous revenons vers vous au sujet de notre devis ${doc.number} (${formatMoney(doc.total)}). Avez-vous pu l’étudier ?`;
+  return `https://wa.me/${phone.replace(/\D/g, '')}?text=${encodeURIComponent(text)}`;
+}
+
+/** Products under their reorder point, in the user's stock locations. */
+function useStockWatch(enabled: boolean, products: Product[]) {
+  const { filterLevels } = useAccessibleLocations();
+  const [settings, setSettings] = useState<ProductStockSetting[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    if (!enabled) return;
+    StockService.getStockSettings().then(setSettings).catch(() => setFailed(true));
+  }, [enabled]);
+  return useMemo(() => {
+    if (!enabled) return null;
+    if (failed) return { failed: true as const };
+    if (!settings) return null;
+    const reorder = new Map<string, number>();
+    settings.filter(s => !s.location_key).forEach(s => reorder.set(s.barcode, s.reorder_point));
+    const low = products
+      .map(p => ({ p, stock: Object.values(filterLevels(p.stock_levels || {})).reduce((s, v) => s + (Number(v) || 0), 0), min: reorder.get(p.barcode) }))
+      .filter((x): x is { p: Product; stock: number; min: number } => x.min != null && x.stock <= x.min)
+      .sort((a, b) => a.stock - b.stock || a.p.name.localeCompare(b.p.name, 'fr'));
+    return { failed: false as const, low, out: low.filter(x => x.stock <= 0).length, thresholds: reorder.size };
+  }, [enabled, failed, settings, products, filterLevels]);
+}
+
+export function Home() {
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
+  const { access } = useAccess();
+  const { data, loading } = useHomeData();
+  const { state } = useAppContext();
+  const { showToast } = useToast();
+  const stock = useStockWatch(access.stock, state.products);
+  const [creatingInvoice, setCreatingInvoice] = useState(false);
 
-  const n = items.length;
-  const W = 430;
-  const cx = W / 2;  // 215
-  const cy = W / 2;  // 215
-  const r1 = 86;     // inner radius (donut hole edge)
-  const r2 = 194;    // outer radius
-  const rm = (r1 + r2) / 2;  // 140 — mid-ring, icon anchor
-  const gap = 3.5;   // degrees gap between segments
-  const span = 360 / n - gap;
+  const firstName = (currentUser?.custom_seller_name?.trim() || currentUser?.username || '').split(' ')[0];
+  const today = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
 
-  const toRad = (d: number) => d * Math.PI / 180;
+  const followUps = data?.followUps;
+  const unpaid = data?.unpaid;
+  const tasks = data?.tasks;
+  const recent = data?.recent;
+  const followTotal = followUps?.reduce((s, d) => s + d.total, 0) ?? 0;
+  const unpaidTotal = unpaid?.reduce((s, d) => s + d.total - d.paid, 0) ?? 0;
+  const deliveries = tasks?.filter(t => t.type === 'delivery').length ?? 0;
 
-  /* annular sector path centred at cDeg (0 = top, clockwise) */
-  const segPath = (cDeg: number) => {
-    const s = toRad(cDeg - span / 2);
-    const e = toRad(cDeg + span / 2);
-    const la = span > 180 ? 1 : 0;
-    const x1 = cx + r2 * Math.sin(s), y1 = cy - r2 * Math.cos(s);
-    const x2 = cx + r2 * Math.sin(e), y2 = cy - r2 * Math.cos(e);
-    const x3 = cx + r1 * Math.sin(e), y3 = cy - r1 * Math.cos(e);
-    const x4 = cx + r1 * Math.sin(s), y4 = cy - r1 * Math.cos(s);
-    return `M ${x1} ${y1} A ${r2} ${r2} 0 ${la} 1 ${x2} ${y2} L ${x3} ${y3} A ${r1} ${r1} 0 ${la} 0 ${x4} ${y4} Z`;
+  const newInvoice = async () => {
+    const { companyId } = getCompanyContext();
+    if (!companyId) { navigate('/compta/invoices'); return; }
+    setCreatingInvoice(true);
+    try {
+      const doc = await SupabaseDocumentsService.createEmptyDocument('invoice', companyId);
+      navigate(`/compta/invoices/${doc.id}?new=1`);
+    } catch (e) {
+      showToast({ type: 'error', message: e instanceof Error ? e.message : String(e) });
+    } finally { setCreatingInvoice(false); }
   };
 
-  return (
-    <>
-      {/* Desktop: donut ring */}
-      <div className="hidden md:flex justify-center">
-        <div className="relative" style={{ width: W, height: W }}>
+  const kpis: ReactNode[] = [];
+  if (access.quotes) kpis.push(<Kpi key="f" to="/quotes-history" icon={Send} tone="bg-amber-500/15 text-amber-700 dark:text-amber-300" label="Devis à relancer" loading={loading && !followUps}
+    value={followUps ? followUps.length : '—'} sub={followUps ? `${formatMoney(followTotal)} en attente` : 'Liste indisponible'} cta="Relancer" />);
+  if (access.billing) kpis.push(<Kpi key="u" to="/compta/invoices" icon={CircleAlert} tone="bg-red-500/10 text-red-700 dark:text-red-300" label="Factures impayées" loading={loading && !unpaid}
+    value={unpaid ? formatMoney(unpaidTotal) : '—'} sub={unpaid ? (unpaid.length ? `${unpaid.length} facture${unpaid.length > 1 ? 's' : ''} · la plus ancienne ${daysSince(unpaid[0].createdAt)} j` : 'Tout est encaissé') : 'Liste indisponible'} cta="Encaisser" />);
+  if (access.tasks) kpis.push(<Kpi key="t" to={access.ownTasksOnly ? '/tasks/mine' : '/tasks'} icon={Truck} tone="bg-blue-500/10 text-blue-700 dark:text-blue-300" label="Tâches ouvertes" loading={loading && !tasks}
+    value={tasks ? `${tasks.length} tâche${tasks.length > 1 ? 's' : ''}` : '—'} sub={tasks ? `${deliveries} livraison${deliveries > 1 ? 's' : ''} · ${tasks.length - deliveries} intervention${tasks.length - deliveries > 1 ? 's' : ''}` : 'Liste indisponible'} cta="Planning" />);
+  if (access.stock) kpis.push(<Kpi key="s" to="/inventaire/niveaux" icon={PackageX} tone="bg-secondary text-foreground/70" label="Stock à surveiller" loading={!stock}
+    value={stock && !stock.failed ? `${stock.low.length} produit${stock.low.length > 1 ? 's' : ''}` : '—'}
+    sub={stock && !stock.failed ? (stock.thresholds ? `${stock.out} en rupture · sous le seuil` : 'Aucun seuil défini') : 'Liste indisponible'} cta="Réapprovisionner" />);
 
-          {/* SVG ring — segments */}
-          <svg
-            width={W} height={W}
-            className="absolute inset-0"
-            style={{ filter: 'drop-shadow(0 4px 20px rgba(0,0,0,0.10))' }}
-          >
-            {items.map((item, i) => {
-              const cDeg = i * (360 / n);
-              const isHov = hovered === i;
+  const quickLinks: { to: string; label: string; icon: LucideIcon }[] = [
+    { to: '/products', label: 'Produits', icon: ShoppingBag },
+    { to: '/clients', label: 'Clients', icon: Users },
+    { to: '/catalogue', label: 'Catalogue', icon: BookMarked },
+    { to: '/sheets', label: 'Fiches techniques', icon: BookOpen },
+  ];
+
+  const mainColumn: ReactNode[] = [];
+  const sideColumn: ReactNode[] = [];
+
+  if (access.quotes) {
+    mainColumn.push(
+      <Panel key="follow" title="Devis à relancer" action={<SeeAll to="/quotes-history">Tout voir</SeeAll>}>
+        {followUps === null ? <Failed /> : !followUps ? <Empty>Chargement…</Empty> : followUps.length === 0 ? <Empty>Aucun devis en attente de réponse.</Empty> : (
+          <ul className="divide-y divide-border">
+            {followUps.slice(0, 5).map(d => {
+              const wa = whatsappFollowUp(d);
               return (
-                <path
-                  key={i}
-                  d={segPath(cDeg)}
-                  fill={isHov ? item.color : hexAlpha(item.color, 0.09)}
-                  stroke="hsl(var(--background))"
-                  strokeWidth={5}
-                  style={{ cursor: 'pointer', transition: 'fill 0.15s ease' }}
-                  onMouseEnter={() => setHovered(i)}
-                  onMouseLeave={() => setHovered(null)}
-                  onClick={() => navigate(item.to)}
-                />
+                <li key={d.id} className="flex items-center gap-3 px-4 py-3 sm:px-5">
+                  <Link to={docPath(d)} className="min-w-0 flex-1">
+                    <span className="block truncate font-semibold text-foreground">{d.client}</span>
+                    <span className="block truncate text-sm text-muted-foreground">{d.number} · envoyé il y a {daysSince(d.updatedAt)} j</span>
+                  </Link>
+                  <span className="hidden w-32 shrink-0 text-right font-semibold tabular-nums text-foreground sm:block">{formatMoney(d.total)}</span>
+                  {wa && (
+                    <a href={wa} target="_blank" rel="noopener noreferrer" aria-label={`Relancer ${d.client} sur WhatsApp`}
+                      className="flex h-10 shrink-0 items-center gap-1.5 rounded-lg border border-border px-3 text-sm font-semibold text-foreground hover:bg-secondary">
+                      <MessageCircle className="h-4 w-4 text-emerald-600" aria-hidden="true" /><span className="hidden sm:inline">Relancer</span>
+                    </a>
+                  )}
+                  <Link to={docPath(d)} aria-label={`Ouvrir ${d.number}`} className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary sm:flex">
+                    <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                  </Link>
+                </li>
               );
             })}
-          </svg>
-
-          {/* Center — Search */}
-          <Link
-            to="/search"
-            className="absolute z-20 flex flex-col items-center justify-center gap-1.5 rounded-full
-              bg-primary text-primary-foreground
-              shadow-lg hover:scale-[1.03] transition-transform duration-200"
-            style={{ width: r1 * 2 - 8, height: r1 * 2 - 8, left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}
-          >
-            <Search className="h-5 w-5" />
-            <span className="text-[10px] font-semibold tracking-wide">Rechercher</span>
-          </Link>
-
-          {/* Icon + label — synced with SVG hover */}
-          {items.map((item, i) => {
-            const rad = toRad(i * (360 / n));
-            const ix = cx + rm * Math.sin(rad);
-            const iy = cy - rm * Math.cos(rad);
-            const Icon = item.icon;
-            const isHov = hovered === i;
-            return (
-              <Link
-                key={item.to}
-                to={item.to}
-                className="absolute z-10 flex flex-col items-center gap-1 pointer-events-auto"
-                style={{ left: ix, top: iy, transform: 'translate(-50%, -50%)', width: 70 }}
-                onMouseEnter={() => setHovered(i)}
-                onMouseLeave={() => setHovered(null)}
-              >
-                <Icon
-                  className="shrink-0 transition-colors duration-150"
-                  style={{ width: 22, height: 22, color: isHov ? 'white' : item.color }}
-                />
-                <span
-                  className="text-[10px] font-semibold text-center leading-tight transition-colors duration-150"
-                  style={{ color: isHov ? 'white' : 'hsl(var(--foreground))' }}
-                >
-                  {item.label}
-                </span>
-              </Link>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Mobile: 2-col grid */}
-      <div className="grid grid-cols-2 gap-2.5 md:hidden">
-        <Link to="/search"
-          className="col-span-2 flex items-center gap-3 p-4 rounded-xl bg-primary
-            text-white shadow-lg hover:shadow-primary/30 hover:-translate-y-0.5 transition-all duration-200">
-          <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
-            <Search className="h-5 w-5" />
-          </div>
-          <div>
-            <div className="font-semibold text-sm">Rechercher</div>
-            <div className="text-[11px] text-white/70">Nom, marque ou barcode</div>
-          </div>
-          <ArrowRight className="h-4 w-4 ml-auto opacity-70" />
-        </Link>
-        {items.map(item => {
-          const Icon = item.icon;
-          return (
-            <Link key={item.to} to={item.to}
-              className="flex items-center gap-2.5 p-3 rounded-xl bg-card border border-border/50
-                shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200">
-              <div className={`w-9 h-9 rounded-xl ${item.accent} flex items-center justify-center shrink-0`}>
-                <Icon className="h-4 w-4 text-white" />
-              </div>
-              <div>
-                <div className="text-xs font-semibold text-foreground">{item.label}</div>
-                {item.sub && <div className="text-[10px] text-muted-foreground">{item.sub}</div>}
-              </div>
-            </Link>
-          );
-        })}
-      </div>
-    </>
-  );
-}
-
-/* ─── Pipeline Doc Card ──────────────────────────────────────────────────────*/
-interface PipelineItem { to: string; icon: React.ElementType; label: string; sub: string; gradient: string; }
-
-function DocumentPipeline({ items }: { items: PipelineItem[] }) {
-  return (
-    <div className="relative">
-      {/* Desktop horizontal pipeline */}
-      <div className="hidden sm:flex items-stretch gap-0 rounded-2xl overflow-hidden border border-border/50 shadow-sm">
-        {items.map((item, i) => {
-          const Icon = item.icon;
-          const isLast = i === items.length - 1;
-          return (
-            <React.Fragment key={item.to}>
-              <Link to={item.to}
-                className="flex-1 flex flex-col items-center gap-2 py-4 px-2 bg-card hover:bg-accent/60
-                  transition-colors group relative overflow-hidden">
-                {/* Subtle gradient top bar */}
-                <div className={`absolute top-0 left-0 right-0 h-0.5 ${item.gradient}`} />
-                <div className={`w-10 h-10 rounded-xl ${item.gradient} flex items-center justify-center
-                  shadow-sm group-hover:scale-110 transition-transform duration-200`}>
-                  <Icon className="h-4.5 w-4.5 text-white h-[18px] w-[18px]" />
-                </div>
-                <div className="text-center">
-                  <div className="text-xs font-semibold text-foreground">{item.label}</div>
-                  <div className="text-[10px] text-muted-foreground">{item.sub}</div>
-                </div>
-              </Link>
-              {!isLast && (
-                <div className="flex items-center self-stretch px-0 shrink-0 bg-card">
-                  <ChevronRight className="h-3.5 w-3.5 text-border" />
-                </div>
-              )}
-            </React.Fragment>
-          );
-        })}
-      </div>
-
-      {/* Mobile: 2-col grid */}
-      <div className="grid grid-cols-2 gap-2 sm:hidden">
-        {items.map(item => {
-          const Icon = item.icon;
-          return (
-            <Link key={item.to} to={item.to}
-              className="flex items-center gap-2.5 p-3 rounded-xl bg-card border border-border/50 shadow-sm
-                hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 overflow-hidden relative">
-              <div className={`absolute top-0 left-0 bottom-0 w-1 ${item.gradient}`} />
-              <div className={`w-9 h-9 rounded-xl ${item.gradient} flex items-center justify-center shrink-0 ml-1`}>
-                <Icon className="h-4 w-4 text-white" />
-              </div>
-              <div>
-                <div className="text-xs font-semibold text-foreground">{item.label}</div>
-                <div className="text-[10px] text-muted-foreground">{item.sub}</div>
-              </div>
-            </Link>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-/* ─── Stat Card ──────────────────────────────────────────────────────────────*/
-function StatCard({ label, value, sub, icon: Icon, accent }: {
-  label: string; value: string; sub?: string; icon: React.ElementType; accent: string;
-}) {
-  return (
-    <div className="bg-card border border-border/50 rounded-xl p-3.5 flex items-center gap-3
-      shadow-[0_1px_3px_rgba(0,0,0,0.06),0_2px_8px_rgba(0,0,0,0.04)]
-      dark:shadow-[0_1px_3px_rgba(0,0,0,0.3),0_2px_8px_rgba(0,0,0,0.2)]">
-      <div className={`w-10 h-10 rounded-xl ${accent} flex items-center justify-center shrink-0`}>
-        <Icon className="h-5 w-5 text-white" />
-      </div>
-      <div className="min-w-0">
-        <div className="text-lg font-bold text-foreground tracking-tight leading-none finance-amount">{value}</div>
-        <div className="text-[11px] font-medium text-muted-foreground mt-0.5">{label}</div>
-        {sub && <div className="text-[11px] text-muted-foreground">{sub}</div>}
-      </div>
-    </div>
-  );
-}
-
-/* ─── Section Label ──────────────────────────────────────────────────────────*/
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex items-center gap-2 mb-3">
-      <h2 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-[0.08em] shrink-0">{children}</h2>
-      <div className="flex-1 h-px bg-border/50" />
-    </div>
-  );
-}
-
-/* ─── Small Admin Card ───────────────────────────────────────────────────────*/
-function AdminCard({ to, onClick, icon: Icon, label, sub, accent, disabled = false }: {
-  to?: string; onClick?: () => void; icon: React.ElementType; label: string; sub: string; accent: string; disabled?: boolean;
-}) {
-  const cls = `flex flex-col items-center gap-2 p-3 rounded-xl bg-card border border-border/50 text-center
-    shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer
-    ${disabled ? 'opacity-40 pointer-events-none' : ''}`;
-  const content = (
-    <>
-      <div className={`w-9 h-9 rounded-xl ${accent} flex items-center justify-center`}>
-        <Icon className="h-4 w-4 text-white" />
-      </div>
-      <div>
-        <div className="text-xs font-semibold text-foreground">{label}</div>
-        <div className="text-[10px] text-muted-foreground">{sub}</div>
-      </div>
-    </>
-  );
-  if (to) return <Link to={to} className={cls}>{content}</Link>;
-  return <button onClick={onClick} disabled={disabled} className={cls}>{content}</button>;
-}
-
-/* ─── Main ───────────────────────────────────────────────────────────────────*/
-export function Home() {
-  const { isAdmin, isSuperAdmin, isCompta, isFacturation, canAccessStockLocation, authVersion, canCreateQuote } = useAuth();
-  const { state, syncData, syncInfo } = useAppContext();
-  const { showToast } = useToast();
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [isClearing, setIsClearing] = useState(false);
-  const [showUploadModal, setShowUploadModal] = useState(false);
-  const [showDebugInfo, setShowDebugInfo] = useState(false);
-  const [debugInfo, setDebugInfo] = useState<any>(null);
-  const [showTechnicalSection, setShowTechnicalSection] = useState(false);
-  const [showActivitySection, setShowActivitySection] = useState(false);
-  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
-  const [activityLoading, setActivityLoading] = useState(false);
-
-  useEffect(() => {
-    console.log('Home page - Auth version changed:', authVersion, 'isAdmin:', isAdmin);
-  }, [authVersion, isAdmin]);
-
-  const handleSync = async () => {
-    if (!isAdmin) return;
-    setIsSyncing(true);
-    try {
-      const hasUpdates = await syncData(true);
-      showToast({ type: hasUpdates ? 'success' : 'info', title: hasUpdates ? 'Synchronisation réussie' : 'Déjà à jour', message: hasUpdates ? 'Base de données mise à jour !' : 'Aucune nouvelle donnée.' });
-    } catch (error) {
-      showToast({ type: 'error', title: 'Erreur', message: error instanceof Error ? error.message : 'Échec' });
-    } finally { setIsSyncing(false); }
-  };
-
-  const handleClearDatabase = async () => {
-    if (!isAdmin) return;
-    if (!window.confirm('Supprimer TOUS les produits ? Cette action est IRRÉVERSIBLE !')) return;
-    if (prompt('Tapez exactement: CONFIRMER') !== 'CONFIRMER') { showToast({ type: 'warning', title: 'Annulé', message: 'Confirmation incorrecte' }); return; }
-    setIsClearing(true);
-    try {
-      await ProductUploadService.resetDatabase();
-      StorageManager.clearAllData();
-      showToast({ type: 'success', title: 'Suppression terminée', message: 'La page va se recharger...' });
-      setTimeout(() => window.location.reload(), 2000);
-    } catch (error) {
-      showToast({ type: 'error', title: 'Erreur', message: `${error instanceof Error ? error.message : 'Erreur'}` });
-    } finally { setIsClearing(false); }
-  };
-
-  const handleUploadSuccess = () => { showToast({ type: 'success', title: 'Upload réussi', message: 'Produits téléchargés !' }); window.location.reload(); };
-
-  const handleDebugAnalysis = async () => {
-    if (!isAdmin) return;
-    try { setShowDebugInfo(true); const s = await ProductUploadService.analyzeProducts(); setDebugInfo({ supabase: s, timestamp: new Date().toISOString() }); }
-    catch { showToast({ type: 'error', title: 'Erreur', message: 'Analyse échouée' }); }
-  };
-
-  const handleToggleActivity = async () => {
-    if (!showActivitySection) {
-      setActivityLoading(true);
-      try { const { data, error } = await (supabase.rpc as any)('get_recent_activity_logs', { p_limit: 30 }); if (!error) setActivityLogs(data || []); }
-      catch {} finally { setActivityLoading(false); }
-    }
-    setShowActivitySection(prev => !prev);
-  };
-
-  const formatNumber = (n: number) => new Intl.NumberFormat('fr-FR').format(n);
-
-  const totalStock = state.products.reduce((sum, p) => {
-    return sum + Object.entries(p.stock_levels || {})
-      .filter(([loc]) => canAccessStockLocation(loc))
-      .reduce((s, [, v]) => s + v, 0);
-  }, 0);
-
-  const allLocations = new Set<string>();
-  state.products.forEach(p => Object.keys(p.stock_levels || {}).forEach(loc => { if (canAccessStockLocation(loc)) allLocations.add(loc); }));
-
-  /* ── Empty state ── */
-  if (state.products.length === 0) {
-    return (
-      <div className="max-w-sm mx-auto pt-8">
-        <div className="bg-card border border-border/50 rounded-2xl p-8 text-center shadow-[0_4px_24px_rgba(0,0,0,0.08)]">
-          <div className="flex justify-center mb-5">
-            <div className="w-16 h-16 bg-muted rounded-2xl flex items-center justify-center">
-              <Package className="h-8 w-8 text-muted-foreground/50" />
-            </div>
-          </div>
-          <h2 className="text-base font-semibold text-foreground mb-1.5">Aucun produit</h2>
-          <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
-            {state.isOnline ? 'Synchronisez ou importez des produits.' : 'Connectez-vous à Internet pour synchroniser.'}
-          </p>
-          {state.isOnline && isAdmin && (
-            <div className="flex flex-col gap-2">
-              <button onClick={handleSync} disabled={isSyncing}
-                className="flex items-center justify-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors">
-                <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
-                {isSyncing ? 'Synchronisation...' : 'Synchroniser'}
-              </button>
-              <button onClick={() => setShowUploadModal(true)}
-                className="flex items-center justify-center gap-2 px-4 py-2.5 bg-secondary text-secondary-foreground rounded-xl text-sm font-medium hover:bg-secondary/80 transition-colors border border-border/50">
-                <Upload className="h-4 w-4" /> Importer Excel
-              </button>
-            </div>
-          )}
-        </div>
-        {showUploadModal && <ExcelUploadModal onClose={() => setShowUploadModal(false)} onSuccess={handleUploadSuccess} />}
-      </div>
+          </ul>
+        )}
+      </Panel>,
+    );
+  }
+  if (access.billing) {
+    mainColumn.push(
+      <Panel key="unpaid" title="Factures à encaisser" action={<SeeAll to="/compta/invoices">Factures</SeeAll>}>
+        {unpaid === null ? <Failed /> : !unpaid ? <Empty>Chargement…</Empty> : unpaid.length === 0 ? <Empty>Toutes les factures sont encaissées.</Empty> : (
+          <ul className="divide-y divide-border">
+            {unpaid.slice(0, 5).map(d => (
+              <li key={d.id}>
+                <Link to={docPath(d)} className="flex items-center gap-3 px-4 py-3 hover:bg-secondary/50 sm:px-5">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-semibold text-foreground">{d.client}</span>
+                    <span className="block truncate text-sm text-muted-foreground">{d.number} · émise il y a {daysSince(d.createdAt)} j</span>
+                  </span>
+                  <span className="shrink-0 text-right">
+                    <span className="block font-semibold tabular-nums text-foreground">{formatMoney(d.total - d.paid)}</span>
+                    <span className="block text-xs text-muted-foreground">{d.paid > 0 ? `sur ${formatMoney(d.total)}` : 'reste à payer'}</span>
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Panel>,
+    );
+  }
+  if (access.quotes || access.billing) {
+    mainColumn.push(
+      <Panel key="recent" title="Documents récents" action={<SeeAll to={access.quotes ? '/quotes-history' : '/compta/invoices'}>Historique</SeeAll>}>
+        {recent === null ? <Failed /> : !recent ? <Empty>Chargement…</Empty> : recent.length === 0 ? <Empty>Aucun document pour le moment.</Empty> : (
+          <ul className="divide-y divide-border">
+            {recent.map(d => {
+              const st = docStatus(d);
+              return (
+                <li key={d.id}>
+                  <Link to={docPath(d)} className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-secondary/50 sm:px-5">
+                    <span className={`w-[4.5rem] shrink-0 rounded-md px-2 py-0.5 text-center text-xs font-bold ${DOC_TONE[d.type] || DOC_TONE.quote}`}>{DOC_LABEL[d.type]}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium text-foreground">{d.client}</span>
+                      <span className="block truncate text-xs text-muted-foreground tabular-nums">{d.number} · {formatRelativeDay(d.createdAt)}</span>
+                    </span>
+                    <span className="hidden shrink-0 font-semibold tabular-nums text-foreground sm:block">{formatMoney(d.total)}</span>
+                    <Pill tone={st.tone}>{st.label}</Pill>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Panel>,
+    );
+  }
+  if (access.tasks) {
+    sideColumn.push(
+      <Panel key="tasks" title="Tâches à faire" action={<SeeAll to={access.ownTasksOnly ? '/tasks/mine' : '/tasks'}>Tâches</SeeAll>}>
+        {tasks === null ? <Failed /> : !tasks ? <Empty>Chargement…</Empty> : tasks.length === 0 ? <Empty>Aucune tâche en cours.</Empty> : (
+          <ul className="divide-y divide-border">
+            {tasks.slice(0, 5).map(t => {
+              const delivery = t.type === 'delivery';
+              const Icon = delivery ? Truck : Wrench;
+              const late = t.dueDate && new Date(t.dueDate) < new Date(new Date().toDateString());
+              return (
+                <li key={t.id} className="flex gap-3 px-4 py-3 sm:px-5">
+                  <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${delivery ? 'bg-blue-500/10 text-blue-700 dark:text-blue-300' : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'}`}><Icon className="h-4 w-4" aria-hidden="true" /></span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-foreground">{t.client || (delivery ? 'Livraison' : 'Intervention')}</span>
+                    <span className="block truncate text-sm text-muted-foreground">{delivery ? 'Livraison' : 'Intervention'}{t.details ? ` · ${t.details}` : t.address ? ` · ${t.address}` : ''}</span>
+                  </span>
+                  {t.dueDate && <span className={`shrink-0 text-xs font-semibold ${late ? 'text-red-700 dark:text-red-300' : 'text-muted-foreground'}`}>{late ? 'En retard' : new Date(t.dueDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</span>}
+                  {t.status === 'doing' && !t.dueDate && <Pill tone="blue">En cours</Pill>}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Panel>,
+    );
+  }
+  if (access.stock) {
+    sideColumn.push(
+      <Panel key="stock" title="Stock à surveiller" action={<SeeAll to="/inventaire">Stock</SeeAll>}>
+        {!stock ? <Empty>Chargement…</Empty> : stock.failed ? <Failed /> : !stock.thresholds ? (
+          <Empty>Définissez des seuils de réapprovisionnement dans <Link to="/inventaire/niveaux" className="font-semibold text-primary hover:underline">Niveaux de stock</Link> pour être alerté ici.</Empty>
+        ) : stock.low.length === 0 ? <Empty>Aucun produit sous son seuil.</Empty> : (
+          <ul className="divide-y divide-border">
+            {stock.low.slice(0, 5).map(({ p, stock: qty, min }) => {
+              const img = resolveProductImageUrl(p.image);
+              return (
+                <li key={p.barcode}>
+                  <Link to={`/product/${encodeURIComponent(p.barcode)}`} className="flex items-center gap-3 px-4 py-2.5 hover:bg-secondary/50 sm:px-5">
+                    <span className="flex h-10 w-8 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-white">
+                      {img ? <img src={img} alt="" className="h-full w-full object-contain" loading="lazy" /> : <Package className="h-4 w-4 text-muted-foreground" aria-hidden="true" />}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{p.name}</span>
+                    {qty <= 0 ? <Pill tone="red">Rupture</Pill> : <Pill tone="amber">{qty} / {min}</Pill>}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Panel>,
     );
   }
 
-  /* ── Data ── */
-  const navItems: NavItem[] = [
-    { to: '/products',  icon: FolderOpen,   label: 'Produits',        sub: 'Parcourir',  accent: 'bg-blue-800',    color: '#1e40af' },
-    { to: '/clients',   icon: Users,         label: 'Clients',        sub: 'Gestion',    accent: 'bg-sky-700',     color: '#0369a1' },
-    { to: '/sheets',    icon: FileText,      label: 'Fiches',         sub: 'Documents',  accent: 'bg-sky-800',    color: '#0f766e' },
-    { to: '/photos',    icon: Images,        label: 'Galerie',        sub: 'Photos',     accent: 'bg-slate-600',   color: '#475569' },
-    ...(canCreateQuote() ? [
-      { to: '/quote-cart',     icon: ShoppingCart, label: 'Nouveau Devis', sub: 'Créer',      accent: 'bg-primary',     color: '#2b4c92' },
-      { to: '/quotes-history', icon: FileText,     label: 'Devis',         sub: 'Historique', accent: 'bg-emerald-700', color: '#047857' },
-    ] : []),
-  ];
+  // Users without any of these lists (catalogue access only) get shortcuts.
+  if (!mainColumn.length && !sideColumn.length) {
+    mainColumn.push(
+      <Panel key="links" title="Accès rapide">
+        <div className="grid grid-cols-2 gap-px bg-border sm:grid-cols-4">
+          {quickLinks.map(l => (
+            <Link key={l.to} to={l.to} className="flex flex-col items-center gap-2 bg-card px-3 py-5 text-sm font-semibold text-foreground hover:bg-secondary/50">
+              <l.icon className="h-6 w-6 text-primary" aria-hidden="true" />{l.label}
+            </Link>
+          ))}
+        </div>
+      </Panel>,
+    );
+  }
 
-  const pipelineItems: PipelineItem[] = [
-    { to: '/compta/bons-commande', icon: ClipboardList, label: 'BC',       sub: 'Commande',  gradient: 'bg-blue-800' },
-    { to: '/compta/bls',           icon: Truck,         label: 'BL',       sub: 'Livraison', gradient: 'bg-sky-700' },
-    { to: '/compta/proformas',     icon: FileText,      label: 'Proforma', sub: 'Devis pro', gradient: 'bg-emerald-700' },
-    { to: '/compta/invoices',      icon: Receipt,       label: 'Facture',  sub: 'Facturer',  gradient: 'bg-slate-700' },
-    { to: '/compta/avoirs',        icon: FileX,         label: 'Avoir',    sub: 'Crédit',    gradient: 'bg-rose-700' },
-    { to: '/compta/returns',       icon: RotateCcw,     label: 'Retour',   sub: 'Gestion',   gradient: 'bg-amber-600' },
-    { to: '/compta/clients',       icon: Calculator,    label: 'Clients',  sub: 'Financier', gradient: 'bg-cyan-800' },
-  ];
+  if (state.products.length === 0 && access.superAdmin) {
+    mainColumn.unshift(
+      <Panel key="empty">
+        <div className="flex flex-wrap items-center gap-4 p-5">
+          <Package className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold text-foreground">Aucun produit chargé</p>
+            <p className="text-sm text-muted-foreground">{state.isOnline ? 'Synchronisez ou importez le catalogue depuis les outils système.' : 'Connectez-vous à Internet pour synchroniser.'}</p>
+          </div>
+          <Link to="/admin/tools" className="flex items-center gap-2 rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-primary-foreground"><RefreshCw className="h-4 w-4" aria-hidden="true" />Outils système</Link>
+        </div>
+      </Panel>,
+    );
+  }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-
-      {/* ── Stats ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-        <StatCard icon={Boxes}       accent="bg-primary"      label="Produits"     value={formatNumber(state.products.length)} sub="références actives" />
-        <StatCard icon={Package}     accent="bg-emerald-700"  label="Stock Total"  value={formatNumber(totalStock)}            sub="toutes zones" />
-        <StatCard icon={BarChart3}   accent="bg-sky-700"   label="Emplacements" value={allLocations.size.toString()}        sub="zones actives" />
-        <StatCard icon={syncInfo.isOnline ? Wifi : WifiOff}
-                  accent={syncInfo.isOnline ? 'bg-emerald-700' : 'bg-muted-foreground'}
-                  label="Connexion"
-                  value={syncInfo.isOnline ? 'En ligne' : 'Hors ligne'}
-                  sub={syncInfo.isOnline ? 'Base synchronisée' : 'Mode local'} />
+    <div className="mx-auto max-w-6xl">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">Bonjour{firstName ? ` ${firstName}` : ''}</h1>
+          <p className="mt-1 text-sm text-muted-foreground first-letter:uppercase">{today}<span className="hidden sm:inline"> · voici ce qui demande votre attention</span></p>
+        </div>
+        <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+          {access.billing && (
+            <button type="button" onClick={newInvoice} disabled={creatingInvoice} className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-border bg-card px-3.5 py-2 text-sm font-semibold text-foreground hover:bg-secondary disabled:opacity-60 sm:flex-none">
+              <Receipt className="h-4 w-4" aria-hidden="true" />Nouvelle facture
+            </button>
+          )}
+          {access.quotes && (
+            <Link to="/quote-cart" className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 sm:flex-none">
+              <Plus className="h-4 w-4" aria-hidden="true" />Nouveau devis
+            </Link>
+          )}
+        </div>
       </div>
 
-      {/* ── Navigation Hub ── */}
-      <section>
-        <SectionLabel>Navigation</SectionLabel>
-        <CircleNav items={navItems} />
-      </section>
+      <button type="button" onClick={openSearch}
+        className="mt-4 flex w-full items-center gap-3 rounded-xl border border-border bg-card px-4 py-3.5 text-left shadow-sm hover:border-primary/40">
+        <Search className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <span className="min-w-0 flex-1 truncate text-[15px] text-muted-foreground"><span className="sm:hidden">Produit, client, document…</span><span className="hidden sm:inline">Chercher un produit, un client ou un document…</span></span>
+        <kbd className="hidden rounded border border-border bg-secondary px-2 py-0.5 text-xs font-semibold text-muted-foreground md:inline">Ctrl K</kbd>
+      </button>
 
-      {/* ── Documents Pipeline ── */}
-      {(isFacturation || isCompta || isSuperAdmin) && (
-        <section>
-          <SectionLabel>Documents</SectionLabel>
-          <DocumentPipeline items={pipelineItems} />
-        </section>
-      )}
+      {/* One card would only repeat the list under it. */}
+      {kpis.length > 1 && <div className={`mt-4 grid grid-cols-2 gap-3 ${kpis.length >= 4 ? 'lg:grid-cols-4' : kpis.length === 3 ? 'lg:grid-cols-3' : ''}`}>{kpis}</div>}
 
-      {/* ── Administration ── */}
-      {isSuperAdmin && (
-        <section>
-          <SectionLabel>Administration</SectionLabel>
-          <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-            <AdminCard onClick={handleSync} disabled={isSyncing || !state.isOnline} icon={RefreshCw} accent="bg-orange-500" label="Synchroniser" sub={isSyncing ? 'En cours...' : 'Serveur'} />
-            <AdminCard onClick={() => setShowUploadModal(true)} icon={Upload}   accent="bg-primary" label="Import Excel"  sub="Télécharger" />
-            <AdminCard to="/admin/statistics" icon={BarChart3}  accent="bg-primary"      label="Statistiques" sub="Données" />
-            <AdminCard to="/admin/settings"   icon={Settings}   accent="bg-slate-500"    label="Paramètres"   sub="Config" />
-            <AdminCard to="/admin/backup"     icon={Database}   accent="bg-rose-700"     label="Sauvegarde"   sub="Backup" />
-          </div>
-        </section>
-      )}
+      <div className={`mt-5 grid gap-5 ${sideColumn.length && mainColumn.length ? 'lg:grid-cols-3' : ''}`}>
+        {mainColumn.length > 0 && <div className={`space-y-5 ${sideColumn.length ? 'lg:col-span-2' : ''}`}>{mainColumn}</div>}
+        {sideColumn.length > 0 && <div className="space-y-5">{sideColumn}</div>}
+      </div>
 
-      {/* ── Activity log ── */}
-      {isSuperAdmin && (
-        <section>
-          <button onClick={handleToggleActivity} className="flex items-center gap-1.5 mb-3 group w-full">
-            <Activity className="h-3 w-3 text-muted-foreground group-hover:text-foreground transition-colors" />
-            <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-[0.08em] group-hover:text-foreground transition-colors">
-              Activité Récente
-            </span>
-            <div className="flex-1 h-px bg-border/50 ml-1" />
-            {showActivitySection ? <ChevronUp className="h-3 w-3 text-muted-foreground" /> : <ChevronDown className="h-3 w-3 text-muted-foreground" />}
-          </button>
-          {showActivitySection && (
-            <div className="bg-card border border-border/50 rounded-xl overflow-hidden shadow-sm">
-              {activityLoading ? (
-                <div className="p-6 text-center text-xs text-muted-foreground">Chargement...</div>
-              ) : activityLogs.length === 0 ? (
-                <div className="p-6 text-center text-xs text-muted-foreground">Aucune activité enregistrée.</div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead className="bg-secondary/60">
-                      <tr>
-                        {['Utilisateur', 'Action', 'Détails', 'Date'].map(h => (
-                          <th key={h} className="text-left px-4 py-2.5 font-semibold text-muted-foreground text-[10px] uppercase tracking-wide">{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border/40">
-                      {activityLogs.map(log => (
-                        <tr key={log.id} className="hover:bg-secondary/30 transition-colors">
-                          <td className="px-4 py-2.5 font-medium text-foreground">{log.username}</td>
-                          <td className="px-4 py-2.5 text-foreground">{log.action}</td>
-                          <td className="px-4 py-2.5 text-muted-foreground hidden sm:table-cell max-w-[200px] truncate">{log.details || '—'}</td>
-                          <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">
-                            {new Date(log.created_at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* ── Danger zone ── */}
-      {isSuperAdmin && (
-        <section>
-          <button onClick={() => setShowTechnicalSection(!showTechnicalSection)} className="flex items-center gap-1.5 mb-3 group w-full">
-            {showTechnicalSection ? <ChevronUp className="h-3 w-3 text-muted-foreground" /> : <ChevronDown className="h-3 w-3 text-muted-foreground" />}
-            <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-[0.08em] group-hover:text-foreground transition-colors">Technique & Debug</span>
-            <div className="flex-1 h-px bg-border/50 ml-1" />
-          </button>
-          {showTechnicalSection && (
-            <div className="grid grid-cols-2 gap-2">
-              <AdminCard onClick={handleDebugAnalysis} icon={Bug}   accent="bg-rose-600" label="Debug"          sub="Analyser la base" />
-              <AdminCard onClick={handleClearDatabase} disabled={isClearing} icon={Trash2} accent="bg-red-700" label="Vider la Base"    sub={isClearing ? 'Suppression...' : 'IRRÉVERSIBLE'} />
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* ── Debug panel ── */}
-      {showDebugInfo && debugInfo && isAdmin && (
-        <div className="bg-card border border-border/50 rounded-xl p-4 shadow-sm">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-foreground flex items-center gap-2"><Bug className="h-3.5 w-3.5" /> Analyse de Debug</h2>
-            <button onClick={() => setShowDebugInfo(false)} className="text-muted-foreground hover:text-foreground text-lg leading-none">×</button>
-          </div>
-          <div className="space-y-1.5 text-sm text-muted-foreground">
-            <div>Produits serveur: <span className="font-mono text-foreground">{debugInfo.supabase.totalCount}</span></div>
-            <div>Invalides: <span className="font-mono text-foreground">{debugInfo.supabase.invalidProducts.length}</span></div>
-            <div>Dupliqués: <span className="font-mono text-foreground">{debugInfo.supabase.duplicateBarcodes.length}</span></div>
-            <div className="text-xs mt-1 text-muted-foreground/60">Analyse: {new Date(debugInfo.timestamp).toLocaleString('fr-FR')}</div>
-          </div>
-        </div>
-      )}
-
-      {showUploadModal && <ExcelUploadModal onClose={() => setShowUploadModal(false)} onSuccess={handleUploadSuccess} />}
     </div>
   );
 }
