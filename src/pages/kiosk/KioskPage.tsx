@@ -14,7 +14,7 @@ import { KioskReviewPage, KioskShowcase, ReviewInvite } from './KioskShowcase';
 import { rememberKioskToken } from '../../utils/kioskApp';
 import { copy, fmt, LANGUAGE_NAMES, withCount, type KioskCopy } from './kioskCopy';
 import {
-  Chip, FilterGroup, FiltersButton, FiltersPanel, ImageViewer, KioskInput, ProductCard, ProductDialog, ReviewLine, Steps,
+  Chip, FilterGroup, FiltersButton, FiltersPanel, KioskImageViewer, KioskInput, ProductCard, ProductDialog, ReviewLine, Steps,
 } from './KioskParts';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 
@@ -37,10 +37,11 @@ const PHONE_RE = /^\+?[0-9\s().-]{7,24}$/;
 const PAGE_SIZE = 48;
 // Products per row on a landscape tablet (lg and up), scaled down on smaller
 // screens. 0 keeps the automatic layout that grows with the screen width.
-// Automatic: as many ~170 px columns as the screen holds (4 on a portrait
-// tablet, 5–6 on a vertical 1080 px display, 7 on a landscape tablet).
+// Automatic: as many 160 px (or wider) columns as the screen holds, with
+// 4:5 cards (4 on a portrait tablet, 6 on a vertical 1080 px display, 7 on a
+// landscape tablet).
 const GRID_CLASSES: Record<number, string> = {
-  0: 'grid-cols-[repeat(auto-fill,minmax(10.5rem,1fr))]',
+  0: 'grid-cols-[repeat(auto-fill,minmax(10rem,1fr))]',
   2: 'grid-cols-1 sm:grid-cols-2',
   3: 'grid-cols-2 lg:grid-cols-3',
   4: 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4',
@@ -599,7 +600,7 @@ export default function KioskPage() {
             {!catalogLoading && !catalogError && products.length === 0 ? (
               <div className="rounded-3xl border-2 border-dashed border-slate-200 bg-white py-24 text-center"><Search className="mx-auto h-12 w-12 text-slate-300" /><p className="mt-4 text-xl font-semibold text-slate-500">{t.noProducts}</p></div>
             ) : (
-              <div data-testid="kiosk-grid" className={`grid gap-2.5 ${GRID_CLASSES[profile.grid_columns] || GRID_CLASSES[0]}`}>
+              <div data-testid="kiosk-grid" className={`grid gap-2 ${GRID_CLASSES[profile.grid_columns] || GRID_CLASSES[0]}`}>
                 {products.map(product => (
                   <ProductCard
                     key={product.barcode} product={product} quantity={cart[product.barcode]?.quantity || 0}
@@ -732,7 +733,7 @@ export default function KioskPage() {
 
       {selectedProduct && <ProductDialog product={selectedProduct} quantity={cart[selectedProduct.barcode]?.quantity || 0} showPrice={profile.show_prices} showAvailability={profile.show_availability} placeholderLogo={profile.logo_url} t={t} accent={accent} onClose={() => setSelectedProduct(null)} onZoom={() => setZoomProduct(selectedProduct)} onChange={delta => changeQuantity(selectedProduct, delta)} />}
 
-      {zoomProduct && <ImageViewer product={zoomProduct} t={t} onClose={() => setZoomProduct(null)} />}
+      {zoomProduct && <KioskImageViewer product={zoomProduct} t={t} onClose={() => setZoomProduct(null)} />}
 
       {reviewOpen && reviewUrl && <KioskReviewPage url={reviewUrl} language={language} accent={accent} onAccent={onAccent} onClose={() => setReviewOpen(false)} />}
 

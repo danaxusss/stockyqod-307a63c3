@@ -19,6 +19,7 @@ import { SectorManagerDialog } from '../components/SectorManagerDialog';
 import { BusinessSectorsService, sectorNames, useBusinessSectors } from '../utils/businessSectors';
 import { TechnicalSheetButton } from '../components/TechnicalSheetButton';
 import { TechnicalSheetFinder } from '../components/TechnicalSheetFinder';
+import { ImageViewer } from '../components/ImageViewer';
 import { loadSheetLinks, type SheetLink } from '../utils/technicalSheets';
 import { effectiveChange, saveProductClassifications, type ClassificationChange } from '../utils/productClassification';
 
@@ -97,10 +98,12 @@ export default function ProductsPage() {
   const [qtyMap, setQtyMap] = useState<Record<string, number>>({});
   const [stockLocations, setStockLocations] = useState<StockLocation[]>([]);
   const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
+  const [quickImageOpen, setQuickImageOpen] = useState(false);
 
   const products = state.products || [];
 
   useEscapeKey(() => setQuickViewProduct(null), !!quickViewProduct);
+  useEffect(() => { setQuickImageOpen(false); }, [quickViewProduct]);
 
   useEffect(() => {
     if (!quickViewProduct) return;
@@ -810,10 +813,13 @@ export default function ProductsPage() {
                 </button>
               </div>
 
+              {quickImageOpen && quickImageUrl && <ImageViewer src={quickImageUrl} alt={quickViewProduct.name} onClose={() => setQuickImageOpen(false)} />}
               <div className="p-4 grid md:grid-cols-[240px_1fr] gap-5">
-                <div className="w-full aspect-square rounded-xl border border-border bg-secondary/20 overflow-hidden flex items-center justify-center">
+                <div className="mx-auto w-full max-w-[15rem] md:max-w-none aspect-[4/5] rounded-xl border border-border bg-secondary/20 overflow-hidden flex items-center justify-center">
                   {quickImageUrl ? (
-                    <img src={quickImageUrl} alt={quickViewProduct.name} className="w-full h-full object-contain" />
+                    <button type="button" onClick={() => setQuickImageOpen(true)} aria-label="Agrandir l’image" className="h-full w-full cursor-zoom-in">
+                      <img src={quickImageUrl} alt={quickViewProduct.name} className="w-full h-full object-contain" />
+                    </button>
                   ) : (
                     <div className="text-center text-muted-foreground"><img src={`${import.meta.env.BASE_URL || '/'}stocky-logo.png`} alt="Stocky" className="mx-auto h-20 w-32 object-contain opacity-35" /><p className="text-xs mt-2">Image à ajouter</p></div>
                   )}

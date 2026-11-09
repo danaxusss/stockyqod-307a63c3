@@ -15,6 +15,7 @@ import { resolveProductImageUrl, uploadPrimaryProductImage } from '../utils/prod
 import { SectorPicker } from '../components/SectorPicker';
 import { TechnicalSheetButton } from '../components/TechnicalSheetButton';
 import { TechnicalSheetFinder } from '../components/TechnicalSheetFinder';
+import { ImageViewer } from '../components/ImageViewer';
 import { BusinessSectorsService, sectorNames, useBusinessSectors } from '../utils/businessSectors';
 
 const KIOSK_CATEGORIES: Array<{ value: NonNullable<Product['kiosk_category']>; label: string }> = [
@@ -111,6 +112,7 @@ export function ProductDetail() {
 
   // Linked photos state
   const [linkedPhotos, setLinkedPhotos] = useState<{ id: string; storage_path: string; title: string; file_name: string }[]>([]);
+  const [viewerImage, setViewerImage] = useState<{ src: string; alt: string } | null>(null);
 
   const loadLinkedPhotos = useCallback(async () => {
     if (!product) return;
@@ -355,6 +357,7 @@ export function ProductDetail() {
 
   return (
     <div className="max-w-5xl mx-auto">
+      {viewerImage && <ImageViewer src={viewerImage.src} alt={viewerImage.alt} onClose={() => setViewerImage(null)} />}
       <div className="mb-3">
         <button onClick={handleBackNavigation} className="flex items-center space-x-2 text-primary hover:underline text-sm">
           <ArrowLeft className="h-4 w-4" /><span>{cameFromSearch ? 'Retour à la Recherche' : 'Retour'}</span>
@@ -404,13 +407,20 @@ export function ProductDetail() {
         <div className="p-5">
           {/* Canonical product image shared by Stocky, catalogue and quote exports */}
           <div className="mb-5 flex flex-col sm:flex-row gap-4 items-start rounded-xl border border-border bg-secondary/20 p-4">
-            <div className="w-full sm:w-44 aspect-square rounded-xl border border-border bg-background overflow-hidden flex items-center justify-center shrink-0">
+            <div className="mx-auto w-full max-w-[16rem] sm:mx-0 sm:w-56 aspect-[4/5] rounded-xl border border-border bg-background overflow-hidden flex items-center justify-center shrink-0">
               {product.image ? (
-                <img
-                  src={resolveProductImageUrl(product.image) || ''}
-                  alt={product.name}
-                  className="w-full h-full object-contain"
-                />
+                <button
+                  type="button"
+                  onClick={() => setViewerImage({ src: resolveProductImageUrl(product.image) || '', alt: product.name })}
+                  aria-label="Agrandir l’image"
+                  className="h-full w-full cursor-zoom-in"
+                >
+                  <img
+                    src={resolveProductImageUrl(product.image) || ''}
+                    alt={product.name}
+                    className="w-full h-full object-contain"
+                  />
+                </button>
               ) : (
                 <div className="text-center text-muted-foreground px-4">
                   <img src={`${import.meta.env.BASE_URL || '/'}stocky-logo.png`} alt="Stocky" className="mx-auto h-16 w-28 object-contain opacity-35" />
@@ -421,7 +431,7 @@ export function ProductDetail() {
             <div className="min-w-0 flex-1 pt-1">
               <h2 className="text-sm font-semibold text-foreground">Image principale du produit</h2>
               <p className="text-xs text-muted-foreground mt-1 max-w-xl">
-                Cette image carrée est partagée par la liste Stocky, le catalogue, le kiosque et les exports de devis.
+                Cette image est partagée par la liste Stocky, le catalogue, le kiosque et les exports de devis. Format portrait 4:5 recommandé (par exemple 1080 × 1350 px) : elle s’affiche en entier, sans être recadrée. Touchez l’image pour l’agrandir.
               </p>
               <label className="mt-3 block max-w-xs">
                 <span className="mb-1 block text-[11px] font-medium text-muted-foreground">Type de produit pour le kiosque</span>
@@ -665,12 +675,11 @@ export function ProductDetail() {
               </div>
               <div className="grid grid-cols-4 gap-1.5">
                 {linkedPhotos.slice(0, 8).map(photo => (
-                  <a
+                  <button
+                    type="button"
                     key={photo.id}
-                    href={supabase.storage.from('product-photos').getPublicUrl(photo.storage_path).data.publicUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="aspect-square rounded-lg overflow-hidden border border-border/40 bg-secondary/30 hover:opacity-80 transition-opacity"
+                    onClick={() => setViewerImage({ src: supabase.storage.from('product-photos').getPublicUrl(photo.storage_path).data.publicUrl, alt: photo.title || photo.file_name })}
+                    className="aspect-square cursor-zoom-in rounded-lg overflow-hidden border border-border/40 bg-secondary/30 hover:opacity-80 transition-opacity"
                     title={photo.title || photo.file_name}
                   >
                     <img
@@ -679,7 +688,7 @@ export function ProductDetail() {
                       className="w-full h-full object-contain"
                       loading="lazy"
                     />
-                  </a>
+                  </button>
                 ))}
               </div>
             </div>

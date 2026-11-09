@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
+import { ImageViewer } from '../../components/ImageViewer';
 import { Check, Maximize2, Minus, Plus, SlidersHorizontal, Star, Trash2, X } from 'lucide-react';
 import { KioskService, type KioskProduct } from '../../utils/kioskService';
 import { fmt, type KioskCopy } from './kioskCopy';
@@ -52,13 +53,20 @@ export function Steps({ current, t, accent, onAccent }: { current: 0 | 1 | 2; t:
   );
 }
 
-export function ProductImage({ image, name, placeholderLogo, className = '' }: { image: string | null; name: string; placeholderLogo?: string | null; className?: string }) {
+/**
+ * Product photo, always shown whole (posters carry text that cropping would
+ * cut). `portrait` is the 4:5 frame product posters are made for; small
+ * thumbnails stay square.
+ */
+export function ProductImage({ image, name, placeholderLogo, ratio = 'portrait', className = '' }: {
+  image: string | null; name: string; placeholderLogo?: string | null; ratio?: 'portrait' | 'square'; className?: string;
+}) {
   const url = KioskService.imageUrl(image);
   const fallback = placeholderLogo || `${import.meta.env.BASE_URL || '/'}stocky-logo.png`;
   return (
-    <div className={`aspect-square w-full overflow-hidden rounded-xl bg-slate-50 flex items-center justify-center ${className}`}>
+    <div className={`${ratio === 'portrait' ? 'aspect-[4/5]' : 'aspect-square'} w-full overflow-hidden rounded-lg bg-slate-50 flex items-center justify-center ${className}`}>
       {url
-        ? <img src={url} alt={name} loading="lazy" className="h-full w-full object-contain p-2" />
+        ? <img src={url} alt={name} loading="lazy" className="h-full w-full object-contain" />
         : <img src={fallback} alt="" className="h-2/5 w-2/5 object-contain opacity-25 grayscale" />}
     </div>
   );
@@ -94,7 +102,7 @@ function AddButton({ label, onClick, tall }: { label: string; onClick: () => voi
 /** Round "enlarge" button laid over a product photo. */
 function ZoomButton({ label, onClick }: { label: string; onClick: () => void }) {
   return (
-    <button onClick={onClick} aria-label={label} className="absolute end-2 top-2 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-white/95 text-slate-700 shadow-md active:scale-95">
+    <button onClick={onClick} aria-label={label} className="absolute end-2.5 top-2.5 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-white/90 text-slate-700 shadow-md active:scale-95">
       <Maximize2 className="h-5 w-5" />
     </button>
   );
@@ -105,26 +113,33 @@ export function ProductCard({ product, quantity, showPrice, showAvailability, pl
   t: KioskCopy; accent: string; onOpen: () => void; onZoom: () => void; onChange: (delta: number) => void;
 }) {
   const hasImage = !!KioskService.imageUrl(product.image);
+  // 4:5 photo with the price as a badge on it; name, then availability and
+  // brand on one line; the add button. Tight padding so more cards fit.
   return (
-    <article className="relative flex flex-col rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <button onClick={onOpen} className="flex flex-1 flex-col p-2 text-start">
+    <article className="relative flex flex-col rounded-xl border border-slate-200 bg-white shadow-sm">
+      <button onClick={onOpen} className="flex flex-1 flex-col p-1.5 text-start">
         <span className="relative block w-full">
-          <ProductImage image={product.image} name={product.name} placeholderLogo={placeholderLogo} className="!aspect-[4/3]" />
-          {showAvailability && (
-            <span className="absolute bottom-1.5 start-1.5 rounded-full bg-white/95 px-2 py-0.5 text-[11px] shadow-sm"><Availability available={product.available} t={t} /></span>
+          <ProductImage image={product.image} name={product.name} placeholderLogo={placeholderLogo} />
+          {showPrice && (
+            <span className="absolute bottom-1.5 start-1.5 rounded-lg bg-slate-900/90 px-2 py-1 text-sm font-black leading-none tabular-nums text-white shadow">
+              {fmt(product.price || 0)} DH
+            </span>
           )}
         </span>
-        <p className="mt-2 min-h-4 truncate px-0.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">{product.brand || ''}</p>
-        <h2 className="mt-0.5 line-clamp-2 min-h-[2.5rem] px-0.5 text-[0.95rem] font-bold leading-5">{product.name}</h2>
-        {showPrice && <p className="mt-1.5 px-0.5 text-lg font-black tabular-nums text-slate-900">{fmt(product.price || 0)} DH</p>}
+        <h2 className="mt-1.5 line-clamp-2 min-h-[2.5rem] px-0.5 text-[0.95rem] font-bold leading-5">{product.name}</h2>
+        <p className="mt-0.5 flex min-w-0 items-center gap-1.5 px-0.5 text-[11px]">
+          {showAvailability && <span className="shrink-0"><Availability available={product.available} t={t} /></span>}
+          {showAvailability && product.brand && <span className="text-slate-300">·</span>}
+          {product.brand && <span className="truncate font-bold uppercase tracking-wide text-slate-400">{product.brand}</span>}
+        </p>
       </button>
-      <div className="mt-auto px-2 pb-2">
+      <div className="mt-auto px-1.5 pb-1.5">
         {quantity > 0
           ? <QuantityStepper quantity={quantity} onMinus={() => onChange(-1)} onPlus={() => onChange(1)} accent={accent} />
           : <AddButton label={t.add} onClick={() => onChange(1)} />}
       </div>
       {product.featured && (
-        <span className="pointer-events-none absolute start-3 top-3 z-10 inline-flex items-center gap-1 rounded-full bg-slate-900 px-2 py-0.5 text-[11px] font-bold text-white">
+        <span className="pointer-events-none absolute start-2.5 top-2.5 z-10 inline-flex items-center gap-1 rounded-full bg-slate-900 px-2 py-0.5 text-[11px] font-bold text-white">
           <Star className="h-3 w-3 fill-amber-400 text-amber-400" />{t.featured}
         </span>
       )}
@@ -152,10 +167,11 @@ export function ProductDialog({ product, quantity, showPrice, showAvailability, 
         </div>
         {/* Side by side on a landscape screen, stacked on a vertical one. */}
         <div className="grid gap-5 overflow-y-auto p-5 landscape:grid-cols-2">
-          <div className="relative">
+          {/* On a vertical screen the 4:5 frame is sized by height so the details stay in view. */}
+          <div className={`relative w-full portrait:mx-auto portrait:max-w-full ${hasImage ? 'portrait:w-[36.8vh]' : 'portrait:w-[24vh]'}`}>
             {hasImage
-              ? <button onClick={onZoom} aria-label={t.zoom} className="block w-full"><ProductImage image={product.image} name={product.name} placeholderLogo={placeholderLogo} className="portrait:max-h-[45vh] portrait:aspect-auto portrait:h-[45vh]" /></button>
-              : <ProductImage image={product.image} name={product.name} placeholderLogo={placeholderLogo} className="portrait:max-h-[35vh] portrait:aspect-auto portrait:h-[35vh]" />}
+              ? <button onClick={onZoom} aria-label={t.zoom} className="block w-full"><ProductImage image={product.image} name={product.name} placeholderLogo={placeholderLogo} /></button>
+              : <ProductImage image={product.image} name={product.name} placeholderLogo={placeholderLogo} />}
             {hasImage && <span className="pointer-events-none absolute end-3 top-3 flex h-11 w-11 items-center justify-center rounded-full bg-white/95 text-slate-700 shadow-md"><Maximize2 className="h-5 w-5" /></span>}
           </div>
           <div className="flex flex-col">
@@ -175,43 +191,11 @@ export function ProductDialog({ product, quantity, showPrice, showAvailability, 
   );
 }
 
-/**
- * Full-screen photo. Tap the photo to zoom in on that point and again to zoom
- * out; tap outside or the close button to leave.
- */
-export function ImageViewer({ product, t, onClose }: { product: KioskProduct; t: KioskCopy; onClose: () => void }) {
+/** Full-screen photo of a kiosk product (shared viewer). */
+export function KioskImageViewer({ product, t, onClose }: { product: KioskProduct; t: KioskCopy; onClose: () => void }) {
   const url = KioskService.imageUrl(product.image);
-  const [zoom, setZoom] = useState<{ x: number; y: number } | null>(null);
-  const closeRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    closeRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
   if (!url) return null;
-  return (
-    <div role="dialog" aria-label={product.name} className="fixed inset-0 z-[90] flex flex-col bg-slate-950/95" onClick={onClose}>
-      <div className="flex items-center justify-between gap-4 px-5 py-4 text-white">
-        <p className="line-clamp-2 text-lg font-bold">{product.name}</p>
-        <button ref={closeRef} onClick={onClose} aria-label={t.close} className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-white/15 active:bg-white/25"><X className="h-7 w-7" /></button>
-      </div>
-      <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden p-4">
-        <img
-          src={url}
-          alt={product.name}
-          onClick={e => {
-            e.stopPropagation();
-            if (zoom) { setZoom(null); return; }
-            const box = e.currentTarget.getBoundingClientRect();
-            setZoom({ x: ((e.clientX - box.left) / box.width) * 100, y: ((e.clientY - box.top) / box.height) * 100 });
-          }}
-          className={`h-full w-full object-contain transition-transform duration-300 ${zoom ? 'cursor-zoom-out' : 'cursor-zoom-in'}`}
-          style={zoom ? { transform: 'scale(2.2)', transformOrigin: `${zoom.x}% ${zoom.y}%` } : undefined}
-        />
-      </div>
-    </div>
-  );
+  return <ImageViewer src={url} alt={product.name} closeLabel={t.close} onClose={onClose} />;
 }
 
 export function FiltersPanel({ open, title, closeLabel, onClose, onReset, resetLabel, showLabel, children }: {
