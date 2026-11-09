@@ -56,6 +56,8 @@ jobs:
           done
           for fn in $FUNCTIONS; do
             echo "::group::Deploying $fn"
-            supabase functions deploy "$fn" --project-ref "$PROJECT_REF" --use-api
+            # --yes: recent CLI versions ask before deploying to production,
+            # and a workflow cannot answer the prompt.
+            supabase functions deploy "$fn" --project-ref "$PROJECT_REF" --use-api --yes
             echo "::endgroup::"
           done
