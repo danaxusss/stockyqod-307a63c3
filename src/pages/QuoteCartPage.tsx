@@ -41,7 +41,8 @@ import { ExcelExportService } from '../utils/excelExport';
 import { PdfExportService } from '../utils/pdfExport';
 import { CompanySettingsService, CompanySettings, DEFAULT_SHARE_TEMPLATES } from '../utils/companySettings';
 import { DatePicker } from '../components/DatePicker';
-import { SupabaseQuotesService } from '../utils/supabaseQuotes';
+import { quoteCompanyId, SupabaseQuotesService } from '../utils/supabaseQuotes';
+import { attachmentsSummary, createAttachmentsLink, findQuoteAttachments, NO_ATTACHMENTS, type QuoteAttachments } from '../utils/quoteAttachments';
 import { ActivityLogger } from '../utils/activityLogger';
 import { useAppContext } from '../context/AppContext';
 import { SupabaseUsersService } from '../utils/supabaseUsers';
@@ -142,7 +143,8 @@ export function QuoteCartPage() {
   // Tech sheets link state
   const [attachTechSheets, setAttachTechSheets] = useState(false);
   const [techSheetsExpiry, setTechSheetsExpiry] = useState<string>('30');
-  const [linkedSheetIds, setLinkedSheetIds] = useState<string[]>([]);
+  const [attachments, setAttachments] = useState<QuoteAttachments>(NO_ATTACHMENTS);
+  const hasAttachments = attachments.sheetIds.length + attachments.images.length > 0;
 
   // BL creation state
   const [isCreatingBL, setIsCreatingBL] = useState(false);
@@ -227,36 +229,45 @@ export function QuoteCartPage() {
     if (initialLoadDone && !suppressDirtyRef.current) setIsDirty(true);
   }, [items, customer, notes, commandNumber, status, globalMargin]);
 
-  // Load company settings for PDF export (per-user company if available)
+  // Letterhead for PDFs: the company of the quote being edited, else the
+  // user's own company.
+  const letterheadCompanyId = quoteCompanyId(quote);
   useEffect(() => {
-    CompanySettingsService.getSettings(companyId || undefined).then(s => {
+    CompanySettingsService.getSettings(letterheadCompanyId).then(s => {
       setCompanySettings(s);
       if (s?.use_stamp !== undefined) setUseStamp(s.use_stamp);
       setIncludeProductImages(s?.quote_visible_fields?.printColumns?.showImage === true);
     }).catch(console.error);
-  }, [companyId]);
+  }, [letterheadCompanyId]);
 
   useEffect(() => {
     StockLocationsService.getProviders().then(setProviders).catch(() => {});
   }, []);
 
-  // Check linked tech sheets when items change
+  // Sheets of the quoted products, and photos for those without a sheet.
+  const attachmentBarcodes = items.map(i => i.product?.barcode || '').join('|');
   useEffect(() => {
-    const checkLinkedSheets = async () => {
-      const barcodes = items.map(i => i.product.barcode).filter(Boolean);
-      if (barcodes.length === 0) { setLinkedSheetIds([]); setAttachTechSheets(false); return; }
-      try {
-        const { data } = await supabase
-          .from('technical_sheet_products')
-          .select('sheet_id')
-          .in('product_barcode', barcodes);
-        const uniqueIds = [...new Set((data || []).map(r => r.sheet_id))];
-        setLinkedSheetIds(uniqueIds);
-        setAttachTechSheets(uniqueIds.length > 0);
-      } catch { setLinkedSheetIds([]); }
-    };
-    checkLinkedSheets();
-  }, [items]);
+    let cancelled = false;
+    findQuoteAttachments(items)
+      .then(found => {
+        if (cancelled) return;
+        setAttachments(found);
+        setAttachTechSheets(found.sheetIds.length + found.images.length > 0);
+      })
+      .catch(() => { if (!cancelled) setAttachments(NO_ATTACHMENTS); });
+    return () => { cancelled = true; };
+    // Only a change of products matters, not quantities or prices.
+  }, [attachmentBarcodes]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Share link for the joined sheets and photos, when the option is on. */
+  const attachmentsLink = async () => {
+    if (!attachTechSheets || !hasAttachments) return null;
+    const link = await createAttachmentsLink(quoteNumber, attachments, techSheetsExpiry === 'never' ? null : parseInt(techSheetsExpiry, 10));
+    if (link.imagesDropped) {
+      showToast({ type: 'warning', title: 'Photos non jointes', message: 'Exécutez la migration 20261109120000_share_link_product_images.sql pour partager aussi les photos.' });
+    }
+    return link;
+  };
 
   // Load available users for sales person dropdown
   useEffect(() => {
@@ -631,7 +642,7 @@ export function QuoteCartPage() {
       const now = new Date();
 
       const quoteData: Quote = {
-        id: quote?.id || crypto.randomUUID(),
+        id: quote?.id || crypto.randomUUID(), company_id: quote?.company_id || companyId || undefined, issuing_company_id: quote?.issuing_company_id,
         quoteNumber,
         commandNumber: commandNumber || undefined,
         createdAt: quote?.createdAt || now,
@@ -746,6 +757,8 @@ export function QuoteCartPage() {
       const savedId = quote?.id || crypto.randomUUID();
       const quoteData: Quote = {
         id: savedId,
+        company_id: quote?.company_id || companyId || undefined,
+        issuing_company_id: quote?.issuing_company_id,
         quoteNumber,
         commandNumber: commandNumber || undefined,
         createdAt: quote?.createdAt || now,
@@ -782,11 +795,10 @@ export function QuoteCartPage() {
 
     setIsExporting(true);
     try {
-      const quoteCompanyId = quote?.company_id || quote?.issuing_company_id || companyId;
-      const freshSettings = await CompanySettingsService.getSettings(quoteCompanyId || undefined).catch(() => companySettings);
+      const freshSettings = await CompanySettingsService.getSettings(quoteCompanyId(quote)).catch(() => companySettings);
       const { totalAmount } = calculateTotals();
       const quoteData: Quote = {
-        id: quote?.id || crypto.randomUUID(),
+        id: quote?.id || crypto.randomUUID(), company_id: quote?.company_id || companyId || undefined, issuing_company_id: quote?.issuing_company_id,
         quoteNumber,
         commandNumber: commandNumber || undefined,
         createdAt: quote?.createdAt || new Date(),
@@ -798,23 +810,9 @@ export function QuoteCartPage() {
         notes
       };
 
-      // Generate tech sheets share link if enabled
-      let techSheetsUrl: string | undefined;
-      let techSheetsExpiryLabel: string | undefined;
-      if (attachTechSheets && linkedSheetIds.length > 0) {
-        const token = crypto.randomUUID();
-        const expiresAt = techSheetsExpiry === 'never' ? null : new Date(Date.now() + parseInt(techSheetsExpiry) * 86400000).toISOString();
-        await supabase.from('sheet_share_links').insert({
-          token,
-          sheet_ids: linkedSheetIds,
-          title: `Devis ${quoteNumber}`,
-          expires_at: expiresAt,
-        });
-        techSheetsUrl = `${window.location.origin}/share/${token}`;
-        techSheetsExpiryLabel = techSheetsExpiry === 'never' ? 'permanent' : `${techSheetsExpiry} jours`;
-      }
-
-      await PdfExportService.exportQuoteToPdf(quoteData, freshSettings || companySettings, techSheetsUrl, techSheetsExpiryLabel, useStamp, 'quote', undefined, printTTCOnly, includeProductImages);
+      // Sheets (and photos of products without one) shared through a link.
+      const link = await attachmentsLink();
+      await PdfExportService.exportQuoteToPdf(quoteData, freshSettings || companySettings, link?.url, link?.expiryLabel, useStamp, 'quote', undefined, printTTCOnly, includeProductImages, false, link?.label);
       showToast({
         type: 'success',
         title: 'Export réussi',
@@ -922,10 +920,10 @@ export function QuoteCartPage() {
     setShowWaRecipientModal(true);
     setIsPreparingWaPdf(true);
     try {
-      const quoteCompanyId = quote?.company_id || quote?.issuing_company_id || companyId;
-      const freshSettings = await CompanySettingsService.getSettings(quoteCompanyId || undefined).catch(() => companySettings);
-      const quoteData: Quote = { id: quote?.id || crypto.randomUUID(), quoteNumber, commandNumber: commandNumber || undefined, createdAt: quote?.createdAt || new Date(), updatedAt: new Date(), status, customer, items, totalAmount, notes, notes2: notes2 || undefined, quote_date: quoteDate || undefined };
-      const { blob, filename } = await PdfExportService.generatePdfBlob(quoteData, freshSettings || companySettings, undefined, undefined, useStamp, 'quote', undefined, printTTCOnly, includeProductImages);
+      const freshSettings = await CompanySettingsService.getSettings(quoteCompanyId(quote)).catch(() => companySettings);
+      const quoteData: Quote = { id: quote?.id || crypto.randomUUID(), company_id: quote?.company_id || companyId || undefined, issuing_company_id: quote?.issuing_company_id, quoteNumber, commandNumber: commandNumber || undefined, createdAt: quote?.createdAt || new Date(), updatedAt: new Date(), status, customer, items, totalAmount, notes, notes2: notes2 || undefined, quote_date: quoteDate || undefined };
+      const link = await attachmentsLink();
+      const { blob, filename } = await PdfExportService.generatePdfBlob(quoteData, freshSettings || companySettings, link?.url, link?.expiryLabel, useStamp, 'quote', undefined, printTTCOnly, includeProductImages, link?.label);
       setWaPdfShare({ blob, filename, message: buildQuoteWhatsAppMessage(freshSettings || companySettings) });
     } catch (error) {
       setWaPdfError(error instanceof Error ? error.message : 'Impossible de préparer le PDF');
@@ -1673,7 +1671,7 @@ export function QuoteCartPage() {
       </div>
 
       {/* Tech Sheets Attachment */}
-      {linkedSheetIds.length > 0 && (
+      {hasAttachments && (
         <div className="glass rounded-xl shadow-lg p-3">
           <div className="flex items-center justify-between">
             <label className="flex items-center space-x-2 text-sm text-foreground cursor-pointer">
@@ -1683,7 +1681,7 @@ export function QuoteCartPage() {
                 onChange={(e) => setAttachTechSheets(e.target.checked)}
                 className="rounded border-input"
               />
-              <span>📎 Joindre fiches techniques ({linkedSheetIds.length} fiche{linkedSheetIds.length > 1 ? 's' : ''})</span>
+              <span>📎 Joindre fiches techniques ({attachmentsSummary(attachments)})</span>
             </label>
             {attachTechSheets && (
               <div className="flex items-center space-x-2">
@@ -1704,10 +1702,12 @@ export function QuoteCartPage() {
         </div>
       )}
 
-      {/* PDF display options */}
+      {/* PDF display options. Each label is `relative` so its visually hidden
+          checkbox sits inside it: otherwise focusing the checkbox on click
+          scrolls the whole app frame and hides the top of the quote. */}
       <div className="glass rounded-xl shadow-lg p-2.5">
         <div className={`grid grid-cols-1 gap-2 ${companySettings?.stamp_url ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
-          <label className={`flex min-h-14 cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 transition-colors ${includeProductImages ? 'border-violet-500/50 bg-violet-500/10 text-violet-700 dark:text-violet-300' : 'border-border bg-background/50 text-foreground hover:bg-accent'}`}>
+          <label className={`relative flex min-h-14 cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 transition-colors ${includeProductImages ? 'border-violet-500/50 bg-violet-500/10 text-violet-700 dark:text-violet-300' : 'border-border bg-background/50 text-foreground hover:bg-accent'}`}>
             <input type="checkbox" checked={includeProductImages} onChange={(e) => setIncludeProductImages(e.target.checked)} className="sr-only" />
             <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${includeProductImages ? 'bg-violet-500 text-white' : 'bg-muted text-muted-foreground'}`}><ImageIcon className="h-4 w-4" /></span>
             <span className="min-w-0"><span className="block text-sm font-semibold">Images produits</span><span className="block truncate text-[11px] opacity-75">{includeProductImages ? 'Colonne incluse' : 'Sans images'}</span></span>
@@ -1715,7 +1715,7 @@ export function QuoteCartPage() {
           </label>
 
           {companySettings?.stamp_url ? (
-            <label className={`flex min-h-14 cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 transition-colors ${useStamp ? 'border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-300' : 'border-border bg-background/50 text-foreground hover:bg-accent'}`}>
+            <label className={`relative flex min-h-14 cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 transition-colors ${useStamp ? 'border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-300' : 'border-border bg-background/50 text-foreground hover:bg-accent'}`}>
               <input type="checkbox" checked={useStamp} onChange={(e) => setUseStamp(e.target.checked)} className="sr-only" />
               <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${useStamp ? 'bg-amber-500 text-white' : 'bg-muted text-muted-foreground'}`}><Stamp className="h-4 w-4" /></span>
               <span className="min-w-0"><span className="block text-sm font-semibold">Tampon</span><span className="block truncate text-[11px] opacity-75">{useStamp ? 'Apposé au devis' : 'Non apposé'}</span></span>
@@ -1723,7 +1723,7 @@ export function QuoteCartPage() {
             </label>
           ) : null}
 
-          <label className={`flex min-h-14 cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 transition-colors ${printTTCOnly ? 'border-sky-500/50 bg-sky-500/10 text-sky-700 dark:text-sky-300' : 'border-border bg-background/50 text-foreground hover:bg-accent'}`}>
+          <label className={`relative flex min-h-14 cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 transition-colors ${printTTCOnly ? 'border-sky-500/50 bg-sky-500/10 text-sky-700 dark:text-sky-300' : 'border-border bg-background/50 text-foreground hover:bg-accent'}`}>
             <input type="checkbox" checked={printTTCOnly} onChange={(e) => setPrintTTCOnly(e.target.checked)} className="sr-only" />
             <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${printTTCOnly ? 'bg-sky-500 text-white' : 'bg-muted text-muted-foreground'}`}><ReceiptText className="h-4 w-4" /></span>
             <span className="min-w-0"><span className="block text-sm font-semibold">Prix TTC uniquement</span><span className="block truncate text-[11px] opacity-75">{printTTCOnly ? 'HT et TVA masqués' : 'Détail HT et TVA'}</span></span>
@@ -1796,9 +1796,10 @@ export function QuoteCartPage() {
                 // Export PDF first
                 setIsExporting(true);
                 try {
-                  const freshSettings = await CompanySettingsService.getSettings(companyId || undefined).catch(() => companySettings);
-                  const quoteData: Quote = { id: quote?.id || crypto.randomUUID(), quoteNumber, commandNumber: commandNumber || undefined, createdAt: quote?.createdAt || new Date(), updatedAt: new Date(), status, customer, items, totalAmount, notes, notes2: notes2 || undefined, quote_date: quoteDate || undefined };
-                  await PdfExportService.exportQuoteToPdf(quoteData, freshSettings || companySettings, undefined, undefined, useStamp, 'quote', undefined, printTTCOnly, includeProductImages);
+                  const freshSettings = await CompanySettingsService.getSettings(quoteCompanyId(quote)).catch(() => companySettings);
+                  const quoteData: Quote = { id: quote?.id || crypto.randomUUID(), company_id: quote?.company_id || companyId || undefined, issuing_company_id: quote?.issuing_company_id, quoteNumber, commandNumber: commandNumber || undefined, createdAt: quote?.createdAt || new Date(), updatedAt: new Date(), status, customer, items, totalAmount, notes, notes2: notes2 || undefined, quote_date: quoteDate || undefined };
+                  const link = await attachmentsLink();
+                  await PdfExportService.exportQuoteToPdf(quoteData, freshSettings || companySettings, link?.url, link?.expiryLabel, useStamp, 'quote', undefined, printTTCOnly, includeProductImages, false, link?.label);
                 } catch { /* continue */ }
                 setIsExporting(false);
 

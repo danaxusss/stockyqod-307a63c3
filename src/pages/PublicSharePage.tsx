@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { FileText, Download, Eye, Calendar, AlertCircle, Loader, X } from 'lucide-react';
+import { FileText, Download, Eye, Calendar, AlertCircle, X, Image as ImageIcon } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { TechnicalSheet, SheetShareLink } from '../types';
+import { TechnicalSheet, SheetShareLink, SharedProductImage } from '../types';
 
 export function PublicSharePage() {
   const { token } = useParams<{ token: string }>();
@@ -11,6 +11,11 @@ export function PublicSharePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pdfViewerUrl, setPdfViewerUrl] = useState<string | null>(null);
+  const [photoViewer, setPhotoViewer] = useState<SharedProductImage | null>(null);
+  // Products of the quote that have no technical sheet: their photo instead.
+  const images: SharedProductImage[] = Array.isArray(shareLink?.product_images)
+    ? shareLink!.product_images!.filter(i => i && /^https?:\/\//.test(i.url))
+    : [];
 
   useEffect(() => {
     const load = async () => {
@@ -76,6 +81,23 @@ export function PublicSharePage() {
     }
   };
 
+  const downloadPhoto = async (image: SharedProductImage) => {
+    try {
+      const blob = await (await fetch(image.url)).blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const ext = (blob.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
+      a.href = url;
+      a.download = `${image.name || image.barcode}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      window.open(image.url, '_blank');
+    }
+  };
+
   const handleViewPdf = async (fileUrl: string) => {
     try {
       const response = await fetch(fileUrl);
@@ -121,7 +143,10 @@ export function PublicSharePage() {
           </div>
           <h1 className="text-2xl font-bold text-foreground">{shareLink?.title || 'Documents partagés'}</h1>
           <p className="text-sm text-muted-foreground mt-2">
-            {sheets.length} document{sheets.length !== 1 ? 's' : ''}
+            {[
+              sheets.length > 0 || images.length === 0 ? `${sheets.length} document${sheets.length !== 1 ? 's' : ''}` : '',
+              images.length > 0 ? `${images.length} photo${images.length !== 1 ? 's' : ''}` : '',
+            ].filter(Boolean).join(' · ')}
             {shareLink?.expires_at && (
               <span className="ml-2 inline-flex items-center gap-1">
                 <Calendar className="h-3 w-3" />
@@ -161,10 +186,46 @@ export function PublicSharePage() {
           ))}
         </div>
 
+        {images.length > 0 && (
+          <section className="mt-10">
+            <h2 className="mb-1 flex items-center gap-2 text-lg font-bold text-foreground"><ImageIcon className="h-5 w-5" /> Photos des produits</h2>
+            <p className="mb-4 text-sm text-muted-foreground">Pour les produits sans fiche technique.</p>
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+              {images.map(image => (
+                <div key={image.barcode} className="overflow-hidden rounded-xl border border-border bg-card">
+                  <button onClick={() => setPhotoViewer(image)} className="block aspect-square w-full bg-white" aria-label={`Voir ${image.name}`}>
+                    <img src={image.url} alt={image.name} loading="lazy" className="h-full w-full object-contain p-2" />
+                  </button>
+                  <div className="p-3">
+                    {image.brand && <p className="truncate text-[11px] font-bold uppercase tracking-wide text-muted-foreground">{image.brand}</p>}
+                    <p className="line-clamp-2 text-sm font-semibold text-foreground">{image.name}</p>
+                    <div className="mt-2 flex gap-2">
+                      <button onClick={() => setPhotoViewer(image)} className="flex items-center gap-1.5 rounded-lg bg-secondary px-3 py-1.5 text-xs text-secondary-foreground hover:bg-secondary/80"><Eye className="h-3.5 w-3.5" /> Voir</button>
+                      <button onClick={() => downloadPhoto(image)} className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs text-primary-foreground hover:bg-primary/90"><Download className="h-3.5 w-3.5" /> Télécharger</button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         <div className="text-center mt-12 text-xs text-muted-foreground">
           Partagé via Stocky by QodWeb
         </div>
       </div>
+
+      {photoViewer && (
+        <div role="dialog" aria-label={photoViewer.name} className="fixed inset-0 z-[60] flex flex-col bg-black/90" onClick={() => setPhotoViewer(null)}>
+          <div className="flex items-center justify-between gap-3 p-3 text-white">
+            <p className="truncate font-semibold">{photoViewer.name}</p>
+            <button onClick={() => setPhotoViewer(null)} aria-label="Fermer" className="rounded-lg bg-white/10 p-2 hover:bg-white/20"><X className="h-5 w-5" /></button>
+          </div>
+          <div className="flex min-h-0 flex-1 items-center justify-center p-4">
+            <img src={photoViewer.url} alt={photoViewer.name} className="max-h-full max-w-full object-contain" onClick={e => e.stopPropagation()} />
+          </div>
+        </div>
+      )}
 
       {/* PDF Viewer Modal */}
       {pdfViewerUrl && (

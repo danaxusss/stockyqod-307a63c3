@@ -134,7 +134,7 @@ export class PdfExportService {
     return `${intPart},${parts[1]}`;
   }
 
-  static async exportQuoteToPdf(quote: Quote, settings?: CompanySettings | null, techSheetsUrl?: string, techSheetsExpiryLabel?: string, useStampOverride?: boolean, documentType: 'quote' | 'bl' | 'proforma' | 'invoice' | 'avoir' | 'bon_commande' = 'quote', blShowPrices?: boolean, printTTCOnly = true, showProductImagesOverride?: boolean, returnBlob?: boolean): Promise<void | Blob> {
+  static async exportQuoteToPdf(quote: Quote, settings?: CompanySettings | null, techSheetsUrl?: string, techSheetsExpiryLabel?: string, useStampOverride?: boolean, documentType: 'quote' | 'bl' | 'proforma' | 'invoice' | 'avoir' | 'bon_commande' = 'quote', blShowPrices?: boolean, printTTCOnly = true, showProductImagesOverride?: boolean, returnBlob?: boolean, techSheetsLabel?: string): Promise<void | Blob> {
     const style: QuoteStyle = settings?.quote_style || {
       accentColor: '#3B82F6', fontFamily: 'helvetica', showBorders: true,
       borderRadius: 1, headerSize: 'large', totalsStyle: 'highlighted', template: 'classic',
@@ -1464,7 +1464,7 @@ export class PdfExportService {
     // === TECH SHEETS LINK ===
     if (techSheetsUrl) {
       y += 5;
-      const ctaLabel = 'Consulter les fiches techniques';
+      const ctaLabel = techSheetsLabel || 'Consulter les fiches techniques';
       const ctaPaddingX = 5;
       const ctaBoxHeight = 8;
       const iconSize = 4;
@@ -1566,6 +1566,7 @@ export class PdfExportService {
     blShowPrices?: boolean,
     printTTCOnly = true,
     showProductImagesOverride?: boolean,
+    techSheetsLabel?: string,
   ): Promise<{ blob: Blob; filename: string }> {
     const docPrefix = documentType === 'bl' ? 'BL'
       : documentType === 'bon_commande' ? 'BC'
@@ -1574,7 +1575,7 @@ export class PdfExportService {
       : documentType === 'avoir' ? 'Avoir'
       : 'Devis';
     const filename = `${docPrefix}_${quote.quoteNumber}.pdf`;
-    const blob = await this.exportQuoteToPdf(quote, settings, techSheetsUrl, techSheetsExpiryLabel, useStampOverride, documentType, blShowPrices, printTTCOnly, showProductImagesOverride, true) as unknown as Blob;
+    const blob = await this.exportQuoteToPdf(quote, settings, techSheetsUrl, techSheetsExpiryLabel, useStampOverride, documentType, blShowPrices, printTTCOnly, showProductImagesOverride, true, techSheetsLabel) as unknown as Blob;
     return { blob, filename };
   }
 

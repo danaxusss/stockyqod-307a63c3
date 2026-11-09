@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { FileText, Search, Filter, Eye, Edit, Trash2, FileDown, Plus, Calendar, User, DollarSign, Hash, SortAsc, SortDesc, AlertCircle, Check, Loader, X, MessageCircle, Mail, Truck, Copy, Printer } from 'lucide-react';
 import { Quote } from '../types';
-import { SupabaseQuotesService } from '../utils/supabaseQuotes';
+import { quoteCompanyId, SupabaseQuotesService } from '../utils/supabaseQuotes';
 import { SupabaseDocumentsService } from '../utils/supabaseDocuments';
 import { ActivityLogger } from '../utils/activityLogger';
 import { PdfExportService } from '../utils/pdfExport';
@@ -60,7 +60,9 @@ export function QuotesHistoryPage() {
     document.addEventListener('click', close);
     return () => document.removeEventListener('click', close);
   }, [openMenuId]);
-  useEffect(() => { CompanySettingsService.getSettings().then(setCompanySettings).catch(console.error); }, []);
+  // Fallback letterhead: the user's own company (never the legacy global row,
+  // which carries another company's logo).
+  useEffect(() => { CompanySettingsService.getSettings(quoteCompanyId(null)).then(setCompanySettings).catch(console.error); }, []);
   useEffect(() => { if (message) { const t = setTimeout(() => setMessage(null), 5000); return () => clearTimeout(t); } }, [message]);
 
   useEffect(() => {
@@ -111,7 +113,7 @@ export function QuotesHistoryPage() {
     try {
       const [freshQuote, freshSettings] = await Promise.all([
         SupabaseQuotesService.getQuote(quote.id),
-        CompanySettingsService.getSettings(quote.company_id),
+        CompanySettingsService.getSettings(quoteCompanyId(quote)),
       ]);
 
       await PdfExportService.exportQuoteToPdf(freshQuote || quote, freshSettings || companySettings);
@@ -194,7 +196,7 @@ export function QuotesHistoryPage() {
   };
 
   const handleWhatsAppShare = async (quote: Quote) => {
-    const s = await CompanySettingsService.getSettings(quote.company_id).catch(() => companySettings);
+    const s = await CompanySettingsService.getSettings(quoteCompanyId(quote)).catch(() => companySettings);
     const messageText = buildWhatsAppShareText(quote, s);
     const shareUrl = buildWhatsAppShareUrl(quote.customer.phoneNumber || '', messageText);
 
@@ -209,7 +211,7 @@ export function QuotesHistoryPage() {
   };
 
   const handleEmailShare = async (quote: Quote) => {
-    const s = await CompanySettingsService.getSettings(quote.company_id).catch(() => companySettings);
+    const s = await CompanySettingsService.getSettings(quoteCompanyId(quote)).catch(() => companySettings);
     const { subject, body } = buildEmailShareContent(quote, s);
     window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   };
@@ -378,7 +380,7 @@ export function QuotesHistoryPage() {
                                   try {
                                     const [freshQuote, freshSettings] = await Promise.all([
                                       SupabaseQuotesService.getQuote(quote.id),
-                                      CompanySettingsService.getSettings(quote.company_id),
+                                      CompanySettingsService.getSettings(quoteCompanyId(quote)),
                                     ]);
                                     const { blob, filename } = await PdfExportService.generatePdfBlob(freshQuote || quote, freshSettings || companySettings);
                                     setPreviewBlob(blob); setPreviewFilename(filename); setShowPrintPreview(true);
