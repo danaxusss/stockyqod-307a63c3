@@ -479,7 +479,7 @@ export default function ProductPhotosPage() {
                     title="Aperçu non disponible dans ce navigateur"
                   >
                     <ImageOff className="h-5 w-5" />
-                    <span className="text-[9px] uppercase">{photo.file_name.split('.').pop() || ''}</span>
+                    <span className="text-[10px] uppercase">{photo.file_name.split('.').pop() || ''}</span>
                   </button>
                 ) : (
                   <img
@@ -503,7 +503,7 @@ export default function ProductPhotosPage() {
                 </button>
                 {/* Linked badge */}
                 {linkedCount > 0 && (
-                  <div className="absolute bottom-1 left-1 bg-primary/90 text-primary-foreground text-[9px] font-bold rounded-full px-1.5 py-0.5 leading-none">
+                  <div className="absolute bottom-1 left-1 bg-primary/90 text-primary-foreground text-[10px] font-bold rounded-full px-1.5 py-0.5 leading-none">
                     {linkedCount}
                   </div>
                 )}
@@ -807,13 +807,13 @@ export default function ProductPhotosPage() {
                               isLinked ? 'border-border bg-secondary' :
                               isPending ? 'border-primary bg-primary' : 'border-border'
                             }`}>
-                              {(isLinked || isPending) && <span className="text-[9px] text-white font-bold leading-none">✓</span>}
+                              {(isLinked || isPending) && <span className="text-[10px] text-white font-bold leading-none">✓</span>}
                             </div>
                             <div className="min-w-0 flex-1">
                               <p className="text-xs font-medium truncate">{product.name}</p>
                               <p className="text-[10px] text-muted-foreground font-mono">#{product.barcode}</p>
                             </div>
-                            {isLinked && <span className="text-[9px] text-muted-foreground shrink-0">déjà lié</span>}
+                            {isLinked && <span className="text-[10px] text-muted-foreground shrink-0">déjà lié</span>}
                           </button>
                         );
                       })}

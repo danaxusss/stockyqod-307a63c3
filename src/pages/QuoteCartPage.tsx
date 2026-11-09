@@ -1003,31 +1003,32 @@ export function QuoteCartPage() {
 
         {/* Quote Details */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-          <div className="flex items-center space-x-2 p-2 bg-secondary rounded-lg">
+          <label className="flex min-h-[3.25rem] cursor-text items-center space-x-2 p-2 bg-secondary rounded-lg focus-within:ring-2 focus-within:ring-primary/40">
             <Hash className="h-4 w-4 text-primary flex-shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-[10px] text-muted-foreground">N° Devis</p>
+            <span className="flex-1 min-w-0">
+              <span className="block text-[10px] text-muted-foreground">N° Devis</span>
               <input
                 type="text"
                 value={quoteNumber}
                 onChange={e => setQuoteNumber(e.target.value)}
-                className="text-xs font-semibold text-foreground bg-transparent border-none outline-none w-full"
+                className="block text-xs font-semibold leading-tight text-foreground bg-transparent border-none outline-none w-full p-0"
               />
-            </div>
-          </div>
-          <div className="flex items-center space-x-2 p-2 bg-secondary rounded-lg">
+            </span>
+          </label>
+          {/* The whole box is the tap target: a tap anywhere focuses the date. */}
+          <label className="flex min-h-[3.25rem] cursor-pointer items-center space-x-2 p-2 bg-secondary rounded-lg focus-within:ring-2 focus-within:ring-primary/40">
             <Calendar className="h-4 w-4 text-primary flex-shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-[10px] text-muted-foreground">Date du devis</p>
+            <span className="flex-1 min-w-0">
+              <span className="block text-[10px] text-muted-foreground">Date du devis</span>
               <input
                 type="date"
                 value={quoteDate}
                 onChange={e => setQuoteDate(e.target.value)}
-                className="text-xs font-semibold text-foreground bg-transparent border-none outline-none w-full"
+                className="block text-xs font-semibold leading-tight text-foreground bg-transparent border-none outline-none w-full p-0"
               />
-            </div>
-          </div>
-          <div className="flex items-center space-x-2 p-2 bg-secondary rounded-lg">
+            </span>
+          </label>
+          <div className="flex min-h-[3.25rem] items-center space-x-2 p-2 bg-secondary rounded-lg">
             <DollarSign className="h-4 w-4 text-primary" />
             <div>
               <p className="text-[10px] text-muted-foreground">Total</p>

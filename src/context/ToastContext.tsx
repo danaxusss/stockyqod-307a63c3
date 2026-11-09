@@ -41,9 +41,9 @@ export function ToastProvider({ children }: ToastProviderProps) {
       {children}
       
       {/* Toast Container */}
-      <div className="fixed top-3 left-1/2 -translate-x-1/2 z-50 space-y-2 w-full max-w-xs pointer-events-none">
+      <div aria-live="polite" className="fixed top-3 left-1/2 -translate-x-1/2 z-[250] space-y-2 w-full max-w-sm px-3 pointer-events-none">
         {toasts.map(toast => (
-          <div key={toast.id} className="pointer-events-auto">
+          <div key={toast.id} className="pointer-events-auto rounded-lg bg-card">
             <Toast toast={toast} onClose={removeToast} />
           </div>
         ))}

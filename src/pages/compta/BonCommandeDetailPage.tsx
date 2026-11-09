@@ -731,7 +731,7 @@ export default function BonCommandeDetailPage() {
                             <div className="space-y-3">
                               {Object.entries(grouped).map(([provName, locs]) => (
                                 <div key={provName}>
-                                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 mb-1.5">{provName}</p>
+                                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1.5">{provName}</p>
                                   <div className="space-y-1">
                                     {locs.map(t => {
                                       const qty = getDispatchQty(item, t.locationId, t.subCode);
@@ -762,7 +762,7 @@ export default function BonCommandeDetailPage() {
 
                           {/* Custom / free-text location */}
                           <div className="mt-3 pt-2.5 border-t border-border/40">
-                            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 mb-1.5">Emplacement personnalisé</p>
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1.5">Emplacement personnalisé</p>
                             <div className="flex items-center gap-2">
                               <input
                                 value={customLocInputs[item.id]?.abbrev || ''}

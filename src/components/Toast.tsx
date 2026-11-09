@@ -35,11 +35,13 @@ export function Toast({ toast, onClose }: ToastProps) {
   const Icon = config.icon;
 
   return (
-    <div className={`flex items-center space-x-2 px-3 py-2 rounded-lg border backdrop-blur-md shadow-lg ${config.bg} animate-in slide-in-from-top-2 duration-200`}>
-      <Icon className={`h-4 w-4 flex-shrink-0 ${config.color}`} />
-      <p className="text-xs font-medium text-foreground flex-1 truncate">{message}</p>
-      <button onClick={() => onClose(id)} className="flex-shrink-0 p-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10">
-        <X className="h-3 w-3 text-muted-foreground" />
+    // Errors interrupt a screen reader; other toasts wait their turn. The
+    // message wraps instead of being cut, so long errors stay readable.
+    <div role={type === 'error' ? 'alert' : 'status'} className={`pointer-events-auto flex items-start gap-2 rounded-lg border py-2 pl-3 pr-1 shadow-lg backdrop-blur-md ${config.bg} animate-in slide-in-from-top-2 duration-200`}>
+      <Icon aria-hidden="true" className={`mt-0.5 h-4 w-4 flex-shrink-0 ${config.color}`} />
+      <p className="flex-1 break-words py-0.5 text-[13px] font-medium leading-snug text-foreground line-clamp-4">{message}</p>
+      <button onClick={() => onClose(id)} aria-label="Fermer la notification" className="-my-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-black/10 hover:text-foreground dark:hover:bg-white/10">
+        <X aria-hidden="true" className="h-4 w-4" />
       </button>
     </div>
   );

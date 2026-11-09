@@ -87,7 +87,7 @@ export default function ComptabiliteComingSoon() {
       </div>
 
       {/* Footer note */}
-      <p className="text-center text-[11px] text-muted-foreground/60 mt-5">
+      <p className="text-center text-xs text-muted-foreground mt-5">
         Disponible dans une prochaine version de Stocky · <span className="font-medium">QodWeb 2026</span>
       </p>
     </div>

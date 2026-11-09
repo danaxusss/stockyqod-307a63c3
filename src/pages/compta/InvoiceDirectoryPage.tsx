@@ -445,7 +445,7 @@ export default function InvoiceDirectoryPage() {
                   <tr key={inv.id} className="hover:bg-accent/50">
                     <td className="px-3 py-2.5">
                       <Link to={`/compta/invoices/${inv.id}`} className="text-xs font-mono font-semibold text-primary hover:underline">{inv.quoteNumber}</Link>
-                      {inv.is_locked && <span className="ml-1 text-[9px] text-amber-600 dark:text-amber-400">🔒</span>}
+                      {inv.is_locked && <span className="ml-1 text-[10px] text-amber-600 dark:text-amber-400">🔒</span>}
                     </td>
                     <td className="px-3 py-2.5">
                       <div className="text-xs font-medium text-foreground">{inv.customer?.fullName || '—'}</div>

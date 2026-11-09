@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { ShoppingCart, X, Copy, Trash2, Package, FileText, ChevronRight, Minus, Plus } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuoteCart } from '../hooks/useQuoteCart';
 import { useToast } from '../context/ToastContext';
 import { QuoteItem } from '../types';
 import { useEscapeKey } from '../hooks/useShortcuts';
+import { cartHiddenOn } from '../utils/pageTitles';
 
 const marginOptions = Array.from({ length: 20 }, (_, i) => (i + 1) * 5);
 
@@ -14,6 +15,7 @@ function fmt(n: number) {
 
 export function FloatingQuoteCart() {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const { cart, removeFromCart, emptyCart, copyAllItems, copyItem, getCartSummary, updateCartItem } = useQuoteCart();
   const { showToast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
@@ -39,6 +41,8 @@ export function FloatingQuoteCart() {
 
   const summary = getCartSummary();
 
+  if (cartHiddenOn(pathname) && !isOpen) return null;
+
   return (
     <>
       {/* Trigger button */}
@@ -48,6 +52,7 @@ export function FloatingQuoteCart() {
           className="relative flex items-center justify-center w-11 h-11 text-primary-foreground rounded-full transition-all duration-200 hover:scale-105 active:scale-95"
           style={{ background: 'var(--gradient-primary)', boxShadow: 'var(--shadow-glow)' }}
           title="Panier de devis"
+          aria-label={cart.totalItems > 0 ? `Panier de devis, ${cart.totalItems} article${cart.totalItems > 1 ? 's' : ''}` : 'Panier de devis'}
         >
           <ShoppingCart className="h-5 w-5" />
           {cart.totalItems > 0 && (
@@ -80,7 +85,7 @@ export function FloatingQuoteCart() {
             <ShoppingCart className="h-4 w-4" />
             <div>
               <p className="text-sm font-semibold leading-none">Panier de devis</p>
-              <p className="text-[11px] text-primary-foreground/70 mt-0.5">{cart.totalItems} article{cart.totalItems !== 1 ? 's' : ''}</p>
+              <p className="text-[11px] text-primary-foreground mt-0.5">{cart.totalItems} article{cart.totalItems !== 1 ? 's' : ''}</p>
             </div>
           </div>
           <button onClick={() => setIsOpen(false)} className="p-1.5 rounded-lg hover:bg-primary-foreground/15 transition-colors" title="Fermer (Échap)">

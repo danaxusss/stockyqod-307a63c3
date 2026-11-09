@@ -23,6 +23,9 @@
     /* Brand — deep banking navy */
     --primary:         221 55% 37%;    /* #2B4C92 — formal navy */
     --primary-foreground: 0 0% 100%;
+    /* Primary used as text (links, active items): the fill colour is dark
+       enough on light surfaces, so it is the same here. */
+    --primary-text:    221 55% 37%;
 
     /* Secondary surfaces */
     --secondary:       216 18% 92.5%;  /* #E9ECF1 — quiet tinted bg */
@@ -36,6 +39,7 @@
 
     /* Status */
     --destructive:     0 65% 46%;      /* #C22929 — formal red */
+    --destructive-text: 0 65% 46%;
     --destructive-foreground: 0 0% 100%;
 
     /* Structure */
@@ -83,8 +87,11 @@
     --popover:         221 24% 12%;
     --popover-foreground: 216 25% 91%;
 
-    --primary:         218 52% 60%;    /* #6389CC — steel blue, button-safe */
+    /* Bright blue that still carries white text (4.8:1); text in the brand
+       colour uses the lighter --primary-text instead (7:1 on cards). */
+    --primary:         218 70% 52%;    /* #2F6EDA — vivid steel blue */
     --primary-foreground: 0 0% 100%;
+    --primary-text:    218 75% 72%;    /* #7FA6EC */
 
     --secondary:       220 20% 16%;    /* #212837 */
     --secondary-foreground: 216 18% 76%;
@@ -95,7 +102,8 @@
     --accent:          218 52% 60%;
     --accent-foreground: 218 60% 78%;
 
-    --destructive:     0 60% 55%;      /* #D14343 */
+    --destructive:     0 65% 48%;      /* #CA2B2B — white text 5.3:1 */
+    --destructive-text: 0 72% 65%;    /* #EB6A6A — red text on dark cards */
     --destructive-foreground: 0 0% 100%;
 
     --border:          220 17% 20%;    /* #2A3140 */
@@ -107,10 +115,10 @@
     --shadow-md:      0 2px 8px rgba(0,0,0,0.45), 0 1px 4px rgba(0,0,0,0.30);
     --shadow-lg:      0 4px 14px rgba(0,0,0,0.50), 0 2px 6px rgba(0,0,0,0.35);
     --shadow-xl:      0 8px 24px rgba(0,0,0,0.55), 0 4px 10px rgba(0,0,0,0.40);
-    --shadow-glow:    0 0 0 3px rgba(122,155,216,0.18);
+    --shadow-glow:    0 0 0 3px rgba(47,110,218,0.25);
     --shadow-elevated: 0 12px 32px rgba(0,0,0,0.60), 0 4px 10px rgba(0,0,0,0.45);
 
-    --gradient-primary: linear-gradient(160deg, #8AA8DE 0%, #6E8FCE 100%);
+    --gradient-primary: linear-gradient(160deg, #3D7BE2 0%, #2A62C8 100%);
     --gradient-surface: linear-gradient(160deg, #151B2A 0%, #0F1420 100%);
     --gradient-dark:    linear-gradient(160deg, #0F1420 0%, #151B2A 100%);
 
@@ -215,6 +223,32 @@ html, body { height: 100%; }
   input[type="email"], input[type="url"], input[type="search"],
   input[type="tel"], input[type="color"] {
     font-size: 16px;
+  }
+}
+
+/* Touch screens: fields at least 40 px tall so they are easy to hit. A
+   borderless input set inside its own box (quote number, date…) is left as
+   is: the box around it is what the user sees and taps. */
+@media (pointer: coarse) {
+  select:not([class*="bg-transparent"]), textarea,
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="hidden"]):not([class*="bg-transparent"]) {
+    min-height: 40px;
+  }
+  /* Text buttons and button-like links (the ones sized by padding) get at
+     least 40 px; icon buttons with a fixed size keep it. */
+  button[class*="py-1"], button[class*="py-2"],
+  a[class*="py-1"][class*="rounded"], a[class*="py-2"][class*="rounded"] {
+    min-height: 40px;
+  }
+}
+
+/* Reduced motion: drop decorative movement, keep loading spinners turning. */
+@media (prefers-reduced-motion: reduce) {
+  *:not(.animate-spin), *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 

@@ -13,6 +13,18 @@ export default {
       },
     },
     extend: {
+      // Brand and danger colours as text have their own tokens so they stay
+      // readable in dark mode, where the button fills are darker.
+      textColor: {
+        primary: {
+          DEFAULT: "hsl(var(--primary-text))",
+          foreground: "hsl(var(--primary-foreground))",
+        },
+        destructive: {
+          DEFAULT: "hsl(var(--destructive-text))",
+          foreground: "hsl(var(--destructive-foreground))",
+        },
+      },
       screens: {
         'xs': '475px',
       },

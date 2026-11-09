@@ -46,7 +46,7 @@ function SidebarSection({ section, collapsed, onNavigate }: { section: NavSectio
     <div className="mb-0.5">
       {collapsed
         ? <div className="h-px bg-border/40 mx-1.5 my-1.5" />
-        : <p className="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground/50 px-2 pt-2.5 pb-0.5">{section.label}</p>
+        : <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground px-2 pt-3 pb-1">{section.label}</p>
       }
       <div className="space-y-0.5">
         {section.items.map(item => <SidebarItem key={item.to} item={item} collapsed={collapsed} onNavigate={onNavigate} />)}
@@ -232,10 +232,10 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps = {}
             <div className="min-w-0 flex-1">
               <div className="flex items-baseline gap-1">
                 <span className="text-sm font-bold tracking-tight text-foreground leading-none">Stocky</span>
-                <span className="text-[9px] font-medium text-muted-foreground/60 leading-none">by QodWeb</span>
+                <span className="text-[11px] font-medium text-muted-foreground leading-none">by QodWeb</span>
               </div>
               {syncInfo.pendingChanges > 0 && (
-                <span className="text-[9px] px-1 bg-amber-500/15 text-amber-600 dark:text-amber-400 rounded font-medium">
+                <span className="text-[10px] px-1 bg-amber-500/15 text-amber-600 dark:text-amber-400 rounded font-medium">
                   {syncInfo.pendingChanges} en attente
                 </span>
               )}
@@ -310,7 +310,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps = {}
               {showExpanded && (
                 <span className="flex items-center gap-1.5 text-xs">
                   Comptabilité
-                  <span className="text-[8px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400 bg-amber-500/12 px-1 py-0.5 rounded">Bientôt</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400 bg-amber-500/12 px-1 py-0.5 rounded">Bientôt</span>
                 </span>
               )}
             </NavLink>
