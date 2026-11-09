@@ -859,7 +859,7 @@ export default function InvoiceDetailPage() {
             className="w-full px-2 py-1.5 text-sm border border-input rounded bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-none" />
           <div className="relative">
             <hr className="border-border mb-2" />
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 mb-1">Note interne</p>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Note interne</p>
             <textarea value={draftNotes2} onChange={e => setDraftNotes2(e.target.value)}
               rows={2} placeholder="Note interne (non visible sur le PDF)..."
               className="w-full px-2 py-1.5 text-sm border border-input rounded bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-none" />
@@ -871,7 +871,7 @@ export default function InvoiceDetailPage() {
           {invoice.notes && invoice.notes2 && <hr className="border-border" />}
           {invoice.notes2 && (
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 mb-0.5">Note interne</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-0.5">Note interne</p>
               <p className="text-sm text-muted-foreground italic">{invoice.notes2}</p>
             </div>
           )}

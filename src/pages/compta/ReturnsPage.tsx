@@ -340,7 +340,7 @@ export default function ReturnsPage() {
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {ret.client_name}
                       {clientCodeMap[ret.client_name.toLowerCase()] && (
-                        <span className="ml-1.5 text-[9px] font-mono bg-blue-500/10 text-blue-600 dark:text-blue-400 px-1 py-0.5 rounded">{clientCodeMap[ret.client_name.toLowerCase()]}</span>
+                        <span className="ml-1.5 text-[10px] font-mono bg-blue-500/10 text-blue-600 dark:text-blue-400 px-1 py-0.5 rounded">{clientCodeMap[ret.client_name.toLowerCase()]}</span>
                       )}
                       {' — '}{ret.reason || '—'}
                     </p>

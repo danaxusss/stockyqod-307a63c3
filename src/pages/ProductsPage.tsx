@@ -406,10 +406,10 @@ export default function ProductsPage() {
   const renderActions = (product: Product, isEditing: boolean, compact = false) => isEditing ? (
     <div className="flex items-center space-x-1">
       <button onClick={() => saveEdit(product.barcode)} disabled={isSaving} aria-label="Enregistrer"
-        className="p-2 md:p-1 text-emerald-500 hover:bg-emerald-500/10 rounded">
+        className="flex h-10 w-10 items-center justify-center md:h-auto md:w-auto md:p-1 text-emerald-500 hover:bg-emerald-500/10 rounded">
         {isSaving ? <Loader className="h-4 w-4 md:h-3.5 md:w-3.5 animate-spin" /> : <Check className="h-4 w-4 md:h-3.5 md:w-3.5" />}
       </button>
-      <button onClick={cancelEdit} aria-label="Annuler" className="p-2 md:p-1 text-muted-foreground hover:bg-accent rounded">
+      <button onClick={cancelEdit} aria-label="Annuler" className="flex h-10 w-10 items-center justify-center md:h-auto md:w-auto md:p-1 text-muted-foreground hover:bg-accent rounded">
         <X className="h-4 w-4 md:h-3.5 md:w-3.5" />
       </button>
     </div>
@@ -417,10 +417,10 @@ export default function ProductsPage() {
     <div className="flex shrink-0 items-center space-x-1">
       {!compact && (
         <>
-          <button onClick={() => setQuickViewProduct(product)} className="p-2 md:p-1 text-muted-foreground hover:bg-accent rounded" title="Aperçu rapide">
+          <button onClick={() => setQuickViewProduct(product)} className="flex h-10 w-10 items-center justify-center md:h-auto md:w-auto md:p-1 text-muted-foreground hover:bg-accent rounded" title="Aperçu rapide">
             <Eye className="h-4 w-4 md:h-3.5 md:w-3.5" />
           </button>
-          <Link to={`/product/${encodeURIComponent(product.barcode)}`} className="p-2 md:p-1 text-muted-foreground hover:bg-accent rounded" title="Fiche produit">
+          <Link to={`/product/${encodeURIComponent(product.barcode)}`} className="flex h-10 w-10 items-center justify-center md:h-auto md:w-auto md:p-1 text-muted-foreground hover:bg-accent rounded" title="Fiche produit">
             <Info className="h-4 w-4 md:h-3.5 md:w-3.5" />
           </Link>
         </>
@@ -429,11 +429,11 @@ export default function ProductsPage() {
         sheets={sheetLinks[product.barcode] || []}
         canSearch={canEditProducts}
         onSearch={() => setSheetFinderProduct(product)}
-        className="p-2 md:p-1"
+        className="flex h-10 w-10 items-center justify-center md:h-auto md:w-auto md:p-1"
         iconClassName="h-4 w-4 md:h-3.5 md:w-3.5"
       />
       {canEditProducts && (
-        <button onClick={() => startEdit(product)} disabled={bulkMode} className="p-2 md:p-1 text-primary hover:bg-primary/10 rounded disabled:opacity-30" title={bulkMode ? 'Indisponible en modification groupée' : 'Modifier'}>
+        <button onClick={() => startEdit(product)} disabled={bulkMode} className="flex h-10 w-10 items-center justify-center md:h-auto md:w-auto md:p-1 text-primary hover:bg-primary/10 rounded disabled:opacity-30" title={bulkMode ? 'Indisponible en modification groupée' : 'Modifier'}>
           <Edit className="h-4 w-4 md:h-3.5 md:w-3.5" />
         </button>
       )}
@@ -445,10 +445,10 @@ export default function ProductsPage() {
             value={qtyMap[product.barcode] ?? 1}
             onChange={e => setQtyMap(m => ({ ...m, [product.barcode]: Math.max(1, parseInt(e.target.value) || 1) }))}
             aria-label={`Quantité de ${product.name}`}
-            className="w-14 h-8 md:w-12 md:h-6 text-xs text-center border border-border rounded bg-background px-1"
+            className="w-14 h-10 md:w-12 md:h-6 text-sm md:text-xs text-center border border-border rounded bg-background px-1"
             onClick={e => e.stopPropagation()}
           />
-          <button onClick={() => handleAddToCart(product)} className="p-2 md:p-1 text-emerald-500 hover:bg-emerald-500/10 rounded" title="Ajouter au devis">
+          <button onClick={() => handleAddToCart(product)} className="flex h-10 w-10 items-center justify-center md:h-auto md:w-auto md:p-1 text-emerald-500 hover:bg-emerald-500/10 rounded" title="Ajouter au devis">
             <ShoppingCart className="h-4 w-4 md:h-3.5 md:w-3.5" />
           </button>
         </div>

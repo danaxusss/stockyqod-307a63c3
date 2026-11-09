@@ -18,7 +18,7 @@ export function TechnicalSheetButton({ sheets, canSearch, onSearch, className = 
   inverse?: boolean;
 }) {
   const linkedTone = inverse ? 'text-primary-foreground hover:bg-white/20' : 'text-primary hover:bg-primary/10';
-  const searchTone = inverse ? 'text-primary-foreground/70 hover:bg-white/20 hover:text-primary-foreground' : 'text-muted-foreground/70 hover:bg-accent hover:text-foreground';
+  const searchTone = inverse ? 'text-primary-foreground/70 hover:bg-white/20 hover:text-primary-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground';
   const [menu, setMenu] = useState<{ top: number; right: number } | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -64,7 +64,7 @@ export function TechnicalSheetButton({ sheets, canSearch, onSearch, className = 
           }}
           className={`relative rounded ${linkedTone} ${className}`}>
           <FileText className={iconClassName} />
-          <span className={`absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full px-0.5 text-[9px] font-bold leading-none ${inverse ? 'bg-primary-foreground text-primary' : 'bg-primary text-primary-foreground'}`}>{sheets.length}</span>
+          <span className={`absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full px-0.5 text-[10px] font-bold leading-none ${inverse ? 'bg-primary-foreground text-primary' : 'bg-primary text-primary-foreground'}`}>{sheets.length}</span>
         </button>
         {menu && createPortal(
           <div ref={menuRef} role="menu" style={{ top: menu.top, right: menu.right }}

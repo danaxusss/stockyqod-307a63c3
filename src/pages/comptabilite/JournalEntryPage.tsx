@@ -195,7 +195,7 @@ export default function JournalEntryPage() {
                   <td className="px-1 py-1">
                     <input list="acc-list" value={l.account_code} onChange={e => setLine(i, 'account_code', e.target.value.split(' ')[0])}
                       placeholder="compte" className="w-full px-2 py-1 text-sm rounded bg-secondary border border-border font-mono" />
-                    <div className="text-[9px] text-muted-foreground truncate max-w-[150px]">{accByCode.get(l.account_code)?.label || ''}</div>
+                    <div className="text-[10px] text-muted-foreground truncate max-w-[150px]">{accByCode.get(l.account_code)?.label || ''}</div>
                   </td>
                   <td className="px-1 py-1"><input value={l.label || ''} onChange={e => setLine(i, 'label', e.target.value)} className="w-full px-2 py-1 text-sm rounded bg-secondary border border-border" /></td>
                   <td className="px-1 py-1"><input type="number" min={0} step="0.01" value={l.debit || ''} onChange={e => setLine(i, 'debit', Number(e.target.value))} className="w-full px-2 py-1 text-sm text-right rounded bg-secondary border border-border" /></td>

@@ -343,7 +343,7 @@ function ImageFinder() {
                       <button key={result.url} onClick={() => { clearCandidate(); setCandidate({ kind: 'result', result }); }} title={result.title}
                         className={`group relative aspect-square overflow-hidden rounded-lg border-2 bg-white ${selected ? 'border-primary ring-2 ring-primary/30' : 'border-transparent hover:border-primary/40'}`}>
                         <img src={result.thumbnail} alt={result.title} loading="lazy" referrerPolicy="no-referrer" className="h-full w-full object-contain" />
-                        <span className="absolute inset-x-0 bottom-0 truncate bg-black/60 px-1 py-0.5 text-[9px] text-white">{[sizeLabel(result), result.source].filter(Boolean).join(' · ')}</span>
+                        <span className="absolute inset-x-0 bottom-0 truncate bg-black/60 px-1 py-0.5 text-[10px] text-white">{[sizeLabel(result), result.source].filter(Boolean).join(' · ')}</span>
                         {selected && <span className="absolute right-1 top-1 rounded-full bg-primary p-0.5 text-primary-foreground"><Check className="h-3 w-3" /></span>}
                       </button>
                     );

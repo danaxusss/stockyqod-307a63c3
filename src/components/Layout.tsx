@@ -1,9 +1,11 @@
-import React, { ReactNode, useState, useRef, useCallback } from 'react';
+import React, { ReactNode, useState, useRef, useCallback, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { RefreshCw, Bot, Menu, Package } from 'lucide-react';
 import { useUserAuth } from '../hooks/useUserAuth';
 import { useAppContext } from '../context/AppContext';
 import { Sidebar } from './Sidebar';
 import { AIChatWidget } from './AIChatWidget';
+import { cartHiddenOn, documentTitle } from '../utils/pageTitles';
 
 interface LayoutProps {
   children: ReactNode;
@@ -12,6 +14,10 @@ interface LayoutProps {
 export function Layout({ children }: LayoutProps) {
   const { isAuthenticated: isUserAuthenticated } = useUserAuth();
   const { syncData } = useAppContext();
+  const { pathname } = useLocation();
+
+  // Name the browser tab after the page, so tabs and history are readable.
+  useEffect(() => { document.title = documentTitle(pathname); }, [pathname]);
 
   const [startY, setStartY] = useState(0);
   const [pullDistance, setPullDistance] = useState(0);
@@ -54,6 +60,9 @@ export function Layout({ children }: LayoutProps) {
 
   return (
     <div className="h-screen bg-background flex overflow-hidden">
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[300] focus:rounded-lg focus:bg-primary focus:px-4 focus:py-2.5 focus:text-sm focus:font-semibold focus:text-primary-foreground focus:shadow-lg">
+        Aller au contenu
+      </a>
       {/* Mobile sidebar backdrop */}
       {mobileSidebarOpen && (
         <div
@@ -69,8 +78,8 @@ export function Layout({ children }: LayoutProps) {
         <div className="md:hidden flex items-center h-12 px-3 border-b border-border/40 bg-card shrink-0 gap-2.5">
           <button
             onClick={() => setMobileSidebarOpen(true)}
-            className="p-1.5 -ml-0.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-            title="Menu"
+            className="-ml-1.5 flex h-11 w-11 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary active:bg-secondary transition-colors"
+            aria-label="Menu"
           >
             <Menu className="h-5 w-5" />
           </button>
@@ -96,7 +105,11 @@ export function Layout({ children }: LayoutProps) {
 
         <main
           ref={mainRef}
-          className="flex-1 overflow-y-auto px-4 py-4"
+          id="main-content"
+          tabIndex={-1}
+          // Room under the content for the floating quote cart, so it never
+          // covers the last row or button of a page.
+          className={`flex-1 overflow-y-auto px-4 pt-4 focus:outline-none ${cartHiddenOn(pathname) ? 'pb-4' : 'pb-20'}`}
           onTouchStart={isUserAuthenticated ? handleTouchStart : undefined}
           onTouchMove={isUserAuthenticated ? handleTouchMove : undefined}
           onTouchEnd={isUserAuthenticated ? handleTouchEnd : undefined}
@@ -114,9 +127,9 @@ export function Layout({ children }: LayoutProps) {
 
         <footer className="py-2 border-t border-border/30 shrink-0">
           <div className="px-4 text-center">
-            <p className="text-[10px] text-muted-foreground/50 font-medium tracking-wide">
+            <p className="text-[11px] text-muted-foreground font-medium tracking-wide">
               Stocky V2.2 · Cuisimat Gr ·{' '}
-              <a href="https://www.qodweb.com" target="_blank" rel="noopener noreferrer" className="text-primary/60 hover:text-primary transition-colors">
+              <a href="https://www.qodweb.com" target="_blank" rel="noopener noreferrer" className="inline-flex min-h-6 items-center text-primary underline underline-offset-2 hover:no-underline">
                 QodWeb
               </a>
               {' '}2026
@@ -135,10 +148,11 @@ export function Layout({ children }: LayoutProps) {
         <button
           onClick={() => setChatOpen(true)}
           title="Assistant IA"
+          aria-label="Assistant IA"
           className="hidden md:flex fixed right-0 top-1/2 -translate-y-1/2 z-30 flex-col items-center gap-1 py-3 px-1.5 bg-primary text-primary-foreground rounded-l-lg shadow-lg hover:bg-primary/90 transition-colors"
         >
           <Bot className="h-4 w-4" />
-          <span className="text-[9px] font-semibold tracking-wide [writing-mode:vertical-lr] rotate-180">IA</span>
+          <span className="text-[10px] font-semibold tracking-wide [writing-mode:vertical-lr] rotate-180">IA</span>
         </button>
       )}
     </div>

@@ -63,7 +63,7 @@ function NavDropdown({
         >
           {/* Section header */}
           <div className="px-3 pt-2 pb-1.5">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70">
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
               {label}
             </p>
           </div>
@@ -190,10 +190,10 @@ export function Header() {
             <div>
               <div className="flex items-baseline gap-1.5">
                 <span className="text-sm font-bold tracking-tight text-foreground leading-none">Stocky</span>
-                <span className="text-[9px] font-medium text-muted-foreground/60 leading-none">by QodWeb</span>
+                <span className="text-[11px] font-medium text-muted-foreground leading-none">by QodWeb</span>
               </div>
               {syncInfo.pendingChanges > 0 && (
-                <span className="text-[9px] px-1 bg-amber-500/15 text-amber-600 dark:text-amber-400 rounded font-medium">
+                <span className="text-[10px] px-1 bg-amber-500/15 text-amber-600 dark:text-amber-400 rounded font-medium">
                   {syncInfo.pendingChanges} en attente
                 </span>
               )}

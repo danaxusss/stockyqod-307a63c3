@@ -126,9 +126,9 @@ export default function AnalyticsPage() {
         <div className="flex items-end gap-1" style={{ height: 72 }}>
           {perDay.map((d, i) => (
             <div key={i} className="flex-1 flex flex-col items-center gap-1 min-w-0" title={`${d.label} : ${d.count} envoi(s)`}>
-              <span className="text-[9px] text-muted-foreground leading-none">{d.count || ''}</span>
+              <span className="text-[10px] text-muted-foreground leading-none">{d.count || ''}</span>
               <div className="w-full rounded-t bg-primary/70" style={{ height: `${Math.round((d.count / maxDay) * 48) + (d.count ? 4 : 1)}px` }} />
-              <span className="text-[8px] text-muted-foreground leading-none truncate w-full text-center">{i % 2 === 0 ? d.label : ''}</span>
+              <span className="text-[10px] text-muted-foreground leading-none truncate w-full text-center">{i % 2 === 0 ? d.label : ''}</span>
             </div>
           ))}
         </div>

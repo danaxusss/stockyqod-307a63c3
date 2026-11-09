@@ -242,7 +242,7 @@ function StatCard({ label, value, sub, icon: Icon, accent }: {
       <div className="min-w-0">
         <div className="text-lg font-bold text-foreground tracking-tight leading-none finance-amount">{value}</div>
         <div className="text-[11px] font-medium text-muted-foreground mt-0.5">{label}</div>
-        {sub && <div className="text-[10px] text-muted-foreground/60">{sub}</div>}
+        {sub && <div className="text-[11px] text-muted-foreground">{sub}</div>}
       </div>
     </div>
   );
