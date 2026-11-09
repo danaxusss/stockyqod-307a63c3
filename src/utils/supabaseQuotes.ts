@@ -13,6 +13,10 @@ type QuoteRow = {
   items: unknown;
   total_amount: number;
   notes: string | null;
+  notes2?: string | null;
+  quote_date?: string | null;
+  company_id?: string | null;
+  issuing_company_id?: string | null;
   created_by: string | null;
 };
 
@@ -41,8 +45,20 @@ function mapQuoteRow(row: QuoteRow): Quote {
     })),
     totalAmount: Number(row.total_amount),
     notes: row.notes || undefined,
+    notes2: row.notes2 || undefined,
+    quote_date: row.quote_date || undefined,
+    company_id: row.company_id || undefined,
+    issuing_company_id: row.issuing_company_id || undefined,
     createdBy: row.created_by || undefined,
   };
+}
+
+/**
+ * The company whose letterhead (logo, ICE, address) a quote is printed on:
+ * the company it was made for, else the user's own.
+ */
+export function quoteCompanyId(quote: Pick<Quote, 'company_id' | 'issuing_company_id'> | null | undefined): string | undefined {
+  return quote?.issuing_company_id || quote?.company_id || getCompanyContext().companyId || undefined;
 }
 
 export class SupabaseQuotesService {
@@ -66,7 +82,11 @@ export class SupabaseQuotesService {
       notes: quote.notes || null,
       created_by: createdBy,
     };
-    if (companyId) quoteData.company_id = companyId;
+    if (quote.notes2 !== undefined) quoteData.notes2 = quote.notes2 || null;
+    if (quote.quote_date !== undefined) quoteData.quote_date = quote.quote_date || null;
+    // A quote stays with the company it was made for, whoever edits it.
+    const owner = quote.company_id || companyId;
+    if (owner) quoteData.company_id = owner;
 
     const { error } = await (supabase
       .from('quotes') as any)

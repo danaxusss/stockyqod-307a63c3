@@ -276,7 +276,15 @@ export class KioskService {
 
   static async saveProfile(profile: KioskAdminProfile): Promise<KioskAdminProfile> {
     const result = await invoke<{ profile: KioskAdminProfile }>({ action: 'admin_save_profile', profile }, true);
-    return result.profile;
+    const saved = result.profile;
+    // A server without the showcase saves the rest and silently drops it.
+    // Say so, instead of the switch quietly turning itself off.
+    if (profile.showcase_enabled && saved && saved.showcase_enabled !== true) {
+      throw new Error(!('showcase_enabled' in saved)
+        ? 'Les autres réglages sont enregistrés, mais pas la vitrine : la base de données n’a pas encore ses colonnes. Exécutez la migration 20261028120000_kiosk_showcase.sql dans Supabase, puis déployez la fonction kiosk (GitHub → Actions → Deploy Supabase functions → kiosk).'
+        : 'Les autres réglages sont enregistrés, mais pas la vitrine : la fonction kiosk déployée sur Supabase est une ancienne version. Déployez-la (GitHub → Actions → Deploy Supabase functions → kiosk), puis enregistrez à nouveau.');
+    }
+    return saved;
   }
 
   static async featuredProducts(barcodes: string[]): Promise<Array<Pick<KioskAdminProduct, 'barcode' | 'name' | 'brand' | 'image'>>> {

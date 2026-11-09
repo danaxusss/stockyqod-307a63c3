@@ -331,9 +331,18 @@ export interface SheetShareLink {
   token: string;
   title: string | null;
   sheet_ids: string[];
+  /** Photos of quoted products that have no technical sheet. */
+  product_images?: SharedProductImage[];
   expires_at: string | null;
   view_count: number;
   created_at: string;
+}
+
+export interface SharedProductImage {
+  barcode: string;
+  name: string;
+  brand: string;
+  url: string;
 }
 
 export interface Provider {
