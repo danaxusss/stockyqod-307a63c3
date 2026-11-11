@@ -38,6 +38,19 @@ describe('product image batch analysis', () => {
     expect(analysis.duplicates.map(file => file.name)).toEqual(['A-1.png']);
   });
 
+  it('matches names whose separators differ from the code, when only one product fits', () => {
+    const analysis = analyzeProductImageFiles(
+      [imageFile('PL1G_130.jpg'), imageFile('pl1-70.JPG'), imageFile('157_20.jpg'), imageFile('HLP-15.jpg'), imageFile('PL1G-130.png')],
+      [product('PL1G/130'), product('PL1/70'), product('157-20'), product('15720'), product('HLP-20')],
+    );
+    // A file name cannot hold "/", so "PL1G/130" arrives as "PL1G_130".
+    expect(analysis.candidates.map(item => [item.file.name, item.product.barcode])).toEqual([['PL1G_130.jpg', 'PL1G/130'], ['pl1-70.JPG', 'PL1/70']]);
+    // "157-20" and "15720" both exist: listed, never guessed.
+    expect(analysis.invalid).toEqual([{ file: expect.objectContaining({ name: '157_20.jpg' }), reason: 'plusieurs produits possibles : 157-20, 15720' }]);
+    expect(analysis.unmatched.map(file => file.name)).toEqual(['HLP-15.jpg']);
+    expect(analysis.duplicates.map(file => file.name)).toEqual(['PL1G-130.png']);
+  });
+
   it('accepts formats beyond jpg/png/webp (bmp, gif, svg, avif…)', () => {
     const analysis = analyzeProductImageFiles(
       [imageFile('C-3.bmp'), imageFile('D-4.gif'), imageFile('E-5.svg'), imageFile('F-6.avif')],

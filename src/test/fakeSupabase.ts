@@ -52,7 +52,20 @@ class Query implements PromiseLike<{ data: any; error: any }> {
   in(col: string, vs: unknown[]) { this.filters.push(r => vs.map(String).includes(String(getPath(r, col)))); return this; }
   overlaps(col: string, vs: unknown[]) { this.filters.push(r => (r[col] || []).some((x: unknown) => vs.includes(x))); return this; }
   contains(col: string, vs: unknown[]) { this.filters.push(r => vs.every(v => (r[col] || []).includes(v))); return this; }
-  or() { return this; }
+  /** "a.eq.x,b.is.null,c.ilike.%y%": any condition matches. Other operators keep every row. */
+  or(expr: string) {
+    const conds = expr.split(',').map(c => c.match(/^([\w>-]+)\.(eq|is|ilike)\.(.*)$/));
+    if (conds.some(c => !c)) return this;
+    this.filters.push(r => conds.some(c => {
+      const [, col, op, v] = c as RegExpMatchArray;
+      const val = getPath(r, col);
+      if (op === 'is') return v === 'null' ? val == null : String(val) === v;
+      if (op === 'eq') return String(val) === v;
+      const re = new RegExp('^' + v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*') + '$', 'i');
+      return re.test(String(val ?? ''));
+    }));
+    return this;
+  }
   order(col: string, opts?: { ascending?: boolean }) { this.sort = { col, asc: opts?.ascending !== false }; return this; }
   range(from: number, to: number) { this.window = [from, to]; return this; }
   limit(n: number) { this.max = n; return this; }

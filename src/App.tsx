@@ -6,6 +6,7 @@ import { Layout } from './components/Layout';
 import { LoginModal } from './components/LoginModal';
 import { FloatingQuoteCart } from './components/FloatingQuoteCart';
 import { useAuth } from './hooks/useAuth';
+import { useAccess } from './hooks/useAccess';
 import { useUserAuth } from './hooks/useUserAuth';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Toaster as SonnerToaster } from './components/ui/sonner';
@@ -17,6 +18,7 @@ const ProductDetail = React.lazy(() => import('./pages/ProductDetail').then(m =>
 const QuoteCartPage = React.lazy(() => import('./pages/QuoteCartPage').then(m => ({ default: m.QuoteCartPage })));
 const QuotesHistoryPage = React.lazy(() => import('./pages/QuotesHistoryPage').then(m => ({ default: m.QuotesHistoryPage })));
 
+const AdminToolsPage = React.lazy(() => import('./pages/AdminToolsPage'));
 const StatisticsPage = React.lazy(() => import('./pages/StatisticsPage').then(m => ({ default: m.StatisticsPage })));
 const CompanySettingsPage = React.lazy(() => import('./pages/CompanySettingsPage'));
 const ClientsPage = React.lazy(() => import('./pages/ClientsPage'));
@@ -106,8 +108,9 @@ function PageLoader() {
 
 function AppContent() {
   const { activeLoginModalRole, openLoginModal } = useAppContext();
-  const { canCreateQuote, isAdmin, isCompta, isSuperAdmin, isFacturation, isManager, isPaie, isStock, isTasks, isTasksOnly } = useAuth();
-  const isAccounting = isSuperAdmin || isAdmin || isCompta;
+  const { isTasksOnly } = useAuth();
+  // One access list for routes, menus, search and the home page.
+  const { access } = useAccess();
   const { isAuthenticated: isUserAuthenticated } = useUserAuth();
 
   const handleUserLoginSuccess = () => {};
@@ -167,14 +170,14 @@ function AppContent() {
             <>
             <Route path="/search" element={<SearchPage />} />
             <Route path="/product/:id" element={<ProductDetail />} />
-            {canCreateQuote() && (
+            {access.quotes && (
               <>
                 <Route path="/quote-cart" element={<QuoteCartPage />} />
                 <Route path="/quote-cart/:quoteId" element={<QuoteCartPage />} />
                 <Route path="/quotes-history" element={<QuotesHistoryPage />} />
               </>
             )}
-            {(canCreateQuote() || isAdmin || isSuperAdmin || isFacturation || isManager) && (
+            {access.kioskRequests && (
               <Route path="/kiosk-admin" element={<KioskAdminPage />} />
             )}
             <Route path="/clients" element={<ClientsPage />} />
@@ -194,15 +197,16 @@ function AppContent() {
             <Route path="/admin/settings" element={<CompanySettingsPage />} />
             </>
             )}
-            {!isTasksOnly && isSuperAdmin && (
+            {access.superAdmin && (
               <>
+                <Route path="/admin/tools" element={<AdminToolsPage />} />
                 <Route path="/companies" element={<CompaniesPage />} />
                 <Route path="/admin/users" element={<UserManagementPage />} />
                 <Route path="/admin/backup" element={<BackupPage />} />
                 <Route path="/admin/import" element={<ImportPage />} />
               </>
             )}
-            {isAccounting && (
+            {access.accounting && (
               <>
                 <Route path="/comptabilite" element={<ComptabiliteHome />} />
                 <Route path="/comptabilite/plan" element={<PlanComptablePage />} />
@@ -218,7 +222,7 @@ function AppContent() {
                 <Route path="/comptabilite/immobilisations" element={<ImmobilisationsPage />} />
               </>
             )}
-            {(isFacturation || isSuperAdmin) && (
+            {access.billing && (
               <>
                 <Route path="/compta/bls" element={<BLDirectoryPage />} />
                 <Route path="/compta/bls/:id" element={<BLDetailPage />} />
@@ -234,7 +238,7 @@ function AppContent() {
                 <Route path="/compta/bons-commande/:id" element={<BonCommandeDetailPage />} />
               </>
             )}
-            {(isStock || isSuperAdmin) && (
+            {access.stock && (
               <>
                 <Route path="/inventaire" element={<StockDashboardPage />} />
                 <Route path="/inventaire/niveaux" element={<StockLevelsPage />} />
@@ -247,7 +251,7 @@ function AppContent() {
                 <Route path="/inventaire/commandes/:id" element={<PurchaseOrderDetailPage />} />
               </>
             )}
-            {(isPaie || isSuperAdmin) && (
+            {access.payroll && (
               <>
                 <Route path="/paie/employes" element={<EmployeesPage />} />
                 <Route path="/paie/bulletins" element={<PayslipsPage />} />
@@ -263,7 +267,7 @@ function AppContent() {
                 <Route path="/paie/parametres" element={<ParametresPaiePage />} />
               </>
             )}
-            {(isTasks || isSuperAdmin) && (
+            {access.tasks && (
               <Route element={<TasksLayout />}>
                 <Route path="/tasks" element={<TasksList />} />
                 <Route path="/tasks/dashboard" element={<TasksDashboard />} />
@@ -279,7 +283,7 @@ function AppContent() {
         </ErrorBoundary>
       </Layout>
 
-      {canCreateQuote() && <FloatingQuoteCart />}
+      {access.quotes && <FloatingQuoteCart />}
 
       {activeLoginModalRole === 'admin' && (
         <LoginModal 

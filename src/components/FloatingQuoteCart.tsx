@@ -46,7 +46,7 @@ export function FloatingQuoteCart() {
   return (
     <>
       {/* Trigger button */}
-      <div className="fixed bottom-5 right-5 z-40">
+      <div className="fixed bottom-20 right-4 z-40 md:bottom-5 md:right-5">
         <button
           onClick={() => setIsOpen(v => !v)}
           className="relative flex items-center justify-center w-11 h-11 text-primary-foreground rounded-full transition-all duration-200 hover:scale-105 active:scale-95"

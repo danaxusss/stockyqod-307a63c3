@@ -76,6 +76,7 @@ const TITLES: [string, string][] = [
   ['/admin/settings', 'Paramètres'],
   ['/admin/users', 'Utilisateurs'],
   ['/admin/backup', 'Sauvegarde'],
+  ['/admin/tools', 'Outils système'],
   ['/admin/import', 'Import CSV'],
   ['/companies', 'Sociétés'],
 ];

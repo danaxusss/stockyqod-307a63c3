@@ -1,10 +1,12 @@
 import React, { ReactNode, useState, useRef, useCallback, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { RefreshCw, Bot, Menu, Package } from 'lucide-react';
+import { RefreshCw, Bot } from 'lucide-react';
 import { useUserAuth } from '../hooks/useUserAuth';
 import { useAppContext } from '../context/AppContext';
 import { Sidebar } from './Sidebar';
 import { AIChatWidget } from './AIChatWidget';
+import { CommandPalette } from './CommandPalette';
+import { MobileHeader, MobileTabBar } from './MobileNav';
 import { cartHiddenOn, documentTitle } from '../utils/pageTitles';
 
 interface LayoutProps {
@@ -74,22 +76,8 @@ export function Layout({ children }: LayoutProps) {
       <Sidebar mobileOpen={mobileSidebarOpen} onMobileClose={() => setMobileSidebarOpen(false)} />
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Mobile top bar */}
-        <div className="md:hidden flex items-center h-12 px-3 border-b border-border/40 bg-card shrink-0 gap-2.5">
-          <button
-            onClick={() => setMobileSidebarOpen(true)}
-            className="-ml-1.5 flex h-11 w-11 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary active:bg-secondary transition-colors"
-            aria-label="Menu"
-          >
-            <Menu className="h-5 w-5" />
-          </button>
-          <div className="flex items-center gap-1.5">
-            <div className="w-6 h-6 rounded-md bg-primary flex items-center justify-center">
-              <Package className="h-3.5 w-3.5 text-primary-foreground" />
-            </div>
-            <span className="text-sm font-bold text-foreground">Stocky</span>
-          </div>
-        </div>
+        {/* Phone: page name and back arrow (the menu is in the bottom bar) */}
+        <MobileHeader />
 
         {/* Pull-to-refresh indicator */}
         {isUserAuthenticated && (isPulling || isSyncing) && (
@@ -107,9 +95,9 @@ export function Layout({ children }: LayoutProps) {
           ref={mainRef}
           id="main-content"
           tabIndex={-1}
-          // Room under the content for the floating quote cart, so it never
-          // covers the last row or button of a page.
-          className={`flex-1 overflow-y-auto px-4 pt-4 focus:outline-none ${cartHiddenOn(pathname) ? 'pb-4' : 'pb-20'}`}
+          // Room under the content for the floating quote cart (and, on
+          // phones, the bottom bar), so they never cover the last row.
+          className={`flex-1 overflow-y-auto px-4 pt-4 focus:outline-none pb-28 ${cartHiddenOn(pathname) ? 'md:pb-6' : 'md:pb-20'}`}
           onTouchStart={isUserAuthenticated ? handleTouchStart : undefined}
           onTouchMove={isUserAuthenticated ? handleTouchMove : undefined}
           onTouchEnd={isUserAuthenticated ? handleTouchEnd : undefined}
@@ -125,7 +113,7 @@ export function Layout({ children }: LayoutProps) {
           {children}
         </main>
 
-        <footer className="py-2 border-t border-border/30 shrink-0">
+        <footer className="hidden py-2 border-t border-border/30 shrink-0 md:block">
           <div className="px-4 text-center">
             <p className="text-[11px] text-muted-foreground font-medium tracking-wide">
               Stocky V2.2 · Cuisimat Gr ·{' '}
@@ -137,6 +125,9 @@ export function Layout({ children }: LayoutProps) {
           </div>
         </footer>
       </div>
+
+      <MobileTabBar onMenu={() => setMobileSidebarOpen(true)} />
+      <CommandPalette />
 
       {/* AI Chat side panel — desktop only */}
       <div className={`hidden md:flex flex-col border-l border-border/40 bg-card shrink-0 overflow-hidden transition-[width] duration-200 ease-in-out ${chatOpen ? 'w-80' : 'w-0'}`}>
