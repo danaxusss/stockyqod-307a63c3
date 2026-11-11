@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   analyzeProductImageFiles,
+  storageSafeCode,
   productBarcodeFromFilename,
   PRODUCT_IMAGE_BATCH_LIMIT,
 } from '../utils/productImageBatch';
@@ -36,6 +37,15 @@ describe('product image batch analysis', () => {
     expect(analysis.replacements.map(item => item.product.barcode)).toEqual(['B_2']);
     expect(analysis.unmatched.map(file => file.name)).toEqual(['missing.webp']);
     expect(analysis.duplicates.map(file => file.name)).toEqual(['A-1.png']);
+  });
+
+  it('turns any product code into a storage file name the server accepts', () => {
+    expect(storageSafeCode('PL1G/130')).toBe('PL1G_130');
+    expect(storageSafeCode('4400NT/N')).toBe('4400NT_N');
+    expect(storageSafeCode('MOVIE-TRON/G')).toBe('MOVIE-TRON_G');
+    expect(storageSafeCode('RC23 E C')).toBe('RC23_E_C');
+    expect(storageSafeCode('7ETD.12C15.SS')).toBe('7ETD.12C15.SS');
+    expect(storageSafeCode('///')).toBe('produit');
   });
 
   it('matches names whose separators differ from the code, when only one product fits', () => {

@@ -222,7 +222,7 @@ serve(async (req) => {
 
       if (action === "public_catalog") {
         const search = text(body.search, 100);
-        const category = ["utensils", "furniture", "equipment"].includes(body.category) ? body.category : null;
+        const category = ["utensils", "furniture", "equipment", "decoration", "raw_materials"].includes(body.category) ? body.category : null;
         const brand = text(body.brand, 200) || null;
         const sector = UUID_RE.test(text(body.sector, 80)) ? text(body.sector, 80) : null;
         const page = Math.max(0, Math.floor(Number(body.page) || 0));

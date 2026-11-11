@@ -3,6 +3,7 @@ import type { Product } from '../types';
 import {
   isSupportedProductImage,
   PRODUCT_IMAGE_MAX_BYTES,
+  storageSafeCode,
 } from './productImageBatch';
 
 export {
@@ -115,8 +116,7 @@ export async function uploadPrimaryProductImage(args: {
 
   const compressed = await compressProductImage(file);
   const photoId = crypto.randomUUID();
-  const safeBarcode = encodeURIComponent(product.barcode);
-  const storagePath = `${companyId}/primary/${safeBarcode}-${Date.now()}-${photoId.slice(0, 8)}.jpg`;
+  const storagePath = `${companyId}/primary/${storageSafeCode(product.barcode)}-${Date.now()}-${photoId.slice(0, 8)}.jpg`;
   const previousImage = product.image || null;
 
   const { error: uploadError } = await supabase.storage
