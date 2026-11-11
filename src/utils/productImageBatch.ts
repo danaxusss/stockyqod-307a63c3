@@ -48,6 +48,16 @@ export function looseProductCode(code: string): string {
   return code.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
+/**
+ * A product code as a storage file name. Storage refuses keys with "%",
+ * so encoding "PL1G/130" as "PL1G%2F130" failed for every code holding a
+ * "/" (about 1,160 products); anything other than letters, digits, dot,
+ * dash and underscore becomes "_".
+ */
+export function storageSafeCode(code: string): string {
+  return code.replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^_+|_+$/g, '') || 'produit';
+}
+
 export function analyzeProductImageFiles(
   files: File[],
   products: Product[],
