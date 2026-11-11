@@ -9,38 +9,29 @@ import {
   Save, 
   FileDown, 
   User, 
-  Phone, 
-  Building, 
-  Calendar,
-  Hash,
-  DollarSign,
+  Phone,  
   Edit3,
   Check,
   X,
   Loader,
   Copy,
-  FileText,
   Search,
   Package,
   Info,
   Paperclip,
-  Send,
   MessageCircle,
   Mail,
   Truck,
   AlertCircle,
   ChevronDown,
   ChevronUp,
-  Image as ImageIcon,
-  Stamp,
-  ReceiptText
+  ChevronRight
 } from 'lucide-react';
 import { Quote, QuoteItem, CustomerInfo, Product, Provider } from '../types';
 import { StockLocationsService } from '../utils/supabaseStockLocations';
 import { ExcelExportService } from '../utils/excelExport';
 import { PdfExportService } from '../utils/pdfExport';
 import { CompanySettingsService, CompanySettings, DEFAULT_SHARE_TEMPLATES } from '../utils/companySettings';
-import { DatePicker } from '../components/DatePicker';
 import { quoteCompanyId, SupabaseQuotesService } from '../utils/supabaseQuotes';
 import { attachmentsSummary, createAttachmentsLink, findQuoteAttachments, NO_ATTACHMENTS, type QuoteAttachments } from '../utils/quoteAttachments';
 import { ActivityLogger } from '../utils/activityLogger';
@@ -57,6 +48,8 @@ import { useProductOverrides } from '../hooks/useProductOverrides';
 import { applyQuoteItemDisplayOverride, getQuoteItemBarcode, getQuoteItemBrand, getQuoteItemName } from '../utils/quoteItemDisplay';
 import { buildWhatsAppShareUrl, canSharePdfFile, downloadPdfFile, openPreparingWhatsAppWindow, redirectPreparingWindowToWhatsApp, openWhatsAppShare, sharePdfFile } from '../utils/whatsappShare';
 import { SupabaseDocumentsService } from '../utils/supabaseDocuments';
+import { formatMoney } from '../utils/format';
+import { resolveProductImageUrl } from '../utils/productImages';
 
 const ITEMS_PER_PAGE = 40;
 
@@ -115,6 +108,10 @@ export function QuoteCartPage() {
 
   // Product search state
   const [searchQuery, setSearchQuery] = useState('');
+  const productSearchRef = useRef<HTMLInputElement>(null);
+  // Client card: a summary once filled, the form while editing.
+  const [clientEditing, setClientEditing] = useState(true);
+  const [editingLineId, setEditingLineId] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<Product[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showProductSearch, setShowProductSearch] = useState(false);
@@ -225,6 +222,13 @@ export function QuoteCartPage() {
     }
   }, [isLoading, initialLoadDone]);
 
+  // An existing quote opens on the client summary, a new one on the form.
+  useEffect(() => {
+    if (initialLoadDone && customer.fullName.trim()) setClientEditing(false);
+    // Only once, when loading ends: later edits keep the card as the user left it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialLoadDone]);
+
   useEffect(() => {
     if (initialLoadDone && !suppressDirtyRef.current) setIsDirty(true);
   }, [items, customer, notes, commandNumber, status, globalMargin]);
@@ -321,6 +325,8 @@ export function QuoteCartPage() {
     }));
     setShowClientSuggestions(false);
     setClientSuggestions([]);
+    // A known client with a seller already chosen needs nothing more here.
+    if (customer.salesPerson) setClientEditing(false);
   };
 
 
@@ -964,891 +970,544 @@ export function QuoteCartPage() {
     await markQuoteAsSent();
   };
 
+  const tvaRate = companySettings?.tva_rate ?? 20;
+  const totalHT = totalAmount / (1 + tvaRate / 100);
+  const totalTVA = totalAmount - totalHT;
+  const lineHT = (item: QuoteItem) => item.subtotal / (1 + tvaRate / 100);
+  // Margin over the purchase price, when every line has one.
+  const purchaseCost = items.reduce((sum, item) => sum + (Number(item.product?.buyprice) || 0) * item.quantity, 0);
+  const estimatedMargin = items.length > 0 && items.every(item => Number(item.product?.buyprice) > 0) ? totalHT - purchaseCost : null;
+  const statusTone = status === 'final' ? 'bg-emerald-500/10 text-emerald-700 ring-emerald-600/20 dark:text-emerald-300'
+    : status === 'pending' ? 'bg-blue-500/10 text-blue-700 ring-blue-600/20 dark:text-blue-300'
+    : 'bg-amber-500/10 text-amber-800 ring-amber-600/20 dark:text-amber-300';
+  const showClientForm = clientEditing || !customer.fullName.trim() || !!validationErrors.fullName || !!validationErrors.salesPerson;
+  const field = 'w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus:ring-2 focus:ring-ring';
+  const panel = 'rounded-xl border border-border bg-card shadow-sm';
+
+  const guardDirty = () => {
+    if (!isDirty) return true;
+    showToast({ type: 'warning', title: 'Modifications non sauvegardées', message: 'Veuillez sauvegarder le devis avant de le partager.' });
+    return false;
+  };
+  const handleWhatsAppShare = () => { if (guardDirty()) prepareWhatsAppPdf(); };
+  const handleEmailShare = async () => {
+    if (!guardDirty()) return;
+    // Export PDF first
+    setIsExporting(true);
+    try {
+      const freshSettings = await CompanySettingsService.getSettings(quoteCompanyId(quote)).catch(() => companySettings);
+      const quoteData: Quote = { id: quote?.id || crypto.randomUUID(), company_id: quote?.company_id || companyId || undefined, issuing_company_id: quote?.issuing_company_id, quoteNumber, commandNumber: commandNumber || undefined, createdAt: quote?.createdAt || new Date(), updatedAt: new Date(), status, customer, items, totalAmount, notes, notes2: notes2 || undefined, quote_date: quoteDate || undefined };
+      const link = await attachmentsLink();
+      await PdfExportService.exportQuoteToPdf(quoteData, freshSettings || companySettings, link?.url, link?.expiryLabel, useStamp, 'quote', undefined, printTTCOnly, includeProductImages, false, link?.label);
+    } catch { /* continue */ }
+    setIsExporting(false);
+
+    // Build email from template
+    const companyName = companySettings?.company_name?.trim() || 'Restonet';
+    const subjectTpl = companySettings?.share_templates?.email_subject || DEFAULT_SHARE_TEMPLATES.email_subject;
+    const bodyTpl = companySettings?.share_templates?.email_body || DEFAULT_SHARE_TEMPLATES.email_body;
+    const replacer = (t: string) => t
+      .replace(/{client}/g, customer.fullName || '')
+      .replace(/{entreprise}/g, companyName)
+      .replace(/{numero}/g, quoteNumber)
+      .replace(/{montant_ht}/g, ExcelExportService.formatCurrency(totalHT))
+      .replace(/{montant_ttc}/g, ExcelExportService.formatCurrency(totalAmount))
+      .replace(/{montant_tva}/g, ExcelExportService.formatCurrency(totalTVA))
+      .replace(/{tva}/g, String(tvaRate))
+      .replace(/{nb_articles}/g, String(totalItems))
+      .replace(/{date}/g, ExcelExportService.formatDate(quote?.createdAt || new Date()))
+      .replace(/{telephone}/g, companySettings?.phone || '')
+      .replace(/{email}/g, companySettings?.email || '')
+      .replace(/{adresse}/g, companySettings?.address || '');
+
+    window.location.href = `mailto:?subject=${encodeURIComponent(replacer(subjectTpl))}&body=${encodeURIComponent(replacer(bodyTpl))}`;
+
+    // Auto-update status to "pending" (Envoyé)
+    if (quote?.id && status !== 'final') {
+      try {
+        console.log('[Email] Updating quote status to pending, id:', quote.id);
+        await SupabaseQuotesService.updateQuoteStatus(quote.id, 'pending');
+        setStatus('pending' as any);
+        showToast({ type: 'success', title: 'Statut mis à jour', message: 'Le devis est maintenant marqué comme "Envoyé".' });
+      } catch (err) {
+        console.error('[Email] Failed to update quote status:', err);
+      }
+    }
+  };
+
+  const pdfOption = (checked: boolean, onChange: (value: boolean) => void, title: string, hint: string) => (
+    // `relative` keeps the visually hidden checkbox inside the label: otherwise
+    // focusing it scrolls the whole app frame and hides the top of the quote.
+    <label className="relative flex cursor-pointer items-center gap-3 py-2">
+      <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} className="peer sr-only" />
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium text-foreground">{title}</span>
+        <span className="block text-xs text-muted-foreground">{hint}</span>
+      </span>
+      <span aria-hidden="true" className={`relative h-5 w-9 shrink-0 rounded-full transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-ring ${checked ? 'bg-primary' : 'bg-muted-foreground/30'}`}>
+        <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${checked ? 'left-[1.125rem]' : 'left-0.5'}`} />
+      </span>
+    </label>
+  );
+
   return (
-    <div className="max-w-7xl mx-auto space-y-3">
-      {/* Header */}
-      <div className="glass rounded-xl shadow-lg p-3">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center space-x-2.5">
-            <div className="p-2 bg-primary rounded-lg">
-              <ShoppingCart className="h-4 w-4 text-primary-foreground" />
-            </div>
-            <div>
-              <h1 className="text-base font-bold text-foreground">
-                {isEditing ? 'Modifier le Devis' : 'Nouveau Devis'}
-              </h1>
-              <p className="text-xs text-muted-foreground">
-                {isEditing ? `Devis ${quoteNumber}` : 'Créer un nouveau devis'}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center space-x-2">
-            {lastSaved && (
-              <span className="text-xs text-muted-foreground hidden sm:inline">
-                Sauvé: {lastSaved.toLocaleTimeString('fr-FR')}
-              </span>
-            )}
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value as 'draft' | 'final')}
-              className="px-2 py-1 text-sm border border-input rounded-lg bg-secondary text-foreground"
-            >
-              <option value="draft">En attente</option>
-              <option value="pending">Envoyé</option>
-              <option value="final">Confirmé</option>
-            </select>
-          </div>
+    <div className="mx-auto max-w-7xl pb-28 lg:pb-0">
+      {/* Title */}
+      <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <div className="min-w-0">
+          <nav aria-label="Fil d’Ariane" className="hidden items-center gap-1.5 text-sm text-muted-foreground sm:flex">
+            <button type="button" onClick={() => navigate('/quotes-history')} className="hover:text-foreground">Devis</button>
+            <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+            <span className="text-foreground">{isEditing ? quoteNumber : 'Nouveau devis'}</span>
+          </nav>
+          <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">{isEditing ? `Devis ${quoteNumber}` : 'Nouveau devis'}</h1>
         </div>
-
-        {/* Quote Details */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-          <label className="flex min-h-[3.25rem] cursor-text items-center space-x-2 p-2 bg-secondary rounded-lg focus-within:ring-2 focus-within:ring-primary/40">
-            <Hash className="h-4 w-4 text-primary flex-shrink-0" />
-            <span className="flex-1 min-w-0">
-              <span className="block text-[10px] text-muted-foreground">N° Devis</span>
-              <input
-                type="text"
-                value={quoteNumber}
-                onChange={e => setQuoteNumber(e.target.value)}
-                className="block text-xs font-semibold leading-tight text-foreground bg-transparent border-none outline-none w-full p-0"
-              />
-            </span>
-          </label>
-          {/* The whole box is the tap target: a tap anywhere focuses the date. */}
-          <label className="flex min-h-[3.25rem] cursor-pointer items-center space-x-2 p-2 bg-secondary rounded-lg focus-within:ring-2 focus-within:ring-primary/40">
-            <Calendar className="h-4 w-4 text-primary flex-shrink-0" />
-            <span className="flex-1 min-w-0">
-              <span className="block text-[10px] text-muted-foreground">Date du devis</span>
-              <input
-                type="date"
-                value={quoteDate}
-                onChange={e => setQuoteDate(e.target.value)}
-                className="block text-xs font-semibold leading-tight text-foreground bg-transparent border-none outline-none w-full p-0"
-              />
-            </span>
-          </label>
-          <div className="flex min-h-[3.25rem] items-center space-x-2 p-2 bg-secondary rounded-lg">
-            <DollarSign className="h-4 w-4 text-primary" />
-            <div>
-              <p className="text-[10px] text-muted-foreground">Total</p>
-              <p className="text-xs font-semibold text-foreground">
-                {ExcelExportService.formatCurrency(totalAmount)} Dh
-              </p>
-            </div>
-          </div>
-        </div>
+        <select value={status} onChange={e => setStatus(e.target.value as 'draft' | 'final')} aria-label="Statut du devis"
+          className={`rounded-full border-0 py-1 pl-3 pr-8 text-xs font-semibold ring-1 ring-inset ${statusTone}`}>
+          <option value="draft">En attente</option>
+          <option value="pending">Envoyé</option>
+          <option value="final">Confirmé</option>
+        </select>
+        <span className="text-sm text-muted-foreground" aria-live="polite">
+          {isSaving ? 'Enregistrement…' : isDirty ? 'Modifications non enregistrées' : lastSaved ? `Enregistré à ${lastSaved.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : ''}
+        </span>
       </div>
 
-      {/* Customer Information */}
-      <div className="glass rounded-xl shadow-lg p-3">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-foreground flex items-center space-x-2">
-            <User className="h-4 w-4" />
-            <span>Informations Client</span>
-          </h2>
-          <button
-            onClick={handleClearForm}
-            className="px-2 py-1 text-xs text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
-          >
-            Effacer
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          <div>
-            <label className="block text-xs font-medium text-foreground mb-1">
-              Nom Complet *
-            </label>
-            <div className="relative">
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-              <input
-                type="text"
-                value={customer.fullName}
-                onChange={(e) => {
-                  setCustomer(prev => ({ ...prev, fullName: e.target.value }));
-                  handleClientSearch(e.target.value);
-                }}
-                onFocus={() => { if (clientSuggestions.length > 0) setShowClientSuggestions(true); }}
-                onBlur={() => setTimeout(() => setShowClientSuggestions(false), 200)}
-                className={`w-full pl-9 pr-3 py-1.5 text-sm border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${
-                  validationErrors.fullName ? 'border-destructive' : 'border-input'
-                }`}
-                placeholder="Nom complet du client"
-              />
-              {showClientSuggestions && clientSuggestions.length > 0 && (
-                <div className="absolute z-20 left-0 right-0 top-full mt-1 bg-card border border-border rounded-lg shadow-lg max-h-40 overflow-y-auto">
-                  {clientSuggestions.map(client => (
-                    <button key={client.id} type="button"
-                      onMouseDown={() => selectClient(client)}
-                      className="w-full text-left px-3 py-2 hover:bg-accent text-sm text-foreground border-b border-border last:border-0">
-                      <div className="font-medium">{client.full_name}</div>
-                      <div className="text-xs text-muted-foreground">{client.phone_number} {client.city ? `• ${client.city}` : ''}</div>
-                    </button>
-                  ))}
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="min-w-0 space-y-4">
+          {/* Client */}
+          <section className={`${panel} p-4 sm:p-5`} aria-labelledby="quote-client-title">
+            <h2 id="quote-client-title" className="sr-only">Client</h2>
+            {showClientForm ? (
+              <>
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="font-semibold text-foreground">Client</p>
+                  <div className="flex items-center gap-1">
+                    <button type="button" onClick={handleClearForm} className="rounded-lg px-2.5 py-1.5 text-sm text-destructive hover:bg-destructive/10">Effacer</button>
+                    {customer.fullName.trim() && (
+                      <button type="button" onClick={() => setClientEditing(false)} className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-semibold text-foreground hover:bg-secondary">
+                        <Check className="h-4 w-4" aria-hidden="true" />Terminé
+                      </button>
+                    )}
+                  </div>
                 </div>
-              )}
-            </div>
-            {validationErrors.fullName && (
-              <p className="mt-0.5 text-xs text-destructive">{validationErrors.fullName}</p>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  <div>
+                    <label htmlFor="quote-client-name" className="mb-1 block text-xs font-medium text-foreground">Nom complet *</label>
+                    <div className="relative">
+                      <input id="quote-client-name" type="text" value={customer.fullName}
+                        onChange={(e) => { setCustomer(prev => ({ ...prev, fullName: e.target.value })); handleClientSearch(e.target.value); }}
+                        onFocus={() => { if (clientSuggestions.length > 0) setShowClientSuggestions(true); }}
+                        onBlur={() => setTimeout(() => setShowClientSuggestions(false), 200)}
+                        aria-invalid={!!validationErrors.fullName}
+                        className={`${field} ${validationErrors.fullName ? 'border-destructive' : ''}`}
+                        placeholder="Nom ou société du client" autoComplete="off" />
+                      {showClientSuggestions && clientSuggestions.length > 0 && (
+                        <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-48 overflow-y-auto rounded-lg border border-border bg-popover shadow-lg">
+                          {clientSuggestions.map(client => (
+                            <button key={client.id} type="button" onMouseDown={() => selectClient(client)}
+                              className="w-full border-b border-border px-3 py-2 text-left text-sm text-foreground last:border-0 hover:bg-secondary">
+                              <span className="block font-medium">{client.full_name}</span>
+                              <span className="block text-xs text-muted-foreground">{client.phone_number} {client.city ? `· ${client.city}` : ''}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    {validationErrors.fullName && <p className="mt-1 text-xs text-destructive">{validationErrors.fullName}</p>}
+                  </div>
+                  <div>
+                    <label htmlFor="quote-client-phone" className="mb-1 block text-xs font-medium text-foreground">Téléphone</label>
+                    <input id="quote-client-phone" type="tel" value={customer.phoneNumber} onChange={(e) => setCustomer(prev => ({ ...prev, phoneNumber: e.target.value }))} className={field} placeholder="Optionnel" />
+                  </div>
+                  <div>
+                    <label htmlFor="quote-client-address" className="mb-1 block text-xs font-medium text-foreground">Adresse / ville</label>
+                    <input id="quote-client-address" type="text" value={customer.address} onChange={(e) => setCustomer(prev => ({ ...prev, address: e.target.value }))} className={field} placeholder="Adresse, ville" />
+                  </div>
+                  <div>
+                    <label htmlFor="quote-client-ice" className="mb-1 block text-xs font-medium text-foreground">ICE</label>
+                    <input id="quote-client-ice" type="text" value={customer.ice || ''} onChange={(e) => setCustomer(prev => ({ ...prev, ice: e.target.value }))} className={field} placeholder="Numéro ICE" />
+                  </div>
+                  <div>
+                    <label htmlFor="quote-seller" className="mb-1 block text-xs font-medium text-foreground">Vendeur *</label>
+                    <div className="flex gap-2">
+                      {isAdmin && useCustomSeller ? (
+                        <input id="quote-seller" type="text" value={customer.salesPerson} onChange={(e) => setCustomer(prev => ({ ...prev, salesPerson: e.target.value }))}
+                          className={`${field} ${validationErrors.salesPerson ? 'border-destructive' : ''}`} placeholder="Nom du vendeur" />
+                      ) : (
+                        <select id="quote-seller" value={customer.salesPerson} onChange={(e) => setCustomer(prev => ({ ...prev, salesPerson: e.target.value }))}
+                          className={`${field} ${validationErrors.salesPerson ? 'border-destructive' : ''}`}>
+                          <option value="">Sélectionner un vendeur</option>
+                          {availableUsers.map((user) => <option key={user.username} value={user.displayName}>{user.displayName}</option>)}
+                        </select>
+                      )}
+                      {isAdmin && (
+                        <button type="button" onClick={() => { setUseCustomSeller(!useCustomSeller); setCustomer(prev => ({ ...prev, salesPerson: '' })); }}
+                          className="shrink-0 rounded-lg border border-input px-3 text-sm text-foreground hover:bg-secondary">{useCustomSeller ? 'Liste' : 'Autre'}</button>
+                      )}
+                    </div>
+                    {validationErrors.salesPerson && <p className="mt-1 text-xs text-destructive">{validationErrors.salesPerson}</p>}
+                  </div>
+                  <div>
+                    <label htmlFor="quote-command" className="mb-1 block text-xs font-medium text-foreground">N° commande client</label>
+                    <input id="quote-command" type="text" value={commandNumber} onChange={(e) => setCommandNumber(e.target.value)} className={field} placeholder="Optionnel" />
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="flex items-start gap-3 sm:gap-4">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold uppercase text-primary" aria-hidden="true">
+                  {customer.fullName.trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('')}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-lg font-semibold leading-tight text-foreground">{customer.fullName}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {[customer.phoneNumber, customer.address, customer.ice ? `ICE ${customer.ice}` : '', customer.salesPerson ? `vendeur ${customer.salesPerson}` : '', commandNumber ? `commande ${commandNumber}` : ''].filter(Boolean).join(' · ') || 'Aucune coordonnée'}
+                  </p>
+                </div>
+                <button type="button" onClick={() => setClientEditing(true)} className="shrink-0 rounded-lg border border-border px-3 py-1.5 text-sm font-semibold text-foreground hover:bg-secondary">Modifier</button>
+              </div>
             )}
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-foreground mb-1">Téléphone (optionnel)</label>
-            <div className="relative">
-              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-              <input type="text" value={customer.phoneNumber}
-                onChange={(e) => setCustomer(prev => ({ ...prev, phoneNumber: e.target.value }))}
-                className="w-full pl-9 pr-3 py-1.5 text-sm border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground border-input"
-                placeholder="Téléphone (optionnel)" />
+            <div className="mt-4 grid grid-cols-2 gap-3 border-t border-border pt-4 sm:max-w-md">
+              <div>
+                <label htmlFor="quote-number" className="block text-xs text-muted-foreground">N° devis</label>
+                <input id="quote-number" type="text" value={quoteNumber} onChange={e => setQuoteNumber(e.target.value)}
+                  className="mt-0.5 w-full rounded-md border border-transparent bg-transparent px-1 py-1 -ml-1 text-sm font-medium tabular-nums text-foreground hover:border-input focus:border-input focus:ring-2 focus:ring-ring" />
+              </div>
+              <div>
+                <label htmlFor="quote-date" className="block text-xs text-muted-foreground">Date du devis</label>
+                <input id="quote-date" type="date" value={quoteDate} onChange={e => setQuoteDate(e.target.value)}
+                  className="mt-0.5 w-full rounded-md border border-transparent bg-transparent px-1 py-1 -ml-1 text-sm font-medium text-foreground hover:border-input focus:border-input focus:ring-2 focus:ring-ring" />
+              </div>
             </div>
-          </div>
+          </section>
 
-          <div>
-            <label className="block text-xs font-medium text-foreground mb-1">Adresse / Ville</label>
-            <div className="relative">
-              <Building className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-              <input type="text" value={customer.address}
-                onChange={(e) => setCustomer(prev => ({ ...prev, address: e.target.value }))}
-                className="w-full pl-9 pr-3 py-1.5 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
-                placeholder="Adresse, Ville" />
+          {/* Lines */}
+          <section className={panel} aria-labelledby="quote-lines-title">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-3 sm:px-5">
+              <h2 id="quote-lines-title" className="font-semibold text-foreground">Articles</h2>
+              <span className="text-sm text-muted-foreground">{items.length} ligne{items.length !== 1 ? 's' : ''} · {totalItems} unité{totalItems !== 1 ? 's' : ''}</span>
+              <span className="flex-1" />
+              <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                Marge
+                <select value={globalMargin} onChange={(e) => applyGlobalMargin(parseInt(e.target.value))} className="rounded-md border border-input bg-background px-2 py-1 text-sm font-semibold text-foreground">
+                  {marginOptions.map(p => <option key={p} value={p}>{p} %</option>)}
+                </select>
+              </label>
+              <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                Remise
+                <select value={globalDiscount} onChange={(e) => applyGlobalDiscount(parseInt(e.target.value))} className="rounded-md border border-input bg-background px-2 py-1 text-sm font-semibold text-foreground">
+                  {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50].map(d => <option key={d} value={d}>{d} %</option>)}
+                </select>
+              </label>
+              <button type="button" onClick={handleCopyItems} disabled={items.length === 0} aria-label="Copier les articles" title="Copier les articles"
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground disabled:opacity-40">
+                <Copy className="h-4 w-4" />
+              </button>
             </div>
-          </div>
+            {validationErrors.items && <p className="px-5 pt-3 text-sm text-destructive" role="alert">{validationErrors.items}</p>}
 
-          <div>
-            <label className="block text-xs font-medium text-foreground mb-1">ICE</label>
-            <input type="text" value={customer.ice || ''}
-              onChange={(e) => setCustomer(prev => ({ ...prev, ice: e.target.value }))}
-              className="w-full px-3 py-1.5 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
-              placeholder="Numéro ICE" />
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-foreground mb-1">Vendeur *</label>
-            {isAdmin && useCustomSeller ? (
-              <div className="flex gap-2">
-                <input type="text" value={customer.salesPerson}
-                  onChange={(e) => setCustomer(prev => ({ ...prev, salesPerson: e.target.value }))}
-                  className={`flex-1 px-3 py-1.5 text-sm border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${validationErrors.salesPerson ? 'border-destructive' : 'border-input'}`}
-                  placeholder="Nom du vendeur" />
-                <button type="button" onClick={() => { setUseCustomSeller(false); setCustomer(prev => ({ ...prev, salesPerson: '' })); }}
-                  className="px-2 py-1.5 text-xs border border-input rounded-lg hover:bg-accent text-foreground">Liste</button>
+            {items.length === 0 ? (
+              <div className="px-5 py-10 text-center">
+                <ShoppingCart className="mx-auto h-10 w-10 text-muted-foreground" aria-hidden="true" />
+                <p className="mt-3 font-medium text-foreground">Aucun article pour le moment</p>
+                <p className="mt-1 text-sm text-muted-foreground">Cherchez un produit ci-dessous, ou ajoutez un produit hors catalogue.</p>
               </div>
             ) : (
-              <div className="flex gap-2">
-                <select value={customer.salesPerson}
-                  onChange={(e) => setCustomer(prev => ({ ...prev, salesPerson: e.target.value }))}
-                  className={`flex-1 px-3 py-1.5 text-sm border rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground ${validationErrors.salesPerson ? 'border-destructive' : 'border-input'}`}>
-                  <option value="">Sélectionner un vendeur</option>
-                  {availableUsers.map((user) => (
-                    <option key={user.username} value={user.displayName}>{user.displayName}</option>
-                  ))}
-                </select>
-                {isAdmin && (
-                  <button type="button" onClick={() => { setUseCustomSeller(true); setCustomer(prev => ({ ...prev, salesPerson: '' })); }}
-                    className="px-2 py-1.5 text-xs border border-input rounded-lg hover:bg-accent text-foreground whitespace-nowrap">Autre</button>
-                )}
-              </div>
-            )}
-            {validationErrors.salesPerson && <p className="mt-0.5 text-xs text-destructive">{validationErrors.salesPerson}</p>}
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-foreground mb-1">N° Commande</label>
-            <input type="text" value={commandNumber} onChange={(e) => setCommandNumber(e.target.value)}
-              className="w-full px-3 py-1.5 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
-              placeholder="Optionnel" />
-          </div>
-        </div>
-      </div>
-
-      {/* Product Search and Add */}
-      <div className="glass rounded-xl shadow-lg p-3">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-foreground flex items-center space-x-2">
-            <Package className="h-4 w-4" />
-            <span>Ajouter des Produits</span>
-          </h2>
-          <button
-            onClick={openCustomProductForm}
-            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
-            {showCustomProductForm ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-            Produit hors catalogue
-          </button>
-        </div>
-
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
-            placeholder="Rechercher par nom, code-barres ou marque..."
-          />
-        </div>
-
-        {searchResults.length > 0 && (
-          <div className="mt-2 space-y-1 max-h-60 overflow-y-auto">
-            {searchResults.map((product) => {
-              const accessibleStockLevels = Object.entries(product.stock_levels || {}).filter(([location]) => canAccessStockLocation(location));
-              const totalStock = accessibleStockLevels.reduce((sum, [, level]) => sum + level, 0);
-              const displayPrice = getDisplayPrice(product);
-              return (
-                <div
-                  key={product.barcode}
-                  className="flex items-center justify-between p-2 bg-card rounded-lg border border-border hover:bg-accent/50 transition-colors gap-2"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <h4 className="text-sm font-medium text-foreground truncate">{product.name}</h4>
-                      {(searchSheetCounts[product.barcode] || 0) > 0 && (
-                        <span title={`${searchSheetCounts[product.barcode]} fiche(s) technique(s)`} className="shrink-0 text-primary">
-                          <Paperclip className="h-3.5 w-3.5" />
+              <>
+                <div className="hidden grid-cols-[3rem_minmax(0,1fr)_7.5rem_9rem_8rem_2.5rem] gap-x-4 border-b border-border bg-secondary/40 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground md:grid">
+                  <span /><span>Produit</span><span className="text-center">Quantité</span><span className="text-right">Prix HT</span><span className="text-right">Total HT</span><span />
+                </div>
+                <ul className="divide-y divide-border">
+                  {currentItems.map((item) => {
+                    const img = resolveProductImageUrl(item.product?.image);
+                    const editingText = editingLineId === item.id;
+                    return (
+                      <li key={item.id} className="grid grid-cols-[3rem_minmax(0,1fr)_2.5rem] gap-x-3 gap-y-3 px-4 py-3 sm:px-5 md:grid-cols-[3rem_minmax(0,1fr)_7.5rem_9rem_8rem_2.5rem] md:items-center md:gap-x-4">
+                        <span className="row-span-2 flex h-[3.75rem] w-12 items-center justify-center overflow-hidden rounded-md border border-border bg-white md:row-span-1">
+                          {img ? <img src={img} alt="" className="h-full w-full object-contain" loading="lazy" /> : <Package className="h-5 w-5 text-muted-foreground" aria-hidden="true" />}
                         </span>
-                      )}
-                      {product.brand && (
-                        <span className="px-1.5 py-0.5 bg-primary/10 text-primary text-[11px] rounded font-medium shrink-0">
-                          {product.brand}
-                          {getOriginalName('brand', product.brand) && (
-                            <span className="text-muted-foreground text-[10px] ml-1">(ex: {getOriginalName('brand', product.brand)})</span>
+                        <div className="min-w-0">
+                          {editingText ? (
+                            <div className="space-y-2">
+                              <input type="text" value={getQuoteItemName(item)} onChange={(e) => updateItemDisplayField(item.id, 'quoteName', e.target.value)} className={field} aria-label="Nom du produit sur le devis" autoFocus />
+                              <div className="grid grid-cols-2 gap-2">
+                                <input type="text" value={getQuoteItemBrand(item)} onChange={(e) => updateItemDisplayField(item.id, 'quoteBrand', e.target.value)} className={field} placeholder="Marque" aria-label="Marque sur le devis" />
+                                <input type="text" value={getQuoteItemBarcode(item)} onChange={(e) => updateItemDisplayField(item.id, 'quoteBarcode', e.target.value)} className={field} placeholder="Code" aria-label="Code sur le devis" />
+                              </div>
+                              <button type="button" onClick={() => setEditingLineId(null)} className="flex items-center gap-1.5 text-sm font-semibold text-primary"><Check className="h-4 w-4" aria-hidden="true" />Terminé</button>
+                            </div>
+                          ) : (
+                            <>
+                              <button type="button" onClick={() => setEditingLineId(item.id)} className="group flex max-w-full items-start gap-1.5 text-left" title="Modifier le libellé sur le devis">
+                                <span className="font-semibold leading-snug text-foreground">{getQuoteItemName(item)}</span>
+                                <Edit3 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100" aria-hidden="true" />
+                              </button>
+                              <p className="truncate text-sm text-muted-foreground">{[getQuoteItemBrand(item), getQuoteItemBarcode(item)].filter(Boolean).join(' · ')}</p>
+                              <p className="mt-0.5 flex flex-wrap items-center gap-x-1 text-xs text-muted-foreground">
+                                <label className="flex items-center gap-1">Marge
+                                  <select value={item.marginPercentage} onChange={(e) => updateItemMargin(item.id, parseInt(e.target.value))} className="w-[4.75rem] rounded border border-transparent bg-transparent py-0 pl-0.5 pr-5 text-xs font-semibold text-emerald-700 hover:border-input dark:text-emerald-300">
+                                    {marginOptions.map(p => <option key={p} value={p}>+{p} %</option>)}
+                                  </select>
+                                </label>
+                                {Number(item.product?.buyprice) > 0 && <span>· achat {formatMoney(item.product.buyprice)}</span>}
+                              </p>
+                            </>
                           )}
+                        </div>
+                        <button type="button" onClick={() => removeItem(item.id)} aria-label={`Retirer ${getQuoteItemName(item)}`}
+                          className="flex h-10 w-10 items-center justify-center self-start rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive md:order-last md:self-center">
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                        <div className="col-span-3 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 md:contents">
+                          <div className="flex items-center rounded-lg border border-input md:justify-self-center">
+                            <button type="button" onClick={() => updateItemQuantity(item.id, item.quantity - 1)} disabled={item.quantity <= 1} aria-label="Diminuer la quantité"
+                              className="flex h-9 w-9 items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-40"><Minus className="h-3.5 w-3.5" /></button>
+                            <input type="number" value={item.quantity} onChange={(e) => updateItemQuantity(item.id, parseInt(e.target.value) || 1)} onFocus={(e) => e.target.select()} min="1"
+                              aria-label="Quantité" className="h-9 w-10 border-0 bg-transparent p-0 text-center text-sm font-semibold tabular-nums text-foreground [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none" />
+                            <button type="button" onClick={() => updateItemQuantity(item.id, item.quantity + 1)} aria-label="Augmenter la quantité"
+                              className="flex h-9 w-9 items-center justify-center text-muted-foreground hover:text-foreground"><Plus className="h-3.5 w-3.5" /></button>
+                          </div>
+                          <div className="text-right">
+                            <label className="flex items-center justify-end gap-1">
+                              <span className="sr-only">Prix unitaire HT</span>
+                              <input type="number" step="0.01" min="0"
+                                value={parseFloat((item.unitPrice / (1 + tvaRate / 100)).toFixed(2))}
+                                onChange={(e) => updateItemUnitPrice(item.id, (parseFloat(e.target.value) || 0) * (1 + tvaRate / 100))}
+                                onFocus={(e) => e.target.select()}
+                                className="w-24 rounded-md border border-transparent bg-transparent px-1 py-0.5 text-right text-sm font-medium tabular-nums text-foreground underline decoration-dotted decoration-muted-foreground/40 underline-offset-4 hover:border-input focus:border-input focus:no-underline focus:ring-2 focus:ring-ring" />
+                              <span className="text-sm text-muted-foreground">Dh</span>
+                            </label>
+                            <label className="mt-0.5 flex items-center justify-end gap-1 text-xs text-muted-foreground">
+                              Remise
+                              <input type="number" step="1" min="0" max="100" value={item.discount ?? 0} onChange={(e) => updateItemDiscount(item.id, parseFloat(e.target.value) || 0)} onFocus={(e) => e.target.select()}
+                                className={`w-10 rounded border border-transparent bg-transparent px-0.5 text-right tabular-nums hover:border-input focus:border-input ${(item.discount ?? 0) > 0 ? 'font-semibold text-amber-700 dark:text-amber-300' : ''}`} />
+                              %
+                            </label>
+                          </div>
+                          <p className="text-right font-semibold tabular-nums text-foreground">{formatMoney(lineHT(item))}</p>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+                {totalPages > 1 && (
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-5 py-2 text-sm text-foreground">
+                    <span>Lignes {startIndex + 1} à {Math.min(endIndex, items.length)} sur {items.length}</span>
+                    <span className="flex items-center gap-2">
+                      <button type="button" onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))} disabled={currentPage === 1} className="rounded-lg border border-input px-3 py-1 hover:bg-secondary disabled:opacity-50">Précédent</button>
+                      <span>Page {currentPage} / {totalPages}</span>
+                      <button type="button" onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))} disabled={currentPage === totalPages} className="rounded-lg border border-input px-3 py-1 hover:bg-secondary disabled:opacity-50">Suivant</button>
+                    </span>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Add a product */}
+            <div className="border-t border-border p-4">
+              <div className="flex items-center gap-2 rounded-lg border border-dashed border-primary/40 bg-primary/5 px-3 focus-within:border-solid focus-within:border-primary">
+                <Search className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+                <input ref={productSearchRef} type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+                  aria-label="Ajouter un produit : nom, marque ou code-barres"
+                  className="h-11 min-w-0 flex-1 border-0 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground focus:ring-0"
+                  placeholder="Ajouter un produit — nom, marque ou code-barres" />
+                <button type="button" onClick={openCustomProductForm} aria-expanded={showCustomProductForm}
+                  className="hidden shrink-0 items-center gap-1 text-sm font-semibold text-primary hover:underline sm:flex">
+                  Produit hors catalogue {showCustomProductForm ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+              <button type="button" onClick={openCustomProductForm} className="mt-2 text-sm font-semibold text-primary sm:hidden">Produit hors catalogue</button>
+
+              {searchResults.length > 0 && (
+                <ul className="mt-2 max-h-72 divide-y divide-border overflow-y-auto rounded-lg border border-border">
+                  {searchResults.map((product) => {
+                    const accessibleStockLevels = Object.entries(product.stock_levels || {}).filter(([location]) => canAccessStockLocation(location));
+                    const totalStock = accessibleStockLevels.reduce((sum, [, level]) => sum + level, 0);
+                    const img = resolveProductImageUrl(product.image);
+                    return (
+                      <li key={product.barcode} className="flex items-center gap-3 px-3 py-2">
+                        <span className="flex h-11 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-white">
+                          {img ? <img src={img} alt="" className="h-full w-full object-contain" loading="lazy" /> : <Package className="h-4 w-4 text-muted-foreground" aria-hidden="true" />}
                         </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
-                      <span>#{product.barcode}</span>
-                      <span className="font-semibold text-emerald-500">{displayPrice.toFixed(2)} Dh</span>
-                      <span>Stock: {totalStock}</span>
-                    </div>
-                    {accessibleStockLevels.filter(([, qty]) => (qty || 0) > 0).length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {accessibleStockLevels.filter(([, qty]) => (qty || 0) > 0).map(([location, level]) => (
-                          <span key={location} className="inline-flex items-center px-1.5 py-0.5 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-[10px] font-medium rounded-full border border-emerald-500/20">
-                            {location}: {level}
-                          </span>
-                        ))}
+                        <div className="min-w-0 flex-1">
+                          <p className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+                            <span className="truncate">{product.name}</span>
+                            {(searchSheetCounts[product.barcode] || 0) > 0 && <Paperclip className="h-3.5 w-3.5 shrink-0 text-primary" aria-label={`${searchSheetCounts[product.barcode]} fiche(s) technique(s)`} />}
+                          </p>
+                          <p className="truncate text-xs text-muted-foreground">
+                            {[product.brand + (getOriginalName('brand', product.brand) ? ` (ex : ${getOriginalName('brand', product.brand)})` : ''), product.barcode].filter(Boolean).join(' · ')}
+                          </p>
+                        </div>
+                        <span className="hidden text-right sm:block">
+                          <span className="block text-sm font-semibold tabular-nums text-foreground">{formatMoney(getDisplayPrice(product))}</span>
+                          <span className={`block text-xs ${totalStock > 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-muted-foreground'}`}>{totalStock > 0 ? `${totalStock} en stock` : 'Sur commande'}</span>
+                        </span>
+                        <button type="button" onClick={() => addProductToQuote(product)} aria-label={`Ajouter ${product.name}`}
+                          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90">
+                          <Plus className="h-4 w-4" />
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+
+              {showCustomProductForm && (
+                <div className="mt-3 space-y-3 rounded-lg border border-border bg-secondary/40 p-3">
+                  <p className="text-sm font-semibold text-foreground">Produit hors catalogue</p>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <label className="text-xs text-muted-foreground">Désignation *
+                      <input value={customFormData.name} onChange={e => setCustomFormData(prev => ({ ...prev, name: e.target.value }))} className={`${field} mt-0.5`} placeholder="Nom du produit" autoFocus />
+                    </label>
+                    <label className="text-xs text-muted-foreground">Marque
+                      <input value={customFormData.brand} onChange={e => setCustomFormData(prev => ({ ...prev, brand: e.target.value }))} className={`${field} mt-0.5`} placeholder="Marque" />
+                    </label>
+                    <label className="text-xs text-muted-foreground">Code-barres
+                      <input value={customFormData.barcode} onChange={e => setCustomFormData(prev => ({ ...prev, barcode: e.target.value }))} className={`${field} mt-0.5`} placeholder="Optionnel" />
+                    </label>
+                    <label className="text-xs text-muted-foreground">Prix unitaire
+                      <input type="number" min={0} step="0.01" value={customFormData.unitPrice} onChange={e => setCustomFormData(prev => ({ ...prev, unitPrice: e.target.value }))} className={`${field} mt-0.5`} placeholder="0,00" onKeyDown={e => e.key === 'Enter' && submitCustomProduct()} />
+                    </label>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Fournisseur</p>
+                    {showNewProviderInput ? (
+                      <div className="mt-0.5 flex gap-2">
+                        <input type="text" value={newProviderName} onChange={e => setNewProviderName(e.target.value)} className={field} placeholder="Nom du fournisseur" aria-label="Nom du nouveau fournisseur" />
+                        <button type="button" onClick={async () => {
+                          if (!newProviderName.trim()) return;
+                          try {
+                            const created = await StockLocationsService.upsertProvider({ name: newProviderName.trim(), is_custom: true });
+                            setProviders(prev => [...prev, created]);
+                            setCustomFormData(prev => ({ ...prev, provider_id: created.id, provider_name: created.name }));
+                            setNewProviderName('');
+                            setShowNewProviderInput(false);
+                          } catch {
+                            showToast({ type: 'error', message: 'Erreur lors de la création du fournisseur' });
+                          }
+                        }} className="rounded-lg bg-primary px-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90">OK</button>
+                        <button type="button" onClick={() => setShowNewProviderInput(false)} aria-label="Annuler" className="rounded-lg px-2 hover:bg-secondary"><X className="h-4 w-4" /></button>
+                      </div>
+                    ) : (
+                      <div className="mt-0.5 flex gap-2">
+                        <select value={customFormData.provider_id} aria-label="Fournisseur" onChange={e => {
+                          const sel = providers.find(p => p.id === e.target.value);
+                          setCustomFormData(prev => ({ ...prev, provider_id: e.target.value, provider_name: sel?.name || '' }));
+                        }} className={field}>
+                          <option value="">— Aucun —</option>
+                          {providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
+                        <button type="button" onClick={() => setShowNewProviderInput(true)} className="whitespace-nowrap rounded-lg border border-input px-3 text-sm text-foreground hover:bg-secondary">+ Nouveau</button>
                       </div>
                     )}
                   </div>
-                  <button
-                    onClick={() => addProductToQuote(product)}
-                    className="ml-2 p-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-all duration-200 shadow-sm shrink-0"
-                  >
-                    <Plus className="h-4 w-4" />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Inline custom product form */}
-        {showCustomProductForm && (
-          <div className="mt-2 p-3 bg-muted/30 rounded-lg border border-border space-y-2">
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-xs text-muted-foreground">Désignation *</label>
-                <input
-                  value={customFormData.name}
-                  onChange={e => setCustomFormData(prev => ({ ...prev, name: e.target.value }))}
-                  className="w-full mt-0.5 px-2 py-1 text-sm border border-input rounded bg-background text-foreground"
-                  placeholder="Nom du produit"
-                  autoFocus
-                />
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground">Marque</label>
-                <input
-                  value={customFormData.brand}
-                  onChange={e => setCustomFormData(prev => ({ ...prev, brand: e.target.value }))}
-                  className="w-full mt-0.5 px-2 py-1 text-sm border border-input rounded bg-background text-foreground"
-                  placeholder="Marque"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground">Code-barre</label>
-                <input
-                  value={customFormData.barcode}
-                  onChange={e => setCustomFormData(prev => ({ ...prev, barcode: e.target.value }))}
-                  className="w-full mt-0.5 px-2 py-1 text-sm border border-input rounded bg-background text-foreground"
-                  placeholder="Optionnel"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground">Prix unitaire</label>
-                <input
-                  type="number" min={0} step="0.01"
-                  value={customFormData.unitPrice}
-                  onChange={e => setCustomFormData(prev => ({ ...prev, unitPrice: e.target.value }))}
-                  className="w-full mt-0.5 px-2 py-1 text-sm border border-input rounded bg-background text-foreground"
-                  placeholder="0.00"
-                  onKeyDown={e => e.key === 'Enter' && submitCustomProduct()}
-                />
-              </div>
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground">Fournisseur</label>
-              {showNewProviderInput ? (
-                <div className="flex gap-2 mt-0.5">
-                  <input
-                    type="text"
-                    value={newProviderName}
-                    onChange={e => setNewProviderName(e.target.value)}
-                    className="flex-1 px-2 py-1 text-sm border border-input rounded bg-background text-foreground"
-                    placeholder="Nom du fournisseur"
-                  />
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      if (!newProviderName.trim()) return;
-                      try {
-                        const created = await StockLocationsService.upsertProvider({ name: newProviderName.trim(), is_custom: true });
-                        setProviders(prev => [...prev, created]);
-                        setCustomFormData(prev => ({ ...prev, provider_id: created.id, provider_name: created.name }));
-                        setNewProviderName('');
-                        setShowNewProviderInput(false);
-                      } catch {
-                        showToast({ type: 'error', message: 'Erreur lors de la création du fournisseur' });
-                      }
-                    }}
-                    className="px-2 py-1 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90"
-                  >
-                    OK
-                  </button>
-                  <button type="button" onClick={() => setShowNewProviderInput(false)} className="p-1 hover:bg-accent rounded">
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              ) : (
-                <div className="flex gap-2 mt-0.5">
-                  <select
-                    value={customFormData.provider_id}
-                    onChange={e => {
-                      const sel = providers.find(p => p.id === e.target.value);
-                      setCustomFormData(prev => ({ ...prev, provider_id: e.target.value, provider_name: sel?.name || '' }));
-                    }}
-                    className="flex-1 px-2 py-1 text-sm border border-input rounded bg-background text-foreground"
-                  >
-                    <option value="">— Aucun —</option>
-                    {providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
-                  <button type="button" onClick={() => setShowNewProviderInput(true)} className="px-2 py-1 text-xs border border-input rounded hover:bg-accent text-foreground whitespace-nowrap">
-                    + Nouveau
+                  <button type="button" onClick={submitCustomProduct} disabled={!customFormData.name.trim()}
+                    className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-40">
+                    <Plus className="h-4 w-4" />Ajouter au devis
                   </button>
                 </div>
               )}
             </div>
-            <button
-              onClick={submitCustomProduct}
-              disabled={!customFormData.name.trim()}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-40"
-            >
-              <Plus className="h-3.5 w-3.5" /> Ajouter
+          </section>
+
+          {/* Notes */}
+          <section className={`${panel} space-y-3 p-4 sm:p-5`} aria-labelledby="quote-notes-title">
+            <h2 id="quote-notes-title" className="font-semibold text-foreground">Notes</h2>
+            <label className="block text-xs text-muted-foreground">Visible sur le devis
+              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className={`${field} mt-1`} placeholder="Conditions, délai de livraison, validité…" />
+            </label>
+            <label className="block text-xs text-muted-foreground">Note interne (n’apparaît pas sur le PDF)
+              <textarea value={notes2} onChange={(e) => setNotes2(e.target.value)} rows={2} className={`${field} mt-1`} placeholder="Optionnel" />
+            </label>
+          </section>
+        </div>
+
+        {/* Summary and actions: stays in view while the lines scroll */}
+        <aside className="space-y-4 lg:sticky lg:top-4" aria-label="Récapitulatif et actions">
+          <section className={`${panel} p-5`}>
+            <h2 className="font-semibold text-foreground">Récapitulatif</h2>
+            <dl className="mt-3 space-y-2 text-sm">
+              <div className="flex justify-between"><dt className="text-muted-foreground">Total HT</dt><dd className="font-medium tabular-nums text-foreground">{formatMoney(totalHT)}</dd></div>
+              {globalDiscount > 0 && <div className="flex justify-between"><dt className="text-muted-foreground">Remise globale</dt><dd className="font-medium tabular-nums text-foreground">{globalDiscount} %</dd></div>}
+              <div className="flex justify-between"><dt className="text-muted-foreground">TVA {tvaRate} %</dt><dd className="font-medium tabular-nums text-foreground">{formatMoney(totalTVA)}</dd></div>
+            </dl>
+            <div className="mt-3 flex items-baseline justify-between gap-2 border-t border-border pt-3">
+              <span className="font-semibold text-foreground">Total TTC</span>
+              <span className="text-2xl font-bold tabular-nums tracking-tight text-foreground">{formatMoney(totalAmount)}</span>
+            </div>
+            {estimatedMargin !== null && (
+              <p className={`mt-1 text-right text-sm ${estimatedMargin >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-destructive'}`}>Marge estimée {formatMoney(estimatedMargin)}</p>
+            )}
+            <button type="button" onClick={() => handleSave(false)} disabled={isSaving}
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-primary py-2.5 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-60">
+              {isSaving ? <Loader className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Enregistrer
             </button>
-          </div>
-        )}
-      </div>
-
-      {/* Cart Items Table */}
-      <div className="glass rounded-xl shadow-lg overflow-hidden">
-        <div className="p-4 border-b border-border">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-semibold text-foreground flex items-center space-x-2">
-              <FileText className="h-5 w-5" />
-              <span>Articles du Devis</span>
-              <span className="text-sm font-normal text-muted-foreground">
-                ({totalItems} article{totalItems !== 1 ? 's' : ''})
-              </span>
-            </h2>
-
-            <div className="flex items-center space-x-2">
-              <div className="flex items-center space-x-1.5 px-2 py-1 bg-secondary rounded-lg border border-input">
-                <span className="text-xs text-muted-foreground whitespace-nowrap">Marge globale</span>
-                <select
-                  value={globalMargin}
-                  onChange={(e) => applyGlobalMargin(parseInt(e.target.value))}
-                  className="w-16 px-1 py-0.5 text-sm border border-input rounded bg-background text-orange-600 dark:text-orange-400 font-medium"
-                >
-                  {marginOptions.map((p) => (
-                    <option key={p} value={p}>{p}%</option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex items-center space-x-1.5 px-2 py-1 bg-secondary rounded-lg border border-input">
-                <span className="text-xs text-muted-foreground whitespace-nowrap">Remise globale</span>
-                <select
-                  value={globalDiscount}
-                  onChange={(e) => applyGlobalDiscount(parseInt(e.target.value))}
-                  className="w-16 px-1 py-0.5 text-sm border border-input rounded bg-background text-blue-600 dark:text-blue-400 font-medium"
-                >
-                  {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50].map((d) => (
-                    <option key={d} value={d}>{d}%</option>
-                  ))}
-                </select>
-              </div>
-              <button
-                onClick={handleCopyItems}
-                disabled={items.length === 0}
-                className="flex items-center space-x-2 px-3 py-2 bg-primary hover:bg-primary/90 disabled:bg-gray-400 text-primary-foreground rounded-lg transition-colors text-sm"
-              >
-                <Copy className="h-4 w-4" />
-                <span>Copier</span>
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              <button type="button" onClick={handleExport} disabled={isExporting || items.length === 0}
+                className="flex flex-col items-center gap-1 rounded-lg border border-border py-2 text-xs font-semibold text-foreground hover:bg-secondary disabled:opacity-50">
+                {isExporting ? <Loader className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4 text-primary" />}PDF
+              </button>
+              <button type="button" onClick={handleWhatsAppShare} disabled={isExporting || isPreparingWaPdf || items.length === 0}
+                className="flex flex-col items-center gap-1 rounded-lg border border-border py-2 text-xs font-semibold text-foreground hover:bg-secondary disabled:opacity-50">
+                {isPreparingWaPdf ? <Loader className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4 text-emerald-600" />}WhatsApp
+              </button>
+              <button type="button" onClick={handleEmailShare} disabled={isExporting || items.length === 0}
+                className="flex flex-col items-center gap-1 rounded-lg border border-border py-2 text-xs font-semibold text-foreground hover:bg-secondary disabled:opacity-50">
+                <Mail className="h-4 w-4 text-primary" />E-mail
               </button>
             </div>
-          </div>
-
-          {validationErrors.items && (
-            <p className="mt-2 text-sm text-red-600 dark:text-red-400">{validationErrors.items}</p>
-          )}
-        </div>
-
-        {items.length === 0 ? (
-          <div className="p-12 text-center">
-            <ShoppingCart className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-foreground mb-2">
-              Aucun Article
-            </h3>
-            <p className="text-muted-foreground mb-4">
-              Ajoutez des produits depuis la recherche ou créez des produits personnalisés
-            </p>
-            <button
-              onClick={() => setShowProductSearch(true)}
-              className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors"
-            >
-              Rechercher des Produits
-            </button>
-          </div>
-        ) : (
-          <>
-            {/* Table */}
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-secondary">
-                  <tr>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      N°
-                    </th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Produit
-                    </th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Marge %
-                    </th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      PU HT
-                    </th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Quantité
-                    </th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Remise %
-                    </th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Total HT
-                    </th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {currentItems.map((item, index) => (
-                    <tr key={item.id} className="hover:bg-accent/30 transition-colors">
-                      <td className="px-3 py-2.5 text-xs text-muted-foreground">
-                        {startIndex + index + 1}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <div className="min-w-[10rem] sm:min-w-[18rem] space-y-2">
-                          <input
-                            type="text"
-                            value={getQuoteItemName(item)}
-                            onChange={(e) => updateItemDisplayField(item.id, 'quoteName', e.target.value)}
-                            className="w-full px-2 py-1 text-sm font-medium border border-input rounded bg-secondary text-foreground focus:ring-2 focus:ring-ring"
-                            placeholder="Nom du produit"
-                            aria-label="Nom du produit"
-                          />
-                          <div className="grid grid-cols-2 gap-2">
-                            <input
-                              type="text"
-                              value={getQuoteItemBrand(item)}
-                              onChange={(e) => updateItemDisplayField(item.id, 'quoteBrand', e.target.value)}
-                              className="w-full px-2 py-1 text-sm border border-input rounded bg-secondary text-foreground focus:ring-2 focus:ring-ring"
-                              placeholder="Marque"
-                              aria-label="Marque du produit"
-                            />
-                            <input
-                              type="text"
-                              value={getQuoteItemBarcode(item)}
-                              onChange={(e) => updateItemDisplayField(item.id, 'quoteBarcode', e.target.value)}
-                              className="w-full px-2 py-1 text-sm border border-input rounded bg-secondary text-foreground focus:ring-2 focus:ring-ring"
-                              placeholder="Code"
-                              aria-label="Code du produit"
-                            />
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <div className="flex items-center space-x-1">
-                          <select
-                            value={item.marginPercentage}
-                            onChange={(e) => updateItemMargin(item.id, parseInt(e.target.value))}
-                            className="w-20 px-2 py-1 text-sm border border-input rounded focus:ring-2 focus:ring-ring bg-secondary text-orange-600 dark:text-orange-400 font-medium"
-                          >
-                            {marginOptions.map((percentage) => (
-                              <option key={percentage} value={percentage}>
-                                {percentage}%
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-1">
-                          Achat: {item.product.buyprice.toFixed(2)} Dh
-                        </div>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <div className="flex items-center space-x-1">
-                          <input
-                            type="number"
-                            value={parseFloat((item.unitPrice / (1 + (companySettings?.tva_rate ?? 20) / 100)).toFixed(2))}
-                            onChange={(e) => {
-                              const htValue = parseFloat(e.target.value) || 0;
-                              const ttcValue = htValue * (1 + (companySettings?.tva_rate ?? 20) / 100);
-                              updateItemUnitPrice(item.id, ttcValue);
-                            }}
-                            onFocus={(e) => e.target.select()}
-                            className="w-20 px-2 py-1 text-sm border border-input rounded focus:ring-2 focus:ring-ring bg-secondary text-foreground"
-                            step="0.01"
-                            min="0"
-                          />
-                          <span className="text-sm text-muted-foreground">Dh</span>
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-0.5">
-                          TTC: {item.unitPrice.toFixed(2)} Dh
-                        </div>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <div className="flex items-center space-x-2">
-                          <button
-                            onClick={() => updateItemQuantity(item.id, item.quantity - 1)}
-                            disabled={item.quantity <= 1}
-                            className="p-1 hover:bg-accent rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                          >
-                            <Minus className="h-3 w-3" />
-                          </button>
-                          <input
-                            type="number"
-                            value={item.quantity}
-                            onChange={(e) => updateItemQuantity(item.id, parseInt(e.target.value) || 1)}
-                            onFocus={(e) => e.target.select()}
-                            className="w-14 px-2 py-1 text-sm text-center border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
-                            min="1"
-                          />
-                          <button
-                            onClick={() => updateItemQuantity(item.id, item.quantity + 1)}
-                            className="p-1 hover:bg-accent rounded-lg transition-colors"
-                          >
-                            <Plus className="h-3 w-3" />
-                          </button>
-                        </div>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <div className="flex items-center space-x-1">
-                          <input
-                            type="number"
-                            value={item.discount ?? 0}
-                            onChange={(e) => updateItemDiscount(item.id, parseFloat(e.target.value) || 0)}
-                            onFocus={(e) => e.target.select()}
-                            className="w-16 px-2 py-1 text-sm border border-input rounded focus:ring-2 focus:ring-ring bg-secondary text-foreground"
-                            step="1"
-                            min="0"
-                            max="100"
-                          />
-                          <span className="text-sm text-muted-foreground">%</span>
-                        </div>
-                      </td>
-                      <td className="px-3 py-2.5 text-sm font-semibold text-foreground">
-                        {ExcelExportService.formatCurrency(item.subtotal / (1 + (companySettings?.tva_rate ?? 20) / 100))} Dh
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <button
-                          onClick={() => removeItem(item.id)}
-                          className="p-1.5 text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
-                          title="Supprimer l'article"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <div className="px-4 py-2 border-t border-border">
-                <div className="flex items-center justify-between">
-                  <div className="text-sm text-foreground">
-                    Affichage de {startIndex + 1} à {Math.min(endIndex, items.length)} sur {items.length} articles
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                      disabled={currentPage === 1}
-                      className="px-3 py-1 border border-input rounded hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Précédent
-                    </button>
-                    <span className="px-3 py-1 text-sm text-foreground">
-                      Page {currentPage} sur {totalPages}
-                    </span>
-                    <button
-                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                      disabled={currentPage === totalPages}
-                      className="px-3 py-1 border border-input rounded hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Suivant
-                    </button>
-                  </div>
-                </div>
-              </div>
+            {isDirty && items.length > 0 && <p className="mt-2 flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-300"><Info className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />Enregistrez avant d’envoyer le devis.</p>}
+            {(isCompta || isSuperAdmin) && (
+              <button type="button" onClick={handleCreateBL} disabled={isCreatingBL || isSaving || items.length === 0}
+                className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-border py-2 text-sm font-semibold text-foreground hover:bg-secondary disabled:opacity-50">
+                {isCreatingBL ? <Loader className="h-4 w-4 animate-spin" /> : <Truck className="h-4 w-4" />}Convertir en bon de livraison
+              </button>
             )}
+            <p className="mt-3 text-center text-xs text-muted-foreground">Sur mobile, le PDF est partagé comme fichier ; sur ordinateur il est téléchargé pour être joint.</p>
+          </section>
 
-            {/* Totals */}
-            <div className="px-4 py-2 bg-secondary border-t border-border">
-              <div className="flex justify-end">
-                <div className="text-right space-y-1">
-                  {(() => {
-                    const tvaRate = companySettings?.tva_rate ?? 20;
-                    const totalHT = totalAmount / (1 + tvaRate / 100);
-                    const totalTVA = totalAmount - totalHT;
-                    return (
-                      <>
-                        <div className="text-sm text-muted-foreground">
-                          Total HT: {ExcelExportService.formatCurrency(totalHT)} Dh
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          TVA {tvaRate}%: {ExcelExportService.formatCurrency(totalTVA)} Dh
-                        </div>
-                        <div className="text-lg font-semibold text-foreground">
-                          Total TTC: {ExcelExportService.formatCurrency(totalAmount)} Dh
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          {totalItems} article{totalItems !== 1 ? 's' : ''}
-                        </div>
-                      </>
-                    );
-                  })()}
-                </div>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* Notes & Actions */}
-      <div className="glass rounded-xl shadow-lg p-3">
-        <h2 className="text-sm font-semibold text-foreground mb-2 flex items-center space-x-2">
-          <Edit3 className="h-4 w-4" />
-          <span>Notes</span>
-        </h2>
-        <textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          className="w-full px-3 py-1.5 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground mb-2"
-          rows={2}
-          placeholder="Notes ou commentaires..."
-        />
-        <textarea
-          value={notes2}
-          onChange={(e) => setNotes2(e.target.value)}
-          className="w-full px-3 py-1.5 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-secondary text-foreground"
-          rows={2}
-          placeholder="Note interne 2 (optionnel)..."
-        />
-      </div>
-
-      {/* Tech Sheets Attachment */}
-      {hasAttachments && (
-        <div className="glass rounded-xl shadow-lg p-3">
-          <div className="flex items-center justify-between">
-            <label className="flex items-center space-x-2 text-sm text-foreground cursor-pointer">
-              <input
-                type="checkbox"
-                checked={attachTechSheets}
-                onChange={(e) => setAttachTechSheets(e.target.checked)}
-                className="rounded border-input"
-              />
-              <span>📎 Joindre fiches techniques ({attachmentsSummary(attachments)})</span>
-            </label>
-            {attachTechSheets && (
-              <div className="flex items-center space-x-2">
-                <span className="text-xs text-muted-foreground">Expiration :</span>
-                <select
-                  value={techSheetsExpiry}
-                  onChange={(e) => setTechSheetsExpiry(e.target.value)}
-                  className="px-2 py-1 text-xs border border-input rounded-lg bg-secondary text-foreground"
-                >
-                  <option value="7">7 jours</option>
-                  <option value="30">30 jours</option>
-                  <option value="90">90 jours</option>
-                  <option value="never">Jamais</option>
-                </select>
-              </div>
+          <section className={`${panel} px-5 py-3`}>
+            <h2 className="pt-1 text-sm font-semibold text-foreground">Options du PDF</h2>
+            {pdfOption(includeProductImages, setIncludeProductImages, 'Photos des produits', 'Une image par ligne')}
+            {companySettings?.stamp_url ? pdfOption(useStamp, setUseStamp, 'Tampon', 'Apposer le tampon de la société') : null}
+            {pdfOption(printTTCOnly, setPrintTTCOnly, 'Prix TTC uniquement', 'Masquer le détail HT et TVA')}
+            {hasAttachments && (
+              <>
+                {pdfOption(attachTechSheets, setAttachTechSheets, 'Fiches techniques', `Lien vers ${attachmentsSummary(attachments)}`)}
+                {attachTechSheets && (
+                  <label className="flex items-center justify-between gap-2 pb-2 text-xs text-muted-foreground">Le lien expire après
+                    <select value={techSheetsExpiry} onChange={(e) => setTechSheetsExpiry(e.target.value)} className="rounded-md border border-input bg-background px-2 py-1 text-xs text-foreground">
+                      <option value="7">7 jours</option>
+                      <option value="30">30 jours</option>
+                      <option value="90">90 jours</option>
+                      <option value="never">jamais</option>
+                    </select>
+                  </label>
+                )}
+              </>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* PDF display options. Each label is `relative` so its visually hidden
-          checkbox sits inside it: otherwise focusing the checkbox on click
-          scrolls the whole app frame and hides the top of the quote. */}
-      <div className="glass rounded-xl shadow-lg p-2.5">
-        <div className={`grid grid-cols-1 gap-2 ${companySettings?.stamp_url ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
-          <label className={`relative flex min-h-14 cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 transition-colors ${includeProductImages ? 'border-violet-500/50 bg-violet-500/10 text-violet-700 dark:text-violet-300' : 'border-border bg-background/50 text-foreground hover:bg-accent'}`}>
-            <input type="checkbox" checked={includeProductImages} onChange={(e) => setIncludeProductImages(e.target.checked)} className="sr-only" />
-            <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${includeProductImages ? 'bg-violet-500 text-white' : 'bg-muted text-muted-foreground'}`}><ImageIcon className="h-4 w-4" /></span>
-            <span className="min-w-0"><span className="block text-sm font-semibold">Images produits</span><span className="block truncate text-[11px] opacity-75">{includeProductImages ? 'Colonne incluse' : 'Sans images'}</span></span>
-            <span className={`ml-auto h-2.5 w-2.5 shrink-0 rounded-full ${includeProductImages ? 'bg-violet-500' : 'bg-muted-foreground/30'}`} aria-hidden="true" />
-          </label>
-
-          {companySettings?.stamp_url ? (
-            <label className={`relative flex min-h-14 cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 transition-colors ${useStamp ? 'border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-300' : 'border-border bg-background/50 text-foreground hover:bg-accent'}`}>
-              <input type="checkbox" checked={useStamp} onChange={(e) => setUseStamp(e.target.checked)} className="sr-only" />
-              <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${useStamp ? 'bg-amber-500 text-white' : 'bg-muted text-muted-foreground'}`}><Stamp className="h-4 w-4" /></span>
-              <span className="min-w-0"><span className="block text-sm font-semibold">Tampon</span><span className="block truncate text-[11px] opacity-75">{useStamp ? 'Apposé au devis' : 'Non apposé'}</span></span>
-              <span className={`ml-auto h-2.5 w-2.5 shrink-0 rounded-full ${useStamp ? 'bg-amber-500' : 'bg-muted-foreground/30'}`} aria-hidden="true" />
-            </label>
-          ) : null}
-
-          <label className={`relative flex min-h-14 cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 transition-colors ${printTTCOnly ? 'border-sky-500/50 bg-sky-500/10 text-sky-700 dark:text-sky-300' : 'border-border bg-background/50 text-foreground hover:bg-accent'}`}>
-            <input type="checkbox" checked={printTTCOnly} onChange={(e) => setPrintTTCOnly(e.target.checked)} className="sr-only" />
-            <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${printTTCOnly ? 'bg-sky-500 text-white' : 'bg-muted text-muted-foreground'}`}><ReceiptText className="h-4 w-4" /></span>
-            <span className="min-w-0"><span className="block text-sm font-semibold">Prix TTC uniquement</span><span className="block truncate text-[11px] opacity-75">{printTTCOnly ? 'HT et TVA masqués' : 'Détail HT et TVA'}</span></span>
-            <span className={`ml-auto h-2.5 w-2.5 shrink-0 rounded-full ${printTTCOnly ? 'bg-sky-500' : 'bg-muted-foreground/30'}`} aria-hidden="true" />
-          </label>
-        </div>
+          </section>
+        </aside>
       </div>
 
-      {/* Action Buttons */}
-      <div className="flex flex-col sm:flex-row gap-2">
-        <button onClick={() => navigate('/quotes-history')}
-          className="flex-1 px-4 py-2 text-sm border border-input text-foreground hover:bg-accent rounded-lg transition-colors">
-          Historique
-        </button>
-        <button onClick={handleExport} disabled={isExporting || items.length === 0}
-          className="flex-1 flex items-center justify-center space-x-1.5 px-4 py-2 text-sm bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-lg transition-colors">
-          {isExporting ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <FileDown className="h-3.5 w-3.5" />}
-          <span>Export PDF</span>
-        </button>
-        <button onClick={() => handleSave(false)} disabled={isSaving}
-          className="flex-1 flex items-center justify-center space-x-1.5 px-4 py-2 text-sm bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-lg transition-colors">
-          {isSaving ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-          <span>Sauvegarder</span>
-        </button>
-        {(isCompta || isSuperAdmin) && (
-          <button onClick={handleCreateBL} disabled={isCreatingBL || isSaving || items.length === 0}
-            className="flex-1 flex items-center justify-center space-x-1.5 px-4 py-2 text-sm bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg transition-colors">
-            {isCreatingBL ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Truck className="h-3.5 w-3.5" />}
-            <span>→ BL</span>
+      {/* Phone: total and save stay at hand, above the tab bar */}
+      <div className="fixed inset-x-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-20 border-t border-border bg-card px-4 py-2.5 shadow-[0_-4px_16px_rgba(17,24,39,0.06)] lg:hidden">
+        <div className="mx-auto flex max-w-3xl items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs text-muted-foreground">Total TTC</p>
+            <p className="whitespace-nowrap text-lg font-bold tabular-nums leading-tight text-foreground">{formatMoney(totalAmount)}</p>
+          </div>
+          <button type="button" onClick={handleWhatsAppShare} disabled={isPreparingWaPdf || items.length === 0} aria-label="Envoyer sur WhatsApp"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-border text-emerald-600 disabled:opacity-50">
+            {isPreparingWaPdf ? <Loader className="h-5 w-5 animate-spin" /> : <MessageCircle className="h-5 w-5" />}
           </button>
-        )}
-      </div>
-
-      {/* Sharing Options - always visible */}
-      {items.length > 0 && (
-        <div className="glass rounded-xl shadow-lg p-3">
-          <div className="flex items-center justify-between mb-1.5">
-            <h2 className="text-xs font-semibold text-foreground flex items-center space-x-1.5">
-              <Send className="h-3.5 w-3.5" />
-              <span>Exporter & Partager</span>
-            </h2>
-            {isDirty && (
-              <span className="text-[10px] text-amber-500 flex items-center space-x-1">
-                <Info className="h-3 w-3" />
-                <span>Sauvegardez avant d'envoyer</span>
-              </span>
-            )}
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => {
-                if (isDirty) {
-                  showToast({ type: 'warning', title: 'Modifications non sauvegardées', message: 'Veuillez sauvegarder le devis avant de le partager.' });
-                  return;
-                }
-                prepareWhatsAppPdf();
-              }}
-              disabled={isExporting || isPreparingWaPdf}
-              className="flex-1 flex items-center justify-center space-x-1.5 px-3 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg transition-colors"
-            >
-              {isExporting || isPreparingWaPdf ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <><FileDown className="h-3 w-3" /><MessageCircle className="h-3.5 w-3.5" /></>}
-              <span>PDF + WhatsApp</span>
-            </button>
-            <button
-              onClick={async () => {
-                if (isDirty) {
-                  showToast({ type: 'warning', title: 'Modifications non sauvegardées', message: 'Veuillez sauvegarder le devis avant de le partager.' });
-                  return;
-                }
-                // Export PDF first
-                setIsExporting(true);
-                try {
-                  const freshSettings = await CompanySettingsService.getSettings(quoteCompanyId(quote)).catch(() => companySettings);
-                  const quoteData: Quote = { id: quote?.id || crypto.randomUUID(), company_id: quote?.company_id || companyId || undefined, issuing_company_id: quote?.issuing_company_id, quoteNumber, commandNumber: commandNumber || undefined, createdAt: quote?.createdAt || new Date(), updatedAt: new Date(), status, customer, items, totalAmount, notes, notes2: notes2 || undefined, quote_date: quoteDate || undefined };
-                  const link = await attachmentsLink();
-                  await PdfExportService.exportQuoteToPdf(quoteData, freshSettings || companySettings, link?.url, link?.expiryLabel, useStamp, 'quote', undefined, printTTCOnly, includeProductImages, false, link?.label);
-                } catch { /* continue */ }
-                setIsExporting(false);
-
-                // Build email from template
-                const tvaRate = companySettings?.tva_rate ?? 20;
-                const totalHT = totalAmount / (1 + tvaRate / 100);
-                const totalTVA = totalAmount - totalHT;
-                const companyName = companySettings?.company_name?.trim() || 'Restonet';
-                const subjectTpl = companySettings?.share_templates?.email_subject || DEFAULT_SHARE_TEMPLATES.email_subject;
-                const bodyTpl = companySettings?.share_templates?.email_body || DEFAULT_SHARE_TEMPLATES.email_body;
-                const replacer = (t: string) => t
-                  .replace(/{client}/g, customer.fullName || '')
-                  .replace(/{entreprise}/g, companyName)
-                  .replace(/{numero}/g, quoteNumber)
-                  .replace(/{montant_ht}/g, ExcelExportService.formatCurrency(totalHT))
-                  .replace(/{montant_ttc}/g, ExcelExportService.formatCurrency(totalAmount))
-                  .replace(/{montant_tva}/g, ExcelExportService.formatCurrency(totalTVA))
-                  .replace(/{tva}/g, String(tvaRate))
-                  .replace(/{nb_articles}/g, String(totalItems))
-                  .replace(/{date}/g, ExcelExportService.formatDate(quote?.createdAt || new Date()))
-                  .replace(/{telephone}/g, companySettings?.phone || '')
-                  .replace(/{email}/g, companySettings?.email || '')
-                  .replace(/{adresse}/g, companySettings?.address || '');
-
-                window.location.href = `mailto:?subject=${encodeURIComponent(replacer(subjectTpl))}&body=${encodeURIComponent(replacer(bodyTpl))}`;
-
-                // Auto-update status to "pending" (Envoyé)
-                if (quote?.id && status !== 'final') {
-                  try {
-                    console.log('[Email] Updating quote status to pending, id:', quote.id);
-                    await SupabaseQuotesService.updateQuoteStatus(quote.id, 'pending');
-                    setStatus('pending' as any);
-                    showToast({ type: 'success', title: 'Statut mis à jour', message: 'Le devis est maintenant marqué comme "Envoyé".' });
-                  } catch (err) {
-                    console.error('[Email] Failed to update quote status:', err);
-                  }
-                }
-              }}
-              disabled={isExporting}
-              className="flex-1 flex items-center justify-center space-x-1.5 px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg transition-colors"
-            >
-              {isExporting ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <><FileDown className="h-3 w-3" /><Mail className="h-3.5 w-3.5" /></>}
-              <span>PDF + Email</span>
-            </button>
-          </div>
-          <p className="text-[10px] text-muted-foreground mt-1.5">📎 Sur mobile, le PDF est partagé comme fichier. Sur ordinateur, il est téléchargé pour être joint au message.</p>
+          <button type="button" onClick={() => handleSave(false)} disabled={isSaving}
+            className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+            {isSaving ? <Loader className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Enregistrer
+          </button>
         </div>
-      )}
+      </div>
 
       {/* WhatsApp Recipient Modal */}
       {showWaRecipientModal && (

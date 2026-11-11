@@ -100,6 +100,7 @@ export function documentTitle(pathname: string): string {
 
 // Pages with nothing to add to a quote: the floating quote cart would only
 // cover their content there.
-const CART_HIDDEN_PREFIXES = ['/tasks', '/paie', '/comptabilite', '/whatsapp', '/admin', '/companies', '/tools'];
+// The quote editor is the cart itself.
+const CART_HIDDEN_PREFIXES = ['/quote-cart', '/tasks', '/paie', '/comptabilite', '/whatsapp', '/admin', '/companies', '/tools'];
 export const cartHiddenOn = (pathname: string) =>
   CART_HIDDEN_PREFIXES.some(prefix => pathname === prefix || pathname.startsWith(prefix + '/'));
