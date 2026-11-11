@@ -440,6 +440,9 @@ export function ProductDetail() {
                   <option value="">Non classé</option>
                   {KIOSK_CATEGORIES.map(category => <option key={category.value} value={category.value}>{category.label}</option>)}
                 </select>
+                <span className="mt-1 block text-[11px] leading-snug text-muted-foreground">
+                  Mobilier : chaises, fauteuils, tabourets, banquettes, canapés, tables, pieds et dessus de table. Ustensiles : petit matériel à la main. Équipement : tout le reste (machines, froid, inox neutre, rangement, chariots).
+                </span>
               </label>
               <div className="mt-3 max-w-xs">
                 <span className="mb-1 block text-[11px] font-medium text-muted-foreground">Secteur</span>
