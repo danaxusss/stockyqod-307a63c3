@@ -3,7 +3,7 @@ export interface Product {
   name: string;
   brand: string;
   image?: string | null;
-  kiosk_category?: 'utensils' | 'furniture' | 'equipment' | null;
+  kiosk_category?: 'utensils' | 'furniture' | 'equipment' | 'decoration' | 'raw_materials' | null;
   /** Business sectors (restaurant, café…) the product is sold to; several allowed. */
   sector_ids?: string[];
   techsheet: string;

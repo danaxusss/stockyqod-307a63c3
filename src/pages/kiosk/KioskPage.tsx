@@ -12,6 +12,7 @@ import { sectorLabel } from '../../utils/sectorLabel';
 import { SHOWCASE_COPY } from '../../utils/kioskShowcase';
 import { KioskReviewPage, KioskShowcase, ReviewInvite } from './KioskShowcase';
 import { rememberKioskToken } from '../../utils/kioskApp';
+import { KIOSK_CATEGORY_VALUES } from '../../utils/kioskCategories';
 import { copy, fmt, LANGUAGE_NAMES, withCount, type KioskCopy } from './kioskCopy';
 import {
   Chip, FilterGroup, FiltersButton, FiltersPanel, KioskImageViewer, KioskInput, ProductCard, ProductDialog, ReviewLine, Steps,
@@ -575,9 +576,7 @@ export default function KioskPage() {
               <div role="group" aria-label={t.categories} className="flex min-w-max gap-2">
                 <Chip active={!category && !featuredOnly} label={t.all} onClick={() => selectCategory(null)} />
                 {featured.length > 0 && <Chip active={featuredOnly} label={`★ ${t.featured}`} onClick={() => selectCategory(null, true)} />}
-                <Chip active={category === 'utensils'} label={t.utensils} onClick={() => selectCategory('utensils')} />
-                <Chip active={category === 'furniture'} label={t.furniture} onClick={() => selectCategory('furniture')} />
-                <Chip active={category === 'equipment'} label={t.equipment} onClick={() => selectCategory('equipment')} />
+                {KIOSK_CATEGORY_VALUES.map(value => <Chip key={value} active={category === value} label={t[value]} onClick={() => selectCategory(value)} />)}
               </div>
             </div>
           </header>

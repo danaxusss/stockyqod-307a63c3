@@ -21,19 +21,12 @@ import { TechnicalSheetButton } from '../components/TechnicalSheetButton';
 import { TechnicalSheetFinder } from '../components/TechnicalSheetFinder';
 import { ImageViewer } from '../components/ImageViewer';
 import { loadSheetLinks, type SheetLink } from '../utils/technicalSheets';
+import { KIOSK_CATEGORIES, type KioskCategory } from '../utils/kioskCategories';
 import { effectiveChange, saveProductClassifications, type ClassificationChange } from '../utils/productClassification';
 
 const PRODUCTS_PER_PAGE = 20;
 type SortField = 'name' | 'brand' | 'price' | 'buyprice' | 'provider';
 type SortOrder = 'asc' | 'desc';
-type KioskCategory = NonNullable<Product['kiosk_category']>;
-
-const KIOSK_CATEGORIES: Array<{ value: KioskCategory; label: string }> = [
-  { value: 'utensils', label: 'Ustensiles' },
-  { value: 'furniture', label: 'Mobilier' },
-  { value: 'equipment', label: 'Équipement' },
-];
-
 // Sector filter value for products that have no sector yet.
 const NO_SECTOR = '__none__';
 // Bulk edits are grouped and saved this long after the last change.

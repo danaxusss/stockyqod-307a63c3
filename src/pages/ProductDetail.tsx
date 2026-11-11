@@ -17,12 +17,7 @@ import { TechnicalSheetButton } from '../components/TechnicalSheetButton';
 import { TechnicalSheetFinder } from '../components/TechnicalSheetFinder';
 import { ImageViewer } from '../components/ImageViewer';
 import { BusinessSectorsService, sectorNames, useBusinessSectors } from '../utils/businessSectors';
-
-const KIOSK_CATEGORIES: Array<{ value: NonNullable<Product['kiosk_category']>; label: string }> = [
-  { value: 'utensils', label: 'Ustensiles' },
-  { value: 'furniture', label: 'Mobilier' },
-  { value: 'equipment', label: 'Équipement' },
-];
+import { KIOSK_CATEGORIES, KIOSK_CATEGORY_HELP } from '../utils/kioskCategories';
 
 export function ProductDetail() {
   const { id } = useParams<{ id: string }>();
@@ -441,7 +436,7 @@ export function ProductDetail() {
                   {KIOSK_CATEGORIES.map(category => <option key={category.value} value={category.value}>{category.label}</option>)}
                 </select>
                 <span className="mt-1 block text-[11px] leading-snug text-muted-foreground">
-                  Mobilier : chaises, fauteuils, tabourets, banquettes, canapés, tables, pieds et dessus de table. Ustensiles : petit matériel à la main. Équipement : tout le reste (machines, froid, inox neutre, rangement, chariots).
+                  {KIOSK_CATEGORY_HELP}
                 </span>
               </label>
               <div className="mt-3 max-w-xs">

@@ -29,7 +29,8 @@ export class KioskRequestError extends Error {
 
 export type KioskLanguage = 'fr' | 'en' | 'ar';
 export type KioskPriceMode = 'retail' | 'reseller';
-export type KioskCategory = 'utensils' | 'furniture' | 'equipment';
+export type { KioskCategory } from './kioskCategories';
+import type { KioskCategory } from './kioskCategories';
 export type KioskRequestStatus = 'new' | 'assigned' | 'reviewing' | 'prepared' | 'contacted' | 'converted' | 'rejected';
 
 /** An extra showcase slide set from the kiosk settings. */

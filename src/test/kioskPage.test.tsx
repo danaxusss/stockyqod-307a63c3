@@ -117,6 +117,19 @@ describe('KioskPage', () => {
     ));
   });
 
+  it('offers the decoration and raw-material types', async () => {
+    mockKiosk();
+    renderKiosk();
+    fireEvent.click(await screen.findByRole('button', { name: /Commencer/i }));
+    expect(await screen.findByText('Perceuse de test')).toBeInTheDocument();
+
+    const types = within(screen.getByRole('group', { name: 'Type de produit' }));
+    fireEvent.click(types.getByRole('button', { name: 'Décoration' }));
+    await waitFor(() => expect(service.listPublicProducts).toHaveBeenLastCalledWith(TOKEN, expect.objectContaining({ category: 'decoration' })));
+    fireEvent.click(types.getByRole('button', { name: 'Matière première' }));
+    await waitFor(() => expect(service.listPublicProducts).toHaveBeenLastCalledWith(TOKEN, expect.objectContaining({ category: 'raw_materials' })));
+  });
+
   it('filters the full Stocky product list by kiosk type, brand, and availability', async () => {
     mockKiosk();
     renderKiosk();
