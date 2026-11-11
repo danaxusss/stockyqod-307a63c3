@@ -39,12 +39,29 @@ export function productBarcodeFromFilename(filename: string): string {
   return filename.trim().replace(/\.[^/.]+$/, '').trim();
 }
 
+/**
+ * A product code as it can appear in a file name: lower case, letters and
+ * digits only. File names cannot hold "/", so "PL1G/130" is saved as
+ * "PL1G_130.jpg"; both give "pl1g130".
+ */
+export function looseProductCode(code: string): string {
+  return code.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
 export function analyzeProductImageFiles(
   files: File[],
   products: Product[],
   limit = PRODUCT_IMAGE_BATCH_LIMIT,
 ): ProductImageBatchAnalysis {
   const productsByBarcode = new Map(products.map(product => [product.barcode, product]));
+  // Second chance for names whose separators differ from the code. Used only
+  // when it points to a single product: "157-20" and "15720" both exist.
+  const productsByLooseCode = new Map<string, Product[]>();
+  for (const product of products) {
+    const key = looseProductCode(product.barcode);
+    if (!key) continue;
+    productsByLooseCode.set(key, [...(productsByLooseCode.get(key) || []), product]);
+  }
   const selectedFiles = files.slice(0, limit);
   const seenBarcodes = new Set<string>();
   const candidates: ProductImageCandidate[] = [];
@@ -62,18 +79,26 @@ export function analyzeProductImageFiles(
       continue;
     }
 
-    const barcode = productBarcodeFromFilename(file.name);
-    const product = productsByBarcode.get(barcode);
+    const name = productBarcodeFromFilename(file.name);
+    let product = productsByBarcode.get(name);
+    if (!product) {
+      const loose = productsByLooseCode.get(looseProductCode(name)) || [];
+      if (loose.length > 1) {
+        invalid.push({ file, reason: `plusieurs produits possibles : ${loose.map(p => p.barcode).join(', ')}` });
+        continue;
+      }
+      product = loose[0];
+    }
     if (!product) {
       unmatched.push(file);
       continue;
     }
-    if (seenBarcodes.has(barcode)) {
+    if (seenBarcodes.has(product.barcode)) {
       duplicates.push(file);
       continue;
     }
 
-    seenBarcodes.add(barcode);
+    seenBarcodes.add(product.barcode);
     candidates.push({ file, product, replacesExisting: !!product.image });
   }
 

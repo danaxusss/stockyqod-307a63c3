@@ -101,7 +101,7 @@ export default function ProductPhotosPage() {
   const safePage = Math.min(page, totalPages);
   const paginated = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
 
-  // Product image import: the file name (without extension) must equal the exact barcode/reference.
+  // Product image import: the file name (without extension) is the barcode/reference; separators may differ (PL1G_130 → PL1G/130).
   const handleBulkFiles = (files: FileList | null) => {
     if (!files || files.length === 0 || !canEditProducts) return;
     if (!companyId) { showToast({ type: 'error', message: 'Aucune société associée' }); return; }
@@ -426,7 +426,7 @@ export default function ProductPhotosPage() {
       </div>
 
       {canEditProducts && <div className="mb-4 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
-        Import produit : nommez chaque fichier avec le code-barres exact, par exemple <span className="font-mono text-foreground">123456789.jpg</span>.
+        Import produit : nommez chaque fichier avec le code-barres du produit, par exemple <span className="font-mono text-foreground">123456789.jpg</span>. Les séparateurs peuvent différer : <span className="font-mono text-foreground">PL1G_130.jpg</span> trouve le produit PL1G/130.
         Maximum {PRODUCT_IMAGE_BATCH_LIMIT} images par lot et 10 Mo par fichier.
         {' '}Plus simple : <Link to="/photos/finder" className="font-medium text-primary hover:underline">Trouver les images manquantes</Link> cherche sur le web et lie l’image au produit sans renommer de fichier.
       </div>}
