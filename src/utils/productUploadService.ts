@@ -230,24 +230,24 @@ export class ProductUploadService {
     const totalCount = await this.getProductCount();
     if (totalCount === 0) return [];
 
+    // All pages at once: the count says how many there are, and reading them
+    // one after another made the start of the app wait for each in turn.
     const BATCH_SIZE = 1000;
+    const pages = Math.ceil(totalCount / BATCH_SIZE);
+    const results = await Promise.all(Array.from({ length: pages }, (_, index) => supabase
+      .from('products')
+      .select('*')
+      .order('name')
+      .order('barcode') // names repeat: a unique last key keeps the pages stable
+      .range(index * BATCH_SIZE, index * BATCH_SIZE + BATCH_SIZE - 1)));
+
     const allProducts: Product[] = [];
-    let offset = 0;
-
-    while (offset < totalCount) {
-      const { data, error } = await supabase
-        .from('products')
-        .select('*')
-        .order('name')
-        .order('barcode') // names repeat: a unique last key keeps the pages stable
-        .range(offset, offset + BATCH_SIZE - 1);
-
+    for (const { data, error } of results) {
       if (error) {
         throw new Error(`Failed to fetch products: ${error.message}`);
       }
-
-      if (data && data.length > 0) {
-        allProducts.push(...data.map(row => ({
+      for (const row of data || []) {
+        allProducts.push({
           barcode: row.barcode,
           name: row.name,
           brand: row.brand,
@@ -262,10 +262,7 @@ export class ProductUploadService {
           stock_levels: (row.stock_levels || {}) as Record<string, number>,
           created_at: row.created_at,
           updated_at: row.updated_at
-        })));
-        offset += data.length;
-      } else {
-        break;
+        });
       }
     }
 

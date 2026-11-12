@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createFakeDb, fakeClient, type FakeDb } from './fakeSupabase';
 
 // Sales bug sweep: reads that the server cuts at 1,000 rows (here 3), the
@@ -11,7 +11,7 @@ vi.mock('../utils/session', () => ({ getToken: () => null }));
 import { SupabaseUsersService } from '../utils/supabaseUsers';
 import { SupabaseQuotesService } from '../utils/supabaseQuotes';
 import { SupabaseClientsService, clientSearchFilter } from '../utils/supabaseClients';
-import { readAll, type Pageable } from '../utils/readAll';
+import { readAll, readAllConfig, type Pageable } from '../utils/readAll';
 import type { Quote } from '../types';
 
 const product = (barcode: string, brand: string, levels: Record<string, number>) => ({ barcode, name: barcode, brand, provider: 'P', stock_levels: levels });
@@ -35,7 +35,10 @@ beforeEach(() => {
     clients: ['k1', 'k2', 'k3', 'k4'].map((id, i) => ({ id, full_name: id, phone_number: '', company_id: 'c1', created_at: `2026-11-0${i + 1}T00:00:00Z` })),
   });
   state.db.maxRows = 3;
+  // The app reads pages the size of the server cap; here the fake cap is 3.
+  readAllConfig.pageSize = 3;
 });
+afterEach(() => { readAllConfig.pageSize = 1000; });
 
 describe('reads past the server row cap', () => {
   it('lists every brand and stock location for user permissions, not only those of the first 1,000 products', async () => {
