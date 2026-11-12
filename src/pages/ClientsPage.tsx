@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Users, Search, Plus, Edit, Trash2, X, Check, Loader, Phone, Mail, MapPin, Building, SortAsc, SortDesc, ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import { SupabaseClientsService, Client, CreateClientRequest } from '../utils/supabaseClients';
+import { exportToCSV } from '../utils/csvExport';
 import { SupabaseDocumentsService } from '../utils/supabaseDocuments';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../hooks/useAuth';
@@ -14,25 +15,16 @@ type SortField = 'full_name' | 'phone_number' | 'city' | 'created_at';
 type SortOrder = 'asc' | 'desc';
 
 function exportClientsCSV(clients: Client[]) {
-  const headers = ['Code', 'Nom', 'Téléphone', 'Email', 'Adresse', 'Ville', 'ICE', 'Date'];
-  const rows = clients.map(c => [
-    c.client_code || '',
-    c.full_name,
-    c.phone_number,
-    c.email || '',
-    c.address || '',
-    c.city || '',
-    c.ice || '',
-    new Date(c.created_at).toLocaleDateString('fr-FR'),
-  ]);
-  const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `clients_${new Date().toISOString().slice(0, 10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  exportToCSV(clients.map(c => ({
+    Code: c.client_code || '',
+    Nom: c.full_name,
+    Téléphone: c.phone_number,
+    Email: c.email || '',
+    Adresse: c.address || '',
+    Ville: c.city || '',
+    ICE: c.ice || '',
+    Date: new Date(c.created_at).toLocaleDateString('fr-FR'),
+  })), `clients_${new Date().toISOString().slice(0, 10)}.csv`);
 }
 
 export default function ClientsPage() {

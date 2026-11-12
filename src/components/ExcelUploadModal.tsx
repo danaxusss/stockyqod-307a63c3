@@ -3,6 +3,7 @@ import { X, Upload, FileSpreadsheet, AlertCircle, CheckCircle, Loader, Trash2, C
 import * as ExcelJS from 'exceljs';
 import { Product, ExcelRow } from '../types';
 import { ProductUploadService } from '../utils/productUploadService';
+import { parseLocaleNumber } from '../utils/localeNumber';
 import { ActivityLogger } from '../utils/activityLogger';
 import { useToast } from '../context/ToastContext';
 
@@ -28,16 +29,8 @@ export function ExcelUploadModal({ onClose, onSuccess }: ExcelUploadModalProps) 
     }
   };
 
-  const parseNumericValue = (value: any): number => {
-    if (typeof value === 'number') return value;
-    if (typeof value === 'string') {
-      // Remove any currency symbols, spaces, and convert to number
-      const cleaned = value.replace(/[$€£¥Dh,\s]/g, '');
-      const parsed = parseFloat(cleaned);
-      return isNaN(parsed) ? 0 : parsed;
-    }
-    return 0;
-  };
+  // Numbers typed as text keep their decimals: "1234,50" is 1234.5, not 123450.
+  const parseNumericValue = (value: unknown): number => parseLocaleNumber(value) ?? 0;
 
   const parseExcelFile = (file: File): Promise<Product[]> => {
     return new Promise((resolve, reject) => {

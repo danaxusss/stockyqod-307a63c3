@@ -1,6 +1,7 @@
 import { supabase } from './supabaseClient';
 import { getCompanyContext } from './supabaseCompanyFilter';
 import { Product } from '../types';
+import { readAll, type Pageable } from './readAll';
 
 export class ProductUploadService {
   static async uploadProducts(products: Product[]): Promise<void> {
@@ -23,22 +24,22 @@ export class ProductUploadService {
 
     // Load existing barcodes to determine new vs existing products (and keep the
     // previous stock_levels so we can log a reconciling ledger movement after import)
-    const existingProducts: Array<{
+    // Ordered paging: without a stable order, pages can skip products, and a
+    // skipped product would be taken for a new one and get the file's stock.
+    type ExistingProduct = {
       barcode: string;
       brand: string;
       provider: string;
       image: string | null;
       kiosk_category: Product['kiosk_category'];
       stock_levels: unknown;
-    }> = [];
-    const EXISTING_PAGE = 1000;
-    for (let from = 0; ; from += EXISTING_PAGE) {
-      const { data, error } = await supabase.from('products')
-        .select('barcode, brand, provider, image, kiosk_category, stock_levels')
-        .range(from, from + EXISTING_PAGE - 1);
-      if (error) throw new Error(`Unable to load existing products: ${error.message}`);
-      existingProducts.push(...(data || []));
-      if (!data || data.length < EXISTING_PAGE) break;
+    };
+    let existingProducts: ExistingProduct[];
+    try {
+      existingProducts = await readAll(() => supabase.from('products')
+        .select('barcode, brand, provider, image, kiosk_category, stock_levels') as unknown as Pageable<ExistingProduct>, 'barcode');
+    } catch (error) {
+      throw new Error(`Unable to load existing products: ${(error as { message?: string })?.message || error}`);
     }
     const existingMap = new Map<string, { brand: string; provider: string; image: string | null; kiosk_category: Product['kiosk_category'] }>();
     const oldStockByBarcode = new Map<string, Record<string, number>>();
@@ -47,7 +48,9 @@ export class ProductUploadService {
       oldStockByBarcode.set(p.barcode, (p.stock_levels || {}) as Record<string, number>);
     }
 
-    const validProducts: Product[] = [];
+    // One row per code (the last one in the file wins): a code twice in the
+    // same upsert batch makes the database reject the whole batch.
+    const byBarcode = new Map<string, Product>();
 
     for (const product of products) {
       if (!product.barcode || typeof product.barcode !== 'string' || product.barcode.trim().length === 0) continue;
@@ -72,7 +75,7 @@ export class ProductUploadService {
         if (providerOverrides.has(provider)) provider = providerOverrides.get(provider)!;
       }
 
-      validProducts.push({
+      byBarcode.set(String(product.barcode).trim(), {
         barcode: String(product.barcode).trim(),
         name: String(product.name).trim(),
         brand,
@@ -86,6 +89,7 @@ export class ProductUploadService {
         stock_levels: product.stock_levels || {}
       });
     }
+    const validProducts = [...byBarcode.values()];
 
     if (validProducts.length === 0) {
       throw new Error('No valid products to upload after validation');
@@ -235,6 +239,7 @@ export class ProductUploadService {
         .from('products')
         .select('*')
         .order('name')
+        .order('barcode') // names repeat: a unique last key keeps the pages stable
         .range(offset, offset + BATCH_SIZE - 1);
 
       if (error) {

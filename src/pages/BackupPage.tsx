@@ -77,8 +77,12 @@ export default function BackupPage() {
       const data = await BackupService.export(p => setExportProgress(p));
       BackupService.download(data);
       const now = new Date().toISOString();
-      localStorage.setItem(LAST_BACKUP_KEY, now);
-      showToast({ type: 'success', title: 'Sauvegarde téléchargée', message: 'Fichier JSON téléchargé avec succès' });
+      try { localStorage.setItem(LAST_BACKUP_KEY, now); } catch { /* storage unavailable */ }
+      if (data.failed_tables?.length) {
+        showToast({ type: 'warning', title: 'Sauvegarde incomplète', message: `Tables non sauvegardées (lecture impossible) : ${data.failed_tables.map(fmtTable).join(', ')}` });
+      } else {
+        showToast({ type: 'success', title: 'Sauvegarde téléchargée', message: 'Fichier JSON téléchargé avec succès' });
+      }
     } catch (e) {
       showToast({ type: 'error', title: 'Erreur sauvegarde', message: String(e) });
     } finally {
@@ -472,7 +476,7 @@ export default function BackupPage() {
       <div className="rounded-lg border border-border p-4 space-y-2 text-xs text-muted-foreground">
         <p className="font-semibold text-foreground text-[11px] uppercase tracking-wide">À savoir</p>
         <ul className="space-y-1 list-disc list-inside">
-          <li>La sauvegarde inclut toutes les tables : devis, BL, proformas, factures, produits, clients, utilisateurs, paramètres.</li>
+          <li>La sauvegarde inclut toutes les données : documents, retours, produits, stock, clients, comptabilité, paie, tâches, WhatsApp, paramètres. Les utilisateurs et leurs PIN n’y sont pas (ils restent sur le serveur).</li>
           <li>Les fichiers uploadés (logos, tampons, fiches) sont dans le stockage Supabase et ne sont pas inclus dans ce fichier.</li>
           <li>La restauration ne supprime rien — elle ajoute ou met à jour les enregistrements existants.</li>
           <li>Pour une sauvegarde automatique quotidienne, configurez le cron sur votre VPS (voir ci-dessous).</li>
