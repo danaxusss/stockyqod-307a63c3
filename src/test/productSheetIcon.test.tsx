@@ -50,12 +50,15 @@ describe('ProductsPage technical sheet icon', () => {
     render(<MemoryRouter><ProductsPage /></MemoryRouter>);
 
     expect(await screen.findByRole('link', { name: 'Ouvrir la fiche technique Fiche perceuse' })).toHaveAttribute('href', 'https://storage.test/s1.pdf');
-    fireEvent.click(screen.getByRole('button', { name: 'Rechercher une fiche technique' }));
+    // Without a linked sheet, the search is in the row's ⋯ menu.
+    fireEvent.click(screen.getByRole('button', { name: 'Actions pour Meuleuse' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rechercher une fiche technique' }));
     fireEvent.click(screen.getByRole('dialog', { name: 'Fiche pour Meuleuse' }).querySelector('button')!);
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Ouvrir la fiche technique Fiche meuleuse' })).toHaveAttribute('href', 'https://storage.test/s2.pdf');
-    expect(screen.queryByRole('button', { name: 'Rechercher une fiche technique' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Actions pour Meuleuse' }));
+    expect(screen.queryByRole('menuitem', { name: 'Rechercher une fiche technique' })).not.toBeInTheDocument();
   });
 
   it('hides the search for people who cannot edit products', async () => {
@@ -63,6 +66,7 @@ describe('ProductsPage technical sheet icon', () => {
     appState.products = [product('LINKED', 'Perceuse'), product('NONE', 'Meuleuse')];
     render(<MemoryRouter><ProductsPage /></MemoryRouter>);
     expect(await screen.findByRole('link', { name: 'Ouvrir la fiche technique Fiche perceuse' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Rechercher une fiche technique' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Actions pour Meuleuse' }));
+    expect(screen.queryByRole('menuitem', { name: 'Rechercher une fiche technique' })).not.toBeInTheDocument();
   });
 });

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Truck, Search, Download, Trash2, CheckSquare, Square, FileText, Building2, Plus, ClipboardList } from 'lucide-react';
+import { Truck, Search, Download, Trash2, CheckSquare, Square, FileText, Building2, Plus, ClipboardList, Loader } from 'lucide-react';
 import { Quote, Company } from '../../types';
 import { SupabaseDocumentsService } from '../../utils/supabaseDocuments';
 import { SupabaseCompaniesService } from '../../utils/supabaseCompanies';
@@ -10,10 +10,18 @@ import { useAuth } from '../../hooks/useAuth';
 import { exportToCSV } from '../../utils/csvExport';
 import { getCompanyContext } from '../../utils/supabaseCompanyFilter';
 import { documentDay, formatDay } from '../../utils/documentLines';
+import { formatMoney } from '../../utils/format';
+import { useIsMobile } from '../../hooks/use-mobile';
+import { PageHeader } from '../../components/PageHeader';
+import { RowMenu } from '../../components/lists/RowMenu';
+import { StatusPill } from '../../components/lists/StatusPill';
+import { DocumentCard } from '../../components/lists/DocumentCard';
 
-function statusBadge(status: string) {
-  if (status === 'final') return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300">Finalisé</span>;
-  return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300">Brouillon</span>;
+/** Delivery note status, as shown in the list. */
+function BLStatus({ bl }: { bl: Quote }) {
+  if (!bl.customer?.fullName?.trim()) return <StatusPill tone="neutral">Brouillon vide</StatusPill>;
+  if (bl.status === 'final') return <StatusPill tone="info">Finalisé</StatusPill>;
+  return <StatusPill tone="warning">Brouillon</StatusPill>;
 }
 
 export default function BLDirectoryPage() {
@@ -34,6 +42,8 @@ export default function BLDirectoryPage() {
   const [creatingBcFor, setCreatingBcFor] = useState<string | null>(null);
   const [pageSize, setPageSize] = useState(20);
   const [page, setPage] = useState(1);
+  // Phones get cards instead of the wide table.
+  const isMobile = useIsMobile();
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -175,58 +185,61 @@ export default function BLDirectoryPage() {
     return <div className="text-center py-12 text-muted-foreground">Accès réservé au rôle Comptabilité.</div>;
   }
 
+  const menuItems = (bl: Quote) => [
+    { label: 'Télécharger le PDF', icon: <Download className="h-4 w-4 text-muted-foreground" />, onSelect: () => handleExportPdf(bl) },
+    ...(bl.status !== 'final' ? [{ label: 'Créer un proforma', icon: <FileText className="h-4 w-4 text-emerald-600" />, onSelect: () => { setSingleProformaBL(bl); setTargetCompanyId(''); } }] : []),
+    { label: 'Créer un bon de commande', icon: creatingBcFor === bl.id ? <Loader className="h-4 w-4 animate-spin" /> : <ClipboardList className="h-4 w-4 text-orange-500" />, onSelect: () => handleCreateBC(bl.id), disabled: creatingBcFor === bl.id },
+    ...(isSuperAdmin ? [{ label: 'Supprimer', icon: <Trash2 className="h-4 w-4" />, onSelect: () => handleDelete(bl.id, bl.quoteNumber), danger: true, separated: true }] : []),
+  ];
+  const clientCodeOf = (bl: Quote) => (bl.customer as any)?.clientCode || (bl.customer as any)?.client_code || '';
+  const selectBox = (bl: Quote, size = 'h-4 w-4') => {
+    const isSelected = selectedIds.includes(bl.id);
+    return (
+      <button disabled={bl.status === 'final'} onClick={() => toggleRow(bl.id)} aria-pressed={isSelected}
+        aria-label={`Sélectionner ${bl.quoteNumber}`} title={bl.status === 'final' ? 'BL finalisé' : undefined}
+        className="text-primary disabled:cursor-not-allowed disabled:opacity-30">
+        {isSelected ? <CheckSquare className={size} /> : <Square className={`${size} text-muted-foreground`} />}
+      </button>
+    );
+  };
+  const th = 'px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground';
+
   return (
-    <div className="space-y-4">
-      <div className="glass rounded-xl shadow-lg p-4">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center space-x-2.5">
-            <div className="p-2 bg-sky-700 rounded-lg">
-              <Truck className="h-4 w-4 text-white" />
-            </div>
-            <div>
-              <h1 className="text-lg font-bold text-foreground">Bons de Livraison</h1>
-              <p className="text-xs text-muted-foreground">{filtered.length} BL{filtered.length !== 1 ? 's' : ''}</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleNewBL}
-              disabled={isCreatingNew}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg font-medium"
-            >
-              {isCreatingNew ? <div className="h-3.5 w-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-              <span>Nouveau BL</span>
+    <div className="mx-auto max-w-7xl space-y-4">
+      <PageHeader
+        title="Bons de livraison"
+        subtitle={`${filtered.length} BL${filtered.length !== 1 ? 's' : ''}`}
+        actions={<>
+          {selectedEligible.length > 0 && (
+            <button onClick={() => setShowProformaModal(true)}
+              className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700">
+              <FileText className="h-4 w-4" />Créer un proforma ({selectedEligible.length})
             </button>
-            <button onClick={handleExportCSV} className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-border rounded-lg hover:bg-accent text-foreground">
-              <Download className="h-3.5 w-3.5" /><span>CSV</span>
-            </button>
-            {selectedEligible.length > 0 && (
-              <button
-                onClick={() => setShowProformaModal(true)}
-                className="flex items-center space-x-1.5 px-3 py-1.5 text-sm bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg"
-              >
-                <FileText className="h-3.5 w-3.5" />
-                <span>Créer Proforma ({selectedEligible.length})</span>
-              </button>
-            )}
+          )}
+          <button onClick={handleExportCSV} className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground hover:bg-secondary">
+            <Download className="h-4 w-4" />CSV
+          </button>
+          <button onClick={handleNewBL} disabled={isCreatingNew}
+            className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+            {isCreatingNew ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" /> : <Plus className="h-4 w-4" />}
+            Nouveau BL
+          </button>
+        </>}
+      >
+        <div className="rounded-xl border border-border bg-card p-3 shadow-sm">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input type="text" value={search} onChange={e => setSearch(e.target.value)} aria-label="Rechercher un BL"
+              placeholder="N° BL, client, téléphone, code…"
+              className="w-full rounded-lg border border-input bg-background py-2 pl-9 pr-3 text-sm text-foreground focus:ring-2 focus:ring-ring" />
           </div>
         </div>
+      </PageHeader>
 
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <input
-            type="text" value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="N° BL, client, code..."
-            className="w-full pl-8 pr-3 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground"
-          />
-        </div>
-      </div>
-
-      <div className="glass rounded-xl shadow-lg overflow-hidden">
+      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
         {isLoading ? (
           <div className="p-8 text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto" />
+            <div className="mx-auto h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
           </div>
         ) : filtered.length === 0 ? (
           <div className="p-8 text-center text-sm text-muted-foreground">
@@ -234,93 +247,67 @@ export default function BLDirectoryPage() {
           </div>
         ) : (
           <>
+          {isMobile ? (
+            <ul className="divide-y divide-border">
+              {paginated.map(bl => (
+                <DocumentCard key={bl.id} to={`/compta/bls/${bl.id}`}
+                  leading={selectBox(bl, 'h-5 w-5')}
+                  number={bl.quoteNumber}
+                  status={<BLStatus bl={bl} />}
+                  title={bl.customer?.fullName || '—'}
+                  subtitle={[clientCodeOf(bl), bl.customer?.phoneNumber, `${bl.items.length} article${bl.items.length !== 1 ? 's' : ''}`].filter(Boolean).join(' · ')}
+                  date={formatDay(documentDay(bl))}
+                  amount={formatMoney(bl.totalAmount)}
+                  menu={<RowMenu label={`Actions pour ${bl.quoteNumber}`} items={menuItems(bl)} />}
+                />
+              ))}
+            </ul>
+          ) : (
           <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-secondary">
+            <table className="w-full text-sm">
+              <thead className="border-b border-border bg-secondary/40">
                 <tr>
-                  <th className="px-3 py-2 w-8">
-                    <button onClick={toggleAll} className="text-muted-foreground hover:text-foreground">
+                  <th className="w-8 px-3 py-2">
+                    <button onClick={toggleAll} aria-label="Sélectionner les BL non finalisés" className="text-muted-foreground hover:text-foreground">
                       {eligibleCount > 0 && selectedEligible.length === eligibleCount
-                        ? <CheckSquare className="h-3.5 w-3.5" />
-                        : <Square className="h-3.5 w-3.5" />}
+                        ? <CheckSquare className="h-4 w-4" />
+                        : <Square className="h-4 w-4" />}
                     </button>
                   </th>
-                  {['N° BL', 'Code', 'Client', 'Articles', 'Statut', 'Date', 'Actions'].map(h => (
-                    <th key={h} className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">{h}</th>
-                  ))}
+                  <th className={`${th} text-left`}>N° BL</th>
+                  <th className={`${th} text-left`}>Client</th>
+                  <th className={`${th} text-right`}>Articles</th>
+                  <th className={`${th} text-right`}>Montant TTC</th>
+                  <th className={`${th} text-left`}>Statut</th>
+                  <th className={`${th} text-left`}>Date</th>
+                  <th className={th}><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {paginated.map(bl => {
                   const isSelected = selectedIds.includes(bl.id);
-                  const isFinal = bl.status === 'final';
                   return (
-                    <tr key={bl.id} className={`hover:bg-accent/50 ${isSelected ? 'bg-accent/30' : ''}`}>
-                      <td className="px-3 py-2.5">
-                        <button
-                          disabled={isFinal}
-                          onClick={() => toggleRow(bl.id)}
-                          className="text-primary disabled:opacity-30 disabled:cursor-not-allowed"
-                        >
-                          {isSelected ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5 text-muted-foreground" />}
-                        </button>
+                    <tr key={bl.id} className={`cursor-pointer hover:bg-secondary/60 ${isSelected ? 'bg-primary/5' : ''}`}
+                      onClick={event => { if (!(event.target as HTMLElement).closest('a,button,[role="menu"]')) navigate(`/compta/bls/${bl.id}`); }}>
+                      <td className="px-3 py-2.5">{selectBox(bl)}</td>
+                      <td className="whitespace-nowrap px-3 py-2.5">
+                        <Link to={`/compta/bls/${bl.id}`} className="font-mono font-semibold text-primary hover:underline">{bl.quoteNumber}</Link>
                       </td>
                       <td className="px-3 py-2.5">
-                        <Link to={`/compta/bls/${bl.id}`} className="text-xs font-mono font-semibold text-primary hover:underline">
-                          {bl.quoteNumber}
-                        </Link>
+                        <div className="font-medium text-foreground">{bl.customer?.fullName || '—'}</div>
+                        <div className="text-xs text-muted-foreground">{[clientCodeOf(bl), bl.customer?.phoneNumber].filter(Boolean).join(' · ')}</div>
                       </td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-muted-foreground">{bl.items.length}</td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-right font-semibold tabular-nums text-foreground">{formatMoney(bl.totalAmount)}</td>
+                      <td className="px-3 py-2.5"><BLStatus bl={bl} /></td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-muted-foreground">{formatDay(documentDay(bl))}</td>
                       <td className="px-3 py-2.5">
-                        {(() => { const c = (bl.customer as any)?.clientCode || (bl.customer as any)?.client_code || ''; return c ? <span className="text-[10px] font-mono bg-blue-500/10 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded">{c}</span> : <span className="text-[10px] text-muted-foreground">—</span>; })()}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <div className="text-xs font-medium text-foreground">{bl.customer?.fullName || '—'}</div>
-                        {bl.customer?.phoneNumber && <div className="text-[10px] text-muted-foreground">{bl.customer.phoneNumber}</div>}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <span className="text-xs text-muted-foreground">{bl.items.length} article{bl.items.length !== 1 ? 's' : ''}</span>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        {!bl.customer?.fullName?.trim()
-                          ? <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-secondary text-muted-foreground border border-border">Brouillon vide</span>
-                          : statusBadge(bl.status)}
-                      </td>
-                      <td className="px-3 py-2.5 text-[10px] text-muted-foreground">
-                        {formatDay(documentDay(bl))}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <div className="flex items-center space-x-1">
-                          <Link to={`/compta/bls/${bl.id}`} className="p-1 text-primary hover:bg-primary/10 rounded" title="Ouvrir">
-                            <Truck className="h-3.5 w-3.5" />
-                          </Link>
-                          <button onClick={() => handleExportPdf(bl)} className="p-1 text-blue-500 hover:bg-blue-500/10 rounded" title="Export PDF">
-                            <Download className="h-3.5 w-3.5" />
+                        <div className="flex items-center justify-end gap-1">
+                          <button onClick={() => handleExportPdf(bl)} title="Télécharger le PDF" aria-label={`PDF de ${bl.quoteNumber}`}
+                            className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground">
+                            <Truck className="h-4 w-4" />
                           </button>
-                          {!isFinal && (
-                            <button
-                              onClick={() => { setSingleProformaBL(bl); setTargetCompanyId(''); }}
-                              className="p-1 text-emerald-600 hover:bg-emerald-600/10 rounded"
-                              title="Créer Proforma"
-                            >
-                              <FileText className="h-3.5 w-3.5" />
-                            </button>
-                          )}
-                          <button
-                            onClick={() => handleCreateBC(bl.id)}
-                            disabled={creatingBcFor === bl.id}
-                            className="p-1 text-orange-500 hover:bg-orange-500/10 rounded disabled:opacity-50"
-                            title="Créer Bon de Commande"
-                          >
-                            {creatingBcFor === bl.id
-                              ? <div className="h-3.5 w-3.5 border-2 border-orange-500/30 border-t-orange-500 rounded-full animate-spin" />
-                              : <ClipboardList className="h-3.5 w-3.5" />
-                            }
-                          </button>
-                          {isSuperAdmin && (
-                            <button onClick={() => handleDelete(bl.id, bl.quoteNumber)} className="p-1 text-destructive hover:bg-destructive/10 rounded" title="Supprimer">
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          )}
+                          <RowMenu label={`Actions pour ${bl.quoteNumber}`} items={menuItems(bl).slice(1)} />
                         </div>
                       </td>
                     </tr>
@@ -329,19 +316,20 @@ export default function BLDirectoryPage() {
               </tbody>
             </table>
           </div>
-          <div className="px-4 py-2.5 border-t border-border flex items-center justify-between gap-4 flex-wrap">
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">Afficher</span>
-              <select value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }} className="px-2 py-1 text-xs border border-input rounded bg-background text-foreground">
+          )}
+          <div className="flex flex-wrap items-center justify-between gap-4 border-t border-border px-4 py-2.5">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span>Afficher</span>
+              <select value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }} aria-label="BL par page" className="rounded border border-input bg-background px-2 py-1 text-xs text-foreground">
                 {[20, 30, 50].map(n => <option key={n} value={n}>{n}</option>)}
               </select>
-              <span className="text-xs text-muted-foreground">/ {filtered.length}</span>
+              <span>/ {filtered.length}</span>
             </div>
             {totalPages > 1 && (
               <div className="flex items-center gap-1.5">
-                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-2 py-1 text-xs border border-border rounded hover:bg-accent disabled:opacity-50">Préc.</button>
+                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-secondary disabled:opacity-50">Préc.</button>
                 <span className="px-2 text-xs text-muted-foreground">{page}/{totalPages}</span>
-                <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="px-2 py-1 text-xs border border-border rounded hover:bg-accent disabled:opacity-50">Suiv.</button>
+                <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-secondary disabled:opacity-50">Suiv.</button>
               </div>
             )}
           </div>
@@ -379,7 +367,7 @@ export default function BLDirectoryPage() {
             <div className="flex space-x-2">
               <button
                 onClick={() => { setShowProformaModal(false); setSingleProformaBL(null); setTargetCompanyId(''); }}
-                className="flex-1 px-3 py-1.5 text-sm border border-input rounded-lg hover:bg-accent"
+                className="flex-1 px-3 py-1.5 text-sm border border-input rounded-lg hover:bg-secondary"
               >
                 Annuler
               </button>

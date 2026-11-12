@@ -1,8 +1,7 @@
 // @ts-nocheck
 import React, { useState, useEffect, useCallback } from 'react';
-import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { FileText, Search, Filter, Eye, Edit, Trash2, FileDown, Plus, Calendar, User, DollarSign, Hash, SortAsc, SortDesc, AlertCircle, Check, Loader, X, MessageCircle, Mail, Truck, Copy, Printer } from 'lucide-react';
+import { FileText, Search, Edit, Trash2, FileDown, Plus, SortAsc, SortDesc, AlertCircle, Check, Loader, X, MessageCircle, Mail, Truck, Copy, Printer, SlidersHorizontal } from 'lucide-react';
 import { Quote } from '../types';
 import { quoteCompanyId, SupabaseQuotesService } from '../utils/supabaseQuotes';
 import { SupabaseDocumentsService } from '../utils/supabaseDocuments';
@@ -14,6 +13,19 @@ import { useAuth } from '../hooks/useAuth';
 import { buildWhatsAppShareUrl, openWhatsAppShare } from '../utils/whatsappShare';
 import { exportToCSV } from '../utils/csvExport';
 import { PrintPreviewModal } from '../components/PrintPreviewModal';
+import { PageHeader } from '../components/PageHeader';
+import { RowMenu } from '../components/lists/RowMenu';
+import { StatusPill } from '../components/lists/StatusPill';
+import { DocumentCard } from '../components/lists/DocumentCard';
+import { useIsMobile } from '../hooks/use-mobile';
+import { formatMoney } from '../utils/format';
+
+/** Quote status, the same words and colours as in the quote editor. */
+function QuoteStatus({ status }: { status: Quote['status'] }) {
+  if (status === 'final') return <StatusPill tone="success">Confirmé</StatusPill>;
+  if (status === 'pending') return <StatusPill tone="info">Envoyé</StatusPill>;
+  return <StatusPill tone="warning">En attente</StatusPill>;
+}
 
 const PAGE_SIZES = [20, 30, 50];
 type SortField = 'quoteNumber' | 'customerName' | 'createdAt' | 'totalAmount' | 'status';
@@ -37,8 +49,9 @@ export function QuotesHistoryPage() {
   const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
   const [previewFilename, setPreviewFilename] = useState('');
   const [isCreatingBL, setIsCreatingBL] = useState<string | null>(null);
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-  const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
+  // Phones get cards instead of the wide table.
+  const isMobile = useIsMobile();
+  const [showFilters, setShowFilters] = useState(false);
   const [pageSize, setPageSize] = useState(20);
   const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null);
 
@@ -54,12 +67,6 @@ export function QuotesHistoryPage() {
 
   useEffect(() => { loadQuotes(); }, [loadQuotes]);
 
-  useEffect(() => {
-    if (!openMenuId) return;
-    const close = () => setOpenMenuId(null);
-    document.addEventListener('click', close);
-    return () => document.removeEventListener('click', close);
-  }, [openMenuId]);
   // Fallback letterhead: the user's own company (never the legacy global row,
   // which carries another company's logo).
   useEffect(() => { CompanySettingsService.getSettings(quoteCompanyId(null)).then(setCompanySettings).catch(console.error); }, []);
@@ -223,204 +230,183 @@ export function QuotesHistoryPage() {
   const formatDate = (date: Date) => date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
   const formatCurrency = (amount: number) => new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount);
 
-  return (
-    <div className="max-w-7xl mx-auto space-y-4">
-      {/* Header */}
-      <div className="glass rounded-xl shadow-lg p-4">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center space-x-2.5">
-            <div className="p-2 bg-primary rounded-lg" style={{ boxShadow: 'var(--shadow-glow)' }}>
-              <FileText className="h-4 w-4 text-primary-foreground" />
-            </div>
-            <div>
-              <h1 className="text-lg font-bold text-foreground">Historique des Devis</h1>
-              <p className="text-xs text-muted-foreground">{isAdmin ? 'Tous les devis' : 'Vos devis'}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => {
-                const rows = filteredQuotes.map(q => ({
-                  'N° Devis': q.quoteNumber,
-                  'Client': q.customer?.fullName || '',
-                  'Téléphone': q.customer?.phoneNumber || '',
-                  'Ville': q.customer?.city || '',
-                  'Vendeur': q.customer?.salesPerson || '',
-                  'Total TTC': q.totalAmount,
-                  'Statut': q.status,
-                  'Date': new Date(q.createdAt).toLocaleDateString('fr-FR'),
-                }));
-                exportToCSV(rows, `devis-${new Date().toISOString().slice(0, 10)}`);
-              }}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-border rounded-lg hover:bg-accent text-foreground"
-            >
-              <FileDown className="h-3.5 w-3.5" /><span>CSV</span>
-            </button>
-            <button onClick={() => navigate('/quote-cart')} className="flex items-center space-x-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors text-sm">
-              <Plus className="h-3.5 w-3.5" /><span>Nouveau</span>
-            </button>
-          </div>
-        </div>
+  const handlePrintPreview = async (quote: Quote) => {
+    try {
+      const [freshQuote, freshSettings] = await Promise.all([
+        SupabaseQuotesService.getQuote(quote.id),
+        CompanySettingsService.getSettings(quoteCompanyId(quote)),
+      ]);
+      const { blob, filename } = await PdfExportService.generatePdfBlob(freshQuote || quote, freshSettings || companySettings);
+      setPreviewBlob(blob); setPreviewFilename(filename); setShowPrintPreview(true);
+    } catch { setMessage({ type: 'error', text: 'Erreur aperçu PDF' }); }
+  };
 
+  const handleDuplicate = async (quote: Quote) => {
+    if (!window.confirm('Dupliquer ce devis ?')) return;
+    try {
+      const dup = await SupabaseDocumentsService.duplicateDocument(quote.id);
+      navigate(`/quote-cart/${dup.id}`);
+    } catch (e: any) { setMessage({ type: 'error', text: e?.message || 'Erreur duplication' }); }
+  };
+
+  const menuItems = (quote: Quote) => [
+    { label: 'Modifier', icon: <Edit className="h-4 w-4 text-primary" />, to: `/quote-cart/${quote.id}` },
+    { label: 'Télécharger le PDF', icon: <FileDown className="h-4 w-4 text-muted-foreground" />, onSelect: () => handleExport(quote), disabled: isExporting === quote.id },
+    { label: 'Aperçu impression', icon: <Printer className="h-4 w-4 text-muted-foreground" />, onSelect: () => handlePrintPreview(quote) },
+    { label: 'WhatsApp', icon: <MessageCircle className="h-4 w-4 text-emerald-600" />, onSelect: () => handleWhatsAppShare(quote) },
+    { label: 'E-mail', icon: <Mail className="h-4 w-4 text-primary" />, onSelect: () => handleEmailShare(quote) },
+    ...((isCompta || isSuperAdmin) ? [{
+      label: 'Créer un BL', icon: isCreatingBL === quote.id ? <Loader className="h-4 w-4 animate-spin" /> : <Truck className="h-4 w-4 text-sky-600" />,
+      onSelect: () => handleCreateBL(quote),
+      disabled: isCreatingBL === quote.id || quote.status === 'final' || (!!quote.document_type && quote.document_type !== 'quote'),
+    }] : []),
+    { label: 'Dupliquer', icon: <Copy className="h-4 w-4 text-muted-foreground" />, onSelect: () => handleDuplicate(quote) },
+    { label: 'Supprimer', icon: <Trash2 className="h-4 w-4" />, onSelect: () => handleDelete(quote), danger: true, separated: true },
+  ];
+
+  const exportCsv = () => {
+    const rows = filteredQuotes.map(q => ({
+      'N° Devis': q.quoteNumber,
+      'Client': q.customer?.fullName || '',
+      'Téléphone': q.customer?.phoneNumber || '',
+      'Ville': q.customer?.city || '',
+      'Vendeur': q.customer?.salesPerson || '',
+      'Total TTC': q.totalAmount,
+      'Statut': q.status,
+      'Date': new Date(q.createdAt).toLocaleDateString('fr-FR'),
+    }));
+    exportToCSV(rows, `devis-${new Date().toISOString().slice(0, 10)}`);
+  };
+
+  const clientCodeOf = (quote: Quote) => (quote.customer as any)?.clientCode || (quote.customer as any)?.client_code || '';
+  const th = 'px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground';
+  const sortTh = (field: SortField, label: string, align = 'text-left') => (
+    <th key={field} className={`${th} ${align} cursor-pointer hover:text-foreground`} onClick={() => handleSort(field)}
+      aria-sort={sortField === field ? (sortOrder === 'asc' ? 'ascending' : 'descending') : undefined}>
+      <span className={`inline-flex items-center gap-1 ${align === 'text-right' ? 'justify-end' : ''}`}>{label}{getSortIcon(field)}</span>
+    </th>
+  );
+  const field = 'w-full rounded-lg border border-input bg-background px-2.5 py-2 text-sm text-foreground focus:ring-2 focus:ring-ring';
+
+  return (
+    <div className="mx-auto max-w-7xl space-y-4">
+      <PageHeader
+        title="Devis"
+        subtitle={isAdmin ? 'Tous les devis' : 'Vos devis'}
+        actions={<>
+          <button onClick={exportCsv} className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground hover:bg-secondary">
+            <FileDown className="h-4 w-4" />CSV
+          </button>
+          <button onClick={() => navigate('/quote-cart')} className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
+            <Plus className="h-4 w-4" />Nouveau devis
+          </button>
+        </>}
+      >
         {message && (
-          <div className={`mb-3 p-2 rounded-lg border flex items-center space-x-2 text-sm ${message.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-destructive/10 border-destructive/20 text-destructive'}`}>
-            {message.type === 'success' ? <Check className="h-3.5 w-3.5" /> : <AlertCircle className="h-3.5 w-3.5" />}
+          <div role="status" className={`mb-3 flex items-center gap-2 rounded-lg border p-2 text-sm ${message.type === 'success' ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'border-destructive/20 bg-destructive/10 text-destructive'}`}>
+            {message.type === 'success' ? <Check className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
             <span>{message.text}</span>
           </div>
         )}
-
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-2.5">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-background text-foreground" placeholder="Rechercher..." />
+        <div className="rounded-xl border border-border bg-card p-3 shadow-sm">
+          <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4">
+            <div className="col-span-2 flex gap-2 md:col-span-1">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} aria-label="Rechercher un devis"
+                  className={`${field} pl-9`} placeholder="N°, client, téléphone, ville…" />
+              </div>
+              {isMobile && (
+                <button onClick={() => setShowFilters(open => !open)} aria-expanded={showFilters}
+                  className={`relative flex items-center gap-1.5 rounded-lg border px-3 text-sm ${showFilters ? 'border-primary text-primary' : 'border-input text-foreground'}`}>
+                  <SlidersHorizontal className="h-4 w-4" />Filtres
+                  {[statusFilter !== 'all', dateRange.start, dateRange.end].filter(Boolean).length > 0 && (
+                    <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">{[statusFilter !== 'all', dateRange.start, dateRange.end].filter(Boolean).length}</span>
+                  )}
+                </button>
+              )}
+            </div>
+            {(!isMobile || showFilters) && <>
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as any)} className={`${field} col-span-2 md:col-span-1`} aria-label="Statut">
+              <option value="all">Tous les statuts</option><option value="draft">En attente</option><option value="pending">Envoyé</option><option value="final">Confirmé</option>
+            </select>
+            <input type="date" value={dateRange.start} onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))} className={field} aria-label="Du" title="Du" />
+            <input type="date" value={dateRange.end} onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))} className={field} aria-label="Au" title="Au" />
+            </>}
           </div>
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as any)}
-            className="px-2.5 py-1.5 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-background text-foreground">
-            <option value="all">Tous</option><option value="draft">En attente</option><option value="pending">Envoyé</option><option value="final">Confirmé</option>
-          </select>
-          <div className="relative">
-            <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-            <input type="date" value={dateRange.start} onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
-              className="w-full pl-8 pr-2.5 py-1.5 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-background text-foreground" />
-          </div>
-          <div className="relative">
-            <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-            <input type="date" value={dateRange.end} onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
-              className="w-full pl-8 pr-2.5 py-1.5 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-background text-foreground" />
-          </div>
-        </div>
-
-        {(searchQuery || statusFilter !== 'all' || dateRange.start || dateRange.end) && (
-          <div className="mt-2">
-            <button onClick={() => { setSearchQuery(''); setStatusFilter('all'); setDateRange({ start: '', end: '' }); }} className="flex items-center space-x-1 px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+          {(searchQuery || statusFilter !== 'all' || dateRange.start || dateRange.end) && (
+            <button onClick={() => { setSearchQuery(''); setStatusFilter('all'); setDateRange({ start: '', end: '' }); }} className="mt-2 flex items-center gap-1 px-1 text-xs text-muted-foreground hover:text-foreground">
               <X className="h-3 w-3" /><span>Effacer filtres</span>
             </button>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      </PageHeader>
 
-      {/* Table */}
-      <div className="glass rounded-xl shadow-lg overflow-hidden">
+      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
         {isLoading ? (
           <div className="p-8 text-center">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto"></div>
-            <p className="text-muted-foreground mt-3 text-sm">Chargement...</p>
+            <div className="mx-auto h-6 w-6 animate-spin rounded-full border-b-2 border-primary"></div>
+            <p className="mt-3 text-sm text-muted-foreground">Chargement…</p>
           </div>
         ) : filteredQuotes.length === 0 ? (
           <div className="p-8 text-center">
-            <FileText className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-            <h3 className="text-base font-medium text-foreground mb-1">{quotes.length === 0 ? 'Aucun Devis' : 'Aucun Résultat'}</h3>
-            <p className="text-muted-foreground mb-3 text-sm">{quotes.length === 0 ? 'Créez votre premier devis' : 'Aucun devis ne correspond'}</p>
-            <button onClick={() => navigate('/quote-cart')} className="px-3 py-1.5 text-sm bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors">Créer un Devis</button>
+            <FileText className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
+            <h3 className="mb-1 text-base font-medium text-foreground">{quotes.length === 0 ? 'Aucun devis' : 'Aucun résultat'}</h3>
+            <p className="mb-3 text-sm text-muted-foreground">{quotes.length === 0 ? 'Créez votre premier devis' : 'Aucun devis ne correspond'}</p>
+            <button onClick={() => navigate('/quote-cart')} className="rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90">Créer un devis</button>
           </div>
         ) : (
           <>
+            {isMobile ? (
+              <ul className="divide-y divide-border">
+                {currentQuotes.map(quote => (
+                  <DocumentCard key={quote.id} to={`/quote-cart/${quote.id}`}
+                    number={quote.quoteNumber}
+                    status={<QuoteStatus status={quote.status} />}
+                    title={quote.customer.fullName || '—'}
+                    subtitle={[quote.customer.phoneNumber, quote.customer.city, isAdmin && quote.customer.salesPerson].filter(Boolean).join(' · ')}
+                    date={formatDate(quote.createdAt)}
+                    amount={formatMoney(quote.totalAmount)}
+                    menu={<RowMenu label={`Actions pour ${quote.quoteNumber}`} items={menuItems(quote)} />}
+                  />
+                ))}
+              </ul>
+            ) : (
             <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-secondary">
+              <table className="w-full text-sm">
+                <thead className="border-b border-border bg-secondary/40">
                   <tr>
-                    {([['quoteNumber', Hash, 'N°'], ['customerName', User, 'Client'], ['createdAt', Calendar, 'Date'], ['totalAmount', DollarSign, 'Montant'], ['status', Filter, 'Statut']] as const).map(([field, Icon, label]) => (
-                      <th key={field} className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer hover:text-foreground" onClick={() => handleSort(field)}>
-                        <div className="flex items-center space-x-1"><Icon className="h-3 w-3" /><span>{label}</span>{getSortIcon(field)}</div>
-                      </th>
-                    ))}
-                    <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Code</th>
-                    {isAdmin && <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider"><div className="flex items-center space-x-1"><User className="h-3 w-3" /><span>Vendeur</span></div></th>}
-                    {isSuperAdmin && <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider"><div className="flex items-center space-x-1"><User className="h-3 w-3" /><span>Créé par</span></div></th>}
-                    <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Actions</th>
+                    {sortTh('quoteNumber', 'N°')}
+                    {sortTh('customerName', 'Client')}
+                    {sortTh('createdAt', 'Date')}
+                    {sortTh('totalAmount', 'Montant TTC', 'text-right')}
+                    {sortTh('status', 'Statut')}
+                    {isAdmin && <th className={`${th} text-left`}>Vendeur</th>}
+                    {isSuperAdmin && <th className={`${th} text-left`}>Créé par</th>}
+                    <th className={th}><span className="sr-only">Actions</span></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {currentQuotes.map((quote) => (
-                    <tr key={quote.id} className="hover:bg-accent/50">
-                      <td className="px-3 py-2.5 text-xs font-medium text-foreground">{quote.quoteNumber}</td>
-                      <td className="px-3 py-2.5"><div className="text-xs font-medium text-foreground">{quote.customer.fullName}</div><div className="text-[11px] text-muted-foreground">{quote.customer.phoneNumber} • {quote.customer.city}</div></td>
-                      <td className="px-3 py-2.5 text-xs text-foreground">{formatDate(quote.createdAt)}</td>
-                      <td className="px-3 py-2.5 text-xs font-medium text-foreground">{formatCurrency(quote.totalAmount)} Dh</td>
+                    <tr key={quote.id} className="cursor-pointer hover:bg-secondary/60"
+                      onClick={event => { if (!(event.target as HTMLElement).closest('a,button,[role="menu"]')) navigate(`/quote-cart/${quote.id}`); }}>
+                      <td className="whitespace-nowrap px-3 py-2.5 font-mono font-semibold text-primary">{quote.quoteNumber}</td>
                       <td className="px-3 py-2.5">
-                        <span className={`inline-flex px-1.5 py-0.5 text-[11px] font-semibold rounded-full ${quote.status === 'final' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : quote.status === 'pending' ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'}`}>
-                          {quote.status === 'final' ? 'Confirmé' : quote.status === 'pending' ? 'Envoyé' : 'En attente'}
-                        </span>
+                        <div className="font-medium text-foreground">{quote.customer.fullName}</div>
+                        <div className="text-xs text-muted-foreground">{[clientCodeOf(quote), quote.customer.phoneNumber, quote.customer.city].filter(Boolean).join(' · ')}</div>
                       </td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-muted-foreground">{formatDate(quote.createdAt)}</td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-right font-semibold tabular-nums text-foreground">{formatMoney(quote.totalAmount)}</td>
+                      <td className="px-3 py-2.5"><QuoteStatus status={quote.status} /></td>
+                      {isAdmin && <td className="px-3 py-2.5 text-foreground">{quote.customer.salesPerson}</td>}
+                      {isSuperAdmin && <td className="px-3 py-2.5 text-muted-foreground">{quote.createdBy || '—'}</td>}
                       <td className="px-3 py-2.5">
-                        {(() => { const c = (quote.customer as any)?.clientCode || (quote.customer as any)?.client_code || ''; return c ? <span className="text-[10px] font-mono bg-blue-500/10 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded">{c}</span> : <span className="text-[10px] text-muted-foreground">—</span>; })()}
-                      </td>
-                      {isAdmin && <td className="px-3 py-2.5 text-xs text-foreground">{quote.customer.salesPerson}</td>}
-                      {isSuperAdmin && <td className="px-3 py-2.5"><span className="inline-flex px-1.5 py-0.5 text-[11px] font-medium rounded-full bg-primary/10 text-primary">{quote.createdBy || '—'}</span></td>}
-                      <td className="px-3 py-2.5">
-                        <div className="flex items-center gap-0.5">
-                          <button onClick={() => navigate(`/quote-cart/${quote.id}`)} className="p-1.5 text-primary hover:bg-primary/10 rounded transition-colors" title="Modifier"><Edit className="h-3.5 w-3.5" /></button>
-                          <button onClick={() => handleExport(quote)} disabled={isExporting === quote.id} className="p-1.5 text-emerald-500 hover:bg-emerald-500/10 rounded transition-colors disabled:opacity-50" title="Télécharger PDF">
-                            {isExporting === quote.id ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <FileDown className="h-3.5 w-3.5" />}
+                        <div className="flex items-center justify-end gap-1">
+                          <button onClick={() => handleExport(quote)} disabled={isExporting === quote.id} title="Télécharger le PDF" aria-label={`PDF de ${quote.quoteNumber}`}
+                            className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground disabled:opacity-50">
+                            {isExporting === quote.id ? <Loader className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
                           </button>
-                          <button
-                            onClick={e => {
-                              e.stopPropagation();
-                              const btn = e.currentTarget.getBoundingClientRect();
-                              const body = document.body.getBoundingClientRect();
-                              const menuW = 188;
-                              const menuH = 230;
-                              const top = window.innerHeight - btn.bottom < menuH + 8
-                                ? btn.top - body.top - menuH - 4
-                                : btn.bottom - body.top + 4;
-                              setMenuStyle({ position: 'absolute', left: Math.max(-body.left + 4, btn.right - menuW - body.left), top, zIndex: 9999, minWidth: menuW });
-                              setOpenMenuId(openMenuId === quote.id ? null : quote.id);
-                            }}
-                            className="p-1.5 text-muted-foreground hover:bg-accent rounded transition-colors"
-                            title="Plus d'actions"
-                          >
-                            <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 16 16"><circle cx="4" cy="8" r="1.2"/><circle cx="8" cy="8" r="1.2"/><circle cx="12" cy="8" r="1.2"/></svg>
-                          </button>
-                          {openMenuId === quote.id && createPortal(
-                            <div onClick={e => e.stopPropagation()} style={menuStyle} className="flex flex-col bg-card border border-border rounded-lg shadow-xl py-1">
-                              <button
-                                onClick={async () => {
-                                  setOpenMenuId(null);
-                                  try {
-                                    const [freshQuote, freshSettings] = await Promise.all([
-                                      SupabaseQuotesService.getQuote(quote.id),
-                                      CompanySettingsService.getSettings(quoteCompanyId(quote)),
-                                    ]);
-                                    const { blob, filename } = await PdfExportService.generatePdfBlob(freshQuote || quote, freshSettings || companySettings);
-                                    setPreviewBlob(blob); setPreviewFilename(filename); setShowPrintPreview(true);
-                                  } catch { setMessage({ type: 'error', text: 'Erreur aperçu PDF' }); }
-                                }}
-                                className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent text-foreground"
-                              ><Printer className="h-3.5 w-3.5 text-muted-foreground" />Aperçu impression</button>
-                              <button onClick={() => { setOpenMenuId(null); handleWhatsAppShare(quote); }} className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent text-foreground">
-                                <MessageCircle className="h-3.5 w-3.5 text-emerald-500" />WhatsApp
-                              </button>
-                              <button onClick={() => { setOpenMenuId(null); handleEmailShare(quote); }} className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent text-foreground">
-                                <Mail className="h-3.5 w-3.5 text-primary" />Email
-                              </button>
-                              {(isCompta || isSuperAdmin) && (
-                                <button
-                                  onClick={() => { setOpenMenuId(null); handleCreateBL(quote); }}
-                                  disabled={isCreatingBL === quote.id || quote.status === 'final' || (quote.document_type && quote.document_type !== 'quote')}
-                                  className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent text-foreground disabled:opacity-40"
-                                >
-                                  {isCreatingBL === quote.id ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Truck className="h-3.5 w-3.5 text-sky-600" />}Créer un BL
-                                </button>
-                              )}
-                              <button
-                                onClick={async () => {
-                                  setOpenMenuId(null);
-                                  if (!window.confirm('Dupliquer ce devis ?')) return;
-                                  try {
-                                    const dup = await SupabaseDocumentsService.duplicateDocument(quote.id);
-                                    navigate(`/quote-cart/${dup.id}`);
-                                  } catch (e: any) { setMessage({ type: 'error', text: e?.message || 'Erreur duplication' }); }
-                                }}
-                                className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent text-foreground"
-                              ><Copy className="h-3.5 w-3.5 text-muted-foreground" />Dupliquer</button>
-                              <div className="border-t border-border my-0.5" />
-                              <button onClick={() => { setOpenMenuId(null); handleDelete(quote); }} className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-destructive/10 text-destructive">
-                                <Trash2 className="h-3.5 w-3.5" />Supprimer
-                              </button>
-                            </div>,
-                            document.body
-                          )}
+                          <RowMenu label={`Actions pour ${quote.quoteNumber}`} items={menuItems(quote).filter(item => item.label !== 'Télécharger le PDF')} />
                         </div>
                       </td>
                     </tr>
@@ -428,19 +414,20 @@ export function QuotesHistoryPage() {
                 </tbody>
               </table>
             </div>
-            <div className="px-4 py-2.5 border-t border-border flex items-center justify-between gap-4 flex-wrap">
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">Afficher</span>
-                <select value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setCurrentPage(1); }} className="px-2 py-1 text-xs border border-input rounded bg-background text-foreground">
+            )}
+            <div className="flex flex-wrap items-center justify-between gap-4 border-t border-border px-4 py-2.5">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span>Afficher</span>
+                <select value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setCurrentPage(1); }} aria-label="Devis par page" className="rounded border border-input bg-background px-2 py-1 text-xs text-foreground">
                   {PAGE_SIZES.map(n => <option key={n} value={n}>{n}</option>)}
                 </select>
-                <span className="text-xs text-muted-foreground">/ {filteredQuotes.length}</span>
+                <span>/ {filteredQuotes.length}</span>
               </div>
               {totalPages > 1 && (
                 <div className="flex items-center gap-1.5">
-                  <button onClick={() => setCurrentPage(p => Math.max(1, p-1))} disabled={currentPage === 1} className="px-2 py-1 text-xs border border-border rounded hover:bg-accent disabled:opacity-50">Préc.</button>
+                  <button onClick={() => setCurrentPage(p => Math.max(1, p-1))} disabled={currentPage === 1} className="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-secondary disabled:opacity-50">Préc.</button>
                   <span className="px-2 text-xs text-muted-foreground">{currentPage}/{totalPages}</span>
-                  <button onClick={() => setCurrentPage(p => Math.min(totalPages, p+1))} disabled={currentPage === totalPages} className="px-2 py-1 text-xs border border-border rounded hover:bg-accent disabled:opacity-50">Suiv.</button>
+                  <button onClick={() => setCurrentPage(p => Math.min(totalPages, p+1))} disabled={currentPage === totalPages} className="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-secondary disabled:opacity-50">Suiv.</button>
                 </div>
               )}
             </div>
@@ -448,20 +435,17 @@ export function QuotesHistoryPage() {
         )}
       </div>
 
-      {/* Summary Stats */}
       {filteredQuotes.length > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           {[
-            { icon: FileText, label: 'Total Devis', value: filteredQuotes.length, color: 'text-primary bg-primary/10' },
-            { icon: DollarSign, label: 'Valeur Totale', value: `${formatCurrency(filteredQuotes.reduce((s,q) => s + q.totalAmount, 0))} Dh`, color: 'text-emerald-400 bg-emerald-500/10' },
-            { icon: Edit, label: 'En attente', value: filteredQuotes.filter(q => q.status === 'draft').length, color: 'text-amber-400 bg-amber-500/10' },
-            { icon: Check, label: 'Confirmés', value: filteredQuotes.filter(q => q.status === 'final').length, color: 'text-primary bg-primary/10' },
-          ].map(({ icon: Icon, label, value, color }) => (
-            <div key={label} className="glass rounded-lg p-3">
-              <div className="flex items-center space-x-2">
-                <div className={`p-1.5 rounded-lg ${color.split(' ')[1]}`}><Icon className={`h-4 w-4 ${color.split(' ')[0]}`} /></div>
-                <div><p className="text-[11px] text-muted-foreground">{label}</p><p className="text-base font-bold text-foreground">{value}</p></div>
-              </div>
+            { label: 'Devis affichés', value: filteredQuotes.length },
+            { label: 'Valeur totale', value: formatMoney(filteredQuotes.reduce((s, q) => s + q.totalAmount, 0)) },
+            { label: 'En attente', value: filteredQuotes.filter(q => q.status === 'draft').length },
+            { label: 'Confirmés', value: filteredQuotes.filter(q => q.status === 'final').length },
+          ].map(({ label, value }) => (
+            <div key={label} className="rounded-xl border border-border bg-card p-3 shadow-sm">
+              <p className="text-xs text-muted-foreground">{label}</p>
+              <p className="mt-0.5 text-base font-bold tabular-nums text-foreground">{value}</p>
             </div>
           ))}
         </div>

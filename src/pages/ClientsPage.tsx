@@ -5,6 +5,9 @@ import { SupabaseClientsService, Client, CreateClientRequest } from '../utils/su
 import { SupabaseDocumentsService } from '../utils/supabaseDocuments';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../hooks/useAuth';
+import { useIsMobile } from '../hooks/use-mobile';
+import { PageHeader } from '../components/PageHeader';
+import { RowMenu } from '../components/lists/RowMenu';
 
 const CLIENTS_PER_PAGE = 15;
 type SortField = 'full_name' | 'phone_number' | 'city' | 'created_at';
@@ -41,6 +44,8 @@ export default function ClientsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [sortField, setSortField] = useState<SortField>('created_at');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+  // Phones get cards instead of the wide table.
+  const isMobile = useIsMobile();
 
   // Modal state
   const [showModal, setShowModal] = useState(false);
@@ -184,106 +189,126 @@ export default function ClientsPage() {
     return sortOrder === 'asc' ? <SortAsc className="h-3.5 w-3.5" /> : <SortDesc className="h-3.5 w-3.5" />;
   };
 
-  return (
-    <div className="max-w-7xl mx-auto space-y-4">
-      {/* Header */}
-      <div className="glass rounded-xl shadow-lg p-4">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center space-x-2.5">
-            <div className="p-2 bg-primary rounded-lg" style={{ boxShadow: 'var(--shadow-glow)' }}>
-              <Users className="h-4 w-4 text-primary-foreground" />
-            </div>
-            <div>
-              <h1 className="text-lg font-bold text-foreground">Gestion des Clients</h1>
-              <p className="text-xs text-muted-foreground">{clients.length} client{clients.length !== 1 ? 's' : ''}</p>
-            </div>
-          </div>
-          <div className="flex items-center space-x-2">
-            {isAdmin && (
-              <button onClick={() => exportClientsCSV(filtered)} className="flex items-center space-x-1.5 px-3 py-1.5 bg-secondary hover:bg-accent text-foreground rounded-lg transition-colors text-sm border border-border">
-                <Download className="h-3.5 w-3.5" /><span>CSV</span>
-              </button>
-            )}
-            <button onClick={openCreateModal} className="flex items-center space-x-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors text-sm">
-              <Plus className="h-3.5 w-3.5" /><span>Nouveau</span>
-            </button>
-          </div>
-        </div>
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <input type="text" value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-            className="w-full pl-8 pr-3 py-1.5 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-background text-foreground"
-            placeholder="Rechercher par nom, téléphone, ville..." />
-        </div>
-      </div>
+  const menuItems = (client: Client) => [
+    { label: 'Modifier', icon: <Edit className="h-4 w-4 text-primary" />, onSelect: () => openEditModal(client) },
+    { label: 'Supprimer', icon: <Trash2 className="h-4 w-4" />, onSelect: () => handleDelete(client), danger: true, separated: true },
+  ];
+  const th = 'px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground';
 
-      {/* Table */}
-      <div className="glass rounded-xl shadow-lg overflow-hidden">
+  return (
+    <div className="mx-auto max-w-7xl space-y-4">
+      <PageHeader
+        title="Clients"
+        subtitle={`${clients.length} client${clients.length !== 1 ? 's' : ''}`}
+        actions={<>
+          {isAdmin && (
+            <button onClick={() => exportClientsCSV(filtered)} className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground hover:bg-secondary">
+              <Download className="h-4 w-4" />CSV
+            </button>
+          )}
+          <button onClick={openCreateModal} className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
+            <Plus className="h-4 w-4" />Nouveau client
+          </button>
+        </>}
+      >
+        <div className="rounded-xl border border-border bg-card p-3 shadow-sm">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input type="text" value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setCurrentPage(1); }} aria-label="Rechercher un client"
+              className="w-full rounded-lg border border-input bg-background py-2 pl-9 pr-3 text-sm text-foreground focus:ring-2 focus:ring-ring"
+              placeholder="Nom, téléphone, ville, code…" />
+          </div>
+        </div>
+      </PageHeader>
+
+      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
         {isLoading ? (
           <div className="p-8 text-center">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto" />
-            <p className="text-muted-foreground mt-3 text-sm">Chargement...</p>
+            <div className="mx-auto h-6 w-6 animate-spin rounded-full border-b-2 border-primary" />
+            <p className="mt-3 text-sm text-muted-foreground">Chargement…</p>
           </div>
         ) : filtered.length === 0 ? (
           <div className="p-8 text-center">
-            <Users className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-            <h3 className="text-base font-medium text-foreground mb-1">Aucun client</h3>
-            <p className="text-muted-foreground text-sm mb-3">
+            <Users className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
+            <h3 className="mb-1 text-base font-medium text-foreground">Aucun client</h3>
+            <p className="mb-3 text-sm text-muted-foreground">
               {searchQuery ? 'Aucun résultat' : 'Ajoutez votre premier client'}
             </p>
             {!searchQuery && (
-              <button onClick={openCreateModal} className="px-3 py-1.5 text-sm bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg">
+              <button onClick={openCreateModal} className="rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
                 Ajouter un client
               </button>
             )}
           </div>
         ) : (
           <>
+            {isMobile ? (
+              <ul className="divide-y divide-border">
+                {currentClients.map(client => (
+                  <li key={client.id} className="flex items-start gap-1">
+                    <button type="button" onClick={() => openEditModal(client)} className="min-w-0 flex-1 px-4 py-3 text-left active:bg-secondary">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate font-medium text-foreground">{client.full_name}</span>
+                        {client.client_code && <span className="shrink-0 font-mono text-xs text-muted-foreground">{client.client_code}</span>}
+                      </div>
+                      <p className="mt-0.5 truncate text-sm text-muted-foreground">{[client.phone_number, client.city].filter(Boolean).join(' · ')}</p>
+                      {(client.email || client.ice) && <p className="truncate text-xs text-muted-foreground">{[client.email, client.ice && `ICE ${client.ice}`].filter(Boolean).join(' · ')}</p>}
+                    </button>
+                    <div className="flex items-center gap-0.5 pr-2 pt-2">
+                      {client.phone_number && (
+                        <a href={`tel:${client.phone_number}`} aria-label={`Appeler ${client.full_name}`} className="flex h-9 w-9 items-center justify-center rounded-lg text-primary hover:bg-primary/10">
+                          <Phone className="h-4 w-4" />
+                        </a>
+                      )}
+                      <RowMenu label={`Actions pour ${client.full_name}`} items={menuItems(client)} />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
             <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-secondary">
+              <table className="w-full text-sm">
+                <thead className="border-b border-border bg-secondary/40">
                   <tr>
-                    <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Code</th>
                     {([
-                      ['full_name', 'Nom'],
+                      ['full_name', 'Client'],
                       ['phone_number', 'Téléphone'],
                       ['city', 'Ville'],
-                      ['created_at', 'Date'],
                     ] as [SortField, string][]).map(([field, label]) => (
-                      <th key={field} onClick={() => handleSort(field)}
-                        className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider cursor-pointer hover:bg-accent">
-                        <div className="flex items-center space-x-1"><span>{label}</span>{getSortIcon(field)}</div>
+                      <th key={field} onClick={() => handleSort(field)} aria-sort={sortField === field ? (sortOrder === 'asc' ? 'ascending' : 'descending') : undefined}
+                        className={`${th} cursor-pointer hover:text-foreground`}>
+                        <span className="inline-flex items-center gap-1">{label}{getSortIcon(field)}</span>
                       </th>
                     ))}
-                    <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Email</th>
-                    <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider">ICE</th>
-                    <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Actions</th>
+                    <th className={th}>E-mail</th>
+                    <th className={th}>ICE</th>
+                    <th onClick={() => handleSort('created_at')} aria-sort={sortField === 'created_at' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : undefined}
+                      className={`${th} cursor-pointer hover:text-foreground`}>
+                      <span className="inline-flex items-center gap-1">Ajouté le{getSortIcon('created_at')}</span>
+                    </th>
+                    <th className={th}><span className="sr-only">Actions</span></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {currentClients.map(client => (
-                    <tr key={client.id} className="hover:bg-accent/50">
-                      <td className="px-3 py-2.5 text-xs">
-                        {client.client_code ? (
-                          <span className="px-1.5 py-0.5 bg-primary/10 text-primary rounded text-[10px] font-mono">{client.client_code}</span>
-                        ) : <span className="text-muted-foreground">—</span>}
-                      </td>
-                      <td className="px-3 py-2.5 text-xs font-medium text-foreground">{client.full_name}</td>
-                      <td className="px-3 py-2.5 text-xs text-foreground">{client.phone_number}</td>
-                      <td className="px-3 py-2.5 text-xs text-foreground">{client.city || '-'}</td>
-                      <td className="px-3 py-2.5 text-xs text-muted-foreground">
-                        {new Date(client.created_at).toLocaleDateString('fr-FR')}
-                      </td>
-                      <td className="px-3 py-2.5 text-xs text-foreground">{client.email || '-'}</td>
-                      <td className="px-3 py-2.5 text-xs text-foreground">{client.ice || '-'}</td>
+                    <tr key={client.id} className="cursor-pointer hover:bg-secondary/60"
+                      onClick={event => { if (!(event.target as HTMLElement).closest('a,button,[role="menu"]')) openEditModal(client); }}>
                       <td className="px-3 py-2.5">
-                        <div className="flex items-center space-x-1">
-                          <button onClick={() => openEditModal(client)} className="p-1 text-primary hover:bg-primary/10 rounded transition-colors" title="Modifier">
-                            <Edit className="h-3.5 w-3.5" />
+                        <div className="font-medium text-foreground">{client.full_name}</div>
+                        {client.client_code && <div className="font-mono text-xs text-muted-foreground">{client.client_code}</div>}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2.5 tabular-nums text-foreground">{client.phone_number}</td>
+                      <td className="px-3 py-2.5 text-foreground">{client.city || '—'}</td>
+                      <td className="max-w-[14rem] truncate px-3 py-2.5 text-muted-foreground">{client.email || '—'}</td>
+                      <td className="whitespace-nowrap px-3 py-2.5 font-mono text-xs text-muted-foreground">{client.ice || '—'}</td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-muted-foreground">{new Date(client.created_at).toLocaleDateString('fr-FR')}</td>
+                      <td className="px-3 py-2.5">
+                        <div className="flex items-center justify-end gap-1">
+                          <button onClick={() => openEditModal(client)} title="Modifier" aria-label={`Modifier ${client.full_name}`}
+                            className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground">
+                            <Edit className="h-4 w-4" />
                           </button>
-                          <button onClick={() => handleDelete(client)} className="p-1 text-destructive hover:bg-destructive/10 rounded transition-colors" title="Supprimer">
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
+                          <RowMenu label={`Actions pour ${client.full_name}`} items={menuItems(client).slice(1)} />
                         </div>
                       </td>
                     </tr>
@@ -291,17 +316,18 @@ export default function ClientsPage() {
                 </tbody>
               </table>
             </div>
+            )}
             {totalPages > 1 && (
-              <div className="px-4 py-2.5 border-t border-border flex items-center justify-between">
+              <div className="flex items-center justify-between border-t border-border px-4 py-2.5">
                 <div className="text-xs text-muted-foreground">
                   {startIdx + 1}-{Math.min(startIdx + CLIENTS_PER_PAGE, filtered.length)} sur {filtered.length}
                 </div>
-                <div className="flex items-center space-x-1.5">
-                  <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}
-                    className="p-1 border border-border rounded hover:bg-accent disabled:opacity-50"><ChevronLeft className="h-3.5 w-3.5" /></button>
+                <div className="flex items-center gap-1.5">
+                  <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} aria-label="Page précédente"
+                    className="rounded-lg border border-border p-1.5 hover:bg-secondary disabled:opacity-50"><ChevronLeft className="h-4 w-4" /></button>
                   <span className="px-2 text-xs text-muted-foreground">{currentPage}/{totalPages}</span>
-                  <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}
-                    className="p-1 border border-border rounded hover:bg-accent disabled:opacity-50"><ChevronRight className="h-3.5 w-3.5" /></button>
+                  <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} aria-label="Page suivante"
+                    className="rounded-lg border border-border p-1.5 hover:bg-secondary disabled:opacity-50"><ChevronRight className="h-4 w-4" /></button>
                 </div>
               </div>
             )}
@@ -317,7 +343,7 @@ export default function ClientsPage() {
               <h2 className="text-base font-bold text-foreground">
                 {editingClient ? 'Modifier le Client' : 'Nouveau Client'}
               </h2>
-              <button onClick={() => setShowModal(false)} className="p-1 hover:bg-accent rounded-lg"><X className="h-4 w-4" /></button>
+              <button onClick={() => setShowModal(false)} className="p-1 hover:bg-secondary rounded-lg"><X className="h-4 w-4" /></button>
             </div>
             <div className="space-y-3">
               {([
@@ -341,7 +367,7 @@ export default function ClientsPage() {
               ))}
             </div>
             <div className="flex space-x-2">
-              <button onClick={() => setShowModal(false)} className="flex-1 px-3 py-1.5 text-sm border border-input rounded-lg hover:bg-accent text-foreground">
+              <button onClick={() => setShowModal(false)} className="flex-1 px-3 py-1.5 text-sm border border-input rounded-lg hover:bg-secondary text-foreground">
                 Annuler
               </button>
               <button onClick={handleSave} disabled={isSaving}

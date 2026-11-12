@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
-import { Receipt, Search, Download, Trash2, ChevronUp, ChevronDown, X, Eye, Printer, MessageCircle, Mail, Copy, Lock, CheckCircle, Clock, AlertCircle, Plus } from 'lucide-react';
+import { Search, Download, Trash2, ChevronUp, ChevronDown, X, Printer, MessageCircle, Mail, Copy, Lock, CheckCircle, Clock, AlertCircle, Plus, FileText, SlidersHorizontal } from 'lucide-react';
 import { Quote, PaymentEntry } from '../../types';
 import { SupabaseDocumentsService } from '../../utils/supabaseDocuments';
 import { SupabaseCompaniesService } from '../../utils/supabaseCompanies';
@@ -16,12 +15,27 @@ import { useAuth } from '../../hooks/useAuth';
 import { getCompanyContext } from '../../utils/supabaseCompanyFilter';
 import { exportToCSV } from '../../utils/csvExport';
 import { documentDay, formatDay, invoicePayment, matchesPaymentFilter } from '../../utils/documentLines';
+import { formatMoney } from '../../utils/format';
+import { useIsMobile } from '../../hooks/use-mobile';
+import { PageHeader } from '../../components/PageHeader';
+import { RowMenu } from '../../components/lists/RowMenu';
+import { StatusPill } from '../../components/lists/StatusPill';
+import { DocumentCard } from '../../components/lists/DocumentCard';
 
 function fmt(n: number) {
   return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(n);
 }
 
 const computePayment = (inv: Quote) => invoicePayment(inv);
+
+/** Payment status of an invoice, as shown in the list. */
+function InvoiceStatus({ inv }: { inv: Quote }) {
+  if (!inv.customer?.fullName?.trim()) return <StatusPill tone="neutral">Brouillon vide</StatusPill>;
+  const { status } = computePayment(inv);
+  if (status === 'paid') return <StatusPill tone="success" icon={<CheckCircle className="h-3 w-3" />}>Payé</StatusPill>;
+  if (status === 'partial') return <StatusPill tone="warning" icon={<Clock className="h-3 w-3" />}>Partiel</StatusPill>;
+  return <StatusPill tone="danger" icon={<AlertCircle className="h-3 w-3" />}>Non payé</StatusPill>;
+}
 
 type SortField = 'quoteNumber' | 'customer' | 'date' | 'total' | 'reste';
 type SortDir = 'asc' | 'desc';
@@ -52,9 +66,9 @@ export default function InvoiceDirectoryPage() {
   const [sortField, setSortField] = useState<SortField>('date');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
 
-  // Actions menu
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-  const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
+  // Phones get cards instead of the wide table.
+  const isMobile = useIsMobile();
+  const [showFilters, setShowFilters] = useState(false);
 
 
   // Pagination
@@ -102,13 +116,6 @@ export default function InvoiceDirectoryPage() {
   }, [showToast]);
 
   useEffect(() => { load(); }, [load]);
-
-  useEffect(() => {
-    if (!openMenuId) return;
-    const close = () => setOpenMenuId(null);
-    document.addEventListener('click', close);
-    return () => document.removeEventListener('click', close);
-  }, [openMenuId]);
 
   const handleNewInvoice = async () => {
     const { companyId: ctxId } = getCompanyContext();
@@ -323,6 +330,7 @@ export default function InvoiceDirectoryPage() {
     exportToCSV(rows, `factures-${new Date().toISOString().slice(0, 10)}`);
   };
 
+  const activeFilterCount = [dateFrom, dateTo, filterPayment !== 'Tous', filterCompany, filterPayStatus !== 'all'].filter(Boolean).length;
   const hasFilters = search || dateFrom || dateTo || filterPayment !== 'Tous' || filterCompany || filterPayStatus !== 'all';
   const clearFilters = () => { setSearch(''); setDateFrom(''); setDateTo(''); setFilterPayment('Tous'); setFilterCompany(''); setFilterPayStatus('all'); };
 
@@ -330,224 +338,169 @@ export default function InvoiceDirectoryPage() {
     return <div className="text-center py-12 text-muted-foreground">Accès réservé au rôle Comptabilité.</div>;
   }
 
-  return (
-    <div className="space-y-4">
-      <div className="glass rounded-xl shadow-lg p-4">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center space-x-2.5">
-            <div className="p-2 bg-blue-600 rounded-lg">
-              <Receipt className="h-4 w-4 text-white" />
-            </div>
-            <div>
-              <h1 className="text-lg font-bold text-foreground">Factures</h1>
-              <p className="text-xs text-muted-foreground">{filtered.length} / {invoices.length} facture{invoices.length !== 1 ? 's' : ''}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleNewInvoice}
-              disabled={isCreating}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg font-medium"
-            >
-              {isCreating ? <div className="h-3.5 w-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-              <span>Nouvelle facture</span>
-            </button>
-          <button onClick={handleExportCSV} className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-border rounded-lg hover:bg-accent text-foreground">
-            <Download className="h-3.5 w-3.5" /><span>CSV</span>
-          </button>
-          </div>
-        </div>
+  const menuItems = (inv: Quote) => [
+    { label: 'Télécharger le PDF', icon: <Download className="h-4 w-4 text-muted-foreground" />, onSelect: () => handleExportPdf(inv) },
+    { label: 'Aperçu impression', icon: <Printer className="h-4 w-4 text-muted-foreground" />, onSelect: () => handlePreview(inv) },
+    { label: 'WhatsApp', icon: <MessageCircle className="h-4 w-4 text-emerald-600" />, onSelect: () => openWaModal(inv) },
+    { label: 'E-mail', icon: <Mail className="h-4 w-4 text-primary" />, onSelect: () => handleEmailShare(inv) },
+    { label: 'Dupliquer', icon: <Copy className="h-4 w-4 text-muted-foreground" />, onSelect: () => handleDuplicate(inv) },
+    { label: 'Supprimer', icon: <Trash2 className="h-4 w-4" />, onSelect: () => initiateDelete(inv), danger: true, separated: true },
+  ];
 
-        {/* Filters */}
-        <div className="space-y-2">
+  const th = 'px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground';
+  const sortTh = (field: SortField, label: string, align = 'text-left') => (
+    <th className={`${th} ${align} cursor-pointer hover:text-foreground`} onClick={() => toggleSort(field)}
+      aria-sort={sortField === field ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
+      {label} <SortIcon field={field} />
+    </th>
+  );
+  const field = 'rounded-lg border border-input bg-background px-2.5 py-2 text-sm text-foreground';
+
+  return (
+    <div className="mx-auto max-w-7xl space-y-4">
+      <PageHeader
+        title="Factures"
+        subtitle={`${filtered.length} / ${invoices.length} facture${invoices.length !== 1 ? 's' : ''}`}
+        actions={<>
+          <button onClick={handleExportCSV} className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground hover:bg-secondary">
+            <Download className="h-4 w-4" />CSV
+          </button>
+          <button onClick={handleNewInvoice} disabled={isCreating}
+            className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+            {isCreating ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" /> : <Plus className="h-4 w-4" />}
+            Nouvelle facture
+          </button>
+        </>}
+      >
+        <div className="space-y-2 rounded-xl border border-border bg-card p-3 shadow-sm">
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-              <input
-                type="text" value={search} onChange={e => setSearch(e.target.value)}
-                placeholder="N° facture, client, téléphone..."
-                className="w-full pl-8 pr-3 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground"
-              />
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input type="text" value={search} onChange={e => setSearch(e.target.value)} aria-label="Rechercher une facture"
+                placeholder="N° facture, client, téléphone…"
+                className="w-full rounded-lg border border-input bg-background py-2 pl-9 pr-3 text-sm text-foreground focus:ring-2 focus:ring-ring" />
             </div>
+            {isMobile && (
+              <button onClick={() => setShowFilters(open => !open)} aria-expanded={showFilters}
+                className={`relative flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm ${showFilters ? 'border-primary text-primary' : 'border-input text-foreground'}`}>
+                <SlidersHorizontal className="h-4 w-4" />Filtres
+                {activeFilterCount > 0 && <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">{activeFilterCount}</span>}
+              </button>
+            )}
             {hasFilters && (
-              <button onClick={clearFilters} className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg" title="Effacer les filtres">
+              <button onClick={clearFilters} className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground" title="Effacer les filtres" aria-label="Effacer les filtres">
                 <X className="h-4 w-4" />
               </button>
             )}
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-              className="px-2 py-1.5 text-xs border border-input rounded-lg bg-secondary text-foreground" title="Date de début" />
-            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-              className="px-2 py-1.5 text-xs border border-input rounded-lg bg-secondary text-foreground" title="Date de fin" />
-            <select value={filterPayment} onChange={e => setFilterPayment(e.target.value)}
-              className="px-2 py-1.5 text-xs border border-input rounded-lg bg-secondary text-foreground">
-              {PAYMENT_METHODS.map(m => <option key={m}>{m}</option>)}
+          {(!isMobile || showFilters) && <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className={field} title="Date de début" aria-label="Date de début" />
+            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className={field} title="Date de fin" aria-label="Date de fin" />
+            <select value={filterPayment} onChange={e => setFilterPayment(e.target.value)} className={field} aria-label="Mode de paiement">
+              {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m === 'Tous' ? 'Tous les modes de paiement' : m}</option>)}
             </select>
-            <select value={filterPayStatus} onChange={e => setFilterPayStatus(e.target.value as any)}
-              className="px-2 py-1.5 text-xs border border-input rounded-lg bg-secondary text-foreground">
+            <select value={filterPayStatus} onChange={e => setFilterPayStatus(e.target.value as any)} className={field} aria-label="Statut de paiement">
               <option value="all">Tous les statuts</option>
               <option value="paid">Payé</option>
               <option value="partial">Partiel</option>
               <option value="unpaid">Non payé</option>
             </select>
-            <select value={filterCompany} onChange={e => setFilterCompany(e.target.value)}
-              className="px-2 py-1.5 text-xs border border-input rounded-lg bg-secondary text-foreground">
+            <select value={filterCompany} onChange={e => setFilterCompany(e.target.value)} className={`${field} col-span-2 md:col-span-1`} aria-label="Société">
               <option value="">Toutes les sociétés</option>
               {companyList.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
-          </div>
+          </div>}
         </div>
-      </div>
+      </PageHeader>
 
-      <div className="glass rounded-xl shadow-lg overflow-hidden">
+      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
         {isLoading ? (
           <div className="p-8 text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto" />
+            <div className="mx-auto h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
           </div>
         ) : filtered.length === 0 ? (
           <div className="p-8 text-center text-sm text-muted-foreground">Aucune facture trouvée</div>
         ) : (
           <>
+          {isMobile ? (
+            <ul className="divide-y divide-border">
+              {paginated.map(inv => {
+                const { reste } = computePayment(inv);
+                return (
+                  <DocumentCard key={inv.id} to={`/compta/invoices/${inv.id}`}
+                    number={<>{inv.quoteNumber}{inv.is_locked && <Lock className="ml-1 inline h-3 w-3 text-amber-600" aria-label="Verrouillée" />}</>}
+                    status={<InvoiceStatus inv={inv} />}
+                    title={inv.customer?.fullName || '—'}
+                    subtitle={[inv.customer?.phoneNumber, inv.issuing_company_id && companies[inv.issuing_company_id]].filter(Boolean).join(' · ')}
+                    date={formatDay(documentDay(inv))}
+                    amount={formatMoney(inv.totalAmount)}
+                    note={reste > 0 ? <span className="font-medium text-amber-700 dark:text-amber-300">reste {formatMoney(reste)}</span> : undefined}
+                    menu={<RowMenu label={`Actions pour ${inv.quoteNumber}`} items={menuItems(inv)} />}
+                  />
+                );
+              })}
+            </ul>
+          ) : (
           <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-secondary">
+            <table className="w-full text-sm">
+              <thead className="border-b border-border bg-secondary/40">
                 <tr>
-                  <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase cursor-pointer hover:text-foreground" onClick={() => toggleSort('quoteNumber')}>
-                    N° Facture <SortIcon field="quoteNumber" />
-                  </th>
-                  <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase cursor-pointer hover:text-foreground" onClick={() => toggleSort('customer')}>
-                    Client <SortIcon field="customer" />
-                  </th>
-                  <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Code</th>
-                  <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Proforma</th>
-                  <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Société</th>
-                  <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase cursor-pointer hover:text-foreground" onClick={() => toggleSort('total')}>
-                    Total TTC <SortIcon field="total" />
-                  </th>
-                  <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Avance</th>
-                  <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Payé</th>
-                  <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase cursor-pointer hover:text-foreground" onClick={() => toggleSort('reste')}>
-                    Reste <SortIcon field="reste" />
-                  </th>
-                  <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Statut</th>
-                  <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase cursor-pointer hover:text-foreground" onClick={() => toggleSort('date')}>
-                    Date <SortIcon field="date" />
-                  </th>
-                  <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Actions</th>
+                  {sortTh('quoteNumber', 'N° facture')}
+                  {sortTh('customer', 'Client')}
+                  <th className={`${th} text-left`}>Proforma</th>
+                  <th className={`${th} text-left`}>Société</th>
+                  {sortTh('total', 'Total TTC', 'text-right')}
+                  <th className={`${th} text-right`}>Payé</th>
+                  {sortTh('reste', 'Reste', 'text-right')}
+                  <th className={`${th} text-left`}>Statut</th>
+                  {sortTh('date', 'Date')}
+                  <th className={th}><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {paginated.map(inv => {
-                  const { avance, paid, reste, status } = computePayment(inv);
+                  const { avance, paid, reste } = computePayment(inv);
                   const clientCode = (inv.customer as any)?.clientCode || (inv.customer as any)?.client_code || '';
                   return (
-                  <tr key={inv.id} className="hover:bg-accent/50">
-                    <td className="px-3 py-2.5">
-                      <Link to={`/compta/invoices/${inv.id}`} className="text-xs font-mono font-semibold text-primary hover:underline">{inv.quoteNumber}</Link>
-                      {inv.is_locked && <span className="ml-1 text-[10px] text-amber-600 dark:text-amber-400">🔒</span>}
+                  <tr key={inv.id} className="cursor-pointer hover:bg-secondary/60"
+                    onClick={event => { if (!(event.target as HTMLElement).closest('a,button,[role="menu"]')) navigate(`/compta/invoices/${inv.id}`); }}>
+                    <td className="whitespace-nowrap px-3 py-2.5">
+                      <Link to={`/compta/invoices/${inv.id}`} className="font-mono font-semibold text-primary hover:underline">{inv.quoteNumber}</Link>
+                      {inv.is_locked && <Lock className="ml-1 inline h-3 w-3 text-amber-600 dark:text-amber-400" aria-label="Verrouillée" />}
                     </td>
                     <td className="px-3 py-2.5">
-                      <div className="text-xs font-medium text-foreground">{inv.customer?.fullName || '—'}</div>
-                      {inv.customer?.phoneNumber && <div className="text-[10px] text-muted-foreground">{inv.customer.phoneNumber}</div>}
+                      <div className="font-medium text-foreground">{inv.customer?.fullName || '—'}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {[clientCode, inv.customer?.phoneNumber].filter(Boolean).join(' · ')}
+                      </div>
                     </td>
-                    <td className="px-3 py-2.5">
-                      {clientCode
-                        ? <span className="text-[10px] font-mono bg-blue-500/10 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded">{clientCode}</span>
-                        : <span className="text-[10px] text-muted-foreground">—</span>}
-                    </td>
-                    <td className="px-3 py-2.5">
+                    <td className="whitespace-nowrap px-3 py-2.5">
                       {inv.parent_document_id && proformaNumbers[inv.parent_document_id] ? (
-                        <Link to={`/compta/proformas/${inv.parent_document_id}`} className="text-xs font-mono text-primary hover:underline">
+                        <Link to={`/compta/proformas/${inv.parent_document_id}`} className="font-mono text-xs text-primary hover:underline">
                           {proformaNumbers[inv.parent_document_id]}
                         </Link>
-                      ) : <span className="text-[10px] text-muted-foreground">—</span>}
+                      ) : <span className="text-muted-foreground">—</span>}
                     </td>
+                    <td className="px-3 py-2.5 text-xs text-muted-foreground">{(inv.issuing_company_id && companies[inv.issuing_company_id]) || '—'}</td>
+                    <td className="whitespace-nowrap px-3 py-2.5 text-right">
+                      <span className="font-semibold tabular-nums text-foreground">{formatMoney(inv.totalAmount)}</span>
+                      {inv.payment_method && <div className="text-xs text-muted-foreground">{inv.payment_method}</div>}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-emerald-700 dark:text-emerald-300">
+                      {paid > 0 ? formatMoney(paid) : <span className="text-muted-foreground">—</span>}
+                      {avance > 0 && <div className="text-xs text-muted-foreground">dont avance {formatMoney(avance)}</div>}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2.5 text-right font-semibold tabular-nums text-amber-700 dark:text-amber-300">
+                      {reste > 0 ? formatMoney(reste) : <span className="font-normal text-muted-foreground">—</span>}
+                    </td>
+                    <td className="px-3 py-2.5"><InvoiceStatus inv={inv} /></td>
+                    <td className="whitespace-nowrap px-3 py-2.5 text-muted-foreground">{formatDay(documentDay(inv))}</td>
                     <td className="px-3 py-2.5">
-                      <span className="text-xs text-muted-foreground">{(inv.issuing_company_id && companies[inv.issuing_company_id]) || '—'}</span>
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <span className="text-sm font-mono font-bold text-foreground">{fmt(inv.totalAmount)} Dh</span>
-                      {inv.payment_method && <div className="text-[10px] text-muted-foreground">{inv.payment_method}</div>}
-                    </td>
-                    <td className="px-3 py-2.5 text-xs font-mono text-muted-foreground">
-                      {avance > 0 ? fmt(avance) : '—'}
-                    </td>
-                    <td className="px-3 py-2.5 text-xs font-mono text-emerald-600 dark:text-emerald-400">
-                      {paid > 0 ? fmt(paid) : '—'}
-                    </td>
-                    <td className="px-3 py-2.5 text-xs font-mono font-semibold text-amber-600 dark:text-amber-400">
-                      {reste > 0 ? fmt(reste) : '—'}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      {!inv.customer?.fullName?.trim() ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-secondary text-muted-foreground border border-border">
-                          Brouillon vide
-                        </span>
-                      ) : status === 'paid' ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-                          <CheckCircle className="h-3 w-3" />Payé
-                        </span>
-                      ) : status === 'partial' ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400">
-                          <Clock className="h-3 w-3" />Partiel
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-red-500/10 text-red-600 dark:text-red-400">
-                          <AlertCircle className="h-3 w-3" />Non payé
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2.5 text-xs text-muted-foreground">
-                      {formatDay(documentDay(inv))}
-                    </td>
-                    <td className="px-3 py-2.5 whitespace-nowrap">
-                      <div className="flex items-center gap-1">
-                        <Link to={`/compta/invoices/${inv.id}`} className="p-1.5 text-primary hover:bg-primary/10 rounded transition-colors" title="Ouvrir">
-                          <Eye className="h-3.5 w-3.5" />
-                        </Link>
-                        <button onClick={() => handleExportPdf(inv)} className="p-1.5 text-blue-500 hover:bg-blue-500/10 rounded transition-colors" title="Télécharger PDF">
-                          <Download className="h-3.5 w-3.5" />
+                      <div className="flex items-center justify-end gap-1">
+                        <button onClick={() => handleExportPdf(inv)} className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground" title="Télécharger le PDF" aria-label={`PDF de ${inv.quoteNumber}`}>
+                          <FileText className="h-4 w-4" />
                         </button>
-                        <button
-                          onClick={e => {
-                            e.stopPropagation();
-                            const btn = e.currentTarget.getBoundingClientRect();
-                            const body = document.body.getBoundingClientRect();
-                            const menuW = 188;
-                            const menuH = 210;
-                            const top = window.innerHeight - btn.bottom < menuH + 8
-                              ? btn.top - body.top - menuH - 4
-                              : btn.bottom - body.top + 4;
-                            setMenuStyle({ position: 'absolute', left: Math.max(-body.left + 4, btn.right - menuW - body.left), top, zIndex: 9999, minWidth: menuW });
-                            setOpenMenuId(openMenuId === inv.id ? null : inv.id);
-                          }}
-                          className="p-1.5 text-muted-foreground hover:bg-accent rounded transition-colors"
-                          title="Plus d'actions"
-                        >
-                          <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 16 16"><circle cx="4" cy="8" r="1.2"/><circle cx="8" cy="8" r="1.2"/><circle cx="12" cy="8" r="1.2"/></svg>
-                        </button>
-                        {openMenuId === inv.id && createPortal(
-                          <div onClick={e => e.stopPropagation()} style={menuStyle} className="flex flex-col bg-card border border-border rounded-lg shadow-xl py-1">
-                            <button onClick={async () => { setOpenMenuId(null); await handlePreview(inv); }} className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent text-foreground">
-                              <Printer className="h-3.5 w-3.5 text-muted-foreground" />Aperçu impression
-                            </button>
-                            <button onClick={() => { setOpenMenuId(null); openWaModal(inv); }} className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent text-foreground">
-                              <MessageCircle className="h-3.5 w-3.5 text-emerald-500" />WhatsApp
-                            </button>
-                            <button onClick={() => { setOpenMenuId(null); handleEmailShare(inv); }} className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent text-foreground">
-                              <Mail className="h-3.5 w-3.5 text-primary" />Email
-                            </button>
-                            <button onClick={async () => { setOpenMenuId(null); await handleDuplicate(inv); }} className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent text-foreground">
-                              <Copy className="h-3.5 w-3.5 text-muted-foreground" />Dupliquer
-                            </button>
-                            <div className="border-t border-border my-0.5" />
-                            <button onClick={() => { setOpenMenuId(null); initiateDelete(inv); }} className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-destructive/10 text-destructive">
-                              <Trash2 className="h-3.5 w-3.5" />Supprimer
-                            </button>
-                          </div>,
-                          document.body
-                        )}
+                        <RowMenu label={`Actions pour ${inv.quoteNumber}`} items={menuItems(inv).slice(1)} />
                       </div>
                     </td>
                   </tr>
@@ -556,19 +509,20 @@ export default function InvoiceDirectoryPage() {
               </tbody>
             </table>
           </div>
-          <div className="px-4 py-2.5 border-t border-border flex items-center justify-between gap-4 flex-wrap">
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">Afficher</span>
-              <select value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }} className="px-2 py-1 text-xs border border-input rounded bg-background text-foreground">
+          )}
+          <div className="flex flex-wrap items-center justify-between gap-4 border-t border-border px-4 py-2.5">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span>Afficher</span>
+              <select value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }} aria-label="Factures par page" className="rounded border border-input bg-background px-2 py-1 text-xs text-foreground">
                 {[20, 30, 50].map(n => <option key={n} value={n}>{n}</option>)}
               </select>
-              <span className="text-xs text-muted-foreground">/ {filtered.length}</span>
+              <span>/ {filtered.length}</span>
             </div>
             {totalPages > 1 && (
               <div className="flex items-center gap-1.5">
-                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-2 py-1 text-xs border border-border rounded hover:bg-accent disabled:opacity-50">Préc.</button>
+                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-secondary disabled:opacity-50">Préc.</button>
                 <span className="px-2 text-xs text-muted-foreground">{page}/{totalPages}</span>
-                <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="px-2 py-1 text-xs border border-border rounded hover:bg-accent disabled:opacity-50">Suiv.</button>
+                <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-secondary disabled:opacity-50">Suiv.</button>
               </div>
             )}
           </div>
@@ -589,7 +543,7 @@ export default function InvoiceDirectoryPage() {
               <h2 className="text-base font-bold text-foreground flex items-center gap-2">
                 <Lock className="h-4 w-4 text-destructive" />Supprimer la facture
               </h2>
-              <button onClick={() => { setShowPinModal(false); setPendingDeleteInv(null); }} className="p-1 hover:bg-accent rounded-lg">
+              <button onClick={() => { setShowPinModal(false); setPendingDeleteInv(null); }} className="p-1 hover:bg-secondary rounded-lg">
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -606,7 +560,7 @@ export default function InvoiceDirectoryPage() {
               autoFocus
             />
             <div className="flex space-x-2">
-              <button onClick={() => { setShowPinModal(false); setPendingDeleteInv(null); }} className="flex-1 px-3 py-1.5 text-sm border border-input rounded-lg hover:bg-accent text-foreground">Annuler</button>
+              <button onClick={() => { setShowPinModal(false); setPendingDeleteInv(null); }} className="flex-1 px-3 py-1.5 text-sm border border-input rounded-lg hover:bg-secondary text-foreground">Annuler</button>
               <button onClick={confirmDelete} disabled={!pinInput} className="flex-1 px-3 py-1.5 text-sm bg-destructive hover:bg-destructive/90 disabled:opacity-50 text-white rounded-lg">
                 Supprimer
               </button>

@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
-import { Package, Search, Edit, Check, X, Loader, SortAsc, SortDesc, ChevronLeft, ChevronRight, Filter, ShoppingCart, Info, Eye, Building, Tag, Briefcase, ListChecks, Save, CheckSquare, Square, CheckCircle2, AlertTriangle, RotateCcw, SlidersHorizontal, ChevronDown, ChevronUp } from 'lucide-react';
+import { Package, Search, Edit, Check, X, Loader, SortAsc, SortDesc, ChevronLeft, ChevronRight, ShoppingCart, Info, Eye, Building, Tag, Briefcase, ListChecks, Save, CheckSquare, Square, CheckCircle2, AlertTriangle, RotateCcw, SlidersHorizontal, ChevronDown, ChevronUp, Plus, FileSearch } from 'lucide-react';
 import { Product, StockLocation } from '../types';
 import { useAppContext } from '../context/AppContext';
 import { StockLocationsService } from '../utils/supabaseStockLocations';
@@ -22,6 +22,11 @@ import { TechnicalSheetFinder } from '../components/TechnicalSheetFinder';
 import { ImageViewer } from '../components/ImageViewer';
 import { loadSheetLinks, type SheetLink } from '../utils/technicalSheets';
 import { KIOSK_CATEGORIES, type KioskCategory } from '../utils/kioskCategories';
+import { PageHeader } from '../components/PageHeader';
+import { RowMenu } from '../components/lists/RowMenu';
+import { ColumnPicker } from '../components/lists/ColumnPicker';
+import { usePersistentColumns } from '../components/lists/usePersistentColumns';
+import { formatMoney } from '../utils/format';
 import { effectiveChange, saveProductClassifications, type ClassificationChange } from '../utils/productClassification';
 
 const PRODUCTS_PER_PAGE = 20;
@@ -44,6 +49,18 @@ function SectorChips({ names }: { names: string[] }) {
     </div>
   );
 }
+
+// Optional desktop columns; name, sale price and actions are always shown.
+type OptionalColumn = 'brand' | 'buyprice' | 'provider' | 'kiosk' | 'sectors' | 'stock';
+const COLUMN_OPTIONS: Array<{ key: OptionalColumn; label: string }> = [
+  { key: 'brand', label: 'Marque' },
+  { key: 'buyprice', label: 'Prix d’achat' },
+  { key: 'provider', label: 'Fournisseur' },
+  { key: 'stock', label: 'Stock' },
+  { key: 'kiosk', label: 'Type kiosque' },
+  { key: 'sectors', label: 'Secteur' },
+];
+const DEFAULT_COLUMNS: OptionalColumn[] = ['brand', 'buyprice', 'stock'];
 
 const kioskCategoryLabel = (value?: Product['kiosk_category']) =>
   KIOSK_CATEGORIES.find(category => category.value === value)?.label || 'Non classé';
@@ -88,10 +105,10 @@ export default function ProductsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [sheetLinks, setSheetLinks] = useState<Record<string, SheetLink[]>>({});
   const [sheetFinderProduct, setSheetFinderProduct] = useState<Product | null>(null);
-  const [qtyMap, setQtyMap] = useState<Record<string, number>>({});
   const [stockLocations, setStockLocations] = useState<StockLocation[]>([]);
   const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
   const [quickImageOpen, setQuickImageOpen] = useState(false);
+  const { columns, toggle: toggleColumn } = usePersistentColumns<OptionalColumn>('stocky.products.columns', DEFAULT_COLUMNS, COLUMN_OPTIONS.map(option => option.key));
 
   const products = state.products || [];
 
@@ -221,7 +238,7 @@ export default function ProductsPage() {
 
   const handleAddToCart = (product: Product, qty?: number) => {
     const priceType = getPriceDisplayType();
-    const quantity = qty ?? qtyMap[product.barcode] ?? 1;
+    const quantity = qty ?? 1;
     addToCart(product, priceType === 'reseller' ? 'reseller' : 'normal', 20, quantity);
     showToast({ type: 'success', message: `${product.name} ajouté au devis` });
   };
@@ -394,103 +411,83 @@ export default function ProductsPage() {
     );
   };
 
-  // Touch targets are larger on phones (md:… restores the compact desktop size).
-  // compact (phone cards): no 👁/ⓘ, the photo opens the quick view and the name the product sheet.
-  const renderActions = (product: Product, isEditing: boolean, compact = false) => isEditing ? (
-    <div className="flex items-center space-x-1">
+  // Row actions: the technical sheet when one is linked, "+ Devis", and the
+  // rest in the ⋯ menu.
+  const renderActions = (product: Product, isEditing: boolean) => isEditing ? (
+    <div className="flex items-center justify-end gap-1">
       <button onClick={() => saveEdit(product.barcode)} disabled={isSaving} aria-label="Enregistrer"
-        className="flex h-10 w-10 items-center justify-center md:h-auto md:w-auto md:p-1 text-emerald-500 hover:bg-emerald-500/10 rounded">
-        {isSaving ? <Loader className="h-4 w-4 md:h-3.5 md:w-3.5 animate-spin" /> : <Check className="h-4 w-4 md:h-3.5 md:w-3.5" />}
+        className="flex h-9 w-9 items-center justify-center rounded-lg text-emerald-600 hover:bg-emerald-500/10">
+        {isSaving ? <Loader className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
       </button>
-      <button onClick={cancelEdit} aria-label="Annuler" className="flex h-10 w-10 items-center justify-center md:h-auto md:w-auto md:p-1 text-muted-foreground hover:bg-accent rounded">
-        <X className="h-4 w-4 md:h-3.5 md:w-3.5" />
+      <button onClick={cancelEdit} aria-label="Annuler" className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary">
+        <X className="h-4 w-4" />
       </button>
     </div>
-  ) : (
-    <div className="flex shrink-0 items-center space-x-1">
-      {!compact && (
-        <>
-          <button onClick={() => setQuickViewProduct(product)} className="flex h-10 w-10 items-center justify-center md:h-auto md:w-auto md:p-1 text-muted-foreground hover:bg-accent rounded" title="Aperçu rapide">
-            <Eye className="h-4 w-4 md:h-3.5 md:w-3.5" />
+  ) : (() => {
+    const sheets = sheetLinks[product.barcode] || [];
+    return (
+      <div className="flex shrink-0 items-center justify-end gap-1">
+        {sheets.length > 0 && (
+          <TechnicalSheetButton sheets={sheets} canSearch={canEditProducts} onSearch={() => setSheetFinderProduct(product)}
+            className="flex h-9 w-9 items-center justify-center" iconClassName="h-4 w-4" />
+        )}
+        {canCreateQuote() && (
+          <button onClick={() => handleAddToCart(product)} title="Ajouter au devis" aria-label={`Ajouter ${product.name} au devis`}
+            className="flex h-9 items-center gap-1 rounded-lg border border-primary/30 px-2.5 text-xs font-semibold text-primary hover:bg-primary/10">
+            <Plus className="h-3.5 w-3.5" />Devis
           </button>
-          <Link to={`/product/${encodeURIComponent(product.barcode)}`} className="flex h-10 w-10 items-center justify-center md:h-auto md:w-auto md:p-1 text-muted-foreground hover:bg-accent rounded" title="Fiche produit">
-            <Info className="h-4 w-4 md:h-3.5 md:w-3.5" />
-          </Link>
-        </>
-      )}
-      <TechnicalSheetButton
-        sheets={sheetLinks[product.barcode] || []}
-        canSearch={canEditProducts}
-        onSearch={() => setSheetFinderProduct(product)}
-        className="flex h-10 w-10 items-center justify-center md:h-auto md:w-auto md:p-1"
-        iconClassName="h-4 w-4 md:h-3.5 md:w-3.5"
-      />
-      {canEditProducts && (
-        <button onClick={() => startEdit(product)} disabled={bulkMode} className="flex h-10 w-10 items-center justify-center md:h-auto md:w-auto md:p-1 text-primary hover:bg-primary/10 rounded disabled:opacity-30" title={bulkMode ? 'Indisponible en modification groupée' : 'Modifier'}>
-          <Edit className="h-4 w-4 md:h-3.5 md:w-3.5" />
-        </button>
-      )}
-      {canCreateQuote() && (
-        <div className="flex items-center gap-1">
-          <input
-            type="number"
-            min={1}
-            value={qtyMap[product.barcode] ?? 1}
-            onChange={e => setQtyMap(m => ({ ...m, [product.barcode]: Math.max(1, parseInt(e.target.value) || 1) }))}
-            aria-label={`Quantité de ${product.name}`}
-            className="w-14 h-10 md:w-12 md:h-6 text-sm md:text-xs text-center border border-border rounded bg-background px-1"
-            onClick={e => e.stopPropagation()}
-          />
-          <button onClick={() => handleAddToCart(product)} className="flex h-10 w-10 items-center justify-center md:h-auto md:w-auto md:p-1 text-emerald-500 hover:bg-emerald-500/10 rounded" title="Ajouter au devis">
-            <ShoppingCart className="h-4 w-4 md:h-3.5 md:w-3.5" />
-          </button>
-        </div>
-      )}
-    </div>
-  );
+        )}
+        <RowMenu label={`Actions pour ${product.name}`} items={[
+          { label: 'Aperçu rapide', icon: <Eye className="h-4 w-4 text-muted-foreground" />, onSelect: () => setQuickViewProduct(product) },
+          { label: 'Fiche produit', icon: <Info className="h-4 w-4 text-muted-foreground" />, to: `/product/${encodeURIComponent(product.barcode)}` },
+          ...(canEditProducts && !bulkMode ? [{ label: 'Modifier', icon: <Edit className="h-4 w-4 text-primary" />, onSelect: () => startEdit(product) }] : []),
+          ...(canEditProducts && sheets.length === 0 ? [{ label: 'Rechercher une fiche technique', icon: <FileSearch className="h-4 w-4 text-muted-foreground" />, onSelect: () => setSheetFinderProduct(product) }] : []),
+        ]} />
+      </div>
+    );
+  })();
 
   const getSortIcon = (field: SortField) => {
     if (sortField !== field) return null;
     return sortOrder === 'asc' ? <SortAsc className="h-3 w-3" /> : <SortDesc className="h-3 w-3" />;
   };
 
-  const formatCurrency = (n: number) => new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+  const formatCurrency = (n: number) => formatMoney(n);
+  // Kiosk type and sectors are shown while classifying (bulk mode or a row
+  // being edited) even when their columns are hidden; so are the edited fields.
+  const showColumn = (key: OptionalColumn) => columns.includes(key)
+    || ((key === 'kiosk' || key === 'sectors') && (bulkMode || !!editingBarcode))
+    || ((key === 'buyprice' || key === 'provider') && !!editingBarcode);
 
   return (
-    <div className={`max-w-7xl mx-auto space-y-4 ${bulkMode ? 'pb-48 sm:pb-28' : ''}`}>
-      {/* Header */}
-      <div className="glass rounded-xl shadow-lg p-4">
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-          <div className="flex items-center space-x-2.5">
-            <div className="p-2 bg-primary rounded-lg" style={{ boxShadow: 'var(--shadow-glow)' }}>
-              <Package className="h-4 w-4 text-primary-foreground" />
-            </div>
-            <div>
-              <h1 className="text-lg font-bold text-foreground">Catalogue Produits</h1>
-              <p className="text-xs text-muted-foreground">{products.length} produit{products.length !== 1 ? 's' : ''}</p>
-            </div>
-          </div>
-          {canEditProducts && (
-            <div className="flex items-center gap-2">
-              <button onClick={() => setManagingSectors(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-border rounded-lg hover:bg-accent">
-                <Briefcase className="h-3.5 w-3.5" /><span className="sm:hidden">Secteurs</span><span className="hidden sm:inline">Gérer les secteurs</span>
-              </button>
-              <button onClick={bulkMode ? leaveBulk : startBulk} aria-pressed={bulkMode}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border ${bulkMode ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:bg-accent'}`}>
-                <ListChecks className="h-3.5 w-3.5" />{bulkMode
-                  ? <><span className="sm:hidden">Terminer</span><span className="hidden sm:inline">Quitter la modification groupée</span></>
-                  : 'Modification groupée'}
-              </button>
-            </div>
-          )}
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-2.5">
-          <div className="flex gap-2">
+    <div className={`mx-auto max-w-7xl space-y-4 ${bulkMode ? 'pb-48 sm:pb-28' : ''}`}>
+      <PageHeader
+        title="Produits"
+        subtitle={`${products.length} produit${products.length !== 1 ? 's' : ''}`}
+        actions={<>
+          {!isMobile && <ColumnPicker options={COLUMN_OPTIONS} shown={columns} onToggle={toggleColumn} />}
+          {canEditProducts && <>
+            <button onClick={() => setManagingSectors(true)} className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground hover:bg-secondary">
+              <Briefcase className="h-4 w-4" /><span className="sm:hidden">Secteurs</span><span className="hidden sm:inline">Gérer les secteurs</span>
+            </button>
+            <button onClick={bulkMode ? leaveBulk : startBulk} aria-pressed={bulkMode}
+              className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium ${bulkMode ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card text-foreground hover:bg-secondary'}`}>
+              <ListChecks className="h-4 w-4" />{bulkMode
+                ? <><span className="sm:hidden">Terminer</span><span className="hidden sm:inline">Quitter la modification groupée</span></>
+                : 'Modification groupée'}
+            </button>
+          </>}
+        </>}
+      >
+      <div className="rounded-xl border border-border bg-card p-3 shadow-sm">
+        <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+          <div className="flex gap-2 lg:col-span-1 xl:col-span-2">
             <div className="relative flex-1">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <input type="text" value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-                className="w-full pl-8 pr-3 py-2 md:py-1.5 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-background text-foreground"
-                placeholder="Rechercher nom, code-barres, marque..." />
+                aria-label="Rechercher un produit"
+                className="w-full rounded-lg border border-input bg-background py-2 pl-9 pr-3 text-sm text-foreground focus:ring-2 focus:ring-ring"
+                placeholder="Nom, code-barres, marque…" />
             </div>
             {isMobile && (
               <button onClick={() => setShowFilters(open => !open)} aria-expanded={showFilters}
@@ -501,23 +498,23 @@ export default function ProductsPage() {
             )}
           </div>
           {(!isMobile || showFilters) && <>
-          <select value={brandFilter} onChange={e => { setBrandFilter(e.target.value); setCurrentPage(1); }}
-            className="px-2.5 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground">
+          <select value={brandFilter} onChange={e => { setBrandFilter(e.target.value); setCurrentPage(1); }} aria-label="Marque"
+            className="rounded-lg border border-input bg-background px-2.5 py-2 text-sm text-foreground">
             <option value="">Toutes les marques</option>
             {brands.map(b => <option key={b} value={b}>{getDisplayName('brand', b)}</option>)}
           </select>
-          <select value={providerFilter} onChange={e => { setProviderFilter(e.target.value); setCurrentPage(1); }}
-            className="px-2.5 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground">
+          <select value={providerFilter} onChange={e => { setProviderFilter(e.target.value); setCurrentPage(1); }} aria-label="Fournisseur"
+            className="rounded-lg border border-input bg-background px-2.5 py-2 text-sm text-foreground">
             <option value="">Tous les fournisseurs</option>
             {providers.map(p => <option key={p} value={p}>{getDisplayName('provider', p)}</option>)}
           </select>
-          <select value={categoryFilter} onChange={e => { setCategoryFilter(e.target.value); setCurrentPage(1); }}
-            className="px-2.5 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground">
+          <select value={categoryFilter} onChange={e => { setCategoryFilter(e.target.value); setCurrentPage(1); }} aria-label="Type kiosque"
+            className="rounded-lg border border-input bg-background px-2.5 py-2 text-sm text-foreground">
             <option value="">Tous les types kiosque</option>
             {KIOSK_CATEGORIES.map(category => <option key={category.value} value={category.value}>{category.label}</option>)}
           </select>
           <select value={sectorFilter} onChange={e => { setSectorFilter(e.target.value); setCurrentPage(1); }} aria-label="Secteur"
-            className="px-2.5 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground">
+            className="rounded-lg border border-input bg-background px-2.5 py-2 text-sm text-foreground">
             <option value="">Tous les secteurs</option>
             {sectors.map(sector => <option key={sector.id} value={sector.id}>{sector.name}</option>)}
             <option value={NO_SECTOR}>Sans secteur</option>
@@ -525,7 +522,7 @@ export default function ProductsPage() {
           {isMobile && (
             <select value={`${sortField}:${sortOrder}`} aria-label="Trier par"
               onChange={e => { const [field, order] = e.target.value.split(':'); setSortField(field as SortField); setSortOrder(order as SortOrder); }}
-              className="px-2.5 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground">
+              className="rounded-lg border border-input bg-background px-2.5 py-2 text-sm text-foreground">
               <option value="name:asc">Nom (A → Z)</option>
               <option value="name:desc">Nom (Z → A)</option>
               <option value="price:asc">Prix de vente croissant</option>
@@ -537,17 +534,16 @@ export default function ProductsPage() {
           </>}
         </div>
         {(searchQuery || brandFilter || providerFilter || categoryFilter || sectorFilter) && (
-          <div className="mt-2">
-            <button onClick={() => { setSearchQuery(''); setBrandFilter(''); setProviderFilter(''); setCategoryFilter(''); setSectorFilter(''); }}
-              className="flex items-center space-x-1 px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground">
-              <X className="h-3 w-3" /><span>Effacer filtres</span>
-            </button>
-          </div>
+          <button onClick={() => { setSearchQuery(''); setBrandFilter(''); setProviderFilter(''); setCategoryFilter(''); setSectorFilter(''); }}
+            className="mt-2 flex items-center gap-1 px-1 text-xs text-muted-foreground hover:text-foreground">
+            <X className="h-3 w-3" /><span>Effacer filtres</span>
+          </button>
         )}
       </div>
+      </PageHeader>
 
       {/* Table */}
-      <div className="glass rounded-xl shadow-lg overflow-hidden">
+      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
         {products.length === 0 ? (
           <div className="p-8 text-center">
             <Package className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
@@ -612,7 +608,7 @@ export default function ProductsPage() {
                             {renderKioskType(product, isEditing, editClassification, kioskCategory)}
                             {renderSectors(product, isEditing, editClassification, rowSectors)}
                           </div>
-                          {isEditing && <div className="mt-2 flex justify-end">{renderActions(product, true, true)}</div>}
+                          {isEditing && <div className="mt-2 flex justify-end">{renderActions(product, true)}</div>}
                         </>
                       ) : (
                         <div className="mt-2 flex items-center gap-2">
@@ -620,7 +616,7 @@ export default function ProductsPage() {
                             {renderKioskType(product, false, false, kioskCategory)}
                             {renderSectors(product, false, false, rowSectors)}
                           </div>
-                          {!bulkMode && renderActions(product, false, true)}
+                          {!bulkMode && renderActions(product, false)}
                         </div>
                       )}
                     </div>
@@ -629,8 +625,8 @@ export default function ProductsPage() {
               </div>
             ) : (
             <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-secondary">
+              <table className="w-full text-sm">
+                <thead className="border-b border-border bg-secondary/40">
                   <tr>
                     {bulkMode && (
                       <th className="w-8 px-3 py-2">
@@ -639,24 +635,23 @@ export default function ProductsPage() {
                         </button>
                       </th>
                     )}
-                    <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Image</th>
-                    <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Code</th>
+                    <th className="w-16 px-3 py-2"><span className="sr-only">Image</span></th>
                     {([
-                      ['name', 'Nom'],
-                      ['brand', 'Marque'],
-                      ['buyprice', 'Achat'],
-                      ['price', 'Vente'],
-                      ['provider', 'Fournisseur'],
-                    ] as [SortField, string][]).map(([field, label]) => (
-                      <th key={field} onClick={() => handleSort(field)}
-                        className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase cursor-pointer hover:bg-accent">
-                        <div className="flex items-center space-x-1"><span>{label}</span>{getSortIcon(field)}</div>
+                      ['name', 'Produit', true, ''],
+                      ['brand', 'Marque', showColumn('brand'), ''],
+                      ['buyprice', 'Achat', showColumn('buyprice'), 'text-right'],
+                      ['price', 'Vente', true, 'text-right'],
+                      ['provider', 'Fournisseur', showColumn('provider'), ''],
+                    ] as [SortField, string, boolean, string][]).filter(([, , shown]) => shown).map(([field, label, , align]) => (
+                      <th key={field} onClick={() => handleSort(field)} aria-sort={sortField === field ? (sortOrder === 'asc' ? 'ascending' : 'descending') : undefined}
+                        className={`cursor-pointer px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground ${align || 'text-left'}`}>
+                        <span className={`inline-flex items-center gap-1 ${align ? 'justify-end' : ''}`}>{label}{getSortIcon(field)}</span>
                       </th>
                     ))}
-                    <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Type kiosque</th>
-                    <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Secteur</th>
-                    <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Stock</th>
-                    <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Actions</th>
+                    {showColumn('kiosk') && <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Type kiosque</th>}
+                    {showColumn('sectors') && <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Secteur</th>}
+                    {showColumn('stock') && <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Stock</th>}
+                    <th className="px-3 py-2"><span className="sr-only">Actions</span></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -667,8 +662,15 @@ export default function ProductsPage() {
                     const isPending = !!pending[product.barcode];
                     const editClassification = canEditProducts && (bulkMode || isEditing);
                     const isSelected = selected.has(product.barcode);
+                    // A click on the row (not on a control) opens the quick view.
+                    const openQuickView = (event: React.MouseEvent) => {
+                      if (bulkMode || isEditing) return;
+                      if ((event.target as HTMLElement).closest('a,button,input,select,label,[role="menu"],[role="dialog"]')) return;
+                      setQuickViewProduct(product);
+                    };
                     return (
-                      <tr key={product.barcode} className={isPending ? 'bg-amber-500/5 hover:bg-amber-500/10' : 'hover:bg-accent/50'}>
+                      <tr key={product.barcode} onClick={openQuickView}
+                        className={`${isPending ? 'bg-amber-500/5 hover:bg-amber-500/10' : isSelected ? 'bg-primary/5' : 'hover:bg-secondary/60'} ${bulkMode || isEditing ? '' : 'cursor-pointer'}`}>
                         {bulkMode && (
                           <td className="px-3 py-2">
                             <button onClick={() => toggleSelected(product.barcode)} aria-label={`Sélectionner ${product.name}`} aria-pressed={isSelected} className="text-muted-foreground hover:text-foreground">
@@ -677,81 +679,68 @@ export default function ProductsPage() {
                           </td>
                         )}
                         <td className="px-3 py-2">
-                          <button
-                            type="button"
-                            onClick={() => setQuickViewProduct(product)}
-                            className="w-11 h-11 aspect-square rounded-lg border border-border bg-secondary/30 overflow-hidden flex items-center justify-center hover:border-primary/60 transition-colors"
-                            title="Aperçu rapide"
-                          >
+                          <button type="button" onClick={() => setQuickViewProduct(product)} title="Aperçu rapide"
+                            className="flex h-14 w-11 items-center justify-center overflow-hidden rounded-md border border-border bg-white transition-colors hover:border-primary/60">
                             {product.image ? (
-                              <img src={resolveProductImageUrl(product.image) || ''} alt={product.name} className="w-full h-full object-contain" loading="lazy" />
+                              <img src={resolveProductImageUrl(product.image) || ''} alt={product.name} className="h-full w-full object-contain" loading="lazy" />
                             ) : (
-                              <img src={`${import.meta.env.BASE_URL || '/'}stocky-logo.png`} alt="Stocky" className="w-8 h-8 object-contain opacity-35" />
+                              <img src={`${import.meta.env.BASE_URL || '/'}stocky-logo.png`} alt="Stocky" className="h-7 w-7 object-contain opacity-35" />
                             )}
                           </button>
                         </td>
-                        <td className="px-3 py-2 text-[11px] text-muted-foreground font-mono">{product.barcode}</td>
-                        <td className="px-3 py-2">
+                        <td className="min-w-[14rem] max-w-md px-3 py-2">
                           {isEditing ? (
-                            <input type="text" value={editForm.name || ''} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
-                              className="w-full px-2 py-0.5 text-xs border border-input rounded bg-background text-foreground" />
+                            <input type="text" value={editForm.name || ''} aria-label="Nom" onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
+                              className="w-full rounded border border-input bg-background px-2 py-1 text-sm text-foreground" />
                           ) : (
-                            <Link
-                              to={`/product/${encodeURIComponent(product.barcode)}`}
-                              className="text-xs font-medium text-foreground hover:text-primary hover:underline transition-colors"
-                              title="Voir la fiche produit"
-                            >
+                            <Link to={`/product/${encodeURIComponent(product.barcode)}`} title="Voir la fiche produit"
+                              className="line-clamp-2 font-medium leading-snug text-foreground hover:text-primary hover:underline">
                               {product.name}
                             </Link>
                           )}
+                          <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground">{product.barcode}</p>
                         </td>
-                        <td className="px-3 py-2 text-xs text-foreground">
-                          {product.brand}
-                          {getOriginalName('brand', product.brand) && (
-                            <span className="text-muted-foreground text-[10px] ml-1">(ex: {getOriginalName('brand', product.brand)})</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2">
+                        {showColumn('brand') && (
+                          <td className="px-3 py-2 text-foreground">
+                            {product.brand}
+                            {getOriginalName('brand', product.brand) && (
+                              <span className="ml-1 text-xs text-muted-foreground">(ex : {getOriginalName('brand', product.brand)})</span>
+                            )}
+                          </td>
+                        )}
+                        {showColumn('buyprice') && (
+                          <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-muted-foreground">
+                            {isEditing ? (
+                              <input type="number" value={editForm.buyprice || 0} aria-label="Prix d’achat" onChange={e => setEditForm(f => ({ ...f, buyprice: parseFloat(e.target.value) || 0 }))}
+                                className="w-24 rounded border border-input bg-background px-2 py-1 text-right text-sm text-foreground" step="0.01" />
+                            ) : formatCurrency(product.buyprice)}
+                          </td>
+                        )}
+                        <td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums text-foreground">
                           {isEditing ? (
-                            <input type="number" value={editForm.buyprice || 0} onChange={e => setEditForm(f => ({ ...f, buyprice: parseFloat(e.target.value) || 0 }))}
-                              className="w-20 px-2 py-0.5 text-xs border border-input rounded bg-background text-foreground" step="0.01" />
-                          ) : (
-                            <span className="text-xs text-foreground">{formatCurrency(product.buyprice)}</span>
-                          )}
+                            <input type="number" value={editForm.price || 0} aria-label="Prix de vente" onChange={e => setEditForm(f => ({ ...f, price: parseFloat(e.target.value) || 0 }))}
+                              className="w-24 rounded border border-input bg-background px-2 py-1 text-right text-sm text-foreground" step="0.01" />
+                          ) : formatCurrency(product.price)}
                         </td>
-                        <td className="px-3 py-2">
-                          {isEditing ? (
-                            <input type="number" value={editForm.price || 0} onChange={e => setEditForm(f => ({ ...f, price: parseFloat(e.target.value) || 0 }))}
-                              className="w-20 px-2 py-0.5 text-xs border border-input rounded bg-background text-foreground" step="0.01" />
-                          ) : (
-                            <span className="text-xs font-medium text-foreground">{formatCurrency(product.price)}</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2">
-                          {isEditing ? (
-                            <input type="text" value={editForm.provider || ''} onChange={e => setEditForm(f => ({ ...f, provider: e.target.value }))}
-                              className="w-24 px-2 py-0.5 text-xs border border-input rounded bg-background text-foreground" />
-                          ) : (
-                            <span className="text-xs text-foreground">
-                              {product.provider || '-'}
-                              {product.provider && getOriginalName('provider', product.provider) && (
-                                <span className="text-muted-foreground text-[10px] ml-1">(ex: {getOriginalName('provider', product.provider)})</span>
-                              )}
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2">
-                          {renderKioskType(product, isEditing, editClassification, kioskCategory)}
-                        </td>
-                        <td className="px-3 py-2">
-                          {renderSectors(product, isEditing, editClassification, rowSectors)}
-                        </td>
-                        <td className="px-3 py-2">
-                          {renderStock(product)}
-                        </td>
-                        <td className="px-3 py-2">
-                          {renderActions(product, isEditing)}
-                        </td>
+                        {showColumn('provider') && (
+                          <td className="px-3 py-2 text-foreground">
+                            {isEditing ? (
+                              <input type="text" value={editForm.provider || ''} aria-label="Fournisseur" onChange={e => setEditForm(f => ({ ...f, provider: e.target.value }))}
+                                className="w-28 rounded border border-input bg-background px-2 py-1 text-sm text-foreground" />
+                            ) : (
+                              <>
+                                {product.provider || '—'}
+                                {product.provider && getOriginalName('provider', product.provider) && (
+                                  <span className="ml-1 text-xs text-muted-foreground">(ex : {getOriginalName('provider', product.provider)})</span>
+                                )}
+                              </>
+                            )}
+                          </td>
+                        )}
+                        {showColumn('kiosk') && <td className="px-3 py-2">{renderKioskType(product, isEditing, editClassification, kioskCategory)}</td>}
+                        {showColumn('sectors') && <td className="px-3 py-2">{renderSectors(product, isEditing, editClassification, rowSectors)}</td>}
+                        {showColumn('stock') && <td className="px-3 py-2">{renderStock(product)}</td>}
+                        <td className="px-3 py-2">{renderActions(product, isEditing)}</td>
                       </tr>
                     );
                   })}
@@ -766,10 +755,10 @@ export default function ProductsPage() {
                 </div>
                 <div className="flex items-center space-x-1.5">
                   <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}
-                    className="p-1 border border-border rounded hover:bg-accent disabled:opacity-50"><ChevronLeft className="h-3.5 w-3.5" /></button>
+                    className="p-1 border border-border rounded hover:bg-secondary disabled:opacity-50"><ChevronLeft className="h-3.5 w-3.5" /></button>
                   <span className="px-2 text-xs text-muted-foreground">{currentPage}/{totalPages}</span>
                   <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}
-                    className="p-1 border border-border rounded hover:bg-accent disabled:opacity-50"><ChevronRight className="h-3.5 w-3.5" /></button>
+                    className="p-1 border border-border rounded hover:bg-secondary disabled:opacity-50"><ChevronRight className="h-3.5 w-3.5" /></button>
                 </div>
               </div>
             )}
@@ -801,7 +790,7 @@ export default function ProductsPage() {
                   <p className="text-xs text-muted-foreground">Aperçu rapide</p>
                   <h2 id="quick-view-title" className="text-base font-semibold text-foreground line-clamp-1">{quickViewProduct.name}</h2>
                 </div>
-                <button onClick={() => setQuickViewProduct(null)} className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent" title="Fermer">
+                <button onClick={() => setQuickViewProduct(null)} className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary" title="Fermer">
                   <X className="h-4 w-4" />
                 </button>
               </div>
@@ -856,7 +845,7 @@ export default function ProductsPage() {
                   )}
 
                   <div className="flex flex-wrap gap-2 pt-1">
-                    <Link to={`/product/${encodeURIComponent(quickViewProduct.barcode)}`} className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-border hover:bg-accent text-sm">
+                    <Link to={`/product/${encodeURIComponent(quickViewProduct.barcode)}`} className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-border hover:bg-secondary text-sm">
                       <Info className="h-4 w-4" /> Fiche complète
                     </Link>
                     {canCreateQuote() && (
@@ -916,7 +905,7 @@ export default function ProductsPage() {
               {bulkError ? (
                 <>
                   <span className="inline-flex items-center gap-1 font-medium text-destructive"><AlertTriangle className="h-3.5 w-3.5" />{bulkError}</span>
-                  <button onClick={() => { setBulkError(''); flushPending(); }} className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 hover:bg-accent"><RotateCcw className="h-3.5 w-3.5" />Réessayer</button>
+                  <button onClick={() => { setBulkError(''); flushPending(); }} className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 hover:bg-secondary"><RotateCcw className="h-3.5 w-3.5" />Réessayer</button>
                 </>
               ) : savingBulk ? (
                 <span className="inline-flex items-center gap-1 text-muted-foreground"><Loader className="h-3.5 w-3.5 animate-spin" />Enregistrement…</span>
@@ -930,7 +919,7 @@ export default function ProductsPage() {
               <button onClick={() => flushPending()} disabled={!pendingCount || savingBulk} aria-label="Enregistrer" className="inline-flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1.5 font-medium text-primary-foreground disabled:opacity-40 sm:py-1">
                 <Save className="h-3.5 w-3.5" /><span className="hidden sm:inline">Enregistrer</span>
               </button>
-              <button onClick={leaveBulk} className="rounded-md border border-border px-2.5 py-1.5 hover:bg-accent sm:py-1">Terminer</button>
+              <button onClick={leaveBulk} className="rounded-md border border-border px-2.5 py-1.5 hover:bg-secondary sm:py-1">Terminer</button>
             </div>
           </div>
         </div>
@@ -941,21 +930,21 @@ export default function ProductsPage() {
       {/* Stats */}
       {filtered.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div className="glass rounded-lg p-3">
+          <div className="rounded-xl border border-border bg-card p-3 shadow-sm">
             <p className="text-[11px] text-muted-foreground">Produits affichés</p>
             <p className="text-base font-bold text-foreground">{filtered.length}</p>
           </div>
-          <div className="glass rounded-lg p-3">
+          <div className="rounded-xl border border-border bg-card p-3 shadow-sm">
             <p className="text-[11px] text-muted-foreground">Marques</p>
             <p className="text-base font-bold text-foreground">{new Set(filtered.map(p => p.brand)).size}</p>
           </div>
-          <div className="glass rounded-lg p-3">
+          <div className="rounded-xl border border-border bg-card p-3 shadow-sm">
             <p className="text-[11px] text-muted-foreground">Stock total</p>
             <p className="text-base font-bold text-foreground">
               {filtered.reduce((s, p) => s + Object.values(p.stock_levels || {}).reduce((a: number, v: any) => a + (Number(v) || 0), 0), 0)}
             </p>
           </div>
-          <div className="glass rounded-lg p-3">
+          <div className="rounded-xl border border-border bg-card p-3 shadow-sm">
             <p className="text-[11px] text-muted-foreground">Fournisseurs</p>
             <p className="text-base font-bold text-foreground">{new Set(filtered.map(p => p.provider).filter(Boolean)).size}</p>
           </div>
