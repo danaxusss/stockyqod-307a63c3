@@ -43,6 +43,10 @@ import { searchProductsLocally } from '../hooks/useSearchState';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../hooks/useAuth';
 import { useKeyboardSave } from '../hooks/useShortcuts';
+import { useAccess } from '../hooks/useAccess';
+import { isQuoteOwnedBy, quoteOwnerOf } from '../utils/quoteOwnership';
+import { quoteMarginHT } from '../utils/quoteMargin';
+import { QuoteReadOnlyView } from '../components/QuoteReadOnlyView';
 import { supabase } from '@/integrations/supabase/client';
 import { useProductOverrides } from '../hooks/useProductOverrides';
 import { applyQuoteItemDisplayOverride, getQuoteItemBarcode, getQuoteItemBrand, getQuoteItemName } from '../utils/quoteItemDisplay';
@@ -124,6 +128,7 @@ export function QuoteCartPage() {
   const [customSellerName, setCustomSellerName] = useState('');
   const [useCustomSeller, setUseCustomSeller] = useState(false);
   const { currentUser, authenticatedUser, isAdmin, companyId, canAccessStockLocation, getDisplayPrice, isCompta, isSuperAdmin } = useAuth();
+  const { access } = useAccess();
 
   // Client autocomplete
   const [clientSuggestions, setClientSuggestions] = useState<Client[]>([]);
@@ -631,7 +636,16 @@ export function QuoteCartPage() {
   };
 
   // Save quote
+  // A salesperson opening another salesperson's quote gets it read-only (PDF
+  // only). The ref also stops autosave and Ctrl+S, whose callbacks may date
+  // from an earlier render.
+  const readOnly = access.ownQuotesOnly && isEditing && !!quote
+    && !isQuoteOwnedBy(quote, quoteOwnerOf(currentUser?.username ? currentUser : authenticatedUser));
+  const readOnlyRef = useRef(readOnly);
+  readOnlyRef.current = readOnly;
+
   const handleSave = async (isAutoSave = false) => {
+    if (readOnlyRef.current) return;
     if (!isAutoSave && !validateForm()) {
       showToast({
         type: 'error',
@@ -892,6 +906,26 @@ export function QuoteCartPage() {
     );
   }
 
+  if (readOnly) {
+    const { totalAmount: readOnlyTotal } = calculateTotals();
+    return (
+      <QuoteReadOnlyView
+        quoteNumber={quoteNumber}
+        quoteDate={quoteDate || (quote?.createdAt ? new Date(quote.createdAt).toISOString() : '')}
+        status={status}
+        customer={customer}
+        lines={items.map(item => ({
+          id: item.id, name: getQuoteItemName(item), brand: getQuoteItemBrand(item), barcode: getQuoteItemBarcode(item),
+          quantity: item.quantity, unitPriceTTC: item.unitPrice, totalTTC: item.subtotal,
+        }))}
+        totalTTC={readOnlyTotal}
+        tvaRate={companySettings?.tva_rate ?? 20}
+        isExporting={isExporting}
+        onExport={handleExport}
+      />
+    );
+  }
+
   const markQuoteAsSent = async () => {
     if (!quote?.id || status === 'final') return;
     try {
@@ -979,7 +1013,9 @@ export function QuoteCartPage() {
   const lineHT = (item: QuoteItem) => item.subtotal / (1 + tvaRate / 100);
   // Margin over the purchase price, when every line has one.
   const purchaseCost = items.reduce((sum, item) => sum + (Number(item.product?.buyprice) || 0) * item.quantity, 0);
-  const estimatedMargin = items.length > 0 && items.every(item => Number(item.product?.buyprice) > 0) ? totalHT - purchaseCost : null;
+  // Purchase prices include TVA, like sale prices: both are compared without it.
+  const estimatedMargin = items.length > 0 && items.every(item => Number(item.product?.buyprice) > 0)
+    ? quoteMarginHT({ totalTTC: totalAmount, purchaseTTC: purchaseCost, tvaRate }) : null;
   const statusTone = status === 'final' ? 'bg-emerald-500/10 text-emerald-700 ring-emerald-600/20 dark:text-emerald-300'
     : status === 'pending' ? 'bg-blue-500/10 text-blue-700 ring-blue-600/20 dark:text-blue-300'
     : 'bg-amber-500/10 text-amber-800 ring-amber-600/20 dark:text-amber-300';

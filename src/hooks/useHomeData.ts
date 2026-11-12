@@ -26,12 +26,13 @@ export function useHomeData(): { data: HomeData | null; loading: boolean; refres
   const { currentUser } = useAuth();
   const { access } = useAccess();
   const username = currentUser?.username ?? null;
+  const sellerName = currentUser?.custom_seller_name?.trim() || null;
   const userId = currentUser?.id ?? null;
-  const key = JSON.stringify([username, userId, access]);
+  const key = JSON.stringify([username, sellerName, userId, access]);
   const [, setTick] = useState(0);
   const [loading, setLoading] = useState(cache?.key !== key);
 
-  const run = useCallback(() => loadHomeData({ access, username, userId }), [access, username, userId]);
+  const run = useCallback(() => loadHomeData({ access, username, sellerName, userId }), [access, username, sellerName, userId]);
 
   useEffect(() => {
     const listener = () => setTick(t => t + 1);

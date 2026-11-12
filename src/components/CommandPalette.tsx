@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { ownedQuotesFilter, quoteOwnerOf } from '../utils/quoteOwnership';
 import { useNavigate } from 'react-router-dom';
 import { Search, Plus, FileText, Receipt, Users, CornerDownLeft, Package } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
@@ -81,7 +82,11 @@ export function CommandPalette() {
         if (!bypassFilter && companyId) b = b.eq('company_id', companyId);
         if (!access.billing) {
           b = b.or('document_type.eq.quote,document_type.is.null');
-          if (access.ownQuotesOnly && currentUser?.username) b = b.eq('created_by', currentUser.username);
+          if (access.ownQuotesOnly) {
+            // Their quotes only: created by them or naming them as seller.
+            const owner = quoteOwnerOf(currentUser);
+            b = owner ? b.or(ownedQuotesFilter(owner)) : b.eq('id', '00000000-0000-0000-0000-000000000000');
+          }
         } else if (!access.quotes) {
           b = b.not('document_type', 'is', null).neq('document_type', 'quote');
         }
@@ -103,7 +108,7 @@ export function CommandPalette() {
       setDocs(hits.slice(0, 5));
     }, 250);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [open, query, access.quotes, access.billing, access.ownQuotesOnly, currentUser?.username]);
+  }, [open, query, access.quotes, access.billing, access.ownQuotesOnly, currentUser]);
 
   const go = useCallback((to: string) => { close(); navigate(to); }, [close, navigate]);
 
