@@ -68,6 +68,12 @@ export default function StockCountPage() {
     setRows(prev => [...prev, { barcode: p.barcode, name: p.name, expected: levelAt(p, candidates), counted: '' }]);
     setQuery('');
   };
+  // The sheet is rebuilt for the new location: typed counts would be lost.
+  const changeLocation = (id: string) => {
+    if (id === locationId) return;
+    if (rows.some(r => r.counted !== '') && !confirm('Changer d’emplacement efface les quantités saisies. Continuer ?')) return;
+    setLocationId(id);
+  };
   const setCounted = (i: number, v: string) => setRows(prev => prev.map((r, idx) => idx === i ? { ...r, counted: v } : r));
 
   // Every counted line is sent with the quantity counted: the database sets the
@@ -108,7 +114,7 @@ export default function StockCountPage() {
             <section className={`${opsPanel} grid gap-4 p-4 sm:p-5 md:grid-cols-[16rem_minmax(0,1fr)]`}>
               <div>
                 <label htmlFor="count-location" className={opsLabel}>Emplacement à inventorier</label>
-                <select id="count-location" value={locationId} onChange={e => setLocationId(e.target.value)} className={opsField}>
+                <select id="count-location" value={locationId} onChange={e => changeLocation(e.target.value)} className={opsField}>
                   {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                 </select>
                 {!locationsLoading && locations.length === 0 && (
