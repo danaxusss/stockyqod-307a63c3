@@ -5,7 +5,7 @@ import { useQuoteCart } from '../hooks/useQuoteCart';
 import { useToast } from '../context/ToastContext';
 import { QuoteItem } from '../types';
 import { useEscapeKey } from '../hooks/useShortcuts';
-import { cartHiddenOn } from '../utils/pageTitles';
+import { cartHiddenOn, cartRaisedOn } from '../utils/pageTitles';
 
 const marginOptions = Array.from({ length: 20 }, (_, i) => (i + 1) * 5);
 
@@ -46,7 +46,7 @@ export function FloatingQuoteCart() {
   return (
     <>
       {/* Trigger button */}
-      <div className="fixed bottom-20 right-4 z-40 md:bottom-5 md:right-5">
+      <div className={`fixed right-4 z-40 md:right-5 ${cartRaisedOn(pathname) ? 'bottom-[calc(8.75rem+env(safe-area-inset-bottom))] md:bottom-5' : 'bottom-20 md:bottom-5'}`}>
         <button
           onClick={() => setIsOpen(v => !v)}
           className="relative flex items-center justify-center w-11 h-11 text-primary-foreground rounded-full transition-all duration-200 hover:scale-105 active:scale-95"
