@@ -4,10 +4,13 @@ import { Check, Columns3 } from 'lucide-react';
 export type ColumnOption<K extends string> = { key: K; label: string };
 
 /** "Colonnes" button with a checklist of the optional columns. */
-export function ColumnPicker<K extends string>({ options, shown, onToggle }: {
+export function ColumnPicker<K extends string>({ options, shown, onToggle, locked = [], lockedHint }: {
   options: ColumnOption<K>[];
   shown: K[];
   onToggle: (key: K) => void;
+  /** Columns the page needs right now: shown checked and not toggleable. */
+  locked?: K[];
+  lockedHint?: string;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -33,14 +36,19 @@ export function ColumnPicker<K extends string>({ options, shown, onToggle }: {
       {open && (
         <div role="group" aria-label="Colonnes affichées" className="absolute right-0 top-full z-30 mt-1 w-56 rounded-lg border border-border bg-popover py-1 shadow-xl">
           {options.map(option => {
-            const checked = shown.includes(option.key);
+            const isLocked = locked.includes(option.key);
+            const checked = isLocked || shown.includes(option.key);
             return (
-              <label key={option.key} className="flex cursor-pointer items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-secondary">
-                <input type="checkbox" checked={checked} onChange={() => onToggle(option.key)} className="sr-only" />
+              <label key={option.key} title={isLocked ? lockedHint : undefined}
+                className={`flex items-center gap-2.5 px-3 py-2 text-sm text-foreground ${isLocked ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-secondary'}`}>
+                <input type="checkbox" checked={checked} disabled={isLocked} onChange={() => onToggle(option.key)} className="sr-only" />
                 <span aria-hidden="true" className={`flex h-4 w-4 items-center justify-center rounded border ${checked ? 'border-primary bg-primary text-primary-foreground' : 'border-input'}`}>
                   {checked && <Check className="h-3 w-3" />}
                 </span>
-                {option.label}
+                <span className="min-w-0">
+                  {option.label}
+                  {isLocked && lockedHint && <span className="block text-[11px] text-muted-foreground">{lockedHint}</span>}
+                </span>
               </label>
             );
           })}

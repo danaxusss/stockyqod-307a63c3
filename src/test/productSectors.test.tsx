@@ -66,10 +66,12 @@ afterEach(() => {
   localStorage.clear();
 });
 
-// Row actions other than "+ Devis" are in the row's ⋯ menu.
+// Row actions other than "+ Devis" are in the row's ⋯ menu; "Modifier" opens
+// the edit panel under the row, which is returned.
 function editRow(row: HTMLElement, name: string) {
   fireEvent.click(within(row).getByRole('button', { name: `Actions pour ${name}` }));
   fireEvent.click(screen.getByRole('menuitem', { name: 'Modifier' }));
+  return screen.getByRole('group', { name: `Modifier ${name}` });
 }
 
 // The sector column is hidden by default; it is chosen in "Colonnes".
@@ -119,8 +121,8 @@ describe('ProductsPage business sectors', () => {
   it('saves sectors as soon as they change while a row is being edited', async () => {
     renderProducts();
     const row = screen.getByRole('link', { name: 'Hachoir' }).closest('tr')!;
-    editRow(row, 'Hachoir');
-    fireEvent.click(within(row).getByRole('button', { name: /Secteur : aucun/ }));
+    const panel = editRow(row, 'Hachoir');
+    fireEvent.click(within(panel).getByRole('button', { name: /Secteur : aucun/ }));
     fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Restaurant' }));
 
     await waitFor(() => expect(save).toHaveBeenCalledWith({ P3: { sector_ids: ['s-resto'] } }));
@@ -133,11 +135,36 @@ describe('ProductsPage business sectors', () => {
     save.mockResolvedValueOnce({ saved: {}, failed: [{ barcode: 'P3', message: 'permission denied' }] });
     renderProducts();
     const row = screen.getByRole('link', { name: 'Hachoir' }).closest('tr')!;
-    editRow(row, 'Hachoir');
-    fireEvent.click(within(row).getByRole('button', { name: /Secteur : aucun/ }));
+    const panel = editRow(row, 'Hachoir');
+    fireEvent.click(within(panel).getByRole('button', { name: /Secteur : aucun/ }));
     fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Restaurant' }));
-    await waitFor(() => expect(within(row).getByRole('button', { name: /Secteur : aucun/ })).toBeInTheDocument());
+    await waitFor(() => expect(within(panel).getByRole('button', { name: /Secteur : aucun/ })).toBeInTheDocument());
     expect(applyProductChanges).not.toHaveBeenCalled();
+  });
+
+  it('keeps the chosen columns while a row is edited, and locks the bulk columns in bulk mode', () => {
+    renderProducts();
+    const row = screen.getByRole('link', { name: 'Hachoir' }).closest('tr')!;
+    editRow(row, 'Hachoir');
+    // Editing no longer forces hidden columns into the table.
+    expect(screen.queryByRole('columnheader', { name: 'Fournisseur' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Type kiosque' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Colonnes' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Fournisseur' }));
+    expect(screen.getByRole('columnheader', { name: 'Fournisseur' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Fournisseur' }));
+    expect(screen.queryByRole('columnheader', { name: 'Fournisseur' })).not.toBeInTheDocument();
+  });
+
+  it('shows more products per page when asked, and remembers it', () => {
+    appState.products = Array.from({ length: 30 }, (_, i) => product(`Q${i}`, `Produit ${String(i).padStart(2, '0')}`, []));
+    const { unmount } = render(<MemoryRouter><ProductsPage /></MemoryRouter>);
+    expect(screen.queryByRole('link', { name: 'Produit 25' })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole('combobox', { name: 'Produits par page' }), { target: { value: '50' } });
+    expect(screen.getByRole('link', { name: 'Produit 25' })).toBeInTheDocument();
+    unmount();
+    render(<MemoryRouter><ProductsPage /></MemoryRouter>);
+    expect(screen.getByRole('combobox', { name: 'Produits par page' })).toHaveValue('50');
   });
 
   it('saves bulk changes to several products automatically, grouped in one save', async () => {
