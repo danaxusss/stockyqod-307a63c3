@@ -3,28 +3,24 @@ import { useAuth } from '@/tasks/contexts/AuthAdapter';
 import { useData } from '@/tasks/contexts/DataContext';
 import { useLanguage } from '@/tasks/contexts/LanguageContext';
 import { Task as TaskT } from '@/tasks/types';
-import { Task, TaskType, Priority, ROLE_CONFIG } from '@/tasks/types';
-import { StatusBadge, PriorityBadge } from '@/tasks/components/StatusBadge';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Wrench, Truck, Phone, MapPin, Trash2, Edit, X, ChevronRight } from 'lucide-react';
+import { Priority } from '@/tasks/types';
+import { Plus, Wrench, Truck, Phone, Trash2, Edit } from 'lucide-react';
+import { PageHeader } from '@/components/PageHeader';
+import { TaskBoard, TaskCard } from '@/tasks/components/TaskBoard';
+import TasksHeaderActions from '@/tasks/components/TasksHeader';
 import { toast } from 'sonner';
-import confetti from 'canvas-confetti';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { isOverdue } from '@/tasks/lib/taskUtils';
 import CreateTaskDialog from '@/tasks/components/CreateTaskDialog';
-
-const container = { hidden: {}, show: { transition: { staggerChildren: 0.05 } } };
-const item = { hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0 } };
 
 export default function SalesTasks() {
   const { user } = useAuth();
   const { tasks, addTask, deleteTask, updateTask, users, getUserById } = useData();
   const { t, language } = useLanguage();
-  const [activeTab, setActiveTab] = useState<'interventions' | 'deliveries'>('interventions');
+  const [activeTab, setActiveTab] = useState<'all' | 'interventions' | 'deliveries'>('all');
   const [showCreate, setShowCreate] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [editTask, setEditTask] = useState<TaskT | null>(null);
@@ -34,9 +30,13 @@ export default function SalesTasks() {
   const dateLocale = language === 'ar' ? 'ar-MA' : 'fr-FR';
   const isSuperAdmin = user?.role === 'super_admin';
   const myTasks = isSuperAdmin ? tasks : tasks.filter(t => t.created_by === user?.id);
-  const interventions = myTasks.filter(t => t.type === 'technical_intervention' && t.status !== 'done');
-  const deliveries = myTasks.filter(t => t.type === 'delivery' && t.status !== 'done');
-  const displayed = activeTab === 'interventions' ? interventions : deliveries;
+  // The board keeps finished and refused tasks for a week; older ones are in the archive.
+  const weekAgo = Date.now() - 7 * 864e5;
+  const boardTasks = myTasks.filter(task =>
+    (task.status !== 'done' && task.status !== 'refused') || new Date(task.updated_at || task.created_at).getTime() >= weekAgo);
+  const interventions = boardTasks.filter(t => t.type === 'technical_intervention');
+  const deliveries = boardTasks.filter(t => t.type === 'delivery');
+  const displayed = activeTab === 'interventions' ? interventions : activeTab === 'deliveries' ? deliveries : boardTasks;
 
   const technicians = users.filter(u => u.role === 'technician' && u.is_active);
   const drivers = users.filter(u => u.role === 'driver' && u.is_active);
@@ -64,156 +64,85 @@ export default function SalesTasks() {
     toast.success(t('salesTasks.taskEdited'));
   };
 
+  const typeTabs = [
+    { id: 'all' as const, label: t('board.all'), count: boardTasks.length },
+    { id: 'interventions' as const, label: t('salesTasks.interventions'), count: interventions.length },
+    { id: 'deliveries' as const, label: t('salesTasks.deliveries'), count: deliveries.length },
+  ];
+
   return (
-    <div className="p-4 md:p-6 max-w-4xl mx-auto space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl md:text-2xl font-bold text-foreground">
-            {isSuperAdmin ? t('salesTasks.allTasks') : t('nav.myTasks')}
-          </h1>
-          <p className="text-sm text-muted-foreground flex items-center gap-1">
-            {ROLE_CONFIG[user?.role || 'sales'].emoji} {t(`role.${user?.role || 'sales'}`)}
-          </p>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex bg-secondary rounded-lg p-1">
-        <button
-          onClick={() => setActiveTab('interventions')}
-          className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${
-            activeTab === 'interventions' ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground'
-          }`}
-        >
-          {t('salesTasks.interventions')} ({interventions.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('deliveries')}
-          className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${
-            activeTab === 'deliveries' ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground'
-          }`}
-        >
-          {t('salesTasks.deliveries')} ({deliveries.length})
-        </button>
-      </div>
-
-      {/* Task Cards */}
-      <motion.div variants={container} initial="hidden" animate="show" className="space-y-3">
-        <AnimatePresence>
-          {displayed.map(task => {
-            const assignee = getUserById(task.assigned_to);
-            return (
-              <motion.div
-                key={task.id}
-                variants={item}
-                layout
-                exit={{ opacity: 0, x: -100 }}
-                className="glass rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow"
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-foreground">{task.client_name}</p>
-                    <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                      <MapPin className="h-3 w-3" />
-                      {task.address}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 ms-2">
-                    {(task.created_by === user?.id || isSuperAdmin) && (
-                      <button
-                        onClick={() => openEdit(task)}
-                        className="p-1.5 rounded-lg hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors"
-                      >
-                        <Edit className="h-4 w-4" />
-                      </button>
-                    )}
-                    <button
-                      onClick={() => setDeleteConfirm(task.id)}
-                      className="p-1.5 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 flex-wrap">
-                  <StatusBadge status={task.status} />
-                  <PriorityBadge priority={task.priority} />
-                  {isOverdue(task) && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-status-refused-light text-status-refused">
-                      ⏰ {t('dashboard.overdue')}
-                    </span>
-                  )}
-                  {task.edited && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-secondary text-muted-foreground border border-border">
-                      ✏️ {t('common.modified')}
-                    </span>
-                  )}
-                  {task.invoice_number && (
-                    <span className="text-xs bg-secondary px-2 py-0.5 rounded-full text-muted-foreground">
-                      {task.invoice_number}
-                    </span>
-                  )}
-                </div>
-
-                {expandedTask === task.id && (
-                  <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} className="mt-3 pt-3 border-t border-border/50 space-y-2">
-                    {task.problem_details && <p className="text-xs text-muted-foreground">🔧 {task.problem_details}</p>}
-                    {task.invoice_number && <p className="text-xs text-muted-foreground">📄 {task.invoice_number}</p>}
-                    {task.payment_details && <p className="text-xs text-muted-foreground">💳 {task.payment_details}</p>}
-                    {task.due_date && <p className="text-xs text-muted-foreground">📅 {new Date(task.due_date).toLocaleDateString(dateLocale)}</p>}
-                    {task.comment && <p className="text-xs text-destructive">💬 {task.comment}</p>}
-                    <div className="flex gap-1.5 flex-wrap">
-                      <button onClick={() => window.open(`tel:${task.client_phone}`)} className="flex items-center gap-1 px-2 py-1 bg-status-done-light text-status-done rounded-lg text-xs font-medium">
-                        <Phone className="h-3 w-3" /> {task.client_phone}
-                      </button>
-                    </div>
-                  </motion.div>
-                )}
-
-                <div className="flex items-center justify-between mt-3 pt-3 border-t border-border/50">
-                  <div className="flex items-center gap-2">
-                    <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">
-                      {assignee?.first_name[0]}{assignee?.last_name[0]}
-                    </div>
-                    <span className="text-xs text-muted-foreground">
-                      {assignee?.first_name} {assignee?.last_name}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button onClick={() => setExpandedTask(expandedTask === task.id ? null : task.id)} className="text-xs text-primary font-medium">
-                      {expandedTask === task.id ? t('myTasks.collapse') : t('myTasks.details')}
-                    </button>
-                    <span className="text-xs text-muted-foreground">
-                      {new Date(task.created_at).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short' })}
-                    </span>
-                  </div>
-                </div>
-              </motion.div>
-            );
-          })}
-        </AnimatePresence>
-
-        {displayed.length === 0 && (
-          <div className="text-center py-12 text-muted-foreground">
-            <p className="text-4xl mb-2">🏖️</p>
-            <p>{t('salesTasks.emptyState')}</p>
-          </div>
+    <div className="mx-auto max-w-[1600px]">
+      <PageHeader
+        title={isSuperAdmin ? t('salesTasks.allTasks') : t('nav.myTasks')}
+        subtitle={t(`role.${user?.role || 'sales'}`)}
+        actions={(
+          <>
+            <TasksHeaderActions />
+            <Button onClick={() => setShowCreate(true)} className="h-9 gap-1.5">
+              <Plus className="h-4 w-4" aria-hidden="true" />{t('dashboard.newTask')}
+            </Button>
+          </>
         )}
-      </motion.div>
-
-      {/* FAB */}
-      <motion.button
-        onClick={() => setShowCreate(true)}
-        className="fixed bottom-24 md:bottom-8 end-4 md:end-8 h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center z-20"
-        whileHover={{ scale: 1.1 }}
-        whileTap={{ scale: 0.9 }}
-        animate={{ boxShadow: ['0 0 0 0 hsl(var(--primary) / 0.4)', '0 0 0 12px hsl(var(--primary) / 0)', '0 0 0 0 hsl(var(--primary) / 0)'] }}
-        transition={{ duration: 2, repeat: Infinity }}
       >
-        <Plus className="h-6 w-6" />
-      </motion.button>
+        <div role="tablist" aria-label={t('salesTasks.type')} className="inline-flex max-w-full overflow-x-auto rounded-lg bg-secondary p-1">
+          {typeTabs.map(tab => (
+            <button key={tab.id} type="button" role="tab" aria-selected={activeTab === tab.id} onClick={() => setActiveTab(tab.id)}
+              className={`flex h-9 shrink-0 items-center gap-1.5 rounded-md px-3.5 text-sm font-medium transition-colors ${activeTab === tab.id ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+              {tab.id === 'interventions' && <Wrench className="h-4 w-4" aria-hidden="true" />}
+              {tab.id === 'deliveries' && <Truck className="h-4 w-4" aria-hidden="true" />}
+              {tab.label} <span className="tabular-nums opacity-70">{tab.count}</span>
+            </button>
+          ))}
+        </div>
+      </PageHeader>
+
+      <TaskBoard
+        tasks={displayed}
+        emptyLabel={t('salesTasks.emptyState')}
+        renderTask={task => {
+          const canEdit = task.created_by === user?.id || isSuperAdmin;
+          const open = expandedTask === task.id;
+          return (
+            <TaskCard
+              task={task}
+              assignee={getUserById(task.assigned_to)}
+              onOpen={canEdit ? () => openEdit(task) : undefined}
+              actions={(
+                <>
+                  <button type="button" onClick={() => setExpandedTask(open ? null : task.id)} aria-expanded={open}
+                    className="h-8 rounded-md px-2 text-xs font-semibold text-primary hover:bg-primary/10">
+                    {open ? t('myTasks.collapse') : t('myTasks.details')}
+                  </button>
+                  {canEdit && (
+                    <button type="button" onClick={() => openEdit(task)} aria-label={t('dashboard.editTask')} title={t('dashboard.editTask')}
+                      className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-primary/10 hover:text-primary">
+                      <Edit className="h-4 w-4" />
+                    </button>
+                  )}
+                  <button type="button" onClick={() => setDeleteConfirm(task.id)} aria-label={t('salesTasks.delete')} title={t('salesTasks.delete')}
+                    className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </>
+              )}
+            >
+              {open && (
+                <>
+                  {task.problem_details && <p className="text-muted-foreground">{task.problem_details}</p>}
+                  {task.payment_details && <p className="text-muted-foreground">{t('form.paymentDetails')} : {task.payment_details}</p>}
+                  {task.comment && <p className="text-destructive">{task.comment}</p>}
+                  {task.client_phone && (
+                    <a href={`tel:${task.client_phone}`} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-status-done-light px-3 text-sm font-medium text-status-done">
+                      <Phone className="h-4 w-4" aria-hidden="true" />{task.client_phone}
+                    </a>
+                  )}
+                  <p className="text-xs text-muted-foreground">{new Date(task.created_at).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                </>
+              )}
+            </TaskCard>
+          );
+        }}
+      />
 
       {/* Create Dialog */}
       <CreateTaskDialog open={showCreate} onOpenChange={setShowCreate} />

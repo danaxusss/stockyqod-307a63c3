@@ -2,10 +2,13 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useAuth } from '@/tasks/contexts/AuthAdapter';
 import { useData } from '@/tasks/contexts/DataContext';
 import { useLanguage } from '@/tasks/contexts/LanguageContext';
-import { TaskStatus, ROLE_CONFIG, STATUS_CONFIG } from '@/tasks/types';
+import { TaskStatus } from '@/tasks/types';
 import { StatusBadge, PriorityBadge } from '@/tasks/components/StatusBadge';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Phone, MapPin, MessageCircle, Navigation, MessageSquare, LayoutGrid, List, Truck, Radio, Clock, CheckCircle2, Crosshair } from 'lucide-react';
+import { Phone, MapPin, MessageCircle, Navigation, LayoutGrid, List, Truck, Radio, Clock, Clock3, CheckCircle2, Crosshair, ChevronDown, Play, Check, Ban, FileText, Wallet, MessageSquare } from 'lucide-react';
+import { PageHeader } from '@/components/PageHeader';
+import { TaskBoard, TaskCard, TaskTypeIcon } from '@/tasks/components/TaskBoard';
+import TasksHeaderActions from '@/tasks/components/TasksHeader';
 import { toast } from 'sonner';
 import confetti from 'canvas-confetti';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -19,16 +22,13 @@ import SignaturePad, { SignaturePadHandle } from '@/tasks/components/SignaturePa
 import { Camera, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
-const container = { hidden: {}, show: { transition: { staggerChildren: 0.05 } } };
-const item = { hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0 } };
-
-const STATUSES: TaskStatus[] = ['pending', 'doing', 'done', 'refused'];
-
 export default function MyTasks() {
   const { user } = useAuth();
   const { tasks, updateTaskStatus } = useData();
   const { t, language } = useLanguage();
-  const [view, setView] = useState<'kanban' | 'list'>('list');
+  // Columns by status on wide screens, the one-tap list on phones.
+  const [view, setView] = useState<'kanban' | 'list'>(() =>
+    typeof window !== 'undefined' && window.matchMedia?.('(min-width: 1024px)').matches ? 'kanban' : 'list');
   const [showDone, setShowDone] = useState(false);
   const [refuseTaskId, setRefuseTaskId] = useState<string | null>(null);
   const [refuseComment, setRefuseComment] = useState('');
@@ -161,8 +161,6 @@ export default function MyTasks() {
     const keepalive = setInterval(checkAndEnforceGPS, 60000);
     return () => clearInterval(keepalive);
   }, [user, isDriverRole, isTracking, isBackgroundTracking, startBackgroundTracking, stopBackgroundTracking, t]);
-
-  const roleConfig = ROLE_CONFIG[user?.role || 'technician'];
 
   const handleShareTracking = async (task: typeof myTasks[0]) => {
     if (hasGPSGranted()) {
@@ -298,18 +296,21 @@ export default function MyTasks() {
   const quickBtn = 'flex flex-col items-center justify-center gap-1 h-14 rounded-xl bg-secondary/60 hover:bg-secondary active:scale-95 transition text-[11px] font-medium text-foreground';
 
   const ActiveCard = ({ task }: { task: typeof myTasks[0] }) => (
-    <div className="glass rounded-2xl p-4 space-y-3">
+    <div className="rounded-2xl border border-border bg-card p-4 shadow-sm space-y-3">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="font-bold text-base text-foreground truncate">{task.client_name}</p>
-          <p className="text-xs text-muted-foreground">
-            {task.type === 'delivery' ? '🚚 ' : '🔧 '}{t(`status.${task.status}`)}
-          </p>
+          <div className="flex items-center gap-2.5">
+            <TaskTypeIcon type={task.type} />
+            <div className="min-w-0">
+              <p className="font-bold text-base text-foreground truncate">{task.client_name}</p>
+              <p className="text-xs text-muted-foreground">{t(`status.${task.status}`)}</p>
+            </div>
+          </div>
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
           {isOverdue(task) && (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-status-refused-light text-status-refused">
-              ⏰ {t('myTasks.overdue')}
+              <Clock3 className="h-3 w-3" aria-hidden="true" />{t('myTasks.overdue')}
             </span>
           )}
           <PriorityBadge priority={task.priority} />
@@ -330,10 +331,10 @@ export default function MyTasks() {
       {/* Key info, surfaced inline (no expand) */}
       {(task.problem_details || task.invoice_number || task.payment_details || task.comment) && (
         <div className="text-xs space-y-1 px-0.5">
-          {task.problem_details && <p className="text-muted-foreground">🔧 {task.problem_details}</p>}
-          {task.invoice_number && <p className="text-muted-foreground">📄 {task.invoice_number}</p>}
-          {task.payment_details && <p className="text-foreground font-medium">💳 {task.payment_details}</p>}
-          {task.comment && <p className="text-status-refused">💬 {task.comment}</p>}
+          {task.problem_details && <p className="text-muted-foreground">{task.problem_details}</p>}
+          {task.invoice_number && <p className="flex items-center gap-1.5 text-muted-foreground"><FileText className="h-3.5 w-3.5" aria-hidden="true" />{task.invoice_number}</p>}
+          {task.payment_details && <p className="flex items-center gap-1.5 text-foreground font-medium"><Wallet className="h-3.5 w-3.5" aria-hidden="true" />{task.payment_details}</p>}
+          {task.comment && <p className="flex items-center gap-1.5 text-status-refused"><MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />{task.comment}</p>}
         </div>
       )}
 
@@ -366,7 +367,7 @@ export default function MyTasks() {
           onClick={() => handleStatusChange(task.id, 'doing')}
           className="w-full h-[52px] rounded-xl bg-status-doing text-white text-base font-semibold flex items-center justify-center gap-2 active:scale-[0.99] transition shadow-sm"
         >
-          ▶ {t('myTasks.start')}
+          <Play className="h-5 w-5" aria-hidden="true" />{t('myTasks.start')}
         </button>
       ) : (
         <div className="grid grid-cols-[1fr_auto] gap-2">
@@ -374,22 +375,51 @@ export default function MyTasks() {
             onClick={() => handleStatusChange(task.id, 'done')}
             className="h-[52px] rounded-xl bg-status-done text-white text-base font-semibold flex items-center justify-center gap-2 active:scale-[0.99] transition shadow-sm"
           >
-            ✓ {t('myTasks.finish')}
+            <Check className="h-5 w-5" aria-hidden="true" />{t('myTasks.finish')}
           </button>
           <button
             onClick={() => handleStatusChange(task.id, 'refused')}
-            className="h-[52px] px-4 rounded-xl bg-status-refused-light text-status-refused font-medium active:scale-95 transition"
+            className="h-[52px] px-4 rounded-xl bg-status-refused-light text-status-refused font-medium active:scale-95 transition flex items-center gap-1.5"
           >
-            {t('myTasks.refuse')}
+            <Ban className="h-4 w-4" aria-hidden="true" />{t('myTasks.refuse')}
           </button>
         </div>
       )}
     </div>
   );
 
+  const header = (
+    <PageHeader
+      title={t('myTasks.title')}
+      subtitle={t(`role.${user?.role}`)}
+      actions={(
+        <>
+          <TasksHeaderActions />
+          {isDriverRole && (
+            <Button variant="outline" onClick={sendManualLocation} disabled={sendingManualLocation} className="h-9 gap-1.5">
+              <Crosshair className="h-4 w-4" aria-hidden="true" />
+              {sendingManualLocation ? t('myTasks.sending') : t('myTasks.myPosition')}
+            </Button>
+          )}
+          <div className="flex gap-1 rounded-lg bg-secondary p-1" role="group" aria-label="Affichage">
+            <button type="button" onClick={() => setView('kanban')} aria-pressed={view === 'kanban'} aria-label="Colonnes par statut" title="Colonnes par statut"
+              className={`flex h-8 w-8 items-center justify-center rounded-md ${view === 'kanban' ? 'bg-card shadow-sm' : 'text-muted-foreground'}`}>
+              <LayoutGrid className="h-4 w-4" />
+            </button>
+            <button type="button" onClick={() => setView('list')} aria-pressed={view === 'list'} aria-label="Liste" title="Liste"
+              className={`flex h-8 w-8 items-center justify-center rounded-md ${view === 'list' ? 'bg-card shadow-sm' : 'text-muted-foreground'}`}>
+              <List className="h-4 w-4" />
+            </button>
+          </div>
+        </>
+      )}
+    />
+  );
+
   return (
-    <div className="p-4 md:p-6 max-w-3xl mx-auto space-y-4">
+    <div className="mx-auto max-w-[1600px] space-y-4">
       <div className={isBlocked ? 'blur-sm pointer-events-none select-none' : ''}>
+        {header}
         {/* Check-in banner */}
         {isDriverRole && isWithinWorkingHours() && (
           <AnimatePresence>
@@ -399,7 +429,7 @@ export default function MyTasks() {
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
-                className="bg-primary/10 border border-primary/20 rounded-xl p-4 flex items-center justify-between gap-3"
+                className="mb-4 bg-primary/10 border border-primary/20 rounded-xl p-4 flex flex-wrap items-center justify-between gap-3"
               >
                 <div className="flex items-center gap-3">
                   <Clock className="h-6 w-6 text-primary" />
@@ -417,7 +447,7 @@ export default function MyTasks() {
                 key="checkin-done"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="flex items-center gap-2 px-3 py-1.5 bg-status-done-light rounded-lg w-fit"
+                className="mb-4 flex items-center gap-2 px-3 py-1.5 bg-status-done-light rounded-lg w-fit"
               >
                 <CheckCircle2 className="h-4 w-4 text-status-done" />
                 <span className="text-xs font-medium text-status-done">{t('myTasks.checkedAt', { time: checkinTime || '' })}</span>
@@ -426,135 +456,71 @@ export default function MyTasks() {
           </AnimatePresence>
         )}
 
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl md:text-2xl font-bold text-foreground">{t('myTasks.title')}</h1>
-            <p className="text-sm text-muted-foreground">{roleConfig.emoji} {t(`role.${user?.role}`)}</p>
-          </div>
-          <div className="flex items-center gap-2">
-            {isDriverRole && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={sendManualLocation}
-                disabled={sendingManualLocation}
-                className="text-xs"
-              >
-                <Crosshair className="h-3.5 w-3.5 me-1" />
-                {sendingManualLocation ? t('myTasks.sending') : t('myTasks.myPosition')}
-              </Button>
-            )}
-            <div className="flex gap-1 bg-secondary rounded-lg p-1">
-              <button onClick={() => setView('kanban')} className={`p-2 rounded-md ${view === 'kanban' ? 'bg-card shadow-sm' : ''}`}>
-                <LayoutGrid className="h-4 w-4" />
-              </button>
-              <button onClick={() => setView('list')} className={`p-2 rounded-md ${view === 'list' ? 'bg-card shadow-sm' : ''}`}>
-                <List className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-        </div>
-
         {view === 'kanban' ? (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
-            {STATUSES.map(status => {
-              const statusTasks = myTasks.filter(t => t.status === status);
-              const config = STATUS_CONFIG[status];
+          <TaskBoard
+            tasks={myTasks}
+            emptyLabel={t('myTasks.emptyState')}
+            renderTask={task => {
+              const open = expandedTask === task.id;
               return (
-                <div key={status} className="space-y-3">
-                  <div className="flex items-center gap-2 px-1">
-                    <span className="text-sm font-semibold text-foreground">{config.emoji} {t(`status.${status}`)}</span>
-                    <span className="text-xs bg-secondary rounded-full px-2 py-0.5 text-muted-foreground">{statusTasks.length}</span>
-                  </div>
-                  <motion.div variants={container} initial="hidden" animate="show" className="space-y-3">
-                    {statusTasks.map(task => (
-                      <motion.div
-                        key={task.id}
-                        variants={item}
-                        layout
-                        className="glass rounded-xl p-3"
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <p className="font-medium text-sm text-foreground">{task.client_name}</p>
-                          <TrackingIndicator taskId={task.id} />
-                        </div>
-                        <p className="text-xs text-muted-foreground flex items-center gap-1 mb-2">
-                          <MapPin className="h-3 w-3" />{task.address.slice(0, 35)}...
-                        </p>
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <PriorityBadge priority={task.priority} />
-                          {task.edited && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-secondary text-muted-foreground border border-border">
-                              ✏️ {t('common.modified')}
-                            </span>
-                          )}
-                        </div>
-
-                        {expandedTask === task.id && (
-                          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} className="mt-3 pt-3 border-t border-border/50 space-y-2">
-                            {task.problem_details && <p className="text-xs text-muted-foreground">{task.problem_details}</p>}
-                            {task.invoice_number && <p className="text-xs text-muted-foreground">📄 {task.invoice_number}</p>}
-                            {task.payment_details && <p className="text-xs text-muted-foreground">💳 {task.payment_details}</p>}
-                            {task.comment && <p className="text-xs text-destructive">💬 {task.comment}</p>}
-
-                            <div className="flex gap-1.5 flex-wrap">
-                              <button onClick={() => window.open(`tel:${task.client_phone}`)} className="flex items-center gap-1 px-2 py-1 bg-status-done-light text-status-done rounded-lg text-xs font-medium">
-                                <Phone className="h-3 w-3" /> {t('myTasks.call')}
-                              </button>
-                              <button onClick={() => openWhatsApp(task.client_phone, task.client_name)} className="flex items-center gap-1 px-2 py-1 bg-status-done-light text-status-done rounded-lg text-xs font-medium">
-                                <MessageCircle className="h-3 w-3" /> WhatsApp
-                              </button>
-                              <button onClick={() => openMaps(task.address)} className="flex items-center gap-1 px-2 py-1 bg-status-doing-light text-status-doing rounded-lg text-xs font-medium">
-                                <Navigation className="h-3 w-3" /> {t('myTasks.route')}
-                              </button>
-                              {user?.role === 'driver' && task.type === 'delivery' && task.status === 'doing' && !isTracking && (
-                                <button onClick={() => handleShareTracking(task)} className="flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary rounded-lg text-xs font-medium">
-                                  <Truck className="h-3 w-3" /> {t('myTasks.tracking')}
-                                </button>
-                              )}
-                            </div>
-                          </motion.div>
-                        )}
-
-                        <div className="flex items-center justify-between mt-3 pt-2 border-t border-border/50">
-                          <button onClick={() => setExpandedTask(expandedTask === task.id ? null : task.id)} className="text-xs text-primary font-medium">
-                            {expandedTask === task.id ? t('myTasks.collapse') : t('myTasks.details')}
+                <TaskCard
+                  task={task}
+                  showAssignee={false}
+                  actions={(
+                    <>
+                      <button type="button" onClick={() => setExpandedTask(open ? null : task.id)} aria-expanded={open}
+                        className="h-8 rounded-md px-2 text-xs font-semibold text-primary hover:bg-primary/10">
+                        {open ? t('myTasks.collapse') : t('myTasks.details')}
+                      </button>
+                      {task.status === 'pending' && (
+                        <button type="button" onClick={() => handleStatusChange(task.id, 'doing')} className="h-8 rounded-md bg-status-doing-light px-2.5 text-xs font-semibold text-status-doing">
+                          {t('myTasks.start')}
+                        </button>
+                      )}
+                      {task.status === 'doing' && (
+                        <>
+                          <button type="button" onClick={() => handleStatusChange(task.id, 'done')} className="h-8 rounded-md bg-status-done-light px-2.5 text-xs font-semibold text-status-done">
+                            {t('myTasks.finish')}
                           </button>
-                          {status !== 'done' && status !== 'refused' && (
-                            <div className="flex gap-1">
-                              {status === 'pending' && (
-                                <button onClick={() => handleStatusChange(task.id, 'doing')} className="text-xs px-2 py-1 bg-status-doing-light text-status-doing rounded-lg font-medium">
-                                  {t('myTasks.start')}
-                                </button>
-                              )}
-                              {status === 'doing' && (
-                                <>
-                                  <button onClick={() => handleStatusChange(task.id, 'done')} className="text-xs px-2 py-1 bg-status-done-light text-status-done rounded-lg font-medium">
-                                    {t('myTasks.finish')}
-                                  </button>
-                                  <button onClick={() => handleStatusChange(task.id, 'refused')} className="text-xs px-2 py-1 bg-status-refused-light text-status-refused rounded-lg font-medium">
-                                    {t('myTasks.refuse')}
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </motion.div>
-                    ))}
-                    {statusTasks.length === 0 && (
-                      <div className="text-center py-6 text-muted-foreground text-xs">
-                        {t('myTasks.noTasks')}
+                          <button type="button" onClick={() => handleStatusChange(task.id, 'refused')} className="h-8 rounded-md bg-status-refused-light px-2.5 text-xs font-semibold text-status-refused">
+                            {t('myTasks.refuse')}
+                          </button>
+                        </>
+                      )}
+                    </>
+                  )}
+                >
+                  <TrackingIndicator taskId={task.id} />
+                  {open && (
+                    <>
+                      {task.problem_details && <p className="text-muted-foreground">{task.problem_details}</p>}
+                      {task.payment_details && <p className="flex items-center gap-1.5 text-muted-foreground"><Wallet className="h-3.5 w-3.5" aria-hidden="true" />{task.payment_details}</p>}
+                      {task.comment && <p className="flex items-center gap-1.5 text-destructive"><MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />{task.comment}</p>}
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        <button type="button" onClick={() => window.open(`tel:${task.client_phone}`)} className="flex h-9 items-center gap-1.5 rounded-lg bg-status-done-light px-3 text-xs font-medium text-status-done">
+                          <Phone className="h-3.5 w-3.5" aria-hidden="true" /> {t('myTasks.call')}
+                        </button>
+                        <button type="button" onClick={() => openWhatsApp(task.client_phone, task.client_name)} className="flex h-9 items-center gap-1.5 rounded-lg bg-status-done-light px-3 text-xs font-medium text-status-done">
+                          <MessageCircle className="h-3.5 w-3.5" aria-hidden="true" /> WhatsApp
+                        </button>
+                        <button type="button" onClick={() => openMaps(task.address)} className="flex h-9 items-center gap-1.5 rounded-lg bg-status-doing-light px-3 text-xs font-medium text-status-doing">
+                          <Navigation className="h-3.5 w-3.5" aria-hidden="true" /> {t('myTasks.route')}
+                        </button>
+                        {user?.role === 'driver' && task.type === 'delivery' && task.status === 'doing' && !isTracking && (
+                          <button type="button" onClick={() => handleShareTracking(task)} className="flex h-9 items-center gap-1.5 rounded-lg bg-primary/10 px-3 text-xs font-medium text-primary">
+                            <Truck className="h-3.5 w-3.5" aria-hidden="true" /> {t('myTasks.tracking')}
+                          </button>
+                        )}
                       </div>
-                    )}
-                  </motion.div>
-                </div>
+                    </>
+                  )}
+                </TaskCard>
               );
-            })}
-          </div>
+            }}
+          />
         ) : (
-          /* Simplified one-tap list (default) */
-          <div className="space-y-4 mt-4">
+          /* Simplified one-tap list (default on phones) */
+          <div className="mx-auto max-w-3xl space-y-4">
             {activeTasks.length > 0 && (
               <div className="space-y-3">
                 <div className="flex items-center gap-2 px-1">
@@ -572,17 +538,17 @@ export default function MyTasks() {
                   className="w-full flex items-center justify-between px-1 py-2 text-sm font-semibold text-muted-foreground"
                 >
                   <span>{t('myTasks.doneSection')} ({doneTasks.length})</span>
-                  <span>{showDone ? '▾' : '▸'}</span>
+                  <ChevronDown className={`h-4 w-4 transition-transform ${showDone ? '' : '-rotate-90'}`} aria-hidden="true" />
                 </button>
                 {showDone && (
                   <div className="space-y-2">
                     {doneTasks.map(task => (
-                      <div key={task.id} className="glass rounded-xl p-3 flex items-center justify-between opacity-80">
+                      <div key={task.id} className="rounded-xl border border-border bg-card p-3 flex items-center justify-between gap-3">
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-foreground truncate">{task.client_name}</p>
                           <p className="text-xs text-muted-foreground truncate">{task.address}</p>
                         </div>
-                        <StatusBadge status={task.status} />
+                        <StatusBadge status={task.status} label={t(`status.${task.status}`)} />
                       </div>
                     ))}
                   </div>
@@ -591,20 +557,11 @@ export default function MyTasks() {
             )}
 
             {activeTasks.length === 0 && (
-              <div className="text-center py-16 text-muted-foreground">
-                <p className="text-4xl mb-2">🏖️</p>
-                <p>{t('myTasks.emptyState')}</p>
-              </div>
+              <p className="rounded-xl border border-dashed border-border px-4 py-12 text-center text-sm text-muted-foreground">{t('myTasks.emptyState')}</p>
             )}
           </div>
         )}
 
-        {myTasks.length === 0 && view === 'kanban' && (
-          <div className="text-center py-16 text-muted-foreground">
-            <p className="text-4xl mb-2">🏖️</p>
-            <p>{t('myTasks.emptyState')}</p>
-          </div>
-        )}
       </div>
 
       {/* Proof of completion Dialog */}
@@ -647,7 +604,7 @@ export default function MyTasks() {
             <div className="flex gap-2 pt-1">
               <Button variant="outline" onClick={() => setProofTaskId(null)} disabled={uploadingProof} className="flex-1">{t('form.cancel')}</Button>
               <Button onClick={completeWithProof} disabled={uploadingProof} className="flex-1">
-                {uploadingProof ? t('myTasks.sending') : `✓ ${t('myTasks.finish')}`}
+                {uploadingProof ? t('myTasks.sending') : t('myTasks.finish')}
               </Button>
             </div>
           </div>

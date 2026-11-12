@@ -3,13 +3,15 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/tasks/contexts/AuthAdapter';
 import { useData } from '@/tasks/contexts/DataContext';
 import { useLanguage } from '@/tasks/contexts/LanguageContext';
-import { ROLE_CONFIG, STATUS_CONFIG, TaskStatus, Priority, Task, TaskType } from '@/tasks/types';
-import { motion, AnimatePresence } from 'framer-motion';
+import { TaskStatus, Priority, Task, TaskType } from '@/tasks/types';
 import { StatusBadge, PriorityBadge } from '@/tasks/components/StatusBadge';
 import {
   ClipboardList, Wrench, Truck, CheckCircle, Clock3, UserPlus,
-  Users, Plus, Edit, MapPin, Phone, ChevronDown, AlertTriangle, BarChart3,
+  Users, Plus, Edit, MapPin, ChevronDown, AlertTriangle, BarChart3, Flame, Paperclip,
 } from 'lucide-react';
+import { PageHeader } from '@/components/PageHeader';
+import { TaskTypeIcon } from '@/tasks/components/TaskBoard';
+import TasksHeaderActions from '@/tasks/components/TasksHeader';
 import LiveTrackingMap from '@/tasks/components/LiveTrackingMap';
 import FieldAppShare from '@/tasks/components/FieldAppShare';
 import CreateTaskDialog from '@/tasks/components/CreateTaskDialog';
@@ -147,32 +149,32 @@ export default function Dashboard() {
   const editingTask = editId ? tasks.find(t => t.id === editId) : null;
 
   return (
-    <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-5">
-      {/* Top bar */}
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-xl md:text-2xl font-bold text-foreground">{t('dashboard.opsCenter')}</h1>
-          <p className="text-xs text-muted-foreground">{new Date().toLocaleDateString(dateLocale, { weekday: 'long', day: 'numeric', month: 'long' })}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex bg-secondary rounded-lg p-0.5">
-            {(['today', '7d', 'all'] as Period[]).map(p => (
-              <button key={p} onClick={() => setPeriod(p)}
-                className={`px-2.5 py-1 text-xs font-medium rounded-md transition ${period === p ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground'}`}>
-                {p === 'today' ? t('dashboard.periodToday') : p === '7d' ? t('dashboard.period7d') : t('dashboard.periodAll')}
-              </button>
-            ))}
-          </div>
-          <button onClick={openCreate} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/90">
-            <Plus className="h-4 w-4" /> {t('dashboard.newTask')}
-          </button>
-        </div>
-      </div>
+    <div className="mx-auto max-w-[1600px] space-y-5">
+      <PageHeader
+        title={t('dashboard.opsCenter')}
+        subtitle={new Date().toLocaleDateString(dateLocale, { weekday: 'long', day: 'numeric', month: 'long' })}
+        actions={(
+          <>
+            <TasksHeaderActions />
+            <div className="flex rounded-lg bg-secondary p-1" role="group" aria-label={t('dashboard.periodToday')}>
+              {(['today', '7d', 'all'] as Period[]).map(p => (
+                <button key={p} type="button" onClick={() => setPeriod(p)} aria-pressed={period === p}
+                  className={`h-8 rounded-md px-2.5 text-sm font-medium transition ${period === p ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'}`}>
+                  {p === 'today' ? t('dashboard.periodToday') : p === '7d' ? t('dashboard.period7d') : t('dashboard.periodAll')}
+                </button>
+              ))}
+            </div>
+            <Button onClick={openCreate} className="h-9 gap-1.5">
+              <Plus className="h-4 w-4" aria-hidden="true" /> {t('dashboard.newTask')}
+            </Button>
+          </>
+        )}
+      />
 
       {/* KPI strip */}
       <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
         {kpis.map(k => (
-          <div key={k.label} className="glass rounded-xl p-3">
+          <div key={k.label} className="rounded-xl border border-border bg-card p-3 shadow-sm">
             <div className="flex items-center justify-between">
               <p className="text-2xl font-bold text-foreground">{k.value}</p>
               <k.icon className="h-4 w-4" style={{ color: `hsl(var(--${k.color}))` }} />
@@ -189,11 +191,10 @@ export default function Dashboard() {
         </div>
         <div className="space-y-4">
           {/* Team */}
-          <div className="glass rounded-xl p-4">
+          <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
             <h2 className="font-semibold text-foreground text-sm mb-3 flex items-center gap-2"><Users className="h-4 w-4 text-primary" />{t('dashboard.team')}</h2>
             <div className="space-y-2">
               {field.map(u => {
-                const rc = ROLE_CONFIG[u.role];
                 const open = active.filter(t => t.assigned_to === u.id).length;
                 const busy = doing.some(t => t.assigned_to === u.id);
                 const inAt = checkins[u.id];
@@ -201,7 +202,7 @@ export default function Dashboard() {
                   <div key={u.id} className="flex items-center gap-2.5">
                     <span className={`h-2 w-2 rounded-full ${busy ? 'bg-status-doing animate-pulse' : inAt ? 'bg-status-done' : 'bg-muted-foreground/40'}`} />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-foreground truncate">{rc.emoji} {u.first_name} {u.last_name}</p>
+                      <p className="text-sm text-foreground truncate">{u.first_name} {u.last_name} <span className="text-xs text-muted-foreground">· {t(`role.${u.role}`)}</span></p>
                       {inAt && <p className="text-[10px] text-status-done">✓ {inAt}</p>}
                     </div>
                     <span className="text-xs text-muted-foreground shrink-0">{open}</span>
@@ -213,14 +214,14 @@ export default function Dashboard() {
           </div>
 
           {/* Alerts */}
-          <div className="glass rounded-xl p-4">
+          <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
             <h2 className="font-semibold text-foreground text-sm mb-3 flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-status-refused" />{t('dashboard.alerts')}</h2>
             <div className="space-y-2">
               {alerts.map(task => (
                 <button key={task.id} onClick={() => openEdit(task)} className="w-full text-start p-2 rounded-lg hover:bg-secondary transition flex items-center gap-2">
                   {isOverdue(task)
                     ? <Clock3 className="h-3.5 w-3.5 text-status-refused shrink-0" />
-                    : <span className="text-status-refused shrink-0">🔥</span>}
+                    : <Flame className="h-3.5 w-3.5 text-status-refused shrink-0" aria-hidden="true" />}
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-medium text-foreground truncate">{task.client_name}</p>
                     <p className="text-[10px] text-muted-foreground truncate">{task.address}</p>
@@ -234,7 +235,7 @@ export default function Dashboard() {
       </div>
 
       {/* Actionable segmented lists */}
-      <div className="glass rounded-xl overflow-hidden">
+      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
         <div className="flex border-b border-border overflow-x-auto">
           {segments.map(s => (
             <button key={s.id} onClick={() => setSegment(s.id)}
@@ -248,13 +249,14 @@ export default function Dashboard() {
             const assignee = getUserById(task.assigned_to);
             return (
               <div key={task.id} className="flex items-center gap-3 p-3 hover:bg-secondary/50 transition cursor-pointer" onClick={() => openEdit(task)}>
-                <StatusBadge status={task.status} />
+                <TaskTypeIcon type={task.type} className="h-8 w-8" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-foreground truncate">{task.client_name}</p>
                   <p className="text-xs text-muted-foreground truncate flex items-center gap-1"><MapPin className="h-3 w-3" />{task.address}</p>
                 </div>
-                {isOverdue(task) && <span className="text-[10px] font-semibold text-status-refused shrink-0">⏰ {t('dashboard.overdue')}</span>}
-                <span className="text-xs text-muted-foreground shrink-0 hidden sm:block">{assignee ? `${assignee.first_name}` : '—'}</span>
+                <span className="hidden shrink-0 md:block"><StatusBadge status={task.status} label={t(`status.${task.status}`)} /></span>
+                {isOverdue(task) && <span className="flex shrink-0 items-center gap-1 text-xs font-semibold text-status-refused"><Clock3 className="h-3 w-3" aria-hidden="true" />{t('dashboard.overdue')}</span>}
+                <span className="text-xs text-muted-foreground shrink-0 hidden sm:block">{assignee?.first_name || t('board.unassigned')}</span>
                 <PriorityBadge priority={task.priority} />
                 <button onClick={(e) => { e.stopPropagation(); openEdit(task); }} className="p-1.5 rounded-lg hover:bg-primary/10 text-muted-foreground hover:text-primary shrink-0">
                   <Edit className="h-4 w-4" />
@@ -267,7 +269,7 @@ export default function Dashboard() {
       </div>
 
       {/* Team performance (collapsible) */}
-      <div className="glass rounded-xl overflow-hidden">
+      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
         <button onClick={() => setShowPerf(v => !v)} className="w-full flex items-center gap-2 p-4 text-start">
           <BarChart3 className="h-4 w-4 text-primary" />
           <span className="flex-1 text-sm font-semibold text-foreground">{t('dashboard.performance')}</span>
@@ -288,7 +290,7 @@ export default function Dashboard() {
               <tbody>
                 {perf.map(p => (
                   <tr key={p.u.id} className="border-t border-border/60">
-                    <td className="p-2 text-foreground">{ROLE_CONFIG[p.u.role].emoji} {p.u.first_name} {p.u.last_name}</td>
+                    <td className="p-2 text-foreground">{p.u.first_name} {p.u.last_name} <span className="text-xs text-muted-foreground">· {t(`role.${p.u.role}`)}</span></td>
                     <td className="p-2 text-center text-foreground">{p.assigned}</td>
                     <td className="p-2 text-center text-status-done font-medium">{p.done}</td>
                     <td className="p-2 text-center text-status-refused">{p.refused}</td>
@@ -318,7 +320,7 @@ export default function Dashboard() {
           <div className="space-y-4 py-2">
             {dialogMode === 'edit' && (editingTask?.proof_photo_url || editingTask?.proof_signature_url) && (
               <div className="rounded-lg border border-border p-3 bg-secondary/30">
-                <p className="text-xs font-semibold text-foreground mb-2">📎 {t('myTasks.proofTitle')}</p>
+                <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-foreground"><Paperclip className="h-3.5 w-3.5" aria-hidden="true" />{t('myTasks.proofTitle')}</p>
                 <div className="flex gap-2">
                   {editingTask.proof_photo_url && (
                     <a href={editingTask.proof_photo_url} target="_blank" rel="noreferrer" className="block w-1/2">
@@ -340,7 +342,7 @@ export default function Dashboard() {
                   {(['technical_intervention', 'delivery'] as TaskType[]).map(ty => (
                     <button key={ty} onClick={() => setFormType(ty)}
                       className={`flex-1 py-2 text-xs font-medium rounded-lg border transition-all ${formType === ty ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground'}`}>
-                      {ty === 'technical_intervention' ? `🔧 ${t('dashboard.interventions')}` : `🚚 ${t('dashboard.deliveries')}`}
+                      {ty === 'technical_intervention' ? t('dashboard.interventions') : t('dashboard.deliveries')}
                     </button>
                   ))}
                 </div>
@@ -353,7 +355,7 @@ export default function Dashboard() {
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {(['pending', 'doing', 'done', 'refused'] as TaskStatus[]).map(s => (
-                      <SelectItem key={s} value={s}>{STATUS_CONFIG[s].emoji} {t(`status.${s}`)}</SelectItem>
+                      <SelectItem key={s} value={s}>{t(`status.${s}`)}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

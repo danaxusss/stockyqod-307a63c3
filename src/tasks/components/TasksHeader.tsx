@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
-import { Bell, BellOff } from 'lucide-react';
+import { Bell, BellOff, Languages } from 'lucide-react';
 import { toast } from 'sonner';
 import NotificationPanel from '@/tasks/components/NotificationPanel';
 import { useLanguage } from '@/tasks/contexts/LanguageContext';
 import { useAuth } from '@/tasks/contexts/AuthAdapter';
 import { enablePush, disablePush, isPushEnabled, pushPermission } from '@/tasks/lib/push';
 
-// Thin header for the Tasks section: push toggle + notification bell + language.
-export default function TasksHeader() {
-  const { language, setLanguage } = useLanguage();
+// Tasks header actions (push toggle, language for field staff, notification
+// bell), shown on the right of each Tasks page header.
+export default function TasksHeaderActions() {
+  const { language, setLanguage, t } = useLanguage();
   const { user } = useAuth();
   const [enabled, setEnabled] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -53,8 +54,8 @@ export default function TasksHeader() {
         setEnabled(ok);
         toast[ok ? 'success' : 'error'](ok ? 'Notifications activées ✅' : 'Autorisation refusée');
       }
-    } catch (e: any) {
-      toast.error(e?.message || "Échec de l'activation des notifications");
+    } catch (e) {
+      toast.error(e instanceof Error && e.message ? e.message : "Échec de l'activation des notifications");
     } finally {
       setBusy(false);
     }
@@ -63,24 +64,28 @@ export default function TasksHeader() {
   const isFieldStaff = user?.role === 'technician' || user?.role === 'driver';
 
   return (
-    <div className="flex items-center justify-end gap-1 mb-3">
+    <div className="flex items-center gap-1">
       <button
+        type="button"
         onClick={toggle}
         disabled={busy}
-        title={enabled ? 'Désactiver les notifications' : 'Activer les notifications push'}
-        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors disabled:opacity-50"
+        aria-pressed={enabled}
+        title={enabled ? t('header.notificationsOn') : t('header.notificationsOff')}
+        className="flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-50"
       >
-        {enabled ? <Bell className="h-3.5 w-3.5 text-emerald-500" /> : <BellOff className="h-3.5 w-3.5" />}
-        <span className="hidden sm:inline">{busy ? '…' : enabled ? 'Notifications activées' : 'Activer les notifications'}</span>
+        {enabled ? <Bell className="h-4 w-4 text-emerald-600" aria-hidden="true" /> : <BellOff className="h-4 w-4" aria-hidden="true" />}
+        <span className="hidden sm:inline">{busy ? '…' : enabled ? t('header.notificationsOn') : t('header.notificationsOff')}</span>
       </button>
       {/* Arabic toggle only for field staff (technician / driver). */}
       {isFieldStaff && (
         <button
+          type="button"
           onClick={() => setLanguage(language === 'fr' ? 'ar' : 'fr')}
-          className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-          title={language === 'fr' ? 'العربية' : 'Français'}
+          className="flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          lang={language === 'fr' ? 'ar' : 'fr'}
         >
-          {language === 'fr' ? '🇲🇦 العربية' : '🇫🇷 Français'}
+          <Languages className="h-4 w-4" aria-hidden="true" />
+          {language === 'fr' ? 'العربية' : 'Français'}
         </button>
       )}
       <NotificationPanel />

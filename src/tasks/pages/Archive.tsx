@@ -3,12 +3,11 @@ import { useAuth } from '@/tasks/contexts/AuthAdapter';
 import { useData } from '@/tasks/contexts/DataContext';
 import { useLanguage } from '@/tasks/contexts/LanguageContext';
 import { StatusBadge, PriorityBadge } from '@/tasks/components/StatusBadge';
-import { motion } from 'framer-motion';
-import { Search, Archive as ArchiveIcon, Download } from 'lucide-react';
+import { Search, Download, FileText, MessageSquare } from 'lucide-react';
+import { PageHeader } from '@/components/PageHeader';
+import { TaskTypeIcon } from '@/tasks/components/TaskBoard';
+import TasksHeaderActions from '@/tasks/components/TasksHeader';
 import { Input } from '@/components/ui/input';
-
-const container = { hidden: {}, show: { transition: { staggerChildren: 0.03 } } };
-const item = { hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } };
 
 export default function ArchivePage() {
   const { user } = useAuth();
@@ -41,53 +40,54 @@ export default function ArchivePage() {
   };
 
   return (
-    <div className="p-4 md:p-6 max-w-4xl mx-auto space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl md:text-2xl font-bold text-foreground flex items-center gap-2">
-          <ArchiveIcon className="h-6 w-6 text-primary" /> {t('archive.title')}
-        </h1>
-        <button onClick={exportCSV} className="flex items-center gap-1.5 px-3 py-2 bg-secondary rounded-lg text-sm font-medium text-foreground hover:bg-secondary/80 transition-colors">
-          <Download className="h-4 w-4" /> CSV
-        </button>
-      </div>
+    <div className="mx-auto max-w-[1600px] space-y-4">
+      <PageHeader
+        title={t('archive.title')}
+        subtitle={String(archived.length)}
+        actions={(
+          <>
+            <TasksHeaderActions />
+            <button type="button" onClick={exportCSV} className="flex h-9 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-sm font-medium text-foreground hover:bg-secondary transition-colors">
+              <Download className="h-4 w-4" aria-hidden="true" /> CSV
+            </button>
+          </>
+        )}
+      />
 
-      <div className="relative">
+      <div className="relative max-w-xl">
         <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input value={search} onChange={e => setSearch(e.target.value)} placeholder={t('archive.search')} className="ps-10" />
       </div>
 
-      <motion.div variants={container} initial="hidden" animate="show" className="space-y-3">
+      <div className="grid gap-3 lg:grid-cols-2">
         {archived.map(task => {
           const creator = getUserById(task.created_by);
           const assignee = getUserById(task.assigned_to);
           return (
-            <motion.div key={task.id} variants={item} className="glass rounded-xl p-4 shadow-sm">
-              <div className="flex items-start justify-between mb-2">
-                <div>
-                  <p className="font-semibold text-foreground">{task.client_name}</p>
+            <div key={task.id} className="rounded-xl border border-border bg-card p-4 shadow-sm">
+              <div className="flex items-start gap-3 mb-2">
+                <TaskTypeIcon type={task.type} />
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-foreground truncate">{task.client_name}</p>
                   <p className="text-xs text-muted-foreground">{task.address}</p>
                 </div>
-                <StatusBadge status={task.status} />
+                <StatusBadge status={task.status} label={t(`status.${task.status}`)} />
               </div>
               <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
                 <PriorityBadge priority={task.priority} />
-                <span>{task.type === 'technical_intervention' ? '🔧' : '🚚'}</span>
-                {task.invoice_number && <span>📄 {task.invoice_number}</span>}
-                <span>{t('archive.createdBy')} {creator?.first_name}</span>
-                <span>• {t('archive.assignedToShort')} {assignee?.first_name}</span>
-                <span>• {new Date(task.updated_at).toLocaleDateString(dateLocale)}</span>
+                {task.invoice_number && <span className="flex items-center gap-1"><FileText className="h-3 w-3" aria-hidden="true" />{task.invoice_number}</span>}
+                {creator?.first_name && <span>{t('archive.createdBy')} {creator.first_name}</span>}
+                {assignee?.first_name && <span>· {t('archive.assignedToShort')} {assignee.first_name}</span>}
+                <span>· {new Date(task.updated_at).toLocaleDateString(dateLocale)}</span>
               </div>
-              {task.comment && <p className="text-xs text-destructive mt-2">💬 {task.comment}</p>}
-            </motion.div>
+              {task.comment && <p className="mt-2 flex items-center gap-1.5 text-xs text-destructive"><MessageSquare className="h-3 w-3" aria-hidden="true" />{task.comment}</p>}
+            </div>
           );
         })}
-      </motion.div>
+      </div>
 
       {archived.length === 0 && (
-        <div className="text-center py-16 text-muted-foreground">
-          <p className="text-4xl mb-2">🔍</p>
-          <p>{t('archive.noResults')}</p>
-        </div>
+        <p className="rounded-xl border border-dashed border-border px-4 py-12 text-center text-sm text-muted-foreground">{t('archive.noResults')}</p>
       )}
     </div>
   );
