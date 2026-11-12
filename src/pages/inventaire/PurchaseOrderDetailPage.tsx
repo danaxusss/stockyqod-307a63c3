@@ -59,6 +59,12 @@ export default function PurchaseOrderDetailPage() {
     finally { setBusy(false); }
   };
 
+  // Cancelling cannot be undone from this page: ask first.
+  const cancelOrder = () => {
+    if (!confirm('Annuler ce bon de commande ?')) return;
+    void setStatus('cancelled');
+  };
+
   const startReceive = () => {
     if (!po?.items) return;
     const init: Record<string, string> = {};
@@ -189,7 +195,7 @@ export default function PurchaseOrderDetailPage() {
               <div className="mt-4 space-y-2">
                 {canReceive && <button onClick={startReceive} disabled={busy} className={`${opsPrimaryBtn} w-full`}><PackageCheck className="h-4 w-4" />Réceptionner</button>}
                 {po.status === 'draft' && <button onClick={() => setStatus('sent')} disabled={busy} className={`${opsSecondaryBtn} w-full`}><Send className="h-4 w-4" />Marquer envoyé</button>}
-                {canReceive && <button onClick={() => setStatus('cancelled')} disabled={busy} className={`${opsSecondaryBtn} w-full text-red-700 dark:text-red-300`}><Ban className="h-4 w-4" />Annuler le bon</button>}
+                {canReceive && <button onClick={cancelOrder} disabled={busy} className={`${opsSecondaryBtn} w-full text-red-700 dark:text-red-300`}><Ban className="h-4 w-4" />Annuler le bon</button>}
               </div>
             )}
           </section>

@@ -65,7 +65,7 @@ describe('reads past the server row cap', () => {
 
 describe('quote history for salespeople', () => {
   it('can be limited to the quotes a salesperson created', async () => {
-    const quotes = await SupabaseQuotesService.getAllQuotes(undefined, { createdBy: 'sara' });
+    const quotes = await SupabaseQuotesService.getAllQuotes(undefined, { ownedBy: { username: 'sara', sellerName: 'sara' } });
     expect(quotes.map(q => q.id)).toEqual(['q5', 'q2']);
   });
 });

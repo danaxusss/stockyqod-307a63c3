@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { Search, AlertTriangle, X, History, SlidersHorizontal, Loader, ChevronRight } from 'lucide-react';
+import { Search, AlertTriangle, X, History, SlidersHorizontal, Loader, ChevronRight, ChevronLeft } from 'lucide-react';
 import type { Product, StockLocation, StockMovement, ProductStockSetting } from '../../types';
 import { StockService } from '../../utils/supabaseStock';
 import { StockLocationsService } from '../../utils/supabaseStockLocations';
@@ -9,6 +9,9 @@ import { useAccessibleLocations } from '../../inventory/hooks/useAccessibleLocat
 import { findLevelKey, locationCandidates } from '../../inventory/lib/locationKeys';
 import { PageHeader } from '../../components/PageHeader';
 import { StatusPill } from '../../components/lists/StatusPill';
+
+const PAGE_SIZES = [20, 50, 100, 200];
+const PAGE_SIZE_KEY = 'stocky.stockLevels.pageSize';
 
 const field = 'h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring';
 
@@ -45,6 +48,19 @@ export default function StockLevelsPage() {
   const [query, setQuery] = useState('');
   const [onlyLow, setOnlyLow] = useState(false);
   const [detail, setDetail] = useState<Product | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(() => {
+    try {
+      const saved = Number(localStorage.getItem(PAGE_SIZE_KEY));
+      if (PAGE_SIZES.includes(saved)) return saved;
+    } catch { /* default */ }
+    return PAGE_SIZES[0];
+  });
+  const changePageSize = (size: number) => {
+    setPageSize(size);
+    setPage(1);
+    try { localStorage.setItem(PAGE_SIZE_KEY, String(size)); } catch { /* not remembered */ }
+  };
 
   const resolve = useLocationResolver(locations);
   const { keyAllowed, filterLevels } = useAccessibleLocations();
@@ -112,6 +128,13 @@ export default function StockLevelsPage() {
 
   const lowCount = useMemo(() => products.filter(isLow).length, [products, isLow]);
 
+  // Only one page is drawn: with ~11,600 products, drawing them all froze the page.
+  useEffect(() => { setPage(1); }, [query, onlyLow]);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pageStart = (currentPage - 1) * pageSize;
+  const shown = useMemo(() => filtered.slice(pageStart, pageStart + pageSize), [filtered, pageStart, pageSize]);
+
   return (
     <div className="mx-auto max-w-7xl">
       <PageHeader
@@ -157,7 +180,7 @@ export default function StockLevelsPage() {
             <>
               {/* Phones: a card per article, stock by location as chips */}
               <ul className="divide-y divide-border md:hidden">
-                {filtered.map(p => {
+                {shown.map(p => {
                   const low = isLow(p);
                   const stocked = locationKeys.filter(k => Number(p.stock_levels?.[k] ?? 0) !== 0);
                   return (
@@ -200,7 +223,7 @@ export default function StockLevelsPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {filtered.map(p => {
+                    {shown.map(p => {
                       const low = isLow(p);
                       return (
                         <tr
@@ -233,6 +256,31 @@ export default function StockLevelsPage() {
                   </tbody>
                 </table>
               </div>
+
+              {filtered.length > PAGE_SIZES[0] && (
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-2.5">
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    <span className="tabular-nums">{pageStart + 1}-{Math.min(pageStart + pageSize, filtered.length)} sur {filtered.length}</span>
+                    <label className="flex items-center gap-1.5">
+                      Afficher
+                      <select value={pageSize} onChange={event => changePageSize(Number(event.target.value))} aria-label="Articles par page"
+                        className="rounded-md border border-input bg-background px-2 py-1 text-xs text-foreground">
+                        {PAGE_SIZES.map(size => <option key={size} value={size}>{size}</option>)}
+                      </select>
+                      par page
+                    </label>
+                  </div>
+                  {totalPages > 1 && (
+                    <div className="flex items-center gap-1.5">
+                      <button type="button" onClick={() => setPage(Math.max(1, currentPage - 1))} disabled={currentPage === 1} aria-label="Page précédente"
+                        className="flex h-9 w-9 items-center justify-center rounded-md border border-border hover:bg-secondary disabled:opacity-50"><ChevronLeft className="h-4 w-4" /></button>
+                      <span className="px-2 text-xs tabular-nums text-muted-foreground">{currentPage}/{totalPages}</span>
+                      <button type="button" onClick={() => setPage(Math.min(totalPages, currentPage + 1))} disabled={currentPage === totalPages} aria-label="Page suivante"
+                        className="flex h-9 w-9 items-center justify-center rounded-md border border-border hover:bg-secondary disabled:opacity-50"><ChevronRight className="h-4 w-4" /></button>
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           )}
         </div>
@@ -292,13 +340,14 @@ function ProductStockDrawer({
         StockService.getMovementsForProduct(product.barcode),
         StockService.getStockSettings().catch(() => []),
       ]);
-      setMovements(moves);
+      // Only movements at locations this user may see, like the level columns.
+      setMovements(moves.filter(m => keyAllowed(m.location_key)));
       const s = settings.find(x => x.barcode === product.barcode && !x.location_key);
       setReorderPoint(s ? String(s.reorder_point) : '');
     } catch (e: any) {
       showToast({ type: 'error', message: e?.message || 'Erreur historique' });
     } finally { setLoading(false); }
-  }, [product.barcode, showToast]);
+  }, [product.barcode, showToast, keyAllowed]);
 
   useEffect(() => { loadMoves(); }, [loadMoves]);
 

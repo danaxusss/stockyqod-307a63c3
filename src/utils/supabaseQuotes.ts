@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+import { ownedQuotesFilter, type QuoteOwner } from './quoteOwnership';
 import { Quote, QuoteTemplate, CustomerInfo, QuoteItem } from '../types';
 import { getCompanyContext } from './supabaseCompanyFilter';
 import { readAll } from './readAll';
@@ -125,10 +126,11 @@ export class SupabaseQuotesService {
   }
 
   /**
-   * Every quote of the company, newest first. `createdBy` keeps only the
-   * quotes a user created (salespeople see their own, as on the home page).
+   * Every quote of the company, newest first. `ownedBy` keeps only a
+   * salesperson's quotes: created by them or naming them as seller (see
+   * quoteOwnership.ts; the home page and the search use the same rule).
    */
-  static async getAllQuotes(filterBySalesPerson?: string, options: { createdBy?: string } = {}): Promise<Quote[]> {
+  static async getAllQuotes(filterBySalesPerson?: string, options: { ownedBy?: QuoteOwner } = {}): Promise<Quote[]> {
     const { companyId, bypassFilter } = getCompanyContext();
     let rows: QuoteRow[];
     try {
@@ -138,7 +140,7 @@ export class SupabaseQuotesService {
           .or('document_type.eq.quote,document_type.is.null');
         if (!bypassFilter && companyId) query = query.eq('company_id', companyId);
         if (filterBySalesPerson) query = query.eq('customer_info->>salesPerson', filterBySalesPerson);
-        if (options.createdBy) query = query.eq('created_by', options.createdBy);
+        if (options.ownedBy) query = query.or(ownedQuotesFilter(options.ownedBy));
         return query.order('created_at', { ascending: false });
       });
     } catch (error) {

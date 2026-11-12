@@ -10,6 +10,7 @@ import { PdfExportService } from '../utils/pdfExport';
 import { CompanySettingsService, CompanySettings, DEFAULT_SHARE_TEMPLATES } from '../utils/companySettings';
 import { ExcelExportService } from '../utils/excelExport';
 import { useAuth } from '../hooks/useAuth';
+import { quoteOwnerOf } from '../utils/quoteOwnership';
 import { useAccess } from '../hooks/useAccess';
 import { buildWhatsAppShareUrl, openWhatsAppShare } from '../utils/whatsappShare';
 import { exportToCSV } from '../utils/csvExport';
@@ -35,9 +36,11 @@ type SortOrder = 'asc' | 'desc';
 export function QuotesHistoryPage() {
   const navigate = useNavigate();
   const { isAdmin, isSuperAdmin, isCompta, currentUser, authenticatedUser } = useAuth();
-  // Salespeople see the quotes they created, as on the home page and in search.
+  // Salespeople see the quotes they created or sell, as on the home page and
+  // in search; without a username they see none rather than everyone's.
   const { access } = useAccess();
-  const ownQuotesOf = access.ownQuotesOnly ? (currentUser?.username || authenticatedUser?.username || '') : undefined;
+  const owner = quoteOwnerOf(currentUser?.username ? currentUser : authenticatedUser);
+  const ownerKey = access.ownQuotesOnly ? JSON.stringify(owner) : 'all';
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [filteredQuotes, setFilteredQuotes] = useState<Quote[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -63,12 +66,14 @@ export function QuotesHistoryPage() {
     setIsLoading(true); setMessage(null);
     try {
       // A salesperson without a username sees nothing rather than everyone's quotes.
-      const allQuotes = ownQuotesOf === '' ? [] : await SupabaseQuotesService.getAllQuotes(undefined, { createdBy: ownQuotesOf });
+      const ownedBy = access.ownQuotesOnly ? owner : undefined;
+      const allQuotes = access.ownQuotesOnly && !owner ? [] : await SupabaseQuotesService.getAllQuotes(undefined, { ownedBy: ownedBy || undefined });
       setQuotes(allQuotes); setFilteredQuotes(allQuotes);
     } catch (error) {
       setMessage({ type: 'error', text: 'Erreur lors du chargement des devis' });
     } finally { setIsLoading(false); }
-  }, [ownQuotesOf]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ownerKey stands for owner and access
+  }, [ownerKey]);
 
   useEffect(() => { loadQuotes(); }, [loadQuotes]);
 

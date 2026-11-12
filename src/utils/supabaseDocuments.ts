@@ -2,6 +2,7 @@ import { supabase } from './supabaseClient';
 import { getCompanyContext } from './supabaseCompanyFilter';
 import { Quote, QuoteItem, CustomerInfo } from '../types';
 import { documentTotal, invoicePayment, mergeLines, recomputeLine, sameCustomer } from './documentLines';
+import { readAll, type Pageable } from './readAll';
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -423,16 +424,26 @@ export class SupabaseDocumentsService {
     throw new Error('Le proforma est modifié en ce moment : impossible de remettre ses lignes à facturer.');
   }
 
+  // Every page: the server returns at most 1,000 rows per request, and a
+  // list cut there silently drops the oldest documents.
+  private static async readDocs(build: () => unknown, what = 'documents'): Promise<Quote[]> {
+    try {
+      return (await readAll<DocRow>(() => build() as Pageable<DocRow>, 'id')).map(mapDocRow);
+    } catch (error) {
+      throw new Error(`Erreur chargement ${what}: ${(error as { message?: string })?.message || error}`);
+    }
+  }
+
   static async getAllByType(type: 'bl' | 'proforma' | 'invoice' | 'avoir' | 'bon_commande'): Promise<Quote[]> {
     const { companyId, bypassFilter } = getCompanyContext();
-    let q = (supabase.from('quotes') as any)
-      .select('*')
-      .eq('document_type', type)
-      .order('created_at', { ascending: false });
-    if (!bypassFilter && companyId) q = q.eq('company_id', companyId);
-    const { data, error } = await q;
-    if (error) throw new Error(`Erreur chargement documents: ${error.message}`);
-    return ((data as DocRow[]) || []).map(mapDocRow);
+    return this.readDocs(() => {
+      let q = (supabase.from('quotes') as any)
+        .select('*')
+        .eq('document_type', type)
+        .order('created_at', { ascending: false });
+      if (!bypassFilter && companyId) q = q.eq('company_id', companyId);
+      return q;
+    });
   }
 
   /**
@@ -440,13 +451,11 @@ export class SupabaseDocumentsService {
    * (documents without an issuer belong to their owning company).
    */
   static async getForLedger(type: 'invoice' | 'avoir', companyId: string): Promise<Quote[]> {
-    const { data, error } = await (supabase.from('quotes') as any)
+    return this.readDocs(() => (supabase.from('quotes') as any)
       .select('*')
       .eq('document_type', type)
       .or(`issuing_company_id.eq.${companyId},and(issuing_company_id.is.null,company_id.eq.${companyId})`)
-      .order('created_at', { ascending: false });
-    if (error) throw new Error(`Erreur chargement documents: ${error.message}`);
-    return ((data as DocRow[]) || []).map(mapDocRow);
+      .order('created_at', { ascending: false }));
   }
 
   static async getById(id: string): Promise<Quote | null> {
@@ -467,6 +476,14 @@ export class SupabaseDocumentsService {
       .select('document_type, parent_document_id, source_bl_ids, items')
       .eq('id', id)
       .maybeSingle();
+    // A credit note cancels part of its invoice: without the invoice it would
+    // still lower the client's balance and the books.
+    if (doc?.document_type === 'invoice') {
+      const avoirs = await this.getAvoirsForInvoice(id);
+      if (avoirs.length) {
+        throw new Error(`Cette facture a des avoirs (${avoirs.map(a => a.quoteNumber).join(', ')}) : supprimez-les d'abord.`);
+      }
+    }
     let q = (supabase.from('quotes') as any).delete().eq('id', id);
     if (!bypassFilter && companyId) q = q.eq('company_id', companyId);
     const { error } = await q;
@@ -639,15 +656,15 @@ export class SupabaseDocumentsService {
 
   static async getBLsForClient(clientName: string): Promise<Quote[]> {
     const { companyId, bypassFilter } = getCompanyContext();
-    let q = (supabase.from('quotes') as any)
-      .select('*')
-      .eq('document_type', 'bl')
-      .eq('status', 'draft')
-      .order('created_at', { ascending: false });
-    if (!bypassFilter && companyId) q = q.eq('company_id', companyId);
-    const { data, error } = await q;
-    if (error) throw new Error(`Erreur BLs: ${error.message}`);
-    const docs = ((data as DocRow[]) || []).map(mapDocRow);
+    const docs = await this.readDocs(() => {
+      let q = (supabase.from('quotes') as any)
+        .select('*')
+        .eq('document_type', 'bl')
+        .eq('status', 'draft')
+        .order('created_at', { ascending: false });
+      if (!bypassFilter && companyId) q = q.eq('company_id', companyId);
+      return q;
+    }, 'BLs');
     return clientName
       ? docs.filter(d => d.customer?.fullName === clientName)
       : docs;
@@ -813,7 +830,33 @@ export class SupabaseDocumentsService {
     if (!bypassFilter && companyId) q = q.eq('company_id', companyId);
     const { data, error } = await q.select('*').single();
     if (error) throw new Error(`Erreur mise à jour: ${error.message}`);
-    return mapDocRow(data as DocRow);
+    const saved = data as DocRow;
+    // A line taken off an invoice made from a proforma is no longer billed:
+    // put it back to invoice on the proforma, or it could never be billed again.
+    if (updates.items !== undefined && saved.document_type === 'invoice' && saved.parent_document_id) {
+      await this.releaseRemovedInvoiceLines(saved.parent_document_id, id, updates.items.map(i => i.id));
+    }
+    return mapDocRow(saved);
+  }
+
+  /** Proforma lines billed by `invoiceId` that are no longer on it go back to "not billed". */
+  private static async releaseRemovedInvoiceLines(proformaId: string, invoiceId: string, keptItemIds: string[]): Promise<void> {
+    const kept = new Set(keptItemIds);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const { data } = await (supabase.from('quotes') as unknown as {
+        select(columns: string): { eq(column: string, value: string): { maybeSingle(): PromiseLike<{ data: { items: unknown; updated_at: string; document_type: string | null } | null }> } };
+      }).select('items, updated_at, document_type').eq('id', proformaId).maybeSingle();
+      if (!data || data.document_type !== 'proforma') return;
+      const items = (Array.isArray(data.items) ? data.items : []) as QuoteItem[];
+      const released = items.map(item => {
+        if (!item.is_billed || item.billed_invoice_id !== invoiceId || kept.has(item.id)) return item;
+        const { billed_by_company_id: _b, billed_invoice_id: _i, ...rest } = item;
+        return { ...rest, is_billed: false } as QuoteItem;
+      });
+      if (released.every((item, i) => item === items[i])) return;
+      if (await this.swapProformaItems(proformaId, data.updated_at, released)) return;
+    }
+    throw new Error('Le proforma est modifié en ce moment : ses lignes retirées de la facture n’ont pas pu être remises à facturer.');
   }
 
   static async duplicateDocument(id: string): Promise<Quote> {
@@ -836,6 +879,8 @@ export class SupabaseDocumentsService {
       newNumber = companyId ? await this.nextNumber(companyId, 'bl') : `BL-COPIE-${Date.now()}`;
     } else if (docType === 'proforma') {
       newNumber = companyId ? await this.nextNumber(companyId, 'proforma') : `PRO-COPIE-${Date.now()}`;
+    } else if (docType === 'bon_commande') {
+      newNumber = companyId ? await this.nextNumber(companyId, 'bon_commande') : `BC-COPIE-${Date.now()}`;
     } else {
       const { ExcelExportService } = await import('./excelExport');
       newNumber = ExcelExportService.generateQuoteNumber();
@@ -1010,25 +1055,28 @@ export class SupabaseDocumentsService {
     return mapDocRow(newDoc as DocRow);
   }
 
-  // Fetch all invoices for a given client, matched by phone or name (for F6 export)
-  static async getInvoicesForClient(phoneOrName: string): Promise<Quote[]> {
-    const { companyId, bypassFilter } = getCompanyContext();
-    const { data, error } = await (supabase.from('quotes') as any)
-      .select('*')
-      .eq('document_type', 'invoice')
-      .order('created_at', { ascending: false });
-    if (error) throw error;
-    const rows = ((data || []) as DocRow[]).map(mapDocRow);
-    const needle = phoneOrName.toLowerCase().trim();
-    const filtered = rows.filter(q => {
-      const c = q.customer;
-      if (!c) return false;
-      return (
-        (c.phoneNumber || '').toLowerCase().includes(needle) ||
-        (c.fullName || '').toLowerCase().includes(needle)
-      );
+  /**
+   * Invoices of one client for their statement, matched like the balance in
+   * getClientFinancialSummary: by phone when the client has one, otherwise by
+   * name among documents without a phone. (A substring match put "Ali Benali"
+   * and "Café Alibaba" on the statement of "Ali".)
+   */
+  static async getInvoicesForClient(phone: string, name: string): Promise<Quote[]> {
+    const { companyId, isSuperAdmin } = getCompanyContext();
+    const wantedPhone = (phone || '').trim();
+    const wantedName = (name || '').trim().toLowerCase();
+    const rows = await this.readDocs(() => {
+      let q = (supabase.from('quotes') as any)
+        .select('*')
+        .eq('document_type', 'invoice')
+        .order('created_at', { ascending: false });
+      if (!isSuperAdmin && companyId) q = q.eq('company_id', companyId);
+      return q;
+    }, 'factures');
+    return rows.filter(q => {
+      const docPhone = (q.customer?.phoneNumber || '').trim();
+      if (wantedPhone) return docPhone === wantedPhone;
+      return !docPhone && (q.customer?.fullName || '').trim().toLowerCase() === wantedName;
     });
-    if (bypassFilter || !companyId) return filtered;
-    return filtered.filter(q => !q.company_id || q.company_id === companyId);
   }
 }

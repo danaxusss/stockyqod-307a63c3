@@ -5,6 +5,7 @@
 import { supabase } from './supabaseClient';
 import { getCompanyContext } from './supabaseCompanyFilter';
 import type { Access } from '../lib/navigation';
+import { ownedQuotesFilter, quoteOwnerOf } from './quoteOwnership';
 
 export type DocType = 'quote' | 'bl' | 'proforma' | 'invoice' | 'avoir' | 'bon_commande';
 export type Tone = 'red' | 'amber' | 'blue' | 'green' | 'gray';
@@ -44,6 +45,8 @@ export interface HomeScope {
   access: Access;
   /** Username recorded as the quote's author (created_by). */
   username: string | null;
+  /** Seller name shown on quotes (custom seller name, else the username). */
+  sellerName?: string | null;
   userId: string | null;
 }
 
@@ -94,11 +97,18 @@ async function rows<T>(query: Query): Promise<T[]> {
   return data || [];
 }
 
+/** A salesperson's quotes only: created by them or naming them as seller. */
+function ownQuotes({ access, username, sellerName }: HomeScope, q: Query): Query {
+  if (!access.ownQuotesOnly) return q;
+  const owner = quoteOwnerOf({ username, custom_seller_name: sellerName });
+  // Without a username a salesperson sees nothing rather than everyone's quotes.
+  return owner ? q.or(ownedQuotesFilter(owner)) : q.eq('id', '00000000-0000-0000-0000-000000000000');
+}
+
 /** Quotes sent to the client and still waiting for an answer, oldest first. */
-async function loadFollowUps({ access, username }: HomeScope): Promise<HomeDoc[]> {
-  let q = scoped(looseDb().from('quotes').select(DOC_FIELDS).or('document_type.eq.quote,document_type.is.null').eq('status', 'pending'));
+async function loadFollowUps(scope: HomeScope): Promise<HomeDoc[]> {
   // Sales staff follow up their own quotes, as in the quote permissions.
-  if (access.ownQuotesOnly && username) q = q.eq('created_by', username);
+  const q = ownQuotes(scope, scoped(looseDb().from('quotes').select(DOC_FIELDS).or('document_type.eq.quote,document_type.is.null').eq('status', 'pending')));
   return (await rows<DocRow>(q)).map(toDoc).sort((a, b) => a.updatedAt.localeCompare(b.updatedAt));
 }
 
@@ -125,11 +135,11 @@ async function loadTasks({ access, userId }: HomeScope): Promise<HomeTask[]> {
 }
 
 /** Latest documents the user may open: quotes, and billing documents for billing staff. */
-async function loadRecent({ access, username }: HomeScope): Promise<HomeDoc[]> {
+async function loadRecent(scope: HomeScope): Promise<HomeDoc[]> {
+  const { access } = scope;
   let q = scoped(looseDb().from('quotes').select(DOC_FIELDS));
   if (!access.billing) {
-    q = q.or('document_type.eq.quote,document_type.is.null');
-    if (access.ownQuotesOnly && username) q = q.eq('created_by', username);
+    q = ownQuotes(scope, q.or('document_type.eq.quote,document_type.is.null'));
   } else if (!access.quotes) {
     q = q.not('document_type', 'is', null).neq('document_type', 'quote');
   }
