@@ -1,6 +1,7 @@
 import { supabase } from './supabaseClient';
 import { Return, ReturnItem } from '../types';
 import { getCompanyContext } from './supabaseCompanyFilter';
+import { readAll, type Pageable } from './readAll';
 
 type ReturnRow = {
   id: string;
@@ -41,11 +42,13 @@ function mapRow(r: ReturnRow): Return {
 export class SupabaseReturnsService {
   static async getAll(): Promise<Return[]> {
     const { companyId, isSuperAdmin } = getCompanyContext();
-    let q = (supabase.from('returns') as any).select('*').order('created_at', { ascending: false });
-    if (!isSuperAdmin && companyId) q = q.eq('company_id', companyId);
-    const { data, error } = await q;
-    if (error) throw error;
-    return ((data as ReturnRow[]) || []).map(mapRow);
+    // Every page: the server returns at most 1,000 rows per request.
+    const rows = await readAll<ReturnRow>(() => {
+      let q = (supabase.from('returns') as any).select('*').order('created_at', { ascending: false });
+      if (!isSuperAdmin && companyId) q = q.eq('company_id', companyId);
+      return q as Pageable<ReturnRow>;
+    }, 'id');
+    return rows.map(mapRow);
   }
 
   static async create(payload: {
