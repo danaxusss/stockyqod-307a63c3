@@ -29,7 +29,8 @@ import { usePersistentColumns } from '../components/lists/usePersistentColumns';
 import { formatMoney } from '../utils/format';
 import { effectiveChange, saveProductClassifications, type ClassificationChange } from '../utils/productClassification';
 
-const PRODUCTS_PER_PAGE = 20;
+const PAGE_SIZES = [20, 50, 100, 200];
+const PAGE_SIZE_KEY = 'stocky.products.pageSize';
 type SortField = 'name' | 'brand' | 'price' | 'buyprice' | 'provider';
 type SortOrder = 'asc' | 'desc';
 // Sector filter value for products that have no sector yet.
@@ -98,6 +99,18 @@ export default function ProductsPage() {
   applyChangesRef.current = applyProductChanges;
   const { sectors } = useBusinessSectors();
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(() => {
+    try {
+      const saved = Number(localStorage.getItem(PAGE_SIZE_KEY));
+      if (PAGE_SIZES.includes(saved)) return saved;
+    } catch { /* default */ }
+    return PAGE_SIZES[0];
+  });
+  const changePageSize = (size: number) => {
+    setPageSize(size);
+    setCurrentPage(1);
+    try { localStorage.setItem(PAGE_SIZE_KEY, String(size)); } catch { /* not remembered */ }
+  };
   const [sortField, setSortField] = useState<SortField>('name');
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
   const [editingBarcode, setEditingBarcode] = useState<string | null>(null);
@@ -193,9 +206,9 @@ export default function ProductsPage() {
     return list;
   }, [products, searchQuery, brandFilter, providerFilter, categoryFilter, sectorFilter, sortField, sortOrder, getAllNames]);
 
-  const totalPages = Math.ceil(filtered.length / PRODUCTS_PER_PAGE);
-  const startIdx = (currentPage - 1) * PRODUCTS_PER_PAGE;
-  const currentProducts = filtered.slice(startIdx, startIdx + PRODUCTS_PER_PAGE);
+  const totalPages = Math.ceil(filtered.length / pageSize);
+  const startIdx = (currentPage - 1) * pageSize;
+  const currentProducts = filtered.slice(startIdx, startIdx + pageSize);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) setSortOrder(o => o === 'asc' ? 'desc' : 'asc');
@@ -411,6 +424,50 @@ export default function ProductsPage() {
     );
   };
 
+  // The edit form of one product, under its row: the table keeps its columns
+  // and width while a product is edited.
+  const renderEditPanel = (product: Product, kioskCategory: Product['kiosk_category']) => {
+    const field = 'w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm text-foreground';
+    const label = 'block text-xs font-medium text-muted-foreground';
+    return (
+      <div role="group" aria-label={`Modifier ${product.name}`} className="rounded-lg border border-primary/30 bg-card p-3 shadow-sm">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))] xl:grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))_minmax(0,1fr)_minmax(0,1.5fr)]">
+          <label className={label}>Nom
+            <input type="text" value={editForm.name || ''} aria-label="Nom" onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} className={`${field} mt-1`} />
+          </label>
+          <label className={label}>Prix d’achat
+            <input type="number" value={editForm.buyprice || 0} aria-label="Prix d’achat" onChange={e => setEditForm(f => ({ ...f, buyprice: parseFloat(e.target.value) || 0 }))}
+              className={`${field} mt-1 text-right tabular-nums`} step="0.01" />
+          </label>
+          <label className={label}>Prix de vente
+            <input type="number" value={editForm.price || 0} aria-label="Prix de vente" onChange={e => setEditForm(f => ({ ...f, price: parseFloat(e.target.value) || 0 }))}
+              className={`${field} mt-1 text-right tabular-nums`} step="0.01" />
+          </label>
+          <label className={label}>Fournisseur
+            <input type="text" value={editForm.provider || ''} aria-label="Fournisseur" onChange={e => setEditForm(f => ({ ...f, provider: e.target.value }))} className={`${field} mt-1`} />
+          </label>
+          {canEditProducts && (
+            <div className={label}>Type kiosque
+              <div className="mt-1">{renderKioskType(product, true, true, kioskCategory)}</div>
+            </div>
+          )}
+          {canEditProducts && (
+            <div className={label}>Secteur
+              <div className="mt-1">{renderSectors(product, true, true, editForm.sector_ids || [])}</div>
+            </div>
+          )}
+        </div>
+        <div className="mt-3 flex justify-end gap-2">
+          <button type="button" onClick={cancelEdit} className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:bg-secondary">Annuler</button>
+          <button type="button" onClick={() => saveEdit(product.barcode)} disabled={isSaving}
+            className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60">
+            {isSaving ? <Loader className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}Enregistrer
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   // Row actions: the technical sheet when one is linked, "+ Devis", and the
   // rest in the ⋯ menu.
   const renderActions = (product: Product, isEditing: boolean) => isEditing ? (
@@ -453,19 +510,20 @@ export default function ProductsPage() {
   };
 
   const formatCurrency = (n: number) => formatMoney(n);
-  // Kiosk type and sectors are shown while classifying (bulk mode or a row
-  // being edited) even when their columns are hidden; so are the edited fields.
-  const showColumn = (key: OptionalColumn) => columns.includes(key)
-    || ((key === 'kiosk' || key === 'sectors') && (bulkMode || !!editingBarcode))
-    || ((key === 'buyprice' || key === 'provider') && !!editingBarcode);
+  // Columns follow the "Colonnes" choice. Bulk classification needs the kiosk
+  // type and sector columns, so they stay shown (and locked in the picker)
+  // while it is on; a single row is edited in a panel under it instead.
+  const BULK_COLUMNS: OptionalColumn[] = ['kiosk', 'sectors'];
+  const showColumn = (key: OptionalColumn) => columns.includes(key) || (bulkMode && BULK_COLUMNS.includes(key));
+  const visibleColumnCount = 4 + (bulkMode ? 1 : 0) + COLUMN_OPTIONS.filter(option => showColumn(option.key)).length;
 
   return (
-    <div className={`mx-auto max-w-7xl space-y-4 ${bulkMode ? 'pb-48 sm:pb-28' : ''}`}>
+    <div className={`mx-auto max-w-[110rem] space-y-4 ${bulkMode ? 'pb-48 sm:pb-28' : ''}`}>
       <PageHeader
         title="Produits"
         subtitle={`${products.length} produit${products.length !== 1 ? 's' : ''}`}
         actions={<>
-          {!isMobile && <ColumnPicker options={COLUMN_OPTIONS} shown={columns} onToggle={toggleColumn} />}
+          {!isMobile && <ColumnPicker options={COLUMN_OPTIONS} shown={columns} onToggle={toggleColumn} locked={bulkMode ? BULK_COLUMNS : []} lockedHint="affiché pendant la modification groupée" />}
           {canEditProducts && <>
             <button onClick={() => setManagingSectors(true)} className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground hover:bg-secondary">
               <Briefcase className="h-4 w-4" /><span className="sm:hidden">Secteurs</span><span className="hidden sm:inline">Gérer les secteurs</span>
@@ -651,7 +709,7 @@ export default function ProductsPage() {
                     {showColumn('kiosk') && <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Type kiosque</th>}
                     {showColumn('sectors') && <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Secteur</th>}
                     {showColumn('stock') && <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Stock</th>}
-                    <th className="px-3 py-2"><span className="sr-only">Actions</span></th>
+                    <th className="sticky right-0 bg-card px-3 py-2 shadow-[inset_0_0_0_999px_hsl(var(--secondary)/0.4)]"><span className="sr-only">Actions</span></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -660,7 +718,9 @@ export default function ProductsPage() {
                     const kioskCategory = shownKioskCategory(product);
                     const rowSectors = shownSectors(product);
                     const isPending = !!pending[product.barcode];
-                    const editClassification = canEditProducts && (bulkMode || isEditing);
+                    // In the table, kiosk type and sector are edited inline only in bulk
+                    // mode; a single row is edited in the panel under it.
+                    const editClassification = canEditProducts && bulkMode;
                     const isSelected = selected.has(product.barcode);
                     // A click on the row (not on a control) opens the quick view.
                     const openQuickView = (event: React.MouseEvent) => {
@@ -669,7 +729,8 @@ export default function ProductsPage() {
                       setQuickViewProduct(product);
                     };
                     return (
-                      <tr key={product.barcode} onClick={openQuickView}
+                      <React.Fragment key={product.barcode}>
+                      <tr onClick={openQuickView}
                         className={`${isPending ? 'bg-amber-500/5 hover:bg-amber-500/10' : isSelected ? 'bg-primary/5' : 'hover:bg-secondary/60'} ${bulkMode || isEditing ? '' : 'cursor-pointer'}`}>
                         {bulkMode && (
                           <td className="px-3 py-2">
@@ -689,15 +750,10 @@ export default function ProductsPage() {
                           </button>
                         </td>
                         <td className="min-w-[14rem] max-w-md px-3 py-2">
-                          {isEditing ? (
-                            <input type="text" value={editForm.name || ''} aria-label="Nom" onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
-                              className="w-full rounded border border-input bg-background px-2 py-1 text-sm text-foreground" />
-                          ) : (
-                            <Link to={`/product/${encodeURIComponent(product.barcode)}`} title="Voir la fiche produit"
-                              className="line-clamp-2 font-medium leading-snug text-foreground hover:text-primary hover:underline">
-                              {product.name}
-                            </Link>
-                          )}
+                          <Link to={`/product/${encodeURIComponent(product.barcode)}`} title="Voir la fiche produit"
+                            className="line-clamp-2 font-medium leading-snug text-foreground hover:text-primary hover:underline">
+                            {product.name}
+                          </Link>
                           <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground">{product.barcode}</p>
                         </td>
                         {showColumn('brand') && (
@@ -710,56 +766,62 @@ export default function ProductsPage() {
                         )}
                         {showColumn('buyprice') && (
                           <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-muted-foreground">
-                            {isEditing ? (
-                              <input type="number" value={editForm.buyprice || 0} aria-label="Prix d’achat" onChange={e => setEditForm(f => ({ ...f, buyprice: parseFloat(e.target.value) || 0 }))}
-                                className="w-24 rounded border border-input bg-background px-2 py-1 text-right text-sm text-foreground" step="0.01" />
-                            ) : formatCurrency(product.buyprice)}
+                            {formatCurrency(product.buyprice)}
                           </td>
                         )}
                         <td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums text-foreground">
-                          {isEditing ? (
-                            <input type="number" value={editForm.price || 0} aria-label="Prix de vente" onChange={e => setEditForm(f => ({ ...f, price: parseFloat(e.target.value) || 0 }))}
-                              className="w-24 rounded border border-input bg-background px-2 py-1 text-right text-sm text-foreground" step="0.01" />
-                          ) : formatCurrency(product.price)}
+                          {formatCurrency(product.price)}
                         </td>
                         {showColumn('provider') && (
                           <td className="px-3 py-2 text-foreground">
-                            {isEditing ? (
-                              <input type="text" value={editForm.provider || ''} aria-label="Fournisseur" onChange={e => setEditForm(f => ({ ...f, provider: e.target.value }))}
-                                className="w-28 rounded border border-input bg-background px-2 py-1 text-sm text-foreground" />
-                            ) : (
-                              <>
-                                {product.provider || '—'}
-                                {product.provider && getOriginalName('provider', product.provider) && (
-                                  <span className="ml-1 text-xs text-muted-foreground">(ex : {getOriginalName('provider', product.provider)})</span>
-                                )}
-                              </>
+                            {product.provider || '—'}
+                            {product.provider && getOriginalName('provider', product.provider) && (
+                              <span className="ml-1 text-xs text-muted-foreground">(ex : {getOriginalName('provider', product.provider)})</span>
                             )}
                           </td>
                         )}
-                        {showColumn('kiosk') && <td className="px-3 py-2">{renderKioskType(product, isEditing, editClassification, kioskCategory)}</td>}
-                        {showColumn('sectors') && <td className="px-3 py-2">{renderSectors(product, isEditing, editClassification, rowSectors)}</td>}
+                        {showColumn('kiosk') && <td className="px-3 py-2">{renderKioskType(product, false, editClassification, kioskCategory)}</td>}
+                        {showColumn('sectors') && <td className="px-3 py-2">{renderSectors(product, false, editClassification, rowSectors)}</td>}
                         {showColumn('stock') && <td className="px-3 py-2">{renderStock(product)}</td>}
-                        <td className="px-3 py-2">{renderActions(product, isEditing)}</td>
+                        {/* Actions stay in view even when many columns are shown. */}
+                        <td className="sticky right-0 bg-card px-3 py-2 shadow-[-8px_0_12px_-12px_rgba(17,24,39,0.35)]">{renderActions(product, false)}</td>
                       </tr>
+                      {isEditing && (
+                        <tr className="bg-primary/5">
+                          <td colSpan={visibleColumnCount} className="px-3 pb-4 pt-2">
+                            {renderEditPanel(product, kioskCategory)}
+                          </td>
+                        </tr>
+                      )}
+                      </React.Fragment>
                     );
                   })}
                 </tbody>
               </table>
             </div>
             )}
-            {totalPages > 1 && (
-              <div className="px-4 py-2.5 border-t border-border flex items-center justify-between">
-                <div className="text-xs text-muted-foreground">
-                  {startIdx + 1}-{Math.min(startIdx + PRODUCTS_PER_PAGE, filtered.length)} sur {filtered.length}
+            {filtered.length > PAGE_SIZES[0] && (
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-2.5">
+                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                  <span className="tabular-nums">{startIdx + 1}-{Math.min(startIdx + pageSize, filtered.length)} sur {filtered.length}</span>
+                  <label className="flex items-center gap-1.5">
+                    Afficher
+                    <select value={pageSize} onChange={event => changePageSize(Number(event.target.value))} aria-label="Produits par page"
+                      className="rounded-md border border-input bg-background px-2 py-1 text-xs text-foreground">
+                      {PAGE_SIZES.map(size => <option key={size} value={size}>{size}</option>)}
+                    </select>
+                    par page
+                  </label>
                 </div>
-                <div className="flex items-center space-x-1.5">
-                  <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}
-                    className="p-1 border border-border rounded hover:bg-secondary disabled:opacity-50"><ChevronLeft className="h-3.5 w-3.5" /></button>
-                  <span className="px-2 text-xs text-muted-foreground">{currentPage}/{totalPages}</span>
-                  <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}
-                    className="p-1 border border-border rounded hover:bg-secondary disabled:opacity-50"><ChevronRight className="h-3.5 w-3.5" /></button>
-                </div>
+                {totalPages > 1 && (
+                  <div className="flex items-center gap-1.5">
+                    <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} aria-label="Page précédente"
+                      className="flex h-8 w-8 items-center justify-center rounded-md border border-border hover:bg-secondary disabled:opacity-50"><ChevronLeft className="h-3.5 w-3.5" /></button>
+                    <span className="px-2 text-xs tabular-nums text-muted-foreground">{currentPage}/{totalPages}</span>
+                    <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} aria-label="Page suivante"
+                      className="flex h-8 w-8 items-center justify-center rounded-md border border-border hover:bg-secondary disabled:opacity-50"><ChevronRight className="h-3.5 w-3.5" /></button>
+                  </div>
+                )}
               </div>
             )}
           </>
