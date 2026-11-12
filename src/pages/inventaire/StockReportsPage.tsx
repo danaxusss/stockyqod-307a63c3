@@ -1,12 +1,14 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { BarChart3, Download, Loader, Coins, TrendingUp, Moon } from 'lucide-react';
+import { PageHeader } from '../../components/PageHeader';
+import { StatusPill } from '../../components/lists/StatusPill';
+import { formatMoney } from '../../utils/format';
 import type { Product, StockMovement } from '../../types';
 import { StockService } from '../../utils/supabaseStock';
 import { useToast } from '../../context/ToastContext';
 import { useAccessibleLocations } from '../../inventory/hooks/useAccessibleLocations';
 
 function fmt(n: number) { return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(n); }
-function fmtMad(n: number) { return fmt(n) + ' MAD'; }
 
 interface Row {
   barcode: string; name: string; brand: string;
@@ -107,93 +109,121 @@ export default function StockReportsPage() {
   };
 
   const kpis = [
-    { icon: Coins, label: 'Valeur du stock (CMUP)', value: fmtMad(totals.value), tone: 'text-primary bg-primary/10' },
-    { icon: TrendingUp, label: 'Valeur de vente potentielle', value: fmtMad(totals.potential), tone: 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10' },
-    { icon: BarChart3, label: 'Marge potentielle', value: fmtMad(totals.margin), tone: 'text-primary bg-primary/10' },
+    { icon: Coins, label: 'Valeur du stock (CMUP)', value: formatMoney(totals.value), tone: 'text-primary bg-primary/10' },
+    { icon: TrendingUp, label: 'Valeur de vente potentielle', value: formatMoney(totals.potential), tone: 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10' },
+    { icon: BarChart3, label: 'Marge potentielle', value: formatMoney(totals.margin), tone: 'text-primary bg-primary/10' },
     { icon: Moon, label: `Articles dormants (${periodDays}j)`, value: String(totals.dormant), tone: 'text-amber-600 dark:text-amber-400 bg-amber-500/10' },
   ];
 
+  const sortOptions = [['value', 'Valeur stock'], ['soldQty', `Vendu (${periodDays}j)`], ['margin', 'Marge']] as const;
+  const segment = (active: boolean) => `min-h-9 px-3 text-sm font-medium transition-colors ${active ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground hover:text-foreground'}`;
+
   return (
-    <div className="max-w-6xl mx-auto py-6 px-3">
-      <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
-        <div className="flex items-center gap-2">
-          <div className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-primary/10"><BarChart3 className="h-5 w-5 text-primary" /></div>
-          <div>
-            <h1 className="text-lg font-bold text-foreground leading-tight">Valorisation & rotation</h1>
-            <p className="text-xs text-muted-foreground">Valeur du stock, rotation et articles dormants</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex rounded-lg border border-border overflow-hidden">
+    <div className="mx-auto max-w-6xl">
+      <PageHeader
+        title="Valorisation & rotation"
+        subtitle="Valeur du stock, rotation et articles dormants"
+        actions={<>
+          <div role="group" aria-label="Période" className="flex overflow-hidden rounded-lg border border-border">
             {PERIODS.map(p => (
-              <button key={p.days} onClick={() => setPeriodDays(p.days)}
-                className={`px-2.5 py-1.5 text-xs font-medium ${periodDays === p.days ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'}`}>
+              <button key={p.days} type="button" onClick={() => setPeriodDays(p.days)} aria-pressed={periodDays === p.days} className={segment(periodDays === p.days)}>
                 {p.label}
               </button>
             ))}
           </div>
-          <button onClick={exportCsv} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-secondary border border-border text-sm text-foreground">
-            <Download className="h-3.5 w-3.5" /> CSV
+          <button type="button" onClick={exportCsv} className="flex min-h-10 items-center gap-2 rounded-lg border border-border bg-card px-3 text-sm font-semibold text-foreground hover:bg-secondary">
+            <Download className="h-4 w-4" aria-hidden="true" /> CSV
           </button>
-        </div>
-      </div>
+        </>}
+      />
 
       {loading ? (
-        <div className="flex items-center justify-center py-20 text-muted-foreground"><Loader className="h-5 w-5 animate-spin mr-2" />Chargement…</div>
+        <div className="flex items-center justify-center py-20 text-muted-foreground"><Loader className="mr-2 h-5 w-5 animate-spin" />Chargement…</div>
       ) : (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-            {kpis.map((k, i) => (
-              <div key={i} className="bg-card border border-border/60 rounded-xl p-3">
-                <div className={`inline-flex items-center justify-center w-8 h-8 rounded-lg mb-2 ${k.tone}`}><k.icon className="h-4 w-4" /></div>
-                <div className="text-base font-bold text-foreground tabular-nums leading-tight">{k.value}</div>
-                <div className="text-[11px] text-muted-foreground">{k.label}</div>
+          <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+            {kpis.map(k => (
+              <div key={k.label} className="flex min-w-0 flex-col rounded-xl border border-border bg-card p-3 shadow-sm sm:p-4">
+                <span className="flex min-w-0 items-center gap-2 text-[13px] font-medium text-muted-foreground sm:text-sm">
+                  <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${k.tone}`}><k.icon className="h-4 w-4" aria-hidden="true" /></span>
+                  <span className="truncate">{k.label}</span>
+                </span>
+                <span className="mt-2 truncate text-lg font-bold tabular-nums tracking-tight text-foreground sm:mt-3 sm:text-xl">{k.value}</span>
               </div>
             ))}
           </div>
 
-          <div className="flex items-center gap-2 mb-2 text-xs">
-            <span className="text-muted-foreground">Trier par :</span>
-            {([['value', 'Valeur stock'], ['soldQty', `Vendu (${periodDays}j)`], ['margin', 'Marge']] as const).map(([k, l]) => (
-              <button key={k} onClick={() => setSortKey(k)}
-                className={`px-2 py-1 rounded-md ${sortKey === k ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'}`}>{l}</button>
-            ))}
-          </div>
+          <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+            <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-5">
+              <h2 className="font-semibold text-foreground">Articles</h2>
+              <span className="flex-1" />
+              <span className="text-sm text-muted-foreground">Trier par</span>
+              <div role="group" aria-label="Trier par" className="flex overflow-hidden rounded-lg border border-border">
+                {sortOptions.map(([k, l]) => (
+                  <button key={k} type="button" onClick={() => setSortKey(k)} aria-pressed={sortKey === k} className={segment(sortKey === k)}>{l}</button>
+                ))}
+              </div>
+            </div>
 
-          <div className="bg-card border border-border/60 rounded-xl overflow-hidden">
-            <div className="overflow-x-auto">
+            {/* Phones: one card per article */}
+            <ul className="divide-y divide-border md:hidden">
+              {sorted.slice(0, 300).map(r => {
+                const dormant = r.qty > 0 && r.soldQty === 0;
+                return (
+                  <li key={r.barcode} className="px-4 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="line-clamp-2 font-medium text-foreground">{r.name}</p>
+                        <p className="truncate text-xs text-muted-foreground"><span className="font-mono">{r.barcode}</span>{r.brand ? ` · ${r.brand}` : ''}</p>
+                      </div>
+                      <p className="shrink-0 font-semibold tabular-nums text-foreground">{formatMoney(r.value)}</p>
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                      {dormant && <StatusPill tone="warning" icon={<Moon className="h-3 w-3" aria-hidden="true" />}>Dormant</StatusPill>}
+                      <span>Qté <span className="tabular-nums text-foreground">{fmt(r.qty)}</span></span>
+                      <span>CMUP <span className="tabular-nums text-foreground">{fmt(r.cmup)}</span></span>
+                      <span>Vendu <span className="tabular-nums text-foreground">{r.soldQty > 0 ? fmt(r.soldQty) : '—'}</span></span>
+                      <span>Marge u. <span className={`tabular-nums ${r.margin < 0 ? 'text-red-700 dark:text-red-300' : 'text-foreground'}`}>{fmt(r.margin)}</span></span>
+                      <span>Sortie {r.lastOut ? new Date(r.lastOut).toLocaleDateString('fr-FR') : '—'}</span>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+
+            <div className="hidden overflow-x-auto md:block">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-border/60 bg-secondary/50 text-xs text-muted-foreground">
-                    <th className="text-left font-medium px-3 py-2.5">Article</th>
-                    <th className="text-right font-medium px-3 py-2.5">Qté</th>
-                    <th className="text-right font-medium px-3 py-2.5">CMUP</th>
-                    <th className="text-right font-medium px-3 py-2.5">Valeur</th>
-                    <th className="text-right font-medium px-3 py-2.5">Vendu</th>
-                    <th className="text-right font-medium px-3 py-2.5">Marge u.</th>
-                    <th className="text-left font-medium px-3 py-2.5">Dern. sortie</th>
+                  <tr className="border-b border-border bg-secondary/40 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <th className="px-4 py-2.5 text-left">Article</th>
+                    <th className="px-4 py-2.5 text-right">Qté</th>
+                    <th className="px-4 py-2.5 text-right">CMUP</th>
+                    <th className="px-4 py-2.5 text-right">Valeur</th>
+                    <th className="px-4 py-2.5 text-right">Vendu</th>
+                    <th className="px-4 py-2.5 text-right">Marge u.</th>
+                    <th className="px-4 py-2.5 text-left">Dern. sortie</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-border">
                   {sorted.slice(0, 300).map(r => {
                     const dormant = r.qty > 0 && r.soldQty === 0;
                     return (
-                      <tr key={r.barcode} className="border-b border-border/40 hover:bg-secondary/30">
-                        <td className="px-3 py-2">
+                      <tr key={r.barcode} className="hover:bg-secondary/40">
+                        <td className="px-4 py-2.5">
                           <div className="flex items-center gap-2">
-                            {dormant && <span title="Dormant" className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />}
                             <div className="min-w-0">
-                              <div className="font-medium text-foreground truncate max-w-[260px]">{r.name}</div>
-                              <div className="text-[10px] text-muted-foreground font-mono">{r.barcode}{r.brand ? ` · ${r.brand}` : ''}</div>
+                              <p className="max-w-[18rem] truncate font-medium text-foreground">{r.name}</p>
+                              <p className="text-xs text-muted-foreground"><span className="font-mono">{r.barcode}</span>{r.brand ? ` · ${r.brand}` : ''}</p>
                             </div>
+                            {dormant && <StatusPill tone="warning" icon={<Moon className="h-3 w-3" aria-hidden="true" />}>Dormant</StatusPill>}
                           </div>
                         </td>
-                        <td className="px-3 py-2 text-right tabular-nums">{fmt(r.qty)}</td>
-                        <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{fmt(r.cmup)}</td>
-                        <td className="px-3 py-2 text-right tabular-nums font-semibold">{fmt(r.value)}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{r.soldQty > 0 ? fmt(r.soldQty) : '—'}</td>
-                        <td className={`px-3 py-2 text-right tabular-nums ${r.margin < 0 ? 'text-red-600 dark:text-red-400' : 'text-foreground'}`}>{fmt(r.margin)}</td>
-                        <td className="px-3 py-2 text-xs text-muted-foreground">{r.lastOut ? new Date(r.lastOut).toLocaleDateString('fr-FR') : '—'}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums">{fmt(r.qty)}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{fmt(r.cmup)}</td>
+                        <td className="px-4 py-2.5 text-right font-semibold tabular-nums">{fmt(r.value)}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums">{r.soldQty > 0 ? fmt(r.soldQty) : '—'}</td>
+                        <td className={`px-4 py-2.5 text-right tabular-nums ${r.margin < 0 ? 'text-red-700 dark:text-red-300' : 'text-foreground'}`}>{fmt(r.margin)}</td>
+                        <td className="px-4 py-2.5 text-muted-foreground">{r.lastOut ? new Date(r.lastOut).toLocaleDateString('fr-FR') : '—'}</td>
                       </tr>
                     );
                   })}
