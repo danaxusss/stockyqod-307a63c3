@@ -1,6 +1,10 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Loader, PackageCheck, Send, Ban } from 'lucide-react';
+import { Link, useParams, useNavigate } from 'react-router-dom';
+import { ChevronRight, Loader, PackageCheck, Send, Ban, ClipboardList, StickyNote } from 'lucide-react';
+import { StatusPill, type StatusTone } from '../../components/lists/StatusPill';
+import { formatMoney } from '../../utils/format';
+import { OpsLoading, OpsSection } from './StockOpsUi';
+import { opsField, opsLabel, opsPanel, opsPhoneBar, opsPrimaryBtn, opsSecondaryBtn } from './stockOpsStyles';
 import type { PurchaseOrder, PurchaseOrderStatus } from '../../types';
 import { OverReceiptError, PurchaseOrdersService } from '../../utils/supabasePurchaseOrders';
 import { useAccessibleLocations } from '../../inventory/hooks/useAccessibleLocations';
@@ -8,12 +12,12 @@ import { findLevelKey, locationCandidates } from '../../inventory/lib/locationKe
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
 
-const STATUS: Record<PurchaseOrderStatus, { label: string; cls: string }> = {
-  draft:     { label: 'Brouillon', cls: 'bg-secondary text-muted-foreground' },
-  sent:      { label: 'Envoyé',    cls: 'bg-blue-500/15 text-blue-600 dark:text-blue-400' },
-  partial:   { label: 'Partiel',   cls: 'bg-amber-500/15 text-amber-600 dark:text-amber-400' },
-  received:  { label: 'Reçu',      cls: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' },
-  cancelled: { label: 'Annulé',    cls: 'bg-red-500/15 text-red-600 dark:text-red-400' },
+const STATUS: Record<PurchaseOrderStatus, { label: string; tone: StatusTone }> = {
+  draft:     { label: 'Brouillon', tone: 'neutral' },
+  sent:      { label: 'Envoyé',    tone: 'info' },
+  partial:   { label: 'Partiel',   tone: 'warning' },
+  received:  { label: 'Reçu',      tone: 'success' },
+  cancelled: { label: 'Annulé',    tone: 'danger' },
 };
 
 export default function PurchaseOrderDetailPage() {
@@ -90,77 +94,142 @@ export default function PurchaseOrderDetailPage() {
     } finally { setBusy(false); }
   };
 
-  if (loading) return <div className="flex items-center justify-center py-20 text-muted-foreground"><Loader className="h-5 w-5 animate-spin mr-2" />Chargement…</div>;
-  if (!po) return <div className="max-w-3xl mx-auto py-10 text-center text-muted-foreground">Bon introuvable</div>;
+  if (loading) return <OpsLoading />;
+  if (!po) return (
+    <div className="mx-auto max-w-md py-16 text-center">
+      <ClipboardList className="mx-auto h-10 w-10 text-muted-foreground" aria-hidden="true" />
+      <p className="mt-3 font-medium text-foreground">Bon introuvable</p>
+      <Link to="/inventaire/commandes" className="mt-3 inline-block text-sm font-semibold text-primary hover:underline">Retour aux bons de commande</Link>
+    </div>
+  );
 
   const canReceive = po.status !== 'received' && po.status !== 'cancelled';
 
+  const dateFr = (d: string | null) => d ? new Date(d).toLocaleDateString('fr-FR') : '—';
+
   return (
-    <div className="max-w-3xl mx-auto py-6 px-3">
-      <div className="flex items-center gap-2 mb-4 flex-wrap">
-        <button onClick={() => navigate('/inventaire/commandes')} className="p-1.5 hover:bg-secondary rounded-lg"><ArrowLeft className="h-4 w-4 text-muted-foreground" /></button>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-lg font-bold text-foreground font-mono">{po.po_number}</h1>
-          <p className="text-xs text-muted-foreground">{po.provider_name || 'Sans fournisseur'} — {new Date(po.order_date).toLocaleDateString('fr-FR')}</p>
+    <div className="mx-auto max-w-6xl pb-28 md:pb-0">
+      <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <div className="min-w-0">
+          <nav aria-label="Fil d’Ariane" className="hidden items-center gap-1.5 text-sm text-muted-foreground sm:flex">
+            <button type="button" onClick={() => navigate('/inventaire/commandes')} className="hover:text-foreground">Commandes fournisseur</button>
+            <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+            <span className="text-foreground">{po.po_number}</span>
+          </nav>
+          <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">Bon de commande {po.po_number}</h1>
         </div>
-        <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${STATUS[po.status].cls}`}>{STATUS[po.status].label}</span>
-        {po.status === 'draft' && <button onClick={() => setStatus('sent')} disabled={busy} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary border border-border text-sm"><Send className="h-3.5 w-3.5" />Marquer envoyé</button>}
-        {canReceive && <button onClick={startReceive} disabled={busy} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium"><PackageCheck className="h-3.5 w-3.5" />Réceptionner</button>}
-        {canReceive && <button onClick={() => setStatus('cancelled')} disabled={busy} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary border border-border text-sm text-red-600 dark:text-red-400"><Ban className="h-3.5 w-3.5" />Annuler</button>}
+        <StatusPill tone={STATUS[po.status].tone}>{STATUS[po.status].label}</StatusPill>
       </div>
 
-      <div className="bg-card border border-border/60 rounded-xl overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border/60 bg-secondary/50 text-xs text-muted-foreground">
-              <th className="text-left font-medium px-3 py-2">Article</th>
-              <th className="text-right font-medium px-3 py-2">Commandé</th>
-              <th className="text-right font-medium px-3 py-2">Reçu</th>
-              <th className="text-right font-medium px-3 py-2">Coût u.</th>
-              {receiving && <th className="text-right font-medium px-3 py-2 w-28">À recevoir</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {(po.items || []).map(it => (
-              <tr key={it.id} className="border-b border-border/40">
-                <td className="px-3 py-2">
-                  <div className="font-medium text-foreground truncate max-w-[240px]">{it.label}</div>
-                  <div className="text-[10px] text-muted-foreground font-mono">{it.barcode}</div>
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums">{it.qty_ordered}</td>
-                <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{it.qty_received}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{Number(it.unit_cost).toFixed(2)}</td>
-                {receiving && (
-                  <td className="px-3 py-2">
-                    <input type="number" min={0} value={recvQty[it.id!] ?? ''} onChange={e => setRecvQty(prev => ({ ...prev, [it.id!]: e.target.value }))}
-                      className="w-full px-2 py-1 text-sm text-right rounded bg-secondary border border-border" />
-                  </td>
-                )}
-              </tr>
-            ))}
-          </tbody>
-          <tfoot><tr className="bg-secondary/40"><td colSpan={3} className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">Total HT</td><td className="px-3 py-2 text-right font-bold tabular-nums">{Number(po.total_ht).toFixed(2)}</td>{receiving && <td></td>}</tr></tfoot>
-        </table>
-      </div>
-
-      {receiving && (
-        <div className="mt-4 bg-card border border-primary/30 rounded-xl p-4">
-          <div className="flex items-end gap-2 flex-wrap">
-            <div className="flex-1 min-w-[200px]">
-              <label className="block text-xs font-semibold text-muted-foreground mb-1">Emplacement de réception</label>
-              <select value={recvLocation} onChange={e => setRecvLocation(e.target.value)} className="w-full px-3 py-2 text-sm rounded-lg bg-secondary border border-border">
-                {locations.map(l => <option key={l.id} value={l.abbreviation || l.name}>{l.name}</option>)}
-              </select>
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="min-w-0 space-y-4">
+          <OpsSection title="Articles" aside={<span className="text-sm text-muted-foreground">{(po.items || []).length} ligne{(po.items || []).length !== 1 ? 's' : ''}</span>}>
+            <div className={`hidden gap-x-4 border-b border-border bg-secondary/40 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground md:grid ${receiving ? 'grid-cols-[minmax(0,1fr)_6rem_8rem_7rem_7rem]' : 'grid-cols-[minmax(0,1fr)_6rem_8rem_7rem]'}`}>
+              <span>Article</span><span className="text-right">Commandé</span><span>Reçu</span><span className="text-right">Coût u.</span>{receiving && <span className="text-right">À recevoir</span>}
             </div>
-            <button onClick={() => setReceiving(false)} className="px-4 py-2 rounded-lg bg-secondary text-foreground text-sm border border-border">Annuler</button>
-            <button onClick={confirmReceive} disabled={busy} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50">
-              {busy ? <Loader className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />} Confirmer la réception
-            </button>
+            <ul className="divide-y divide-border">
+              {(po.items || []).map(it => {
+                const pct = it.qty_ordered > 0 ? Math.min(100, (it.qty_received / it.qty_ordered) * 100) : 0;
+                return (
+                  <li key={it.id} className={`grid grid-cols-1 gap-y-2 px-4 py-3 sm:px-5 md:items-center md:gap-x-4 ${receiving ? 'md:grid-cols-[minmax(0,1fr)_6rem_8rem_7rem_7rem]' : 'md:grid-cols-[minmax(0,1fr)_6rem_8rem_7rem]'}`}>
+                    <div className="min-w-0">
+                      <p className="font-semibold leading-snug text-foreground">{it.label}</p>
+                      <p className="truncate font-mono text-xs text-muted-foreground">{it.barcode}</p>
+                    </div>
+                    <div className={`grid items-center gap-3 md:contents ${receiving ? 'grid-cols-4' : 'grid-cols-3'}`}>
+                      <p className="text-sm tabular-nums text-foreground md:text-right"><span className="block text-xs text-muted-foreground md:hidden">Commandé</span>{it.qty_ordered}</p>
+                      <div className="text-sm">
+                        <span className="block text-xs text-muted-foreground md:hidden">Reçu</span>
+                        <span className="tabular-nums text-muted-foreground">{it.qty_received} / {it.qty_ordered}</span>
+                        <span className="mt-1 block h-1.5 overflow-hidden rounded-full bg-secondary" aria-hidden="true">
+                          <span className={`block h-full rounded-full ${pct >= 100 ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${pct}%` }} />
+                        </span>
+                      </div>
+                      <p className="text-right text-sm tabular-nums text-foreground"><span className="block text-xs text-muted-foreground md:hidden">Coût u.</span>{formatMoney(Number(it.unit_cost))}</p>
+                      {receiving && (
+                        <label className="block">
+                          <span className="block text-right text-xs text-muted-foreground md:sr-only">À recevoir</span>
+                          <input type="number" min={0} value={recvQty[it.id!] ?? ''} onChange={e => setRecvQty(prev => ({ ...prev, [it.id!]: e.target.value }))}
+                            className="h-10 w-full rounded-lg border border-primary/40 bg-background px-2 text-right text-sm font-semibold tabular-nums text-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
+                        </label>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="flex items-baseline justify-between gap-2 border-t border-border px-5 py-3">
+              <span className="font-semibold text-foreground">Total HT</span>
+              <span className="text-lg font-bold tabular-nums text-foreground">{formatMoney(Number(po.total_ht))}</span>
+            </div>
+          </OpsSection>
+
+          {po.notes && (
+            <section className={`${opsPanel} flex gap-3 p-4 sm:p-5`}>
+              <StickyNote className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <p className="text-sm text-foreground"><span className="font-semibold">Notes : </span>{po.notes}</p>
+            </section>
+          )}
+        </div>
+
+        <aside className="space-y-4 lg:sticky lg:top-4" aria-label="Détails et actions">
+          <section className={`${opsPanel} p-5`}>
+            <h2 className="font-semibold text-foreground">Commande</h2>
+            <dl className="mt-3 space-y-2 text-sm">
+              <div className="flex justify-between gap-2"><dt className="text-muted-foreground">Fournisseur</dt><dd className="truncate text-right font-medium text-foreground">{po.provider_name || 'Sans fournisseur'}</dd></div>
+              <div className="flex justify-between gap-2"><dt className="text-muted-foreground">Date</dt><dd className="font-medium text-foreground">{dateFr(po.order_date)}</dd></div>
+              <div className="flex justify-between gap-2"><dt className="text-muted-foreground">Date prévue</dt><dd className="font-medium text-foreground">{dateFr(po.expected_date)}</dd></div>
+              <div className="flex justify-between gap-2"><dt className="text-muted-foreground">Emplacement</dt><dd className="font-medium text-foreground">{po.location_key || '—'}</dd></div>
+            </dl>
+            <div className="mt-3 flex items-baseline justify-between gap-2 border-t border-border pt-3">
+              <span className="font-semibold text-foreground">Total HT</span>
+              <span className="text-xl font-bold tabular-nums text-foreground">{formatMoney(Number(po.total_ht))}</span>
+            </div>
+            {!receiving && (canReceive || po.status === 'draft') && (
+              <div className="mt-4 space-y-2">
+                {canReceive && <button onClick={startReceive} disabled={busy} className={`${opsPrimaryBtn} w-full`}><PackageCheck className="h-4 w-4" />Réceptionner</button>}
+                {po.status === 'draft' && <button onClick={() => setStatus('sent')} disabled={busy} className={`${opsSecondaryBtn} w-full`}><Send className="h-4 w-4" />Marquer envoyé</button>}
+                {canReceive && <button onClick={() => setStatus('cancelled')} disabled={busy} className={`${opsSecondaryBtn} w-full text-red-700 dark:text-red-300`}><Ban className="h-4 w-4" />Annuler le bon</button>}
+              </div>
+            )}
+          </section>
+
+          {receiving && (
+            <section className={`${opsPanel} border-primary/40 p-5`}>
+              <h2 className="font-semibold text-foreground">Réception</h2>
+              <p className="mt-1 text-xs text-muted-foreground">Saisissez les quantités reçues dans la colonne « À recevoir ».</p>
+              <div className="mt-3">
+                <label htmlFor="po-recv-location" className={opsLabel}>Emplacement de réception</label>
+                <select id="po-recv-location" value={recvLocation} onChange={e => setRecvLocation(e.target.value)} className={opsField}>
+                  {locations.map(l => <option key={l.id} value={l.abbreviation || l.name}>{l.name}</option>)}
+                </select>
+              </div>
+              <button onClick={confirmReceive} disabled={busy} className={`${opsPrimaryBtn} mt-4 w-full`}>
+                {busy ? <Loader className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />} Confirmer la réception
+              </button>
+              <button onClick={() => setReceiving(false)} className={`${opsSecondaryBtn} mt-2 w-full`}>Annuler</button>
+            </section>
+          )}
+        </aside>
+      </div>
+
+      {(receiving || canReceive) && (
+        <div className={opsPhoneBar}>
+          <div className="mx-auto flex max-w-3xl items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-xs text-muted-foreground">Total HT</p>
+              <p className="whitespace-nowrap text-lg font-bold tabular-nums leading-tight text-foreground">{formatMoney(Number(po.total_ht))}</p>
+            </div>
+            {receiving ? (
+              <button onClick={confirmReceive} disabled={busy} className={opsPrimaryBtn}>
+                {busy ? <Loader className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />} Confirmer
+              </button>
+            ) : (
+              <button onClick={startReceive} disabled={busy} className={opsPrimaryBtn}><PackageCheck className="h-4 w-4" />Réceptionner</button>
+            )}
           </div>
         </div>
       )}
-
-      {po.notes && <p className="mt-3 text-xs text-muted-foreground">Notes : {po.notes}</p>}
     </div>
   );
 }

@@ -121,7 +121,7 @@ export default function StockReportsPage() {
   return (
     <div className="mx-auto max-w-6xl">
       <PageHeader
-        title="Valorisation & rotation"
+        title="Valorisation & rapports"
         subtitle="Valeur du stock, rotation et articles dormants"
         actions={<>
           <div role="group" aria-label="Période" className="flex overflow-hidden rounded-lg border border-border">
