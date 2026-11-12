@@ -12,6 +12,8 @@ export interface FakeDb {
   /** Called before a write runs; throw or return an error to make it fail. */
   failWrite?: (table: string, op: 'insert' | 'update' | 'delete', payload: unknown) => string | void;
   clock: number;
+  /** Server-side row cap of a read, like PostgREST's max_rows (Supabase: 1000). */
+  maxRows?: number;
 }
 
 export function createFakeDb(tables: Record<string, Row[]> = {}): FakeDb {
@@ -96,6 +98,7 @@ class Query implements PromiseLike<{ data: any; error: any }> {
     }
     if (this.window) out = out.slice(this.window[0], this.window[1] + 1);
     if (this.max != null) out = out.slice(0, this.max);
+    if (this.op === 'select' && this.db.maxRows != null) out = out.slice(0, this.db.maxRows);
     const data = structuredClone(out);
     if (this.op !== 'select' && !this.returning && this.mode === 'many') return { data: null, error: null };
     if (this.mode === 'single') {

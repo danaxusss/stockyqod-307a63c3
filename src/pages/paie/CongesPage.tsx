@@ -3,12 +3,12 @@ import { CalendarDays, Plus, Loader, Check, X, Trash2 } from 'lucide-react';
 import { LeaveService, type LeaveRequest } from '../../utils/supabasePayrollHr';
 import { SupabaseEmployeesService } from '../../utils/supabaseEmployees';
 import { PayrollSettingsService } from '../../utils/supabasePayrollSettings';
+import { leaveWorkingDays } from '../../utils/payrollCalc';
 import type { Employee } from '../../types';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
 
 const TYPE_LABELS: Record<string, string> = { paye: 'Congé payé', maladie: 'Maladie', sans_solde: 'Sans solde', exceptionnel: 'Exceptionnel', autre: 'Autre' };
-const daysBetween = (a: string, b: string) => Math.max(0, Math.round((new Date(b).getTime() - new Date(a).getTime()) / 864e5) + 1);
 
 export default function CongesPage() {
   const { isPaie, isSuperAdmin, currentUser } = useAuth();
@@ -47,7 +47,7 @@ export default function CongesPage() {
   const submit = async () => {
     if (!form.employee_id || !form.start_date || !form.end_date) { showToast({ type: 'error', message: 'Employé et dates requis' }); return; }
     try {
-      await LeaveService.create({ employee_id: form.employee_id, type: form.type as any, start_date: form.start_date, end_date: form.end_date, days: daysBetween(form.start_date, form.end_date), reason: form.reason, approved_by: currentUser?.username || null });
+      await LeaveService.create({ employee_id: form.employee_id, type: form.type as any, start_date: form.start_date, end_date: form.end_date, days: leaveWorkingDays(form.start_date, form.end_date), reason: form.reason, approved_by: currentUser?.username || null });
       showToast({ type: 'success', message: 'Demande enregistrée' });
       setAdding(false); setForm({ employee_id: '', type: 'paye', start_date: '', end_date: '', reason: '' }); await load();
     } catch (e: any) { showToast({ type: 'error', message: e?.message || 'Échec' }); }

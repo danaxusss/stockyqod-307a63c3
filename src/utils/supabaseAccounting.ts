@@ -17,6 +17,22 @@ const frDay = (day: string) => day.split('-').reverse().join('/');
 const contains = (y: FiscalYear, day: string) => y.start_date <= day && day <= y.end_date;
 const choiceKey = () => `stocky_fiscal_year:${getCompanyContext().companyId || ''}`;
 
+// The server returns at most 1,000 rows per request whatever the limit asked,
+// so whole-ledger reads go page by page, in a stable order.
+const PAGE = 1000;
+interface Pageable<T> {
+  order(column: string): { range(from: number, to: number): PromiseLike<{ data: T[] | null; error: unknown }> };
+}
+async function readAll<T = Record<string, unknown>>(build: () => Pageable<T>): Promise<T[]> {
+  const out: T[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await build().order('id').range(from, from + PAGE - 1);
+    if (error) throw error;
+    out.push(...(data || []));
+    if (!data || data.length < PAGE) return out;
+  }
+}
+
 export class AccountingService {
   // ── Fiscal years ──────────────────────────────────────────────────────────
   static async listFiscalYears(): Promise<FiscalYear[]> {
@@ -268,10 +284,8 @@ export class AccountingService {
   // ── Auto-posting (Phase 2) ────────────────────────────────────────────────
   /** Set of source_ids that already have a journal entry (for double-post guard). */
   static async postedSourceIds(): Promise<Set<string>> {
-    const q = scope((supabase as any).from('journal_entries').select('source_id').not('source_id', 'is', null));
-    const { data, error } = await q.limit(20000);
-    if (error) throw error;
-    return new Set((data || []).map((r: any) => r.source_id as string));
+    const data = await readAll<{ source_id: string }>(() => scope((supabase as any).from('journal_entries').select('id, source_id').not('source_id', 'is', null)));
+    return new Set(data.map(r => r.source_id));
   }
 
   /**
@@ -279,10 +293,8 @@ export class AccountingService {
    * entries excluded, their reversal cancels them) and how many entries exist.
    */
   static async paymentPostedTotals(): Promise<Map<string, { amount: number; count: number }>> {
-    const { data, error } = await scope((supabase as any).from('journal_entries')
-      .select('id, source_id, status').eq('source_type', 'payment')).limit(20000);
-    if (error) throw error;
-    const entries = (data || []) as { id: string; source_id: string | null; status: string }[];
+    const entries = await readAll<{ id: string; source_id: string | null; status: string }>(() => scope((supabase as any).from('journal_entries')
+      .select('id, source_id, status').eq('source_type', 'payment')));
     const lines = await this.linesForEntries(entries.filter(e => e.status !== 'reversed').map(e => e.id));
     const debitByEntry = new Map<string, number>();
     for (const l of lines) debitByEntry.set(l.entry_id, (debitByEntry.get(l.entry_id) || 0) + (Number(l.debit) || 0));
@@ -329,14 +341,14 @@ export class AccountingService {
   // A reversed entry stays in the books next to its reversal: reading only
   // 'posted' would keep the mirror and drop the original.
   private static async postedEntryMap(fiscalYearId?: string): Promise<Map<string, any>> {
-    let q = (supabase as any).from('journal_entries')
-      .select('id, entry_date, entry_number, journal_id, reference, label, source_type, source_id')
-      .in('status', ['posted', 'reversed']);
-    q = scope(q);
-    if (fiscalYearId) q = q.eq('fiscal_year_id', fiscalYearId);
-    const { data, error } = await q.limit(20000);
-    if (error) throw error;
-    return new Map((data || []).map((e: any) => [e.id, e]));
+    const data = await readAll(() => {
+      let q = scope((supabase as any).from('journal_entries')
+        .select('id, entry_date, entry_number, journal_id, reference, label, source_type, source_id')
+        .in('status', ['posted', 'reversed']));
+      if (fiscalYearId) q = q.eq('fiscal_year_id', fiscalYearId);
+      return q;
+    });
+    return new Map(data.map((e: any) => [e.id, e]));
   }
 
   private static async linesForEntries(entryIds: string[], accountCode?: string): Promise<any[]> {
@@ -344,11 +356,10 @@ export class AccountingService {
     const out: any[] = [];
     for (let i = 0; i < entryIds.length; i += 300) {
       const batch = entryIds.slice(i, i + 300);
-      let q = (supabase as any).from('journal_entry_lines').select('*').in('entry_id', batch);
-      if (accountCode) q = q.eq('account_code', accountCode);
-      const { data, error } = await q.limit(20000);
-      if (error) throw error;
-      out.push(...(data || []));
+      out.push(...await readAll(() => {
+        const q = (supabase as any).from('journal_entry_lines').select('*').in('entry_id', batch);
+        return accountCode ? q.eq('account_code', accountCode) : q;
+      }));
     }
     return out;
   }
@@ -377,10 +388,9 @@ export class AccountingService {
 
   /** Lettrage codes already used on an account, every fiscal year included. */
   static async usedLettrageCodes(accountCode: string): Promise<string[]> {
-    const { data, error } = await scope((supabase as any).from('journal_entry_lines')
-      .select('lettrage_code').eq('account_code', accountCode).not('lettrage_code', 'is', null)).limit(20000);
-    if (error) throw error;
-    return Array.from(new Set(((data || []) as { lettrage_code: string }[]).map(r => r.lettrage_code)));
+    const data = await readAll<{ lettrage_code: string }>(() => scope((supabase as any).from('journal_entry_lines')
+      .select('id, lettrage_code').eq('account_code', accountCode).not('lettrage_code', 'is', null)));
+    return Array.from(new Set(data.map(r => r.lettrage_code)));
   }
 
   // ── TVA declarations ──────────────────────────────────────────────────────

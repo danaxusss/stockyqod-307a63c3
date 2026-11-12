@@ -275,3 +275,45 @@ export function buildPayslipTotals(
     tfp_employer: statutory.tfp_employer,
   };
 }
+
+/** A variable line of a payslip (gain or retenue) with its subject flags. */
+export interface PayslipLineInput {
+  type: 'gain' | 'retenue';
+  amount: number;
+  soumis_cnss?: boolean;
+  soumis_ir?: boolean;
+}
+
+/**
+ * Splits payslip lines into computePayroll inputs. A gain subject to CNSS or
+ * IR enters the taxable gross; so does a subject retenue, negatively (an
+ * absence lowers the gross before CNSS and IR are computed). Other retenues
+ * (advances, loans) are taken off the net after tax.
+ */
+export function payslipLineTotals(lines: PayslipLineInput[]): { primesSoumises: number; primesNon: number; autres: number; gains: number } {
+  const subject = (l: PayslipLineInput) => !!(l.soumis_cnss || l.soumis_ir);
+  const sum = (ls: PayslipLineInput[]) => r2(ls.reduce((s, l) => s + (Number(l.amount) || 0), 0));
+  const gains = lines.filter(l => l.type === 'gain');
+  const retenues = lines.filter(l => l.type === 'retenue');
+  return {
+    primesSoumises: r2(sum(gains.filter(subject)) - sum(retenues.filter(subject))),
+    primesNon: sum(gains.filter(l => !subject(l))),
+    autres: sum(retenues.filter(l => !subject(l))),
+    gains: sum(gains),
+  };
+}
+
+/**
+ * Days a leave takes from the paid-leave balance: jours ouvrables, i.e. every
+ * day but Sunday (Code du travail). Public holidays are not known here.
+ */
+export function leaveWorkingDays(start: string, end: string): number {
+  const [sy, sm, sd] = start.slice(0, 10).split('-').map(Number);
+  const [ey, em, ed] = end.slice(0, 10).split('-').map(Number);
+  if (!sy || !ey) return 0;
+  let days = 0;
+  for (let d = new Date(sy, sm - 1, sd); d <= new Date(ey, em - 1, ed); d.setDate(d.getDate() + 1)) {
+    if (d.getDay() !== 0) days += 1;
+  }
+  return days;
+}

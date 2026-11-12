@@ -20,9 +20,11 @@ function mapRow(row: any): PayrollSettings {
 export class PayrollSettingsService {
   /** Settings for a year, falling back to statutory defaults if none saved. */
   static async get(year: number): Promise<PayrollSettings> {
-    const { companyId, bypassFilter } = getCompanyContext();
+    // Payroll is per company for every role: a super admin reads the
+    // signed-in company's settings, not whichever company saved some.
+    const { companyId } = getCompanyContext();
     let q = (supabase as any).from('payroll_settings').select('*').eq('year', year);
-    if (!bypassFilter && companyId) q = q.eq('company_id', companyId);
+    if (companyId) q = q.eq('company_id', companyId);
     const { data, error } = await q.maybeSingle();
     if (error) throw error;
     return mapRow(data);
