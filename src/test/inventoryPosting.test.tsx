@@ -17,6 +17,8 @@ vi.mock('../utils/supabaseStock', () => ({
   StockService: { getProducts: vi.fn(), applyMovements: vi.fn() },
 }));
 vi.mock('../inventory/lib/lowStockAlert', () => ({ notifyLowStock: vi.fn() }));
+// The count sheet shows product photos (productImages imports the client).
+vi.mock('@/integrations/supabase/client', () => ({ supabase: {} }));
 vi.mock('../inventory/hooks/useAccessibleLocations', () => ({
   useAccessibleLocations: () => ({ accessibleLocations: locations, locations, loading: false }),
 }));

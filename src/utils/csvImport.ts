@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient';
 import { getCompanyContext } from './supabaseCompanyFilter';
+import { parseLocaleNumber } from './localeNumber';
 
 export type ImportDocType = 'clients' | 'quote' | 'bl' | 'proforma' | 'invoice' | 'avoir' | 'retour';
 
@@ -80,7 +81,7 @@ function escapeCell(v: string): string {
 
 export function buildTemplateCSV(type: ImportDocType): string {
   const t = TEMPLATES[type];
-  const bom = '﻿';
+  const bom = '\uFEFF';
   const header = t.headers.join(',');
   const rows = t.rows.map(r => r.map(escapeCell).join(','));
   return bom + [header, ...rows].join('\r\n');
@@ -99,30 +100,47 @@ export function downloadTemplate(type: ImportDocType) {
 
 // ── CSV parser ────────────────────────────────────────────────────────────────
 
+/**
+ * Rows of a CSV file. The separator is the one the header line uses:
+ * "," from the templates, ";" when Excel in French saved the file. Quoted
+ * cells may hold separators, doubled quotes and line breaks.
+ */
 function parseCSV(text: string): string[][] {
-  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  const firstLine = text.slice(0, text.search(/\r?\n|$/));
+  const count = (ch: string) => firstLine.split(ch).length - 1;
+  const sep = count(';') > count(',') ? ';' : count('\t') > count(',') ? '\t' : ',';
   const rows: string[][] = [];
-  for (const line of lines) {
-    if (!line.trim()) continue;
-    const cells: string[] = [];
-    let inQuote = false;
-    let cur = '';
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (ch === '"') {
-        if (inQuote && line[i + 1] === '"') { cur += '"'; i++; }
-        else inQuote = !inQuote;
-      } else if (ch === ',' && !inQuote) {
-        cells.push(cur.trim()); cur = '';
-      } else {
-        cur += ch;
-      }
+  let cells: string[] = [];
+  let cur = '';
+  let inQuote = false;
+  const endRow = () => {
+    cells.push(cur.trim()); cur = '';
+    if (cells.some(c => c !== '')) rows.push(cells);
+    cells = [];
+  };
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQuote) {
+      if (ch === '"' && text[i + 1] === '"') { cur += '"'; i++; }
+      else if (ch === '"') inQuote = false;
+      else cur += ch;
+    } else if (ch === '"') {
+      inQuote = true;
+    } else if (ch === sep) {
+      cells.push(cur.trim()); cur = '';
+    } else if (ch === '\n' || ch === '\r') {
+      if (ch === '\r' && text[i + 1] === '\n') i++;
+      endRow();
+    } else {
+      cur += ch;
     }
-    cells.push(cur.trim());
-    rows.push(cells);
   }
+  if (cur !== '' || cells.length) endRow();
   return rows;
 }
+
+/** A number cell, French or English ("100,50", "1 200"); `fallback` when empty or not a number. */
+const num = (v: string | undefined, fallback: number) => parseLocaleNumber(v ?? '') ?? fallback;
 
 // ── Parsed row types ──────────────────────────────────────────────────────────
 
@@ -177,7 +195,7 @@ export interface ParseResult<T> {
 // ── Parsers ───────────────────────────────────────────────────────────────────
 
 export function parseClientsCSV(text: string): ParseResult<ParsedClient> {
-  const clean = text.replace(/^﻿/, '');
+  const clean = text.replace(/^\uFEFF/, '');
   const all = parseCSV(clean);
   if (all.length < 2) return { rows: [], warnings: ['Fichier vide ou entête manquant'] };
 
@@ -214,7 +232,7 @@ export function parseClientsCSV(text: string): ParseResult<ParsedClient> {
 }
 
 function parseDocumentsCSV(text: string, type: ImportDocType): ParseResult<ParsedDocument> {
-  const clean = text.replace(/^﻿/, '');
+  const clean = text.replace(/^\uFEFF/, '');
   const all = parseCSV(clean);
   if (all.length < 2) return { rows: [], warnings: ['Fichier vide ou entête manquant'] };
 
@@ -253,9 +271,9 @@ function parseDocumentsCSV(text: string, type: ImportDocType): ParseResult<Parse
     if (!numero)      { warnings.push(`Ligne ${lineNum}: numero vide — ignoré`); return; }
     if (!designation) { warnings.push(`Ligne ${lineNum}: designation vide — ignoré`); return; }
 
-    const qty   = parseFloat(iQty >= 0 ? row[iQty] || '1' : '1') || 1;
-    const prix  = parseFloat(iPrix >= 0 ? row[iPrix] || '0' : '0') || 0;
-    const remise = parseFloat(iRemise >= 0 ? row[iRemise] || '0' : '0') || 0;
+    const qty   = num(iQty >= 0 ? row[iQty] : undefined, 1) || 1;
+    const prix  = num(iPrix >= 0 ? row[iPrix] : undefined, 0);
+    const remise = num(iRemise >= 0 ? row[iRemise] : undefined, 0);
 
     if (!grouped.has(numero)) {
       grouped.set(numero, {
@@ -290,7 +308,7 @@ function parseDocumentsCSV(text: string, type: ImportDocType): ParseResult<Parse
 }
 
 function parseReturnsCSV(text: string): ParseResult<ParsedReturn> {
-  const clean = text.replace(/^﻿/, '');
+  const clean = text.replace(/^\uFEFF/, '');
   const all = parseCSV(clean);
   if (all.length < 2) return { rows: [], warnings: ['Fichier vide ou entête manquant'] };
 
@@ -317,7 +335,7 @@ function parseReturnsCSV(text: string): ParseResult<ParsedReturn> {
     if (!ref)   { warnings.push(`Ligne ${lineNum}: numero_reference vide — ignoré`); return; }
     if (!desig) { warnings.push(`Ligne ${lineNum}: designation vide — ignoré`); return; }
 
-    const qty = parseFloat(iQty >= 0 ? row[iQty] || '1' : '1') || 1;
+    const qty = num(iQty >= 0 ? row[iQty] : undefined, 1) || 1;
 
     if (!grouped.has(ref)) {
       grouped.set(ref, {
@@ -398,21 +416,31 @@ export async function importDocuments(rows: ParsedDocument[], type: ImportDocTyp
 
   for (const doc of rows) {
     try {
+      // Same shape as a line added in the quote editor: the pages, PDFs and
+      // conversions read item.product and a TTC unit price.
+      const round2 = (n: number) => Math.round(n * 100) / 100;
+      const now = new Date().toISOString();
       const items = doc.items.map((it, idx) => {
-        const subtotalHT = it.unitPrice * it.quantity * (1 - it.discount / 100);
+        const unitTTC = round2(it.unitPrice * (1 + tvaRate / 100));
         return {
           id: crypto.randomUUID(),
-          name: it.designation,
+          product: {
+            barcode: '', name: it.designation, brand: '', techsheet: '', provider: 'Import',
+            price: unitTTC, buyprice: 0, reseller_price: 0, stock_levels: {},
+          },
+          priceType: 'normal',
+          marginPercentage: 0,
+          finalPrice: unitTTC,
+          addedAt: now,
+          unitPrice: unitTTC,
           quantity: it.quantity,
-          unitPrice: it.unitPrice,
-          discount: it.discount,
-          subtotal: subtotalHT * (1 + tvaRate / 100),
+          discount: it.discount || undefined,
+          subtotal: round2(unitTTC * (1 - (it.discount || 0) / 100) * it.quantity),
           displayOrder: idx,
         };
       });
 
-      const totalHT  = items.reduce((s, it) => s + it.unitPrice * it.quantity * (1 - (it.discount ?? 0) / 100), 0);
-      const totalTTC = totalHT * (1 + tvaRate / 100);
+      const totalTTC = items.reduce((sum, it) => sum + it.subtotal, 0);
       const status   = validStatuses.includes(doc.status) ? doc.status : 'draft';
 
       const payload: Record<string, unknown> = {

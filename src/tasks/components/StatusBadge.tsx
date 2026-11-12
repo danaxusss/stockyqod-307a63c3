@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 
 const STATUS_ICONS = { pending: Clock, doing: Loader, done: CheckCircle, refused: XCircle };
 
-export function StatusBadge({ status }: { status: TaskStatus }) {
+export function StatusBadge({ status, label }: { status: TaskStatus; label?: string }) {
   const config = STATUS_CONFIG[status];
   const Icon = STATUS_ICONS[status];
   return (
@@ -19,7 +19,7 @@ export function StatusBadge({ status }: { status: TaskStatus }) {
       }}
     >
       <Icon className={cn("h-3.5 w-3.5", status === 'doing' && "animate-spin")} />
-      {config.emoji} {config.label}
+      {label ?? config.label}
     </motion.span>
   );
 }

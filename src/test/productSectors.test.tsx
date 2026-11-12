@@ -63,7 +63,20 @@ afterEach(() => {
   save.mockImplementation(async changes => ({ saved: changes, failed: [] }));
   auth.isStock = true;
   auth.canEditProducts = true;
+  localStorage.clear();
 });
+
+// Row actions other than "+ Devis" are in the row's ⋯ menu.
+function editRow(row: HTMLElement, name: string) {
+  fireEvent.click(within(row).getByRole('button', { name: `Actions pour ${name}` }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Modifier' }));
+}
+
+// The sector column is hidden by default; it is chosen in "Colonnes".
+function showSectorColumn() {
+  fireEvent.click(screen.getByRole('button', { name: 'Colonnes' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Secteur' }));
+}
 
 function renderProducts() {
   appState.products = [
@@ -96,6 +109,7 @@ describe('ProductsPage business sectors', () => {
 
   it('shows sectors read-only until the row is edited', () => {
     renderProducts();
+    showSectorColumn();
     const row = screen.getByRole('link', { name: 'Four mixte' }).closest('tr')!;
     expect(within(row).queryByRole('button', { name: /Secteur :/ })).not.toBeInTheDocument();
     expect(within(row).getByText('Restaurant')).toBeInTheDocument();
@@ -105,7 +119,7 @@ describe('ProductsPage business sectors', () => {
   it('saves sectors as soon as they change while a row is being edited', async () => {
     renderProducts();
     const row = screen.getByRole('link', { name: 'Hachoir' }).closest('tr')!;
-    fireEvent.click(within(row).getByTitle('Modifier'));
+    editRow(row, 'Hachoir');
     fireEvent.click(within(row).getByRole('button', { name: /Secteur : aucun/ }));
     fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Restaurant' }));
 
@@ -119,7 +133,7 @@ describe('ProductsPage business sectors', () => {
     save.mockResolvedValueOnce({ saved: {}, failed: [{ barcode: 'P3', message: 'permission denied' }] });
     renderProducts();
     const row = screen.getByRole('link', { name: 'Hachoir' }).closest('tr')!;
-    fireEvent.click(within(row).getByTitle('Modifier'));
+    editRow(row, 'Hachoir');
     fireEvent.click(within(row).getByRole('button', { name: /Secteur : aucun/ }));
     fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Restaurant' }));
     await waitFor(() => expect(within(row).getByRole('button', { name: /Secteur : aucun/ })).toBeInTheDocument());
@@ -189,7 +203,9 @@ describe('ProductsPage business sectors', () => {
     auth.isStock = false;
     renderProducts();
     const row = screen.getByRole('link', { name: 'Four mixte' }).closest('tr')!;
-    expect(within(row).getByTitle('Modifier')).toBeInTheDocument();
+    fireEvent.click(within(row).getByRole('button', { name: 'Actions pour Four mixte' }));
+    expect(screen.getByRole('menuitem', { name: 'Modifier' })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.getByRole('button', { name: 'Modification groupée' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Gérer les secteurs/ }));
     expect(screen.getByRole('textbox', { name: 'Nom du secteur Restaurant' })).toBeInTheDocument();
@@ -200,8 +216,11 @@ describe('ProductsPage business sectors', () => {
     auth.isStock = false;
     auth.canEditProducts = false;
     renderProducts();
+    showSectorColumn();
     const row = screen.getByRole('link', { name: 'Four mixte' }).closest('tr')!;
-    expect(within(row).queryByTitle('Modifier')).not.toBeInTheDocument();
+    fireEvent.click(within(row).getByRole('button', { name: 'Actions pour Four mixte' }));
+    expect(screen.queryByRole('menuitem', { name: 'Modifier' })).not.toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
     expect(within(row).getByText('Restaurant')).toBeInTheDocument();
     expect(within(row).getByText('Hôtel')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Gérer les secteurs/ })).not.toBeInTheDocument();

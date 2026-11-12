@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+import { readAll } from './readAll';
 import { getToken } from './session';
 import { describeEdgeError } from './edgeError';
 import { AppUser, AppUserRole, CreateAppUserRequest, UpdateAppUserRequest } from '../types';
@@ -96,10 +97,15 @@ export class SupabaseUsersService {
   }
 
   static async getAvailableStockLocations(): Promise<string[]> {
-    const { data, error } = await supabase.from('products').select('stock_levels');
-    if (error) throw new Error(`Failed to get stock locations: ${error.message}`);
+    // Every product, not only the first 1,000 the server returns at once.
+    let data: { stock_levels: unknown }[];
+    try {
+      data = await readAll<{ stock_levels: unknown }>(() => supabase.from('products').select('barcode, stock_levels'), 'barcode');
+    } catch (error) {
+      throw new Error(`Failed to get stock locations: ${(error as Error).message}`);
+    }
     const locations = new Set<string>();
-    (data || []).forEach(product => {
+    data.forEach(product => {
       const levels = product.stock_levels as Record<string, number> | null;
       if (levels && typeof levels === 'object') {
         Object.keys(levels).forEach(loc => { if (loc?.trim()) locations.add(loc.trim()); });
@@ -109,10 +115,14 @@ export class SupabaseUsersService {
   }
 
   static async getAvailableBrands(): Promise<string[]> {
-    const { data, error } = await supabase.from('products').select('brand');
-    if (error) throw new Error(`Failed to get brands: ${error.message}`);
+    let data: { brand: string | null }[];
+    try {
+      data = await readAll<{ brand: string | null }>(() => supabase.from('products').select('barcode, brand'), 'barcode');
+    } catch (error) {
+      throw new Error(`Failed to get brands: ${(error as Error).message}`);
+    }
     const brands = new Set<string>();
-    (data || []).forEach(p => { if (p.brand?.trim()) brands.add(p.brand.trim()); });
+    data.forEach(p => { if (p.brand?.trim()) brands.add(p.brand.trim()); });
     return Array.from(brands).sort();
   }
 

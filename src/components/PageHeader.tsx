@@ -15,7 +15,8 @@ export function PageHeader({ title, subtitle, actions, children }: {
     <header className="mb-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">{title}</h1>
+          {/* On phones the top bar already shows the page name: keep the heading for screen readers only. */}
+          <h1 className="sr-only md:not-sr-only md:text-2xl md:font-bold md:tracking-tight md:text-foreground">{title}</h1>
           {subtitle && <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>}
         </div>
         {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}

@@ -1,6 +1,12 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { ClipboardList, Plus, Search, Trash2, Loader, Check, X } from 'lucide-react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { ClipboardList, Plus, Trash2, Loader, Check, X } from 'lucide-react';
+import { PageHeader } from '../../components/PageHeader';
+import { StatusPill, type StatusTone } from '../../components/lists/StatusPill';
+import { DocumentCard } from '../../components/lists/DocumentCard';
+import { formatMoney } from '../../utils/format';
+import { OpsLoading, ProductSearch, ProductThumb, QtyStepper, SearchResult, stepperInput } from './StockOpsUi';
+import { opsField, opsLabel, opsPrimaryBtn, opsSecondaryBtn } from './stockOpsStyles';
 import type { Product, Provider, PurchaseOrderItem, PurchaseOrderStatus } from '../../types';
 import { StockService } from '../../utils/supabaseStock';
 import { StockLocationsService } from '../../utils/supabaseStockLocations';
@@ -9,13 +15,15 @@ import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
 import { useAccessibleLocations } from '../../inventory/hooks/useAccessibleLocations';
 
-const STATUS: Record<PurchaseOrderStatus, { label: string; cls: string }> = {
-  draft:     { label: 'Brouillon', cls: 'bg-secondary text-muted-foreground' },
-  sent:      { label: 'Envoyé',    cls: 'bg-blue-500/15 text-blue-600 dark:text-blue-400' },
-  partial:   { label: 'Partiel',   cls: 'bg-amber-500/15 text-amber-600 dark:text-amber-400' },
-  received:  { label: 'Reçu',      cls: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' },
-  cancelled: { label: 'Annulé',    cls: 'bg-red-500/15 text-red-600 dark:text-red-400' },
+const STATUS: Record<PurchaseOrderStatus, { label: string; tone: StatusTone }> = {
+  draft:     { label: 'Brouillon', tone: 'neutral' },
+  sent:      { label: 'Envoyé',    tone: 'info' },
+  partial:   { label: 'Partiel',   tone: 'warning' },
+  received:  { label: 'Reçu',      tone: 'success' },
+  cancelled: { label: 'Annulé',    tone: 'danger' },
 };
+
+const th = 'px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground';
 
 export default function PurchaseOrdersPage() {
   const navigate = useNavigate();
@@ -40,48 +48,59 @@ export default function PurchaseOrdersPage() {
   useEffect(() => { load(); }, [load]);
 
   return (
-    <div className="max-w-5xl mx-auto py-6 px-3">
-      <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
-        <div className="flex items-center gap-2">
-          <div className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-primary/10"><ClipboardList className="h-5 w-5 text-primary" /></div>
-          <div>
-            <h1 className="text-lg font-bold text-foreground leading-tight">Bons de commande</h1>
-            <p className="text-xs text-muted-foreground">Commandes fournisseurs → réception</p>
-          </div>
-        </div>
-        <button onClick={() => setShowCreate(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium">
-          <Plus className="h-4 w-4" /> Nouveau bon
-        </button>
-      </div>
+    <div className="mx-auto max-w-6xl">
+      <PageHeader title="Commandes fournisseur" subtitle="Commandes fournisseurs → réception"
+        actions={(
+          <button onClick={() => setShowCreate(true)} className={opsPrimaryBtn}>
+            <Plus className="h-4 w-4" /> Nouveau bon
+          </button>
+        )} />
 
-      {loading ? (
-        <div className="flex items-center justify-center py-20 text-muted-foreground"><Loader className="h-5 w-5 animate-spin mr-2" />Chargement…</div>
-      ) : (
-        <div className="bg-card border border-border/60 rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border/60 bg-secondary/50 text-xs text-muted-foreground">
-                <th className="text-left font-medium px-3 py-2.5">N°</th>
-                <th className="text-left font-medium px-3 py-2.5">Fournisseur</th>
-                <th className="text-left font-medium px-3 py-2.5">Date</th>
-                <th className="text-right font-medium px-3 py-2.5">Total HT</th>
-                <th className="text-left font-medium px-3 py-2.5">Statut</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orders.map(o => (
-                <tr key={o.id} onClick={() => navigate(`/inventaire/commandes/${o.id}`)}
-                  className="border-b border-border/40 hover:bg-secondary/40 cursor-pointer">
-                  <td className="px-3 py-2.5 font-mono text-foreground">{o.po_number}</td>
-                  <td className="px-3 py-2.5">{o.provider_name || '—'}</td>
-                  <td className="px-3 py-2.5 text-muted-foreground">{new Date(o.order_date).toLocaleDateString('fr-FR')}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums">{Number(o.total_ht).toFixed(2)}</td>
-                  <td className="px-3 py-2.5"><span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${STATUS[o.status as PurchaseOrderStatus].cls}`}>{STATUS[o.status as PurchaseOrderStatus].label}</span></td>
-                </tr>
-              ))}
-              {orders.length === 0 && <tr><td colSpan={5} className="px-3 py-10 text-center text-muted-foreground">Aucun bon de commande</td></tr>}
-            </tbody>
-          </table>
+      {loading ? <OpsLoading /> : (
+        <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+          {orders.length === 0 ? (
+            <div className="px-5 py-12 text-center">
+              <ClipboardList className="mx-auto h-10 w-10 text-muted-foreground" aria-hidden="true" />
+              <p className="mt-3 font-medium text-foreground">Aucun bon de commande</p>
+            </div>
+          ) : (
+            <>
+              <ul className="divide-y divide-border md:hidden">
+                {orders.map(o => (
+                  <DocumentCard key={o.id} to={`/inventaire/commandes/${o.id}`}
+                    number={o.po_number}
+                    status={<StatusPill tone={STATUS[o.status as PurchaseOrderStatus].tone}>{STATUS[o.status as PurchaseOrderStatus].label}</StatusPill>}
+                    title={o.provider_name || '—'}
+                    date={new Date(o.order_date).toLocaleDateString('fr-FR')}
+                    amount={formatMoney(Number(o.total_ht))} />
+                ))}
+              </ul>
+              <table className="hidden w-full text-sm md:table">
+                <thead className="border-b border-border bg-secondary/40">
+                  <tr>
+                    <th className={`${th} text-left`}>N°</th>
+                    <th className={`${th} text-left`}>Fournisseur</th>
+                    <th className={`${th} text-left`}>Date</th>
+                    <th className={`${th} text-right`}>Total HT</th>
+                    <th className={`${th} text-left`}>Statut</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {orders.map(o => (
+                    <tr key={o.id} onClick={() => navigate(`/inventaire/commandes/${o.id}`)} className="cursor-pointer hover:bg-secondary/60">
+                      <td className="whitespace-nowrap px-3 py-2.5">
+                        <Link to={`/inventaire/commandes/${o.id}`} onClick={e => e.stopPropagation()} className="font-mono font-semibold text-primary hover:underline">{o.po_number}</Link>
+                      </td>
+                      <td className="px-3 py-2.5 font-medium text-foreground">{o.provider_name || '—'}</td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-muted-foreground">{new Date(o.order_date).toLocaleDateString('fr-FR')}</td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-right font-semibold tabular-nums text-foreground">{formatMoney(Number(o.total_ht))}</td>
+                      <td className="px-3 py-2.5"><StatusPill tone={STATUS[o.status as PurchaseOrderStatus].tone}>{STATUS[o.status as PurchaseOrderStatus].label}</StatusPill></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
         </div>
       )}
 
@@ -164,75 +183,80 @@ function CreatePOModal({ createdBy, initialBarcodes = [], onClose, onCreated }: 
     } finally { setSaving(false); }
   };
 
+  const imageOf = new Map(products.map(p => [p.barcode, p.image]));
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-3" onClick={onClose}>
       <div className="absolute inset-0 bg-black/40" />
-      <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-card border border-border rounded-2xl shadow-2xl" onClick={e => e.stopPropagation()}>
-        <div className="sticky top-0 bg-card border-b border-border/60 px-4 py-3 flex items-center justify-between">
-          <h2 className="font-bold text-foreground">Nouveau bon de commande</h2>
-          <button onClick={onClose} className="p-1 rounded-lg hover:bg-secondary text-muted-foreground"><X className="h-4 w-4" /></button>
+      <div role="dialog" aria-modal="true" aria-labelledby="new-po-title"
+        className="relative flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl border border-border bg-card shadow-2xl sm:rounded-2xl" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-border px-5 py-3">
+          <h2 id="new-po-title" className="font-semibold text-foreground">Nouveau bon de commande</h2>
+          <button onClick={onClose} aria-label="Fermer" className="flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary"><X className="h-4 w-4" /></button>
         </div>
-        <div className="p-4 space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+        <div className="flex-1 space-y-4 overflow-y-auto p-5">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <label className="block text-xs font-semibold text-muted-foreground mb-1">Fournisseur</label>
-              <select value={providerId} onChange={e => setProviderId(e.target.value)} className="w-full px-3 py-2 text-sm rounded-lg bg-secondary border border-border">
+              <label htmlFor="po-provider" className={opsLabel}>Fournisseur</label>
+              <select id="po-provider" value={providerId} onChange={e => setProviderId(e.target.value)} className={opsField}>
                 <option value="">—</option>
                 {providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-muted-foreground mb-1">Emplacement de réception</label>
-              <select value={locationKey} onChange={e => setLocationKey(e.target.value)} className="w-full px-3 py-2 text-sm rounded-lg bg-secondary border border-border">
+              <label htmlFor="po-location" className={opsLabel}>Emplacement de réception</label>
+              <select id="po-location" value={locationKey} onChange={e => setLocationKey(e.target.value)} className={opsField}>
                 {locations.map(l => <option key={l.id} value={l.abbreviation || l.name}>{l.name}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-muted-foreground mb-1">Date prévue</label>
-              <input type="date" value={expected} onChange={e => setExpected(e.target.value)} className="w-full px-3 py-2 text-sm rounded-lg bg-secondary border border-border" />
+              <label htmlFor="po-expected" className={opsLabel}>Date prévue</label>
+              <input id="po-expected" type="date" value={expected} onChange={e => setExpected(e.target.value)} className={opsField} />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-muted-foreground mb-1">Notes</label>
-              <input value={notes} onChange={e => setNotes(e.target.value)} className="w-full px-3 py-2 text-sm rounded-lg bg-secondary border border-border" />
+              <label htmlFor="po-notes" className={opsLabel}>Notes</label>
+              <input id="po-notes" value={notes} onChange={e => setNotes(e.target.value)} className={opsField} />
             </div>
           </div>
 
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Ajouter un article…"
-              className="w-full pl-8 pr-3 py-2 text-sm rounded-lg bg-secondary border border-border" />
-            {results.length > 0 && (
-              <div className="absolute z-20 mt-1 w-full bg-card border border-border rounded-lg shadow-lg overflow-hidden">
-                {results.map(p => <button key={p.barcode} onClick={() => addLine(p)} className="w-full text-left px-3 py-2 hover:bg-secondary text-sm truncate">{p.name}</button>)}
-              </div>
-            )}
-          </div>
+          <ProductSearch label="Articles" value={query} onChange={setQuery} placeholder="Ajouter un article…">
+            {results.length > 0 && results.map(p => (
+              <SearchResult key={p.barcode} image={p.image} name={p.name} detail={p.barcode} onClick={() => addLine(p)} />
+            ))}
+          </ProductSearch>
 
           {lines.length > 0 && (
-            <table className="w-full text-sm border border-border/60 rounded-lg overflow-hidden">
-              <thead><tr className="bg-secondary/50 text-xs text-muted-foreground">
-                <th className="text-left font-medium px-2 py-1.5">Article</th>
-                <th className="text-right font-medium px-2 py-1.5 w-20">Qté</th>
-                <th className="text-right font-medium px-2 py-1.5 w-28">Coût u.</th>
-                <th className="w-8"></th>
-              </tr></thead>
-              <tbody>
-                {lines.map((l, i) => (
-                  <tr key={l.barcode} className="border-t border-border/40">
-                    <td className="px-2 py-1.5 truncate max-w-[220px]">{l.label}</td>
-                    <td className="px-2 py-1.5"><input type="number" min={1} value={l.qty_ordered} onChange={e => upd(i, 'qty_ordered', Number(e.target.value))} className="w-full px-1.5 py-1 text-right rounded bg-secondary border border-border" /></td>
-                    <td className="px-2 py-1.5"><input type="number" min={0} step="0.01" value={l.unit_cost} onChange={e => upd(i, 'unit_cost', Number(e.target.value))} className="w-full px-1.5 py-1 text-right rounded bg-secondary border border-border" /></td>
-                    <td className="px-1 text-center"><button onClick={() => rm(i)} className="p-1 text-muted-foreground hover:bg-secondary rounded"><Trash2 className="h-3.5 w-3.5" /></button></td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot><tr className="bg-secondary/40"><td colSpan={2} className="px-2 py-1.5 text-right text-xs font-semibold text-muted-foreground">Total HT</td><td className="px-2 py-1.5 text-right font-bold">{total.toFixed(2)}</td><td></td></tr></tfoot>
-            </table>
+            <ul className="divide-y divide-border rounded-lg border border-border">
+              {lines.map((l, i) => (
+                <li key={l.barcode} className="grid grid-cols-[minmax(0,1fr)_2.5rem] items-center gap-x-3 gap-y-2 px-3 py-2.5 sm:grid-cols-[minmax(0,1fr)_8.5rem_7rem_2.5rem]">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className="hidden sm:block"><ProductThumb image={imageOf.get(l.barcode)} size="sm" /></span>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-foreground">{l.label}</p>
+                      <p className="truncate font-mono text-xs text-muted-foreground">{l.barcode}</p>
+                    </div>
+                  </div>
+                  <button onClick={() => rm(i)} aria-label={`Retirer ${l.label}`} className="flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive sm:order-last"><Trash2 className="h-4 w-4" /></button>
+                  <div className="col-span-2 flex items-center justify-between gap-3 sm:contents">
+                    <QtyStepper label="la quantité" onMinus={() => upd(i, 'qty_ordered', l.qty_ordered - 1)} onPlus={() => upd(i, 'qty_ordered', l.qty_ordered + 1)} minusDisabled={l.qty_ordered <= 1}
+                      input={<input type="number" min={1} value={l.qty_ordered} onChange={e => upd(i, 'qty_ordered', Number(e.target.value))} aria-label="Quantité" className={stepperInput} />} />
+                    <label className="flex items-center justify-end gap-1">
+                      <span className="sr-only">Coût unitaire</span>
+                      <input type="number" min={0} step="0.01" value={l.unit_cost} onChange={e => upd(i, 'unit_cost', Number(e.target.value))}
+                        className="h-10 w-24 rounded-lg border border-input bg-background px-2 text-right text-sm tabular-nums text-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
+                      <span className="text-sm text-muted-foreground">Dh</span>
+                    </label>
+                  </div>
+                </li>
+              ))}
+            </ul>
           )}
-
-          <div className="flex justify-end gap-2 pt-1">
-            <button onClick={onClose} className="px-4 py-2 rounded-lg bg-secondary text-foreground text-sm border border-border">Annuler</button>
-            <button onClick={submit} disabled={saving || lines.length === 0} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50">
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-5 py-3">
+          <p className="text-sm text-muted-foreground">Total HT <span className="ml-1 text-base font-bold tabular-nums text-foreground">{formatMoney(total)}</span></p>
+          <div className="flex gap-2">
+            <button onClick={onClose} className={opsSecondaryBtn}>Annuler</button>
+            <button onClick={submit} disabled={saving || lines.length === 0} className={opsPrimaryBtn}>
               {saving ? <Loader className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Créer le bon
             </button>
           </div>

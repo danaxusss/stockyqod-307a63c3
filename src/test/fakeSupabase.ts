@@ -12,6 +12,19 @@ export interface FakeDb {
   /** Called before a write runs; throw or return an error to make it fail. */
   failWrite?: (table: string, op: 'insert' | 'update' | 'delete', payload: unknown) => string | void;
   clock: number;
+  /** Server-side row cap of a read, like PostgREST's max_rows (Supabase: 1000). */
+  maxRows?: number;
+  /** Called before a read runs; return a message to make it fail. */
+  failRead?: (table: string) => string | void;
+  /**
+   * Reads without order() come back in a different order on each call, as
+   * Postgres may when rows change between requests: pages read without a
+   * stable order then skip and repeat rows.
+   */
+  unstableOrder?: boolean;
+  /** upsert() with onConflict updates the row with the same key (and fails like Postgres on a missing key column or a key repeated in one call). */
+  strictUpsert?: boolean;
+  reads?: number;
 }
 
 export function createFakeDb(tables: Record<string, Row[]> = {}): FakeDb {
@@ -29,9 +42,11 @@ class Query implements PromiseLike<{ data: any; error: any }> {
   private payload: any;
   private returning = false;
   private mode: 'many' | 'single' | 'maybeSingle' = 'many';
-  private sort: { col: string; asc: boolean } | null = null;
+  // Several order() calls combine, first one first, like PostgREST.
+  private sorts: { col: string; asc: boolean }[] = [];
   private window: [number, number] | null = null;
   private max: number | null = null;
+  private conflict: string[] | null = null;
 
   constructor(private db: FakeDb, private table: string) {}
 
@@ -40,10 +55,16 @@ class Query implements PromiseLike<{ data: any; error: any }> {
   select() { if (this.op !== 'select') this.returning = true; return this; }
   update(values: Row) { this.op = 'update'; this.payload = values; return this; }
   insert(values: Row | Row[]) { this.op = 'insert'; this.payload = values; return this; }
-  upsert(values: Row | Row[]) { return this.insert(values); }
+  upsert(values: Row | Row[], opts?: { onConflict?: string }) {
+    if (this.db.strictUpsert && opts?.onConflict) this.conflict = opts.onConflict.split(',').map(c => c.trim());
+    return this.insert(values);
+  }
   delete() { this.op = 'delete'; return this; }
   eq(col: string, v: unknown) { this.filters.push(r => String(getPath(r, col)) === String(v)); return this; }
   gt(col: string, v: number) { this.filters.push(r => Number(getPath(r, col)) > v); return this; }
+  gte(col: string, v: unknown) { this.filters.push(r => String(getPath(r, col)) >= String(v)); return this; }
+  lt(col: string, v: unknown) { this.filters.push(r => String(getPath(r, col)) < String(v)); return this; }
+  lte(col: string, v: unknown) { this.filters.push(r => String(getPath(r, col)) <= String(v)); return this; }
   not(col: string, op: string, v: unknown) {
     if (op === 'is' && v === null) this.filters.push(r => getPath(r, col) != null);
     return this;
@@ -66,7 +87,7 @@ class Query implements PromiseLike<{ data: any; error: any }> {
     }));
     return this;
   }
-  order(col: string, opts?: { ascending?: boolean }) { this.sort = { col, asc: opts?.ascending !== false }; return this; }
+  order(col: string, opts?: { ascending?: boolean }) { this.sorts.push({ col, asc: opts?.ascending !== false }); return this; }
   range(from: number, to: number) { this.window = [from, to]; return this; }
   limit(n: number) { this.max = n; return this; }
   single() { this.mode = 'single'; return this; }
@@ -76,8 +97,25 @@ class Query implements PromiseLike<{ data: any; error: any }> {
     const match = (r: Row) => this.filters.every(f => f(r));
     const fail = this.op !== 'select' ? this.db.failWrite?.(this.table, this.op, this.payload) : undefined;
     if (fail) return { data: null, error: { message: fail } };
+    const readFail = this.op === 'select' ? this.db.failRead?.(this.table) : undefined;
+    if (readFail) return { data: null, error: { message: readFail } };
     let out: Row[];
-    if (this.op === 'insert') {
+    if (this.op === 'insert' && this.conflict) {
+      const keys = this.conflict;
+      const list = (Array.isArray(this.payload) ? this.payload : [this.payload]).map(r => ({ ...r }));
+      const keyOf = (r: Row) => JSON.stringify(keys.map(k => r[k]));
+      if (list.some(r => keys.some(k => r[k] == null))) {
+        return { data: null, error: { message: 'there is no unique or exclusion constraint matching the ON CONFLICT specification' } };
+      }
+      if (new Set(list.map(keyOf)).size < list.length) {
+        return { data: null, error: { message: 'ON CONFLICT DO UPDATE command cannot affect row a second time' } };
+      }
+      for (const r of list) {
+        const existing = this.rows().find(x => keyOf(x) === keyOf(r));
+        if (existing) Object.assign(existing, r); else this.rows().push(r);
+      }
+      out = list;
+    } else if (this.op === 'insert') {
       const list = (Array.isArray(this.payload) ? this.payload : [this.payload]).map(r => ({ ...r }));
       this.rows().push(...list);
       out = list;
@@ -89,13 +127,21 @@ class Query implements PromiseLike<{ data: any; error: any }> {
       this.db.tables[this.table] = this.rows().filter(r => !match(r));
     } else {
       out = this.rows().filter(match);
+      if (this.db.unstableOrder && !this.sorts.length && (this.db.reads = (this.db.reads || 0) + 1) % 2 === 0) out = [...out].reverse();
     }
-    if (this.sort) {
-      const { col, asc } = this.sort;
-      out = [...out].sort((a, b) => (String(a[col]) < String(b[col]) ? -1 : String(a[col]) > String(b[col]) ? 1 : 0) * (asc ? 1 : -1));
+    if (this.sorts.length) {
+      const cmp = (a: Row, b: Row) => {
+        for (const { col, asc } of this.sorts) {
+          const d = String(a[col]) < String(b[col]) ? -1 : String(a[col]) > String(b[col]) ? 1 : 0;
+          if (d) return asc ? d : -d;
+        }
+        return 0;
+      };
+      out = [...out].sort(cmp);
     }
     if (this.window) out = out.slice(this.window[0], this.window[1] + 1);
     if (this.max != null) out = out.slice(0, this.max);
+    if (this.op === 'select' && this.db.maxRows != null) out = out.slice(0, this.db.maxRows);
     const data = structuredClone(out);
     if (this.op !== 'select' && !this.returning && this.mode === 'many') return { data: null, error: null };
     if (this.mode === 'single') {

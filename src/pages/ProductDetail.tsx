@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { Package, ArrowLeft, Copy, MapPin, DollarSign, ShoppingCart, Home, AlertCircle, Users, Building, TrendingUp, Search, Calculator, Plus, Upload, Download, Trash2, Loader, FileText, X, Images, ImagePlus, Globe } from 'lucide-react';
+import { Package, ArrowLeft, ChevronRight, Copy, MapPin, ShoppingCart, Home, AlertCircle, Search, Calculator, Plus, Minus, Upload, Download, Loader, FileText, X, Images, ImagePlus, Globe, Settings } from 'lucide-react';
 import { Product, TechnicalSheet, StockLocation } from '../types';
 import { useAppContext } from '../context/AppContext';
 import { searchStateManager } from '../utils/searchStateManager';
@@ -18,6 +18,7 @@ import { TechnicalSheetFinder } from '../components/TechnicalSheetFinder';
 import { ImageViewer } from '../components/ImageViewer';
 import { BusinessSectorsService, sectorNames, useBusinessSectors } from '../utils/businessSectors';
 import { KIOSK_CATEGORIES, KIOSK_CATEGORY_HELP } from '../utils/kioskCategories';
+import { formatMoney } from '../utils/format';
 
 export function ProductDetail() {
   const { id } = useParams<{ id: string }>();
@@ -32,6 +33,7 @@ export function ProductDetail() {
     const saved = localStorage.getItem('inventory_margin_percentage');
     return saved ? parseInt(saved) : 30;
   });
+  const [quantity, setQuantity] = useState(1);
   const [isSheetUploading, setIsSheetUploading] = useState(false);
   const sheetFileInputRef = useRef<HTMLInputElement>(null);
   const [isImageUploading, setIsImageUploading] = useState(false);
@@ -100,8 +102,9 @@ export function ProductDetail() {
 
   const handleAddToCart = () => {
     if (!product || !canCreateQuote()) { showToast({ type: 'error', title: 'Accès refusé', message: 'Vous n\'avez pas l\'autorisation de créer des devis' }); return; }
-    addToCart(product, 'normal', marginPercentage);
-    showToast({ type: 'success', title: 'Ajouté au panier', message: `${product.name} ajouté au panier de devis` });
+    addToCart(product, 'normal', marginPercentage, quantity);
+    showToast({ type: 'success', title: 'Ajouté au devis', message: `${quantity > 1 ? `${quantity} × ` : ''}${product.name} ajouté au devis` });
+    setQuantity(1);
     if ('vibrate' in navigator) navigator.vibrate(100);
   };
 
@@ -310,9 +313,9 @@ export function ProductDetail() {
   if (notFound || !product) {
     return (
       <div className="max-w-5xl mx-auto">
-        <div className="glass rounded-2xl shadow-xl p-8 text-center">
+        <div className="rounded-xl border border-border bg-card p-8 text-center shadow-sm">
           <Package className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-foreground mb-2">Produit Non Trouvé</h1>
+          <h1 className="text-2xl font-bold text-foreground mb-2">Produit introuvable</h1>
           <p className="text-muted-foreground mb-2">Aucun produit trouvé avec l'identifiant : <code className="bg-secondary px-2 py-1 rounded">{id}</code></p>
           {error && (
             <div className="mb-4 p-3 bg-destructive/10 border border-destructive/20 rounded-lg flex items-center justify-center space-x-2">
@@ -324,8 +327,8 @@ export function ProductDetail() {
               <Home className="h-4 w-4" /><span>Accueil</span>
             </button>
             {cameFromSearch && (
-              <button onClick={handleBackToSearch} className="flex items-center space-x-2 px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors">
-                <Search className="h-4 w-4" /><span>Retour à la Recherche</span>
+              <button onClick={handleBackToSearch} className="flex items-center space-x-2 px-6 py-2 border border-border hover:bg-secondary text-foreground rounded-lg transition-colors">
+                <Search className="h-4 w-4" /><span>Retour à la recherche</span>
               </button>
             )}
           </div>
@@ -340,372 +343,330 @@ export function ProductDetail() {
   const finalPrice = calculateFinalPrice();
   const normalMargin = calculateMargin(product.price, product.buyprice);
   const resellerMargin = calculateMargin(product.reseller_price, product.buyprice);
+  // Same rule as before: resellers see their price but do not build quotes here.
+  const canAddToQuote = canCreateQuote() && userPriceDisplayType !== 'reseller';
+  const imageUrl = resolveProductImageUrl(product.image);
+  const brandOriginal = product.brand ? getOriginalName('brand', product.brand) : null;
+  const providerOriginal = product.provider ? getOriginalName('provider', product.provider) : null;
+  const kioskLabel = KIOSK_CATEGORIES.find(category => category.value === product.kiosk_category)?.label || 'Non classé';
+  const sectorLabel = sectorNames(product.sector_ids, sectors).join(', ') || 'Aucun secteur';
+  const photoUrl = (path: string) => supabase.storage.from('product-photos').getPublicUrl(path).data.publicUrl;
+  const panel = 'rounded-xl border border-border bg-card shadow-sm';
+  const locationLabel = (locKey: string) => {
+    const loc = stockLocations.find(l =>
+      l.abbreviation === locKey ||
+      l.name === locKey ||
+      l.name.toLowerCase().replace(/\s+/g, '_') === locKey
+    );
+    const label = loc?.name || locKey.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    return { label, abbrev: loc?.abbreviation || locKey };
+  };
 
-  const colorSchemes = [
-    { bg: 'bg-primary/10', text: 'text-primary', textDark: 'text-primary' },
-    { bg: 'bg-orange-500/10', text: 'text-orange-400', textDark: 'text-orange-300' },
-    { bg: 'bg-rose-500/10', text: 'text-rose-400', textDark: 'text-rose-300' },
-    { bg: 'bg-amber-500/10', text: 'text-amber-400', textDark: 'text-amber-300' },
-    { bg: 'bg-pink-500/10', text: 'text-pink-400', textDark: 'text-pink-300' },
-    { bg: 'bg-primary/10', text: 'text-primary', textDark: 'text-primary' },
-  ];
+  const quantityStepper = (size: 'md' | 'lg' = 'md') => (
+    <div className="flex shrink-0 items-center rounded-lg border border-input bg-background">
+      <button type="button" onClick={() => setQuantity(q => Math.max(1, q - 1))} disabled={quantity <= 1} aria-label="Diminuer la quantité"
+        className={`flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-40 ${size === 'lg' ? 'h-11 w-10' : 'h-10 w-9'}`}><Minus className="h-4 w-4" /></button>
+      <input type="number" min={1} value={quantity} onChange={e => setQuantity(Math.max(1, parseInt(e.target.value) || 1))} onFocus={e => e.target.select()} aria-label="Quantité"
+        className="h-10 w-10 border-0 bg-transparent p-0 text-center text-sm font-semibold tabular-nums text-foreground [appearance:textfield] focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none" />
+      <button type="button" onClick={() => setQuantity(q => q + 1)} aria-label="Augmenter la quantité"
+        className={`flex items-center justify-center text-muted-foreground hover:text-foreground ${size === 'lg' ? 'h-11 w-10' : 'h-10 w-9'}`}><Plus className="h-4 w-4" /></button>
+    </div>
+  );
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className="mx-auto max-w-6xl pb-28 md:pb-0">
       {viewerImage && <ImageViewer src={viewerImage.src} alt={viewerImage.alt} onClose={() => setViewerImage(null)} />}
-      <div className="mb-3">
-        <button onClick={handleBackNavigation} className="flex items-center space-x-2 text-primary hover:underline text-sm">
-          <ArrowLeft className="h-4 w-4" /><span>{cameFromSearch ? 'Retour à la Recherche' : 'Retour'}</span>
-        </button>
+
+      {/* Title */}
+      <div className="mb-4">
+        <nav aria-label="Fil d’Ariane" className="hidden items-center gap-1.5 text-sm text-muted-foreground sm:flex">
+          <button type="button" onClick={handleBackNavigation} className="mr-1 flex items-center gap-1 text-primary-text hover:underline">
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />{cameFromSearch ? 'Retour à la recherche' : 'Retour'}
+          </button>
+          <span aria-hidden="true">·</span>
+          <Link to="/products" className="hover:text-foreground">Produits</Link>
+          <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+          <span className="truncate text-foreground">{product.name}</span>
+        </nav>
+        <div className="mt-1 flex items-start gap-2">
+          <h1 className="min-w-0 text-xl font-bold leading-tight tracking-tight text-foreground sm:text-2xl">{product.name}</h1>
+          <TechnicalSheetButton
+            sheets={linkedSheets}
+            canSearch={canEditProducts}
+            onSearch={() => setSheetFinderOpen(true)}
+            className="mt-0.5 shrink-0 p-1"
+            iconClassName="h-5 w-5"
+          />
+        </div>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {[
+            product.brand ? `${product.brand}${brandOriginal ? ` (ex : ${brandOriginal})` : ''}` : '',
+            product.barcode,
+            product.provider ? `${product.provider}${providerOriginal ? ` (ex : ${providerOriginal})` : ''}` : '',
+          ].filter(Boolean).join(' · ')}
+        </p>
       </div>
 
-      <div className="glass rounded-xl shadow-xl overflow-hidden">
-        {/* Header */}
-        <div className="bg-primary px-5 py-4 text-primary-foreground" style={{ backgroundImage: 'var(--gradient-primary)' }}>
-          <div className="flex items-center space-x-3">
-            <div className="p-2 bg-white/20 rounded-lg"><Package className="h-6 w-6" /></div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-bold truncate">{product.name}</h1>
-                <TechnicalSheetButton
-                  sheets={linkedSheets}
-                  canSearch={canEditProducts}
-                  onSearch={() => setSheetFinderOpen(true)}
-                  inverse
-                  className="shrink-0 p-1"
-                  iconClassName="h-5 w-5"
-                />
-              </div>
-              <div className="flex items-center flex-wrap gap-2 mt-0.5">
-                <span className="text-primary-foreground/70 text-sm">#{product.barcode}</span>
-                {product.brand && (
-                  <span className="px-2 py-0.5 bg-white/20 text-primary-foreground text-xs rounded font-medium">
-                    {product.brand}
-                    {getOriginalName('brand', product.brand) && (
-                      <span className="text-primary-foreground/60 text-[10px] ml-1">(ex: {getOriginalName('brand', product.brand)})</span>
-                    )}
-                  </span>
-                )}
-                {product.provider && (
-                  <span className="px-2 py-0.5 bg-white/20 text-primary-foreground text-xs rounded font-medium">
-                    {product.provider}
-                    {getOriginalName('provider', product.provider) && (
-                      <span className="text-primary-foreground/60 text-[10px] ml-1">(ex: {getOriginalName('provider', product.provider)})</span>
-                    )}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="p-5">
-          {/* Canonical product image shared by Stocky, catalogue and quote exports */}
-          <div className="mb-5 flex flex-col sm:flex-row gap-4 items-start rounded-xl border border-border bg-secondary/20 p-4">
-            <div className="mx-auto w-full max-w-[16rem] sm:mx-0 sm:w-56 aspect-[4/5] rounded-xl border border-border bg-background overflow-hidden flex items-center justify-center shrink-0">
-              {product.image ? (
-                <button
-                  type="button"
-                  onClick={() => setViewerImage({ src: resolveProductImageUrl(product.image) || '', alt: product.name })}
-                  aria-label="Agrandir l’image"
-                  className="h-full w-full cursor-zoom-in"
-                >
-                  <img
-                    src={resolveProductImageUrl(product.image) || ''}
-                    alt={product.name}
-                    className="w-full h-full object-contain"
-                  />
-                </button>
-              ) : (
-                <div className="text-center text-muted-foreground px-4">
-                  <img src={`${import.meta.env.BASE_URL || '/'}stocky-logo.png`} alt="Stocky" className="mx-auto h-16 w-28 object-contain opacity-35" />
-                  <p className="mt-2 text-xs">Image à ajouter</p>
-                </div>
-              )}
-            </div>
-            <div className="min-w-0 flex-1 pt-1">
-              <h2 className="text-sm font-semibold text-foreground">Image principale du produit</h2>
-              <p className="text-xs text-muted-foreground mt-1 max-w-xl">
-                Cette image est partagée par la liste Stocky, le catalogue, le kiosque et les exports de devis. Format portrait 4:5 recommandé (par exemple 1080 × 1350 px) : elle s’affiche en entier, sans être recadrée. Touchez l’image pour l’agrandir.
-              </p>
-              <label className="mt-3 block max-w-xs">
-                <span className="mb-1 block text-[11px] font-medium text-muted-foreground">Type de produit pour le kiosque</span>
-                <select value={product.kiosk_category || ''} onChange={event => updateKioskCategory((event.target.value || null) as Product['kiosk_category'])} disabled={!canEditProducts}
-                  className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground disabled:opacity-60">
-                  <option value="">Non classé</option>
-                  {KIOSK_CATEGORIES.map(category => <option key={category.value} value={category.value}>{category.label}</option>)}
-                </select>
-                <span className="mt-1 block text-[11px] leading-snug text-muted-foreground">
-                  {KIOSK_CATEGORY_HELP}
-                </span>
-              </label>
-              <div className="mt-3 max-w-xs">
-                <span className="mb-1 block text-[11px] font-medium text-muted-foreground">Secteur</span>
-                {canEditProducts ? (
-                  <SectorPicker sectors={sectors} value={product.sector_ids || []} onChange={updateSectors}
-                    onCreate={name => BusinessSectorsService.create(name)} size="md" />
-                ) : (
-                  <p className="text-sm text-foreground">{sectorNames(product.sector_ids, sectors).join(', ') || 'Aucun secteur'}</p>
-                )}
-              </div>
-              {canEditProducts && (
-                <>
-                  <input
-                    ref={imageFileInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={handlePrimaryImageUpload}
-                    className="hidden"
-                    id="product-image-upload"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => imageFileInputRef.current?.click()}
-                    disabled={isImageUploading || !companyId}
-                    className="mt-3 inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-sm disabled:opacity-50"
-                  >
-                    {isImageUploading ? <Loader className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
-                    {isImageUploading ? 'Import en cours…' : product.image ? 'Remplacer l’image' : 'Ajouter une image'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => navigate(`/photos/finder?barcode=${encodeURIComponent(product.barcode)}`)}
-                    className="mt-3 ml-2 inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-border hover:bg-accent text-sm"
-                  >
-                    <Globe className="h-4 w-4" />
-                    Chercher sur le web
-                  </button>
-                  <p className="text-[11px] text-muted-foreground mt-1.5">JPG, PNG ou WebP · maximum 10 Mo</p>
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Quick Info Bar */}
-          <div className="grid grid-cols-3 gap-3 mb-5">
-            <div className="text-center p-3 bg-primary/10 rounded-lg">
-              <div className="text-xs text-muted-foreground">Stock Total</div>
-              <div className="text-xl font-bold text-foreground">{totalStock}</div>
-            </div>
-            <div className="text-center p-3 bg-emerald-500/10 rounded-lg">
-              <div className="text-xs text-muted-foreground">Prix Affiché</div>
-              <div className="text-xl font-bold text-foreground">{displayPrice.toFixed(2)} Dh</div>
-            </div>
-            <div className="text-center p-3 bg-secondary rounded-lg">
-              <div className="text-xs text-muted-foreground">Emplacements</div>
-              <div className="text-xl font-bold text-foreground">{accessibleStockLocations.length}</div>
-            </div>
-          </div>
-
-          {/* Price Calculator */}
-          {canCreateQuote() && userPriceDisplayType !== 'reseller' && (
-            <div className="mb-5 p-4 rounded-lg border bg-accent/30 border-primary/20">
-              <div className="flex items-center gap-2 mb-3">
-                <Calculator className="h-4 w-4" />
-                <h2 className="text-sm font-semibold text-foreground">Calculateur de Prix</h2>
-              </div>
-              <div className="flex items-center gap-3 mb-3">
-                <select value={marginPercentage} onChange={(e) => setMarginPercentage(parseInt(e.target.value))}
-                  className="px-3 py-2 border border-input rounded-lg text-sm focus:ring-2 focus:ring-ring bg-background text-foreground">
-                  {marginOptions.map((p) => <option key={p} value={p}>{p}%</option>)}
-                </select>
-                <div className="flex items-center gap-2 text-sm">
-                  <span className="text-muted-foreground">{product.buyprice.toFixed(2)} Dh</span>
-                  <span className="text-orange-400">+{marginPercentage}%</span>
-                  <span className="text-foreground">=</span>
-                  <span className="font-bold text-emerald-400">{finalPrice.toFixed(2)} Dh</span>
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <button onClick={handleCopy} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm transition-colors">
-                  <Copy className="h-3.5 w-3.5" /><span>Copier</span>
-                </button>
-                <button onClick={handleAddToCart} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg text-sm transition-colors">
-                  <Plus className="h-3.5 w-3.5" /><span>Ajouter au Panier</span>
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Stock Locations */}
-          {accessibleStockLocations.length > 0 && (
-            <div className="mb-5">
-              <h3 className="text-sm font-semibold text-foreground mb-2">Stock par Emplacement</h3>
-              <div className="flex flex-wrap gap-2">
-                {accessibleStockLocations.map(([locKey, level], index) => {
-                  const loc = stockLocations.find(l =>
-                    l.abbreviation === locKey ||
-                    l.name === locKey ||
-                    l.name.toLowerCase().replace(/\s+/g, '_') === locKey
-                  );
-                  const label = loc?.name || locKey.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-                  const abbrev = loc?.abbreviation || locKey;
-                  const cs = colorSchemes[index % colorSchemes.length];
-                  return (
-                    <div key={locKey} className={`flex items-center gap-2 px-3 py-2 ${cs.bg} rounded-lg`}>
-                      <MapPin className={`h-4 w-4 ${cs.text}`} />
-                      <div>
-                        <span className={`text-sm ${cs.text} font-medium`}>{label}</span>
-                        {abbrev !== label && <span className={`text-[10px] ${cs.text} opacity-70 ml-1 font-mono`}>({abbrev})</span>}
-                      </div>
-                      <span className={`text-lg font-bold ${cs.textDark}`}>{level}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Pricing Details */}
-          {userPriceDisplayType !== 'reseller' && (
-            <div className="mb-5">
-              <h3 className="text-sm font-semibold text-foreground mb-2">Détails de Prix</h3>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                <div className="flex items-center gap-2 p-2.5 bg-emerald-500/10 rounded-lg">
-                  <DollarSign className="h-4 w-4 text-emerald-400 shrink-0" />
-                  <div><p className="text-[11px] text-emerald-400">Normal</p><p className="text-sm font-bold text-foreground">{product.price.toFixed(2)} Dh</p></div>
-                </div>
-                <div className="flex items-center gap-2 p-2.5 bg-primary/10 rounded-lg">
-                  <Users className="h-4 w-4 text-primary shrink-0" />
-                  <div><p className="text-[11px] text-primary">Revendeur</p><p className="text-sm font-bold text-foreground">{product.reseller_price.toFixed(2)} Dh</p></div>
-                </div>
-                <div className="flex items-center gap-2 p-2.5 bg-orange-500/10 rounded-lg">
-                  <ShoppingCart className="h-4 w-4 text-orange-400 shrink-0" />
-                  <div><p className="text-[11px] text-orange-400">Achat</p><p className="text-sm font-bold text-foreground">{product.buyprice.toFixed(2)} Dh</p></div>
-                </div>
-                <div className="flex items-center gap-2 p-2.5 bg-primary/10 rounded-lg">
-                  <TrendingUp className="h-4 w-4 text-primary shrink-0" />
-                  <div><p className="text-[11px] text-primary">Marge Normale</p><p className="text-sm font-bold text-foreground">{normalMargin.toFixed(1)}%</p></div>
-                </div>
-                <div className="flex items-center gap-2 p-2.5 bg-rose-500/10 rounded-lg">
-                  <TrendingUp className="h-4 w-4 text-rose-400 shrink-0" />
-                  <div><p className="text-[11px] text-rose-400">Marge Revendeur</p><p className="text-sm font-bold text-foreground">{resellerMargin.toFixed(1)}%</p></div>
-                </div>
-                <div className="flex items-center gap-2 p-2.5 bg-sky-500/10 rounded-lg">
-                  <Building className="h-4 w-4 text-sky-400 shrink-0" />
-                  <div><p className="text-[11px] text-sky-400">Fournisseur</p><p className="text-sm font-bold text-foreground truncate">{product.provider || '—'}</p></div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Linked Sheets Section */}
-          <div className="mb-5">
-            <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-1.5">
-              <FileText className="h-4 w-4" /> Fiches Techniques ({linkedSheets.length})
-            </h3>
-
-            {linkedSheets.length > 0 ? (
-              <div className="space-y-2 mb-3">
-                {linkedSheets.map(sheet => (
-                  <div key={sheet.id} className="flex items-center justify-between px-3 py-2 bg-secondary/50 rounded-lg">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-foreground truncate">{sheet.title}</p>
-                      <div className="flex gap-1.5 mt-0.5">
-                        {sheet.manufacturer && <span className="text-[11px] text-muted-foreground">{sheet.manufacturer}</span>}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                      <a href={sheet.file_url} target="_blank" rel="noopener noreferrer"
-                        className="p-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors">
-                        <Download className="h-3.5 w-3.5" />
-                      </a>
-                      {canEditProducts && (
-                        <button onClick={() => unlinkSheet(sheet.id)} title="Retirer le lien (la fiche reste dans la bibliothèque)" className="p-1.5 bg-destructive/10 hover:bg-destructive/20 text-destructive rounded-lg transition-colors">
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
+      <div className="grid items-start gap-5 lg:grid-cols-[22rem_minmax(0,1fr)]">
+        {/* Image and gallery */}
+        <div className="space-y-3">
+          <div className="mx-auto flex aspect-[4/5] max-h-[34vh] w-auto max-w-full items-center sm:max-h-none sm:w-full sm:max-w-[18rem] lg:max-w-[22rem] justify-center overflow-hidden rounded-xl border border-border bg-white">
+            {imageUrl ? (
+              <button type="button" onClick={() => setViewerImage({ src: imageUrl, alt: product.name })} aria-label="Agrandir l’image" className="h-full w-full cursor-zoom-in">
+                <img src={imageUrl} alt={product.name} className="h-full w-full object-contain" />
+              </button>
             ) : (
-              <p className="text-sm text-muted-foreground mb-2">Aucune fiche technique liée.</p>
-            )}
-
-            {/* Search existing sheets to link */}
-            {canEditProducts && (
-              <div className="space-y-2">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                  <input value={sheetSearchQuery} onChange={e => setSheetSearchQuery(e.target.value)}
-                    placeholder="Rechercher une fiche à lier..."
-                    className="w-full pl-9 pr-3 py-2 border border-input rounded-lg bg-background text-foreground text-sm" />
-                </div>
-                {sheetSearchResults.length > 0 && (
-                  <div className="border border-border rounded-lg divide-y divide-border max-h-32 overflow-y-auto">
-                    {sheetSearchResults.map(s => (
-                      <button key={s.id} onClick={() => linkSheet(s)} className="w-full px-3 py-2 text-left hover:bg-accent transition-colors">
-                        <p className="text-sm font-medium text-foreground truncate">{s.title}</p>
-                        <p className="text-xs text-muted-foreground">{s.manufacturer}</p>
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {/* Upload new sheet */}
-                <input ref={sheetFileInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
-                  onChange={handleUploadAndLink} className="hidden" id="techsheet-upload" />
-                <label htmlFor="techsheet-upload"
-                  className={`inline-flex items-center gap-1.5 px-4 py-2 bg-accent hover:bg-accent/80 text-foreground rounded-lg text-sm transition-colors cursor-pointer ${isSheetUploading ? 'opacity-50 pointer-events-none' : ''}`}>
-                  {isSheetUploading ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-                  <span>Ajouter une nouvelle fiche</span>
-                </label>
-                <button type="button" onClick={() => setSheetFinderOpen(true)}
-                  className="ml-2 inline-flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm transition-colors">
-                  <Globe className="h-3.5 w-3.5" />
-                  <span>Rechercher en ligne</span>
-                </button>
+              <div className="px-4 text-center text-muted-foreground">
+                <img src={`${import.meta.env.BASE_URL || '/'}stocky-logo.png`} alt="" className="mx-auto h-16 w-28 object-contain opacity-35" />
+                <p className="mt-2 text-xs">Pas encore d’image</p>
               </div>
             )}
           </div>
-
-          {/* Linked Photos Section */}
           {linkedPhotos.length > 0 && (
-            <div className="mb-5">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
-                  <Images className="h-4 w-4 text-primary" /> Photos ({linkedPhotos.length})
-                </h3>
-                <a href={`/photos?barcode=${encodeURIComponent(product.barcode)}`} className="text-xs text-primary hover:underline">
-                  Voir tout
-                </a>
+            <div className="mx-auto max-w-[22rem]">
+              <div className="mb-1.5 flex items-center justify-between">
+                <p className="flex items-center gap-1.5 text-sm font-medium text-foreground"><Images className="h-4 w-4 text-primary-text" aria-hidden="true" />Photos ({linkedPhotos.length})</p>
+                <a href={`/photos?barcode=${encodeURIComponent(product.barcode)}`} className="text-sm text-primary-text hover:underline">Voir tout</a>
               </div>
               <div className="grid grid-cols-4 gap-1.5">
                 {linkedPhotos.slice(0, 8).map(photo => (
                   <button
                     type="button"
                     key={photo.id}
-                    onClick={() => setViewerImage({ src: supabase.storage.from('product-photos').getPublicUrl(photo.storage_path).data.publicUrl, alt: photo.title || photo.file_name })}
-                    className="aspect-square cursor-zoom-in rounded-lg overflow-hidden border border-border/40 bg-secondary/30 hover:opacity-80 transition-opacity"
+                    onClick={() => setViewerImage({ src: photoUrl(photo.storage_path), alt: photo.title || photo.file_name })}
+                    className="aspect-[4/5] cursor-zoom-in overflow-hidden rounded-lg border border-border bg-white transition-opacity hover:opacity-80"
                     title={photo.title || photo.file_name}
                   >
-                    <img
-                      src={supabase.storage.from('product-photos').getPublicUrl(photo.storage_path).data.publicUrl}
-                      alt={photo.title || photo.file_name}
-                      className="w-full h-full object-contain"
-                      loading="lazy"
-                    />
+                    <img src={photoUrl(photo.storage_path)} alt={photo.title || photo.file_name} className="h-full w-full object-contain" loading="lazy" />
                   </button>
                 ))}
               </div>
             </div>
           )}
+        </div>
 
-          {/* Action Buttons */}
-          <div className="border-t border-border pt-4 flex flex-wrap gap-2">
-            <button onClick={() => navigate('/')} className="flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm transition-colors">
-              <Home className="h-3.5 w-3.5" /><span>Accueil</span>
-            </button>
-            <button onClick={() => navigate('/products')} className="flex items-center gap-1.5 px-4 py-2 bg-secondary hover:bg-accent text-foreground rounded-lg text-sm transition-colors border border-border">
-              <Package className="h-3.5 w-3.5" /><span>Catalogue</span>
-            </button>
-            <button onClick={handleBackToSearch} className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm transition-colors">
-              <Search className="h-3.5 w-3.5" /><span>Recherche</span>
+        <div className="min-w-0 space-y-4">
+          {/* Price, stock and add to quote */}
+          <section className={`${panel} p-4 sm:p-5`} aria-label="Prix et disponibilité">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p className="text-sm text-muted-foreground">{userPriceDisplayType === 'reseller' ? 'Prix revendeur' : 'Prix'}</p>
+                <p className="text-3xl font-bold tabular-nums tracking-tight text-foreground">{formatMoney(displayPrice)}</p>
+              </div>
+              <span className={`rounded-full px-3 py-1 text-sm font-semibold ${totalStock > 0 ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'bg-secondary text-muted-foreground'}`}>
+                {totalStock > 0 ? `${totalStock} en stock` : 'Sur commande'}
+              </span>
+            </div>
+
+            {canAddToQuote && (
+              <div className="mt-4 border-t border-border pt-4">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                  <label className="flex items-center gap-1.5 text-muted-foreground">
+                    <Calculator className="h-4 w-4" aria-hidden="true" />Marge
+                    <select value={marginPercentage} onChange={(e) => setMarginPercentage(parseInt(e.target.value))}
+                      className="rounded-md border border-input bg-background px-2 py-1 text-sm font-semibold text-foreground">
+                      {marginOptions.map((p) => <option key={p} value={p}>{p} %</option>)}
+                    </select>
+                  </label>
+                  <span className="text-muted-foreground">achat {formatMoney(product.buyprice)} + {marginPercentage} % =</span>
+                  <span className="font-semibold tabular-nums text-foreground">{formatMoney(finalPrice)}</span>
+                </div>
+                <div className="mt-3 hidden items-center gap-2 lg:flex">
+                  {quantityStepper('md')}
+                  <button type="button" onClick={handleAddToCart}
+                    className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90">
+                    <ShoppingCart className="h-4 w-4" aria-hidden="true" />Ajouter au devis
+                  </button>
+                  <button type="button" onClick={handleCopy} title="Copier la ligne (marque, code, désignation, prix)"
+                    className="flex h-10 items-center gap-1.5 rounded-lg border border-border px-3 text-sm font-semibold text-foreground hover:bg-secondary">
+                    <Copy className="h-4 w-4" aria-hidden="true" />Copier
+                  </button>
+                </div>
+                <button type="button" onClick={handleCopy} className="mt-3 flex items-center gap-1.5 text-sm font-semibold text-primary-text lg:hidden">
+                  <Copy className="h-4 w-4" aria-hidden="true" />Copier la ligne
+                </button>
+              </div>
+            )}
+          </section>
+
+          {/* Stock by location */}
+          <section className={panel} aria-labelledby="product-stock-title">
+            <div className="flex items-center justify-between border-b border-border px-4 py-3 sm:px-5">
+              <h2 id="product-stock-title" className="font-semibold text-foreground">Stock par emplacement</h2>
+              <span className="text-sm text-muted-foreground">{accessibleStockLocations.length} emplacement{accessibleStockLocations.length !== 1 ? 's' : ''}</span>
+            </div>
+            {accessibleStockLocations.length > 0 ? (
+              <ul className="divide-y divide-border">
+                {accessibleStockLocations.map(([locKey, level]) => {
+                  const { label, abbrev } = locationLabel(locKey);
+                  return (
+                    <li key={locKey} className="flex items-center gap-3 px-4 py-2.5 sm:px-5">
+                      <MapPin className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                      <span className="min-w-0 flex-1 text-sm text-foreground">
+                        {label}
+                        {abbrev !== label && <span className="ml-1.5 font-mono text-xs text-muted-foreground">{abbrev}</span>}
+                      </span>
+                      <span className={`text-sm font-semibold tabular-nums ${level > 0 ? 'text-foreground' : 'text-muted-foreground'}`}>{level}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <p className="px-5 py-4 text-sm text-muted-foreground">Aucun stock dans vos emplacements.</p>
+            )}
+          </section>
+
+          {/* Prices and classification */}
+          <section className={panel} aria-labelledby="product-details-title">
+            <h2 id="product-details-title" className="border-b border-border px-4 py-3 font-semibold text-foreground sm:px-5">Détails</h2>
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-3 px-4 py-4 text-sm sm:grid-cols-3 sm:px-5">
+              {userPriceDisplayType !== 'reseller' && (
+                <>
+                  <div><dt className="text-muted-foreground">Prix normal</dt><dd className="font-semibold tabular-nums text-foreground">{formatMoney(product.price)}</dd></div>
+                  <div><dt className="text-muted-foreground">Prix revendeur</dt><dd className="font-semibold tabular-nums text-foreground">{formatMoney(product.reseller_price)}</dd></div>
+                  <div><dt className="text-muted-foreground">Prix d’achat</dt><dd className="font-semibold tabular-nums text-foreground">{formatMoney(product.buyprice)}</dd></div>
+                  <div><dt className="text-muted-foreground">Marge normale</dt><dd className="font-semibold tabular-nums text-foreground">{normalMargin.toFixed(1).replace('.', ',')} %</dd></div>
+                  <div><dt className="text-muted-foreground">Marge revendeur</dt><dd className="font-semibold tabular-nums text-foreground">{resellerMargin.toFixed(1).replace('.', ',')} %</dd></div>
+                  <div><dt className="text-muted-foreground">Fournisseur</dt><dd className="truncate font-semibold text-foreground">{product.provider || '—'}</dd></div>
+                </>
+              )}
+              <div><dt className="text-muted-foreground">Type kiosque</dt><dd className="font-semibold text-foreground">{kioskLabel}</dd></div>
+              <div className="col-span-2"><dt className="text-muted-foreground">Secteur</dt><dd className="font-semibold text-foreground">{sectorLabel}</dd></div>
+            </dl>
+          </section>
+
+          {/* Technical sheets */}
+          <section className={panel} aria-labelledby="product-sheets-title">
+            <h2 id="product-sheets-title" className="flex items-center gap-1.5 border-b border-border px-4 py-3 font-semibold text-foreground sm:px-5">
+              <FileText className="h-4 w-4" aria-hidden="true" />Fiches techniques ({linkedSheets.length})
+            </h2>
+            {linkedSheets.length > 0 ? (
+              <ul className="divide-y divide-border">
+                {linkedSheets.map(sheet => (
+                  <li key={sheet.id} className="flex items-center gap-3 px-4 py-2.5 sm:px-5">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-foreground">{sheet.title}</p>
+                      {sheet.manufacturer && <p className="text-xs text-muted-foreground">{sheet.manufacturer}</p>}
+                    </div>
+                    <a href={sheet.file_url} target="_blank" rel="noopener noreferrer" aria-label={`Ouvrir ${sheet.title}`}
+                      className="flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-sm font-semibold text-foreground hover:bg-secondary">
+                      <Download className="h-4 w-4" aria-hidden="true" />Ouvrir
+                    </a>
+                    {canEditProducts && (
+                      <button type="button" onClick={() => unlinkSheet(sheet.id)} title="Retirer le lien (la fiche reste dans la bibliothèque)" aria-label={`Retirer ${sheet.title}`}
+                        className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="px-5 py-4 text-sm text-muted-foreground">Aucune fiche technique liée.</p>
+            )}
+          </section>
+        </div>
+      </div>
+
+      {/* Settings, for those who can edit products */}
+      {canEditProducts && (
+        <section className={`${panel} mt-5`} aria-labelledby="product-settings-title">
+          <div className="flex items-center gap-2 border-b border-border px-4 py-3 sm:px-5">
+            <Settings className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+            <h2 id="product-settings-title" className="font-semibold text-foreground">Paramètres</h2>
+          </div>
+          <div className="grid gap-6 p-4 sm:p-5 md:grid-cols-2">
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Image principale</h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Partagée par la liste Stocky, le catalogue, le kiosque et les exports de devis. Format portrait 4:5 recommandé (par exemple 1080 × 1350 px) : elle s’affiche en entier, sans être recadrée.
+              </p>
+              <input ref={imageFileInputRef} type="file" accept="image/*" onChange={handlePrimaryImageUpload} className="hidden" id="product-image-upload" />
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button type="button" onClick={() => imageFileInputRef.current?.click()} disabled={isImageUploading || !companyId}
+                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                  {isImageUploading ? <Loader className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+                  {isImageUploading ? 'Import en cours…' : product.image ? 'Remplacer l’image' : 'Ajouter une image'}
+                </button>
+                <button type="button" onClick={() => navigate(`/photos/finder?barcode=${encodeURIComponent(product.barcode)}`)}
+                  className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-semibold text-foreground hover:bg-secondary">
+                  <Globe className="h-4 w-4" />Chercher sur le web
+                </button>
+              </div>
+              <p className="mt-1.5 text-xs text-muted-foreground">JPG, PNG ou WebP · maximum 10 Mo</p>
+            </div>
+
+            <div className="space-y-4">
+              <label className="block">
+                <span className="mb-1 block text-sm font-semibold text-foreground">Type de produit pour le kiosque</span>
+                <select value={product.kiosk_category || ''} onChange={event => updateKioskCategory((event.target.value || null) as Product['kiosk_category'])}
+                  className="h-10 w-full max-w-xs rounded-lg border border-input bg-background px-3 text-sm text-foreground">
+                  <option value="">Non classé</option>
+                  {KIOSK_CATEGORIES.map(category => <option key={category.value} value={category.value}>{category.label}</option>)}
+                </select>
+                <span className="mt-1 block text-xs leading-snug text-muted-foreground">{KIOSK_CATEGORY_HELP}</span>
+              </label>
+              <div>
+                <span className="mb-1 block text-sm font-semibold text-foreground">Secteur</span>
+                <div className="max-w-xs">
+                  <SectorPicker sectors={sectors} value={product.sector_ids || []} onChange={updateSectors}
+                    onCreate={name => BusinessSectorsService.create(name)} size="md" />
+                </div>
+              </div>
+            </div>
+
+            <div className="md:col-span-2">
+              <h3 className="text-sm font-semibold text-foreground">Lier une fiche technique</h3>
+              <div className="relative mt-2 max-w-md">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                <input value={sheetSearchQuery} onChange={e => setSheetSearchQuery(e.target.value)}
+                  placeholder="Rechercher une fiche de la bibliothèque…" aria-label="Rechercher une fiche à lier"
+                  className="w-full rounded-lg border border-input bg-background py-2 pl-9 pr-3 text-sm text-foreground" />
+              </div>
+              {sheetSearchResults.length > 0 && (
+                <div className="mt-2 max-h-40 max-w-md divide-y divide-border overflow-y-auto rounded-lg border border-border">
+                  {sheetSearchResults.map(s => (
+                    <button key={s.id} type="button" onClick={() => linkSheet(s)} className="w-full px-3 py-2 text-left transition-colors hover:bg-secondary">
+                      <p className="truncate text-sm font-medium text-foreground">{s.title}</p>
+                      <p className="text-xs text-muted-foreground">{s.manufacturer}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <input ref={sheetFileInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+                onChange={handleUploadAndLink} className="hidden" id="techsheet-upload" />
+              <div className="mt-3 flex flex-wrap gap-2">
+                <label htmlFor="techsheet-upload"
+                  className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-semibold text-foreground hover:bg-secondary ${isSheetUploading ? 'pointer-events-none opacity-50' : ''}`}>
+                  {isSheetUploading ? <Loader className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                  Ajouter une nouvelle fiche
+                </label>
+                <button type="button" onClick={() => setSheetFinderOpen(true)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-semibold text-foreground hover:bg-secondary">
+                  <Globe className="h-4 w-4" />Rechercher en ligne
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Phone: price and add to quote stay at hand, above the tab bar */}
+      {canAddToQuote && (
+        <div className="fixed inset-x-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-20 border-t border-border bg-card px-4 py-2.5 shadow-[0_-4px_16px_rgba(17,24,39,0.06)] md:hidden">
+          <div className="mx-auto flex max-w-3xl items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <p className="text-xs text-muted-foreground">Prix</p>
+              <p className="truncate text-lg font-bold tabular-nums leading-tight text-foreground">{formatMoney(displayPrice)}</p>
+            </div>
+            {quantityStepper('md')}
+            <button type="button" onClick={handleAddToCart}
+              className="flex h-11 shrink-0 items-center rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground">
+              Ajouter
             </button>
           </div>
         </div>
-      </div>
+      )}
 
       {sheetFinderOpen && (
         <TechnicalSheetFinder

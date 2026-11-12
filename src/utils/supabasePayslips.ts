@@ -95,13 +95,7 @@ export class SupabasePayslipsService {
     [key: string]: unknown;
   }): Promise<Payslip> {
     // Generate payslip number: PAIE-YYYY-NNN
-    const { count } = await supabase
-      .from('payslips')
-      .select('id', { count: 'exact', head: true })
-      .eq('company_id', input.company_id)
-      .eq('period_year', input.period_year);
-
-    const seq = String((count ?? 0) + 1).padStart(3, '0');
+    const seq = String(await this.nextNumberSeq(input.company_id, input.period_year)).padStart(3, '0');
     const payslip_number = `PAIE-${input.period_year}-${seq}`;
 
     const { data, error } = await supabase
@@ -111,6 +105,31 @@ export class SupabasePayslipsService {
       .single();
     if (error) throw error;
     return mapRow(data as Record<string, unknown>);
+  }
+
+  /**
+   * Next PAIE-YYYY-NNN sequence for a company and year: one past the highest
+   * number used. Counting payslips repeated a number once one was deleted.
+   */
+  static async nextNumberSeq(companyId: string | null, year: number): Promise<number> {
+    type NumberQuery = {
+      eq(column: string, value: unknown): NumberQuery;
+      order(column: string): NumberQuery;
+      range(from: number, to: number): PromiseLike<{ data: { payslip_number: string | null }[] | null; error: unknown }>;
+    };
+    const payslips = () => (supabase as unknown as { from(table: string): { select(columns: string): NumberQuery } }).from('payslips');
+    let highest = 0;
+    // Page by page: the server returns at most 1,000 rows per request.
+    for (let from = 0; ; from += 1000) {
+      let q = payslips().select('id, payslip_number').eq('period_year', year);
+      if (companyId) q = q.eq('company_id', companyId);
+      const { data, error } = await q.order('id').range(from, from + 999);
+      if (error) throw error;
+      for (const r of data || []) {
+        highest = Math.max(highest, Number(/-(\d+)$/.exec(r.payslip_number || '')?.[1]) || 0);
+      }
+      if (!data || data.length < 1000) return highest + 1;
+    }
   }
 
   static async update(id: string, updates: Partial<PayslipRow>): Promise<Payslip> {

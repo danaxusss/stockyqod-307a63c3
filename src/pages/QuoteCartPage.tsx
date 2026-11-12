@@ -649,6 +649,7 @@ export function QuoteCartPage() {
 
       const quoteData: Quote = {
         id: quote?.id || crypto.randomUUID(), company_id: quote?.company_id || companyId || undefined, issuing_company_id: quote?.issuing_company_id,
+        createdBy: quote?.createdBy,
         quoteNumber,
         commandNumber: commandNumber || undefined,
         createdAt: quote?.createdAt || now,
@@ -765,6 +766,7 @@ export function QuoteCartPage() {
         id: savedId,
         company_id: quote?.company_id || companyId || undefined,
         issuing_company_id: quote?.issuing_company_id,
+        createdBy: quote?.createdBy,
         quoteNumber,
         commandNumber: commandNumber || undefined,
         createdAt: quote?.createdAt || now,
@@ -805,6 +807,7 @@ export function QuoteCartPage() {
       const { totalAmount } = calculateTotals();
       const quoteData: Quote = {
         id: quote?.id || crypto.randomUUID(), company_id: quote?.company_id || companyId || undefined, issuing_company_id: quote?.issuing_company_id,
+        createdBy: quote?.createdBy,
         quoteNumber,
         commandNumber: commandNumber || undefined,
         createdAt: quote?.createdAt || new Date(),
@@ -1051,7 +1054,7 @@ export function QuoteCartPage() {
   );
 
   return (
-    <div className="mx-auto max-w-7xl pb-28 lg:pb-0">
+    <div className="mx-auto max-w-7xl pb-28 md:pb-0">
       {/* Title */}
       <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
         <div className="min-w-0">
@@ -1492,7 +1495,7 @@ export function QuoteCartPage() {
       </div>
 
       {/* Phone: total and save stay at hand, above the tab bar */}
-      <div className="fixed inset-x-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-20 border-t border-border bg-card px-4 py-2.5 shadow-[0_-4px_16px_rgba(17,24,39,0.06)] lg:hidden">
+      <div className="fixed inset-x-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-20 border-t border-border bg-card px-4 py-2.5 shadow-[0_-4px_16px_rgba(17,24,39,0.06)] md:hidden">
         <div className="mx-auto flex max-w-3xl items-center gap-3">
           <div className="min-w-0 flex-1">
             <p className="text-xs text-muted-foreground">Total TTC</p>

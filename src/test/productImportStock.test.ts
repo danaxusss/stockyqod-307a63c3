@@ -10,7 +10,10 @@ vi.mock('../utils/supabaseClient', () => ({
     from: (table: string) => ({
       select: () => table === 'product_name_overrides'
         ? Promise.resolve({ data: [], error: null })
-        : { range: async (from: number) => ({ data: from === 0 ? [{ barcode: 'OLD', brand: 'B', provider: 'P', image: null, kiosk_category: null, stock_levels: { DEP: 7 } }] : [], error: null }) },
+        : {
+            // The import reads existing products in barcode order, page by page.
+            order: () => ({ range: async (from: number) => ({ data: from === 0 ? [{ barcode: 'OLD', brand: 'B', provider: 'P', image: null, kiosk_category: null, stock_levels: { DEP: 7 } }] : [], error: null }) }),
+          },
       upsert: async (rows: Record<string, unknown>[]) => { db.upserts.push(rows); return { error: null }; },
       insert: async (rows: unknown[]) => { db.movements.push(...rows); return { error: null }; },
     }),

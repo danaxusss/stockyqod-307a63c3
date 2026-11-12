@@ -1,5 +1,17 @@
 import { supabase } from './supabaseClient';
 import { getCompanyContext } from './supabaseCompanyFilter';
+import { readAll, type Pageable } from './readAll';
+import { ilikePattern } from './commandSearch';
+
+/**
+ * The or() filter of the client search. The typed text is escaped: a comma or
+ * parenthesis in a name ("Dar Zitoun (Fès)") would otherwise break the
+ * filter, and the search would fail without a word.
+ */
+export function clientSearchFilter(query: string): string {
+  const pattern = ilikePattern(query);
+  return `full_name.ilike.${pattern},phone_number.ilike.${pattern},client_code.ilike.${pattern}`;
+}
 
 export interface Client {
   id: string;
@@ -36,11 +48,11 @@ export interface UpdateClientRequest {
 export class SupabaseClientsService {
   static async getAllClients(): Promise<Client[]> {
     const { companyId, isSuperAdmin } = getCompanyContext();
-    let query = supabase.from('clients').select('*').order('created_at', { ascending: false });
-    if (!isSuperAdmin && companyId) query = query.eq('company_id', companyId);
-    const { data, error } = await query;
-    if (error) throw error;
-    return data || [];
+    return readAll<Client>(() => {
+      let query = supabase.from('clients').select('*').order('created_at', { ascending: false });
+      if (!isSuperAdmin && companyId) query = query.eq('company_id', companyId);
+      return query as unknown as Pageable<Client>;
+    });
   }
 
   // Client base is shared globally — search across all companies to avoid duplicates
@@ -50,7 +62,7 @@ export class SupabaseClientsService {
     const { data, error } = await supabase
       .from('clients')
       .select('*')
-      .or(`full_name.ilike.%${q}%,phone_number.ilike.%${q}%,client_code.ilike.%${q}%`)
+      .or(clientSearchFilter(q))
       .order('full_name')
       .limit(10);
     if (error) throw error;

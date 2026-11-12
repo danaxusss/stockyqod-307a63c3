@@ -1,6 +1,7 @@
 import { supabase } from './supabaseClient';
 import { throwEdgeError, describeEdgeError } from './edgeError';
 import { getToken } from './session';
+import { parseLocaleNumber } from './localeNumber';
 
 // ─── Conversion ─────────────────────────────────────────────────────────────
 // One generic path, deliberately.
@@ -10,6 +11,7 @@ import { getToken } from './session';
 // real documents, while the generic table extraction read the very same bank
 // statement correctly — dates, labels, debits and credits, every page. A
 // single well-tested path beats three where two are broken.
+
 export const CONVERTER_FN = 'ai-extract-table';
 
 // ─── Lazy loading of the PDF engine ─────────────────────────────────────────
@@ -208,6 +210,20 @@ function styleHeader(row: any) {
   });
 }
 
+/**
+ * A table cell for Excel: amounts and quantities ("12", "1 234,50") become
+ * numbers Excel can add up; codes, phone numbers and references ("0661…",
+ * EAN-13) stay text, so no leading zero is lost and nothing shows as 6.1E+12.
+ */
+export function excelCellValue(v: string | number | null | undefined): string | number {
+  if (typeof v === 'number') return v;
+  const s = String(v ?? '').trim();
+  if (!/^-?[\d\s\u00a0\u202f.,]*\d[\d\s\u00a0\u202f.,]*$/.test(s)) return s;
+  const digits = s.replace(/^-/, '');
+  if (/^\d+$/.test(digits) && ((digits.length > 1 && digits.startsWith('0')) || digits.length > 11)) return s;
+  return parseLocaleNumber(s) ?? s;
+}
+
 export async function exportTableExcel(t: TableResult, filename: string) {
   const wb = await newWorkbook();
   const ws = wb.addWorksheet(t.title?.slice(0, 28) || 'Tableau');
@@ -215,11 +231,7 @@ export async function exportTableExcel(t: TableResult, filename: string) {
   styleHeader(ws.getRow(1));
   for (const r of t.rows) {
     // numeric strings → numbers so Excel can compute on them
-    ws.addRow(r.map(v => {
-      if (typeof v === 'number') return v;
-      const s = String(v ?? '').trim();
-      return s !== '' && /^-?\d+(\.\d+)?$/.test(s) ? Number(s) : s;
-    }));
+    ws.addRow(r.map(excelCellValue));
   }
   ws.columns.forEach((col: any, i: number) => {
     const max = Math.max(String(t.columns[i] || '').length,

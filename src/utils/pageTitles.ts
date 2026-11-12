@@ -40,7 +40,7 @@ const TITLES: [string, string][] = [
   ['/comptabilite/cloture', 'Clôture d’exercice'],
   ['/comptabilite/banque', 'Rapprochement bancaire'],
   ['/comptabilite/immobilisations', 'Immobilisations'],
-  ['/inventaire', 'Inventaire'],
+  ['/inventaire', 'Stock'],
   ['/inventaire/niveaux', 'Niveaux de stock'],
   ['/inventaire/mouvements', 'Mouvements de stock'],
   ['/inventaire/reception', 'Réception'],
@@ -101,6 +101,12 @@ export function documentTitle(pathname: string): string {
 // Pages with nothing to add to a quote: the floating quote cart would only
 // cover their content there.
 // The quote editor is the cart itself.
-const CART_HIDDEN_PREFIXES = ['/quote-cart', '/tasks', '/paie', '/comptabilite', '/whatsapp', '/admin', '/companies', '/tools'];
+const CART_HIDDEN_PREFIXES = ['/quote-cart', '/compta', '/inventaire', '/tasks', '/paie', '/comptabilite', '/whatsapp', '/admin', '/companies', '/tools'];
 export const cartHiddenOn = (pathname: string) =>
   CART_HIDDEN_PREFIXES.some(prefix => pathname === prefix || pathname.startsWith(prefix + '/'));
+
+// Pages with their own action bar at the bottom on phones: the cart button
+// sits above that bar instead of covering it.
+const CART_RAISED_PREFIXES = ['/product'];
+export const cartRaisedOn = (pathname: string) =>
+  CART_RAISED_PREFIXES.some(prefix => pathname === prefix || pathname.startsWith(prefix + '/'));

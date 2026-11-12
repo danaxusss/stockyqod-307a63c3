@@ -7,7 +7,7 @@ import { CompanySettingsService } from '../../utils/companySettings';
 import { RubriquesService, type Rubrique } from '../../utils/supabaseRubriques';
 import { PayrollSettingsService } from '../../utils/supabasePayrollSettings';
 import { exportPayslipToPdf, generatePayslipPdfBlob } from '../../utils/pdfExport';
-import { computeAnciennete, computePayroll, periodEnd } from '../../utils/payrollCalc';
+import { computeAnciennete, computePayroll, payslipLineTotals, periodEnd } from '../../utils/payrollCalc';
 import { LOAN_LINE } from '../../utils/supabasePayrollRun';
 import { DEFAULT_PAYROLL_SETTINGS, type PayrollSettings } from '../../utils/payrollDefaults';
 import { PrintPreviewModal } from '../../components/PrintPreviewModal';
@@ -59,7 +59,11 @@ export default function PayslipDetailPage() {
         setLines(vars.map((v: any) => ({ rubrique_id: v.rubrique_id, code: v.code, label: v.label, type: v.type, amount: Number(v.amount), soumis_cnss: v.soumis_cnss, soumis_ir: v.soumis_ir, soumis_cimr: v.soumis_cimr, inclus_anciennete: v.inclus_anciennete })));
       } else {
         // migrate legacy free-text items → variables (soumis by default)
-        const legacy: Line[] = doc.items.map(it => ({ rubrique_id: null, code: null, label: it.label, type: it.item_type === 'earning' ? 'gain' : 'retenue', amount: it.amount, soumis_cnss: true, soumis_ir: true, soumis_cimr: false, inclus_anciennete: it.included_in_anciennete_base }));
+        // Legacy deductions were always taken after tax: keep them that way.
+        const legacy: Line[] = doc.items.map(it => {
+          const gain = it.item_type === 'earning';
+          return { rubrique_id: null, code: null, label: it.label, type: gain ? 'gain' : 'retenue', amount: it.amount, soumis_cnss: gain, soumis_ir: gain, soumis_cimr: false, inclus_anciennete: it.included_in_anciennete_base };
+        });
         // Older run payslips held the loan repayment only in other_deductions:
         // show it as a line so a save does not drop it.
         const listed = legacy.filter(l => l.type === 'retenue').reduce((s, l) => s + l.amount, 0);
@@ -78,16 +82,13 @@ export default function PayslipDetailPage() {
     if (!payslip?.employee) return null;
     const emp = payslip.employee;
     const gains = lines.filter(l => l.type === 'gain');
-    const retenues = lines.filter(l => l.type === 'retenue');
     const ancienneteBase = emp.base_salary + gains.filter(g => g.inclus_anciennete).reduce((s, g) => s + g.amount, 0);
     // Seniority as at the end of the pay month, not today.
     const anc = computeAnciennete(emp.hire_date, ancienneteBase, periodEnd(payslip.period_month, payslip.period_year));
-    // "soumis" = enters brut imposable (CNSS+IR); exonéré if neither flag set.
-    const primesSoumises = r2(gains.filter(g => g.soumis_cnss || g.soumis_ir).reduce((s, g) => s + g.amount, 0));
-    const primesNon = r2(gains.filter(g => !g.soumis_cnss && !g.soumis_ir).reduce((s, g) => s + g.amount, 0));
-    const autres = r2(retenues.reduce((s, r) => s + r.amount, 0));
-    const res = computePayroll({ base_salary: emp.base_salary, anciennete_amount: anc.amount, primes_soumises: primesSoumises, primes_non_soumises: primesNon, autres_retenues: autres, cimr_rate: emp.cimr_rate ?? 0, dependents_count: emp.dependents_count ?? 0, settings });
-    return { anc, res, otherEarnings: r2(primesSoumises + primesNon) };
+    // "soumis" lines enter brut imposable (CNSS+IR), retenues negatively; the rest is exonéré / after tax.
+    const t = payslipLineTotals(lines);
+    const res = computePayroll({ base_salary: emp.base_salary, anciennete_amount: anc.amount, primes_soumises: t.primesSoumises, primes_non_soumises: t.primesNon, autres_retenues: t.autres, cimr_rate: emp.cimr_rate ?? 0, dependents_count: emp.dependents_count ?? 0, settings });
+    return { anc, res, otherEarnings: t.gains };
   }, [payslip, lines, settings]);
 
   const locked = payslip?.is_locked === true;

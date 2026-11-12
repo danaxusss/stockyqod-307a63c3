@@ -74,8 +74,7 @@ export class PayrollRunService {
     if (runErr) throw runErr;
 
     let tGross = 0, tNet = 0, tCnss = 0, tIr = 0, tEmployerCost = 0;
-    const { count } = await (supabase as any).from('payslips').select('id', { count: 'exact', head: true }).eq('company_id', companyId).eq('period_year', year);
-    let seq = count ?? 0;
+    let seq = (await SupabasePayslipsService.nextNumberSeq(companyId, year)) - 1;
     const asOf = periodEnd(month, year);
 
     try {

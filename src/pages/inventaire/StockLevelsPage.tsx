@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { Search, Package, AlertTriangle, X, History, SlidersHorizontal, Loader } from 'lucide-react';
+import { Search, AlertTriangle, X, History, SlidersHorizontal, Loader, ChevronRight } from 'lucide-react';
 import type { Product, StockLocation, StockMovement, ProductStockSetting } from '../../types';
 import { StockService } from '../../utils/supabaseStock';
 import { StockLocationsService } from '../../utils/supabaseStockLocations';
@@ -7,6 +7,10 @@ import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
 import { useAccessibleLocations } from '../../inventory/hooks/useAccessibleLocations';
 import { findLevelKey, locationCandidates } from '../../inventory/lib/locationKeys';
+import { PageHeader } from '../../components/PageHeader';
+import { StatusPill } from '../../components/lists/StatusPill';
+
+const field = 'h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring';
 
 function fmt(n: number) {
   return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(n);
@@ -109,96 +113,128 @@ export default function StockLevelsPage() {
   const lowCount = useMemo(() => products.filter(isLow).length, [products, isLow]);
 
   return (
-    <div className="max-w-7xl mx-auto py-6 px-3">
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-        <div className="flex items-center gap-2">
-          <div className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-primary/10">
-            <Package className="h-5 w-5 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold text-foreground leading-tight">Niveaux de stock</h1>
-            <p className="text-xs text-muted-foreground">{products.length} articles · {locationKeys.length} emplacements</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+    <div className="mx-auto max-w-7xl">
+      <PageHeader
+        title="Niveaux de stock"
+        subtitle={`${products.length} articles · ${locationKeys.length} emplacements`}
+      >
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-3 shadow-sm">
+          <div className="relative min-w-0 flex-1 basis-64">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
             <input
               value={query}
               onChange={e => setQuery(e.target.value)}
               placeholder="Rechercher article, code, marque…"
-              className="pl-8 pr-3 py-2 text-sm rounded-lg bg-secondary border border-border w-64 max-w-full focus:outline-none focus:ring-2 focus:ring-primary/30"
+              aria-label="Rechercher un article"
+              className={`${field} w-full pl-9`}
             />
           </div>
           <button
+            type="button"
             onClick={() => setOnlyLow(v => !v)}
-            className={`flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-xs font-medium border transition-colors ${
-              onlyLow ? 'bg-amber-500/15 border-amber-500/40 text-amber-700 dark:text-amber-400'
-                      : 'bg-secondary border-border text-muted-foreground hover:text-foreground'
+            aria-pressed={onlyLow}
+            className={`flex h-10 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium transition-colors ${
+              onlyLow ? 'border-amber-500/40 bg-amber-500/15 text-amber-800 dark:text-amber-300'
+                      : 'border-border bg-card text-muted-foreground hover:text-foreground'
             }`}
             title="Afficher uniquement les articles sous le seuil"
           >
-            <AlertTriangle className="h-3.5 w-3.5" />
+            <AlertTriangle className="h-4 w-4" aria-hidden="true" />
             Sous seuil{lowCount > 0 ? ` (${lowCount})` : ''}
           </button>
         </div>
-      </div>
+      </PageHeader>
 
       {loading ? (
         <div className="flex items-center justify-center py-20 text-muted-foreground">
-          <Loader className="h-5 w-5 animate-spin mr-2" /> Chargement…
+          <Loader className="mr-2 h-5 w-5 animate-spin" /> Chargement…
         </div>
       ) : (
-        <div className="bg-card border border-border/60 rounded-xl overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border/60 bg-secondary/50 text-xs text-muted-foreground">
-                  <th className="text-left font-medium px-3 py-2.5">Article</th>
-                  {locationKeys.map(k => (
-                    <th key={k} className="text-right font-medium px-3 py-2.5 whitespace-nowrap">{resolve(k)}</th>
-                  ))}
-                  <th className="text-right font-medium px-3 py-2.5">Total</th>
-                  <th className="w-8"></th>
-                </tr>
-              </thead>
-              <tbody>
+        <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+          {filtered.length === 0 ? (
+            <p className="px-4 py-12 text-center text-sm text-muted-foreground">Aucun article</p>
+          ) : (
+            <>
+              {/* Phones: a card per article, stock by location as chips */}
+              <ul className="divide-y divide-border md:hidden">
                 {filtered.map(p => {
                   const low = isLow(p);
+                  const stocked = locationKeys.filter(k => Number(p.stock_levels?.[k] ?? 0) !== 0);
                   return (
-                    <tr
-                      key={p.barcode}
-                      onClick={() => setDetail(p)}
-                      className="border-b border-border/40 hover:bg-secondary/40 cursor-pointer transition-colors"
-                    >
-                      <td className="px-3 py-2.5">
-                        <div className="flex items-center gap-2">
-                          {low && <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" title="Sous le seuil" />}
-                          <div className="min-w-0">
-                            <div className="font-medium text-foreground truncate max-w-[280px]">{p.name}</div>
-                            <div className="text-[11px] text-muted-foreground font-mono">{p.barcode}{p.brand ? ` · ${p.brand}` : ''}</div>
+                    <li key={p.barcode}>
+                      <button type="button" onClick={() => setDetail(p)} className="flex w-full items-start gap-3 px-4 py-3 text-left active:bg-secondary">
+                        <div className="min-w-0 flex-1">
+                          <p className="line-clamp-2 font-medium text-foreground">{p.name}</p>
+                          <p className="truncate text-xs text-muted-foreground"><span className="font-mono">{p.barcode}</span>{p.brand ? ` · ${p.brand}` : ''}</p>
+                          <div className="mt-1.5 flex flex-wrap gap-1">
+                            {low && <StatusPill tone="warning" icon={<AlertTriangle className="h-3 w-3" aria-hidden="true" />}>Sous le seuil</StatusPill>}
+                            {stocked.map(k => (
+                              <span key={k} className="rounded-md bg-secondary px-1.5 py-0.5 text-xs text-muted-foreground">
+                                {resolve(k)} <span className="font-semibold tabular-nums text-foreground">{fmt(Number(p.stock_levels?.[k] ?? 0))}</span>
+                              </span>
+                            ))}
                           </div>
                         </div>
-                      </td>
-                      {locationKeys.map(k => {
-                        const v = Number(p.stock_levels?.[k] ?? 0);
-                        return (
-                          <td key={k} className={`px-3 py-2.5 text-right tabular-nums ${v <= 0 ? 'text-muted-foreground/50' : 'text-foreground'}`}>
-                            {v === 0 ? '—' : fmt(v)}
-                          </td>
-                        );
-                      })}
-                      <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-foreground">{fmt(accessibleTotal(p))}</td>
-                      <td className="px-2 text-muted-foreground"><History className="h-3.5 w-3.5" /></td>
-                    </tr>
+                        <div className="shrink-0 text-right">
+                          <p className="text-lg font-bold tabular-nums text-foreground">{fmt(accessibleTotal(p))}</p>
+                          <p className="text-xs text-muted-foreground">total</p>
+                        </div>
+                        <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                      </button>
+                    </li>
                   );
                 })}
-                {filtered.length === 0 && (
-                  <tr><td colSpan={locationKeys.length + 3} className="px-3 py-10 text-center text-muted-foreground">Aucun article</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+              </ul>
+
+              {/* Wider screens: one column per location */}
+              <div className="hidden overflow-x-auto md:block">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border bg-secondary/40 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      <th className="px-4 py-2.5 text-left">Article</th>
+                      {locationKeys.map(k => (
+                        <th key={k} className="whitespace-nowrap px-3 py-2.5 text-right">{resolve(k)}</th>
+                      ))}
+                      <th className="px-4 py-2.5 text-right">Total</th>
+                      <th className="w-10"><span className="sr-only">Historique</span></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {filtered.map(p => {
+                      const low = isLow(p);
+                      return (
+                        <tr
+                          key={p.barcode}
+                          onClick={() => setDetail(p)}
+                          className="cursor-pointer transition-colors hover:bg-secondary/40"
+                        >
+                          <td className="px-4 py-2.5">
+                            <div className="flex items-center gap-2">
+                              <div className="min-w-0">
+                                <p className="max-w-[18rem] truncate font-medium text-foreground">{p.name}</p>
+                                <p className="text-xs text-muted-foreground"><span className="font-mono">{p.barcode}</span>{p.brand ? ` · ${p.brand}` : ''}</p>
+                              </div>
+                              {low && <StatusPill tone="warning" icon={<AlertTriangle className="h-3 w-3" aria-hidden="true" />}>Sous le seuil</StatusPill>}
+                            </div>
+                          </td>
+                          {locationKeys.map(k => {
+                            const v = Number(p.stock_levels?.[k] ?? 0);
+                            return (
+                              <td key={k} className={`px-3 py-2.5 text-right tabular-nums ${v <= 0 ? 'text-muted-foreground/60' : 'text-foreground'}`}>
+                                {v === 0 ? '—' : fmt(v)}
+                              </td>
+                            );
+                          })}
+                          <td className="px-4 py-2.5 text-right font-semibold tabular-nums text-foreground">{fmt(accessibleTotal(p))}</td>
+                          <td className="px-2 text-muted-foreground"><History className="h-4 w-4" aria-label="Voir l’historique" /></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -320,32 +356,32 @@ function ProductStockDrawer({
         className="relative w-full max-w-md bg-card border-l border-border h-full overflow-y-auto shadow-2xl animate-in slide-in-from-right duration-200"
         onClick={e => e.stopPropagation()}
       >
-        <div className="sticky top-0 bg-card border-b border-border/60 px-4 py-3 flex items-start justify-between z-10">
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-border bg-card px-4 py-3">
           <div className="min-w-0">
-            <h2 className="font-bold text-foreground truncate">{product.name}</h2>
-            <p className="text-[11px] text-muted-foreground font-mono">{product.barcode}{product.brand ? ` · ${product.brand}` : ''}</p>
+            <h2 className="line-clamp-2 font-semibold text-foreground">{product.name}</h2>
+            <p className="truncate text-xs text-muted-foreground"><span className="font-mono">{product.barcode}</span>{product.brand ? ` · ${product.brand}` : ''}</p>
           </div>
-          <button onClick={onClose} className="p-1 rounded-lg hover:bg-secondary text-muted-foreground"><X className="h-4 w-4" /></button>
+          <button type="button" onClick={onClose} aria-label="Fermer" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground"><X className="h-5 w-5" /></button>
         </div>
 
         <div className="p-4 space-y-4">
           {/* Per-location levels */}
           <div>
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Stock par emplacement</h3>
-            <div className="space-y-1.5">
+            <h3 className="mb-2 text-sm font-semibold text-foreground">Stock par emplacement</h3>
+            <div className="divide-y divide-border overflow-hidden rounded-xl border border-border">
               {keys.map(k => {
                 const v = Number(product.stock_levels?.[k] ?? 0);
                 return (
-                  <div key={k} className="flex items-center justify-between px-3 py-2 rounded-lg bg-secondary/60">
+                  <div key={k} className="flex min-h-12 items-center justify-between gap-3 px-3 py-2">
                     <span className="text-sm text-foreground">{resolve(k)}</span>
                     <div className="flex items-center gap-3">
-                      <span className="font-semibold tabular-nums">{fmt(v)}</span>
+                      <span className="font-semibold tabular-nums text-foreground">{fmt(v)}</span>
                       {canWrite && (
                         <button
                           onClick={() => { setAdjustKey(k); setNewQty(String(v)); setReason(''); }}
-                          className="flex items-center gap-1 text-[11px] px-2 py-1 rounded-md bg-primary/10 text-primary hover:bg-primary/20"
+                          className="flex min-h-9 items-center gap-1.5 rounded-lg px-2.5 text-sm font-semibold text-primary hover:bg-primary/10"
                         >
-                          <SlidersHorizontal className="h-3 w-3" /> Ajuster
+                          <SlidersHorizontal className="h-4 w-4" aria-hidden="true" /> Ajuster
                         </button>
                       )}
                     </div>
@@ -359,13 +395,13 @@ function ProductStockDrawer({
           {canWrite && (
             <div className="flex items-end gap-2">
               <div className="flex-1">
-                <label className="block text-[11px] text-muted-foreground mb-1">Seuil de réappro. (alerte sous seuil)</label>
-                <input type="number" min={0} value={reorderPoint} onChange={e => setReorderPoint(e.target.value)}
+                <label htmlFor="stock-reorder-point" className="mb-1 block text-xs font-medium text-muted-foreground">Seuil de réappro. (alerte sous seuil)</label>
+                <input id="stock-reorder-point" type="number" min={0} value={reorderPoint} onChange={e => setReorderPoint(e.target.value)}
                   placeholder="ex: 5"
-                  className="w-full px-3 py-2 text-sm rounded-lg bg-secondary border border-border focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                  className={`${field} w-full`} />
               </div>
-              <button onClick={saveReorder} disabled={reorderSaving}
-                className="px-3 py-2 rounded-lg bg-secondary border border-border text-sm text-foreground disabled:opacity-50">
+              <button type="button" onClick={saveReorder} disabled={reorderSaving}
+                className="h-10 rounded-lg border border-border bg-card px-3 text-sm font-semibold text-foreground hover:bg-secondary disabled:opacity-50">
                 {reorderSaving ? '…' : 'Enregistrer'}
               </button>
             </div>
@@ -373,51 +409,51 @@ function ProductStockDrawer({
 
           {/* Adjust form */}
           {adjustKey != null && (
-            <div className="border border-primary/30 rounded-xl p-3 bg-primary/[0.03]">
-              <div className="text-xs font-semibold text-foreground mb-2">Ajuster — {resolve(adjustKey)}</div>
-              <label className="block text-[11px] text-muted-foreground mb-1">Quantité réelle (comptée)</label>
+            <div className="rounded-xl border border-primary/30 bg-primary/[0.03] p-3">
+              <p className="mb-2 text-sm font-semibold text-foreground">Ajuster — {resolve(adjustKey)}</p>
+              <label htmlFor="stock-adjust-qty" className="mb-1 block text-xs font-medium text-muted-foreground">Quantité réelle (comptée)</label>
               <input
-                type="number" value={newQty} onChange={e => setNewQty(e.target.value)}
-                className="w-full px-3 py-2 text-sm rounded-lg bg-secondary border border-border mb-2 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                id="stock-adjust-qty" type="number" value={newQty} onChange={e => setNewQty(e.target.value)}
+                className={`${field} mb-2 w-full`}
               />
-              <label className="block text-[11px] text-muted-foreground mb-1">Motif (obligatoire)</label>
+              <label htmlFor="stock-adjust-reason" className="mb-1 block text-xs font-medium text-muted-foreground">Motif (obligatoire)</label>
               <input
-                value={reason} onChange={e => setReason(e.target.value)}
+                id="stock-adjust-reason" value={reason} onChange={e => setReason(e.target.value)}
                 placeholder="ex: inventaire, casse, correction…"
-                className="w-full px-3 py-2 text-sm rounded-lg bg-secondary border border-border mb-3 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                className={`${field} mb-3 w-full`}
               />
               <div className="flex gap-2">
-                <button onClick={submitAdjust} disabled={saving}
-                  className="flex-1 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50">
+                <button type="button" onClick={submitAdjust} disabled={saving}
+                  className="h-10 flex-1 rounded-lg bg-primary px-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
                   {saving ? 'Enregistrement…' : 'Valider l\'ajustement'}
                 </button>
-                <button onClick={() => setAdjustKey(null)} className="px-3 py-2 rounded-lg bg-secondary text-muted-foreground text-sm">Annuler</button>
+                <button type="button" onClick={() => setAdjustKey(null)} className="h-10 rounded-lg border border-border px-3 text-sm font-medium text-foreground hover:bg-secondary">Annuler</button>
               </div>
             </div>
           )}
 
           {/* Movement history */}
           <div>
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Historique des mouvements</h3>
+            <h3 className="mb-2 text-sm font-semibold text-foreground">Historique des mouvements</h3>
             {loading ? (
               <div className="text-sm text-muted-foreground py-4 flex items-center"><Loader className="h-4 w-4 animate-spin mr-2" />Chargement…</div>
             ) : movements.length === 0 ? (
               <div className="text-sm text-muted-foreground py-4">Aucun mouvement</div>
             ) : (
-              <div className="space-y-1">
+              <div className="divide-y divide-border overflow-hidden rounded-xl border border-border">
                 {movements.map(m => (
-                  <div key={m.id} className="flex items-center justify-between px-3 py-2 rounded-lg bg-secondary/40 text-xs">
+                  <div key={m.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
                     <div className="min-w-0">
-                      <div className="font-medium text-foreground">{MOVEMENT_LABELS[m.type] || m.type} · {resolve(m.location_key)}</div>
-                      <div className="text-[10px] text-muted-foreground">
+                      <div className="text-sm font-medium text-foreground">{MOVEMENT_LABELS[m.type] || m.type} · {resolve(m.location_key)}</div>
+                      <div className="text-xs text-muted-foreground">
                         {new Date(m.created_at).toLocaleString('fr-FR')}{m.reason ? ` · ${m.reason}` : ''}{m.created_by ? ` · ${m.created_by}` : ''}
                       </div>
                     </div>
                     <div className="text-right shrink-0 ml-2">
-                      <div className={`font-semibold tabular-nums ${m.quantity >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                      <div className={`text-sm font-semibold tabular-nums ${m.quantity >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}`}>
                         {m.quantity >= 0 ? '+' : ''}{fmt(m.quantity)}
                       </div>
-                      {m.balance_after != null && <div className="text-[10px] text-muted-foreground">→ {fmt(m.balance_after)}</div>}
+                      {m.balance_after != null && <div className="text-xs tabular-nums text-muted-foreground">→ {fmt(m.balance_after)}</div>}
                     </div>
                   </div>
                 ))}

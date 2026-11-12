@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeftRight, Search, Trash2, Loader, Check, ArrowRight } from 'lucide-react';
+import { ArrowLeftRight, Trash2, Loader, Check, ArrowRight, ArrowDown, AlertTriangle } from 'lucide-react';
+import { PageHeader } from '../../components/PageHeader';
+import { OpsLoading, OpsSection, ProductSearch, ProductThumb, QtyStepper, SearchResult, stepperInput } from './StockOpsUi';
+import { opsField, opsLabel, opsPanel, opsPhoneBar, opsPrimaryBtn, opsSecondaryBtn } from './stockOpsStyles';
 import type { Product } from '../../types';
 import { StockService } from '../../utils/supabaseStock';
 import { useAccessibleLocations } from '../../inventory/hooks/useAccessibleLocations';
@@ -101,97 +104,118 @@ export default function StockTransferPage() {
     } finally { setSaving(false); }
   };
 
+  const units = lines.reduce((s, l) => s + (Number(l.qty) || 0), 0);
+
   return (
-    <div className="max-w-3xl mx-auto py-6 px-3">
-      <div className="flex items-center gap-2 mb-5">
-        <div className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-primary/10"><ArrowLeftRight className="h-5 w-5 text-primary" /></div>
-        <div>
-          <h1 className="text-lg font-bold text-foreground leading-tight">Transfert de stock</h1>
-          <p className="text-xs text-muted-foreground">Déplacer des articles entre emplacements</p>
-        </div>
-      </div>
+    <div className="mx-auto max-w-6xl pb-28 md:pb-0">
+      <PageHeader title="Transfert de stock" subtitle="Déplacer des articles entre emplacements" />
 
-      {loading ? (
-        <div className="flex items-center justify-center py-20 text-muted-foreground"><Loader className="h-5 w-5 animate-spin mr-2" />Chargement…</div>
-      ) : (
-        <div className="space-y-4">
-          <div className="bg-card border border-border/60 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] gap-3 items-end">
-            <div>
-              <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Depuis</label>
-              <select value={fromId} onChange={e => setFromId(e.target.value)}
-                className="w-full px-3 py-2 text-sm rounded-lg bg-secondary border border-border focus:outline-none focus:ring-2 focus:ring-primary/30">
-                {accessibleLocations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-              </select>
-            </div>
-            <ArrowRight className="h-5 w-5 text-muted-foreground mx-auto hidden sm:block" />
-            <div>
-              <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Vers</label>
-              <select value={toId} onChange={e => setToId(e.target.value)}
-                className="w-full px-3 py-2 text-sm rounded-lg bg-secondary border border-border focus:outline-none focus:ring-2 focus:ring-primary/30">
-                {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-              </select>
-            </div>
-          </div>
+      {loading ? <OpsLoading /> : (
+        <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
+          <div className="min-w-0 space-y-4">
+            <section className={`${opsPanel} grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-[1fr_auto_1fr] sm:p-5`}>
+              <div>
+                <label htmlFor="transfer-from" className={opsLabel}>Depuis</label>
+                <select id="transfer-from" value={fromId} onChange={e => setFromId(e.target.value)} className={opsField}>
+                  {accessibleLocations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                </select>
+              </div>
+              <span className="-my-1 flex h-5 items-center justify-center text-muted-foreground sm:my-0 sm:h-11" aria-hidden="true">
+                <ArrowRight className="hidden h-5 w-5 sm:block" /><ArrowDown className="h-5 w-5 sm:hidden" />
+              </span>
+              <div>
+                <label htmlFor="transfer-to" className={opsLabel}>Vers</label>
+                <select id="transfer-to" value={toId} onChange={e => setToId(e.target.value)} className={opsField}>
+                  {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                </select>
+              </div>
+            </section>
 
-          <div className="bg-card border border-border/60 rounded-xl p-4">
-            <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Ajouter un article (avec stock à la source)</label>
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-              <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Rechercher…"
-                className="w-full pl-8 pr-3 py-2 text-sm rounded-lg bg-secondary border border-border focus:outline-none focus:ring-2 focus:ring-primary/30" />
-              {results.length > 0 && (
-                <div className="absolute z-20 mt-1 w-full bg-card border border-border rounded-lg shadow-lg overflow-hidden">
-                  {results.map(p => (
-                    <button key={p.barcode} onClick={() => addLine(p)} className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-secondary text-sm">
-                      <span className="truncate">{p.name}</span>
-                      <span className="text-[10px] text-muted-foreground ml-2 shrink-0">dispo {levelAt(p, fromCandidates)}</span>
-                    </button>
-                  ))}
+            <section className={`${opsPanel} p-4 sm:p-5`}>
+              <ProductSearch label="Ajouter un article (avec stock à la source)" value={query} onChange={setQuery} placeholder="Rechercher…">
+                {results.length > 0 && results.map(p => (
+                  <SearchResult key={p.barcode} image={p.image} name={p.name} detail={[p.brand, p.barcode].filter(Boolean).join(' · ')}
+                    aside={<span className="tabular-nums">dispo {levelAt(p, fromCandidates)}</span>} onClick={() => addLine(p)} />
+                ))}
+              </ProductSearch>
+            </section>
+
+            <OpsSection title="Articles à transférer" aside={<span className="text-sm text-muted-foreground">{lines.length} ligne{lines.length !== 1 ? 's' : ''} · {units} unité{units !== 1 ? 's' : ''}</span>}>
+              {lines.length === 0 ? (
+                <div className="px-5 py-10 text-center">
+                  <ArrowLeftRight className="mx-auto h-10 w-10 text-muted-foreground" aria-hidden="true" />
+                  <p className="mt-3 font-medium text-foreground">Aucun article pour le moment</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Cherchez un article en stock à la source pour l’ajouter.</p>
                 </div>
+              ) : (
+                <>
+                  <div className="hidden grid-cols-[3rem_minmax(0,1fr)_6rem_8.5rem_2.5rem] gap-x-4 border-b border-border bg-secondary/40 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground md:grid">
+                    <span /><span>Article</span><span className="text-right">Dispo</span><span className="text-center">Quantité</span><span />
+                  </div>
+                  <ul className="divide-y divide-border">
+                    {lines.map((l, i) => {
+                      const over = l.qty > l.available;
+                      return (
+                        <li key={l.barcode} className="grid grid-cols-[3rem_minmax(0,1fr)_2.5rem] items-center gap-x-3 gap-y-3 px-4 py-3 sm:px-5 md:grid-cols-[3rem_minmax(0,1fr)_6rem_8.5rem_2.5rem] md:gap-x-4">
+                          <ProductThumb image={byBarcode.get(l.barcode)?.image} />
+                          <div className="min-w-0">
+                            <p className="font-semibold leading-snug text-foreground">{l.name}</p>
+                            <p className="truncate font-mono text-xs text-muted-foreground">{l.barcode}</p>
+                          </div>
+                          <button onClick={() => removeLine(i)} aria-label={`Retirer ${l.name}`}
+                            className="flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive md:order-last">
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                          <div className="col-span-3 flex items-center justify-between gap-3 md:contents">
+                            <p className="text-sm tabular-nums text-muted-foreground md:text-right"><span className="md:hidden">Dispo </span>{l.available}</p>
+                            <div className={`rounded-lg md:justify-self-center ${over ? 'ring-2 ring-destructive/60' : ''}`}>
+                              <QtyStepper label="la quantité" onMinus={() => updateQty(i, l.qty - 1)} onPlus={() => updateQty(i, l.qty + 1)} minusDisabled={l.qty <= 1}
+                                input={<input type="number" min={1} value={l.qty} onChange={e => updateQty(i, Number(e.target.value))} aria-label="Quantité" aria-invalid={over} className={stepperInput} />} />
+                            </div>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </>
               )}
-            </div>
+            </OpsSection>
+
+            {hasOverdraw && (
+              <p className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-red-700 dark:text-red-300" role="alert">
+                <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />Certaines quantités dépassent le stock disponible à la source.
+              </p>
+            )}
           </div>
 
-          {lines.length > 0 && (
-            <div className="bg-card border border-border/60 rounded-xl overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border/60 bg-secondary/50 text-xs text-muted-foreground">
-                    <th className="text-left font-medium px-3 py-2">Article</th>
-                    <th className="text-right font-medium px-3 py-2 w-24">Dispo</th>
-                    <th className="text-right font-medium px-3 py-2 w-28">Qté</th>
-                    <th className="w-8"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {lines.map((l, i) => (
-                    <tr key={l.barcode} className="border-b border-border/40">
-                      <td className="px-3 py-2">
-                        <div className="font-medium text-foreground truncate max-w-[240px]">{l.name}</div>
-                        <div className="text-[10px] text-muted-foreground font-mono">{l.barcode}</div>
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{l.available}</td>
-                      <td className="px-3 py-2">
-                        <input type="number" min={1} value={l.qty} onChange={e => updateQty(i, Number(e.target.value))}
-                          className={`w-full px-2 py-1 text-sm text-right rounded bg-secondary border focus:outline-none focus:ring-1 focus:ring-primary/30 ${l.qty > l.available ? 'border-red-500/60' : 'border-border'}`} />
-                      </td>
-                      <td className="px-2 text-center"><button onClick={() => removeLine(i)} className="p-1 rounded hover:bg-secondary text-muted-foreground"><Trash2 className="h-3.5 w-3.5" /></button></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          <aside className="space-y-4 lg:sticky lg:top-4" aria-label="Récapitulatif">
+            <section className={`${opsPanel} p-5`}>
+              <h2 className="font-semibold text-foreground">Récapitulatif</h2>
+              <dl className="mt-3 space-y-2 text-sm">
+                <div className="flex justify-between gap-2"><dt className="text-muted-foreground">Depuis</dt><dd className="truncate font-medium text-foreground">{fromLoc?.name || '—'}</dd></div>
+                <div className="flex justify-between gap-2"><dt className="text-muted-foreground">Vers</dt><dd className="truncate font-medium text-foreground">{toLoc?.name || '—'}</dd></div>
+                <div className="flex justify-between"><dt className="text-muted-foreground">Articles</dt><dd className="font-medium tabular-nums text-foreground">{lines.length}</dd></div>
+                <div className="flex justify-between"><dt className="text-muted-foreground">Unités</dt><dd className="font-medium tabular-nums text-foreground">{units}</dd></div>
+              </dl>
+              <button onClick={validate} disabled={saving || lines.length === 0} className={`${opsPrimaryBtn} mt-4 w-full`}>
+                {saving ? <Loader className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                Valider le transfert
+              </button>
+              <button onClick={() => navigate('/inventaire')} className={`${opsSecondaryBtn} mt-2 w-full`}>Annuler</button>
+            </section>
+          </aside>
+
+          <div className={opsPhoneBar}>
+            <div className="mx-auto flex max-w-3xl items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs text-muted-foreground">{fromLoc?.name || '—'} → {toLoc?.name || '—'}</p>
+                <p className="whitespace-nowrap text-lg font-bold tabular-nums leading-tight text-foreground">{units} unité{units !== 1 ? 's' : ''}</p>
+              </div>
+              <button onClick={validate} disabled={saving || lines.length === 0} className={opsPrimaryBtn}>
+                {saving ? <Loader className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                Valider
+              </button>
             </div>
-          )}
-
-          {hasOverdraw && <p className="text-xs text-red-600 dark:text-red-400">⚠ Certaines quantités dépassent le stock disponible à la source.</p>}
-
-          <div className="flex justify-end gap-2">
-            <button onClick={() => navigate('/inventaire')} className="px-4 py-2 rounded-lg bg-secondary text-foreground text-sm border border-border">Annuler</button>
-            <button onClick={validate} disabled={saving || lines.length === 0}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50">
-              {saving ? <Loader className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-              Valider le transfert
-            </button>
           </div>
         </div>
       )}

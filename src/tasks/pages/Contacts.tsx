@@ -3,15 +3,13 @@ import { useAuth } from '@/tasks/contexts/AuthAdapter';
 import { useData } from '@/tasks/contexts/DataContext';
 import { useLanguage } from '@/tasks/contexts/LanguageContext';
 import { Contact } from '@/tasks/types';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Plus, Phone, MessageCircle, Trash2, X } from 'lucide-react';
+import { PageHeader } from '@/components/PageHeader';
+import TasksHeaderActions from '@/tasks/components/TasksHeader';
+import { Search, Plus, Phone, MessageCircle, Trash2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-
-const container = { hidden: {}, show: { transition: { staggerChildren: 0.03 } } };
-const item = { hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } };
 
 const ROLE_LABEL_KEYS = [
   { key: 'contactLabel.client', value: 'Client' },
@@ -56,59 +54,62 @@ export default function ContactsPage() {
   };
 
   return (
-    <div className="p-4 md:p-6 max-w-4xl mx-auto space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl md:text-2xl font-bold text-foreground">{t('contacts.title')}</h1>
-        <Button size="sm" onClick={() => setShowAdd(true)}>
-          <Plus className="h-4 w-4 me-1" /> {t('contacts.add')}
-        </Button>
-      </div>
+    <div className="mx-auto max-w-[1600px] space-y-4">
+      <PageHeader
+        title={t('contacts.title')}
+        subtitle={`${filtered.length} / ${contacts.length}`}
+        actions={(
+          <>
+            <TasksHeaderActions />
+            <Button onClick={() => setShowAdd(true)} className="h-9 gap-1.5">
+              <Plus className="h-4 w-4" aria-hidden="true" /> {t('contacts.add')}
+            </Button>
+          </>
+        )}
+      />
 
-      <div className="relative">
+      <div className="relative max-w-xl">
         <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input value={search} onChange={e => setSearch(e.target.value)} placeholder={t('contacts.search')} className="ps-10" />
       </div>
 
       <div className="flex gap-2 flex-wrap">
-        <button onClick={() => setFilter('')} className={`px-3 py-1 text-xs rounded-full font-medium transition-colors ${!filter ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'}`}>{t('contacts.all')}</button>
+        <button onClick={() => setFilter('')} aria-pressed={!filter} className={`h-9 px-3.5 text-sm rounded-full font-medium transition-colors ${!filter ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'}`}>{t('contacts.all')}</button>
         {uniqueLabels.map(label => (
-          <button key={label} onClick={() => setFilter(filter === label ? '' : label)} className={`px-3 py-1 text-xs rounded-full font-medium transition-colors ${filter === label ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'}`}>{label}</button>
+          <button key={label} onClick={() => setFilter(filter === label ? '' : label)} aria-pressed={filter === label} className={`h-9 px-3.5 text-sm rounded-full font-medium transition-colors ${filter === label ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'}`}>{label}</button>
         ))}
       </div>
 
-      <motion.div variants={container} initial="hidden" animate="show" className="space-y-2">
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
         {filtered.map(contact => (
-          <motion.div key={contact.id} variants={item} className="glass rounded-xl p-4 shadow-sm flex items-center gap-3">
+          <div key={contact.id} className="rounded-xl border border-border bg-card p-3.5 shadow-sm flex items-center gap-3">
             <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-sm font-bold text-primary flex-shrink-0">
               {contact.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
             </div>
             <div className="flex-1 min-w-0">
               <p className="font-medium text-foreground text-sm">{contact.name}</p>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 <p className="text-xs text-muted-foreground">{contact.phone}</p>
                 <span className="text-xs bg-secondary px-2 py-0.5 rounded-full text-muted-foreground">{contact.role_label}</span>
               </div>
             </div>
             <div className="flex gap-1">
-              <button onClick={() => window.open(`tel:${contact.phone}`)} className="p-2 rounded-lg hover:bg-status-done-light text-status-done transition-colors">
+              <button type="button" onClick={() => window.open(`tel:${contact.phone}`)} aria-label={`${t('myTasks.call')} ${contact.name}`} className="flex h-10 w-10 items-center justify-center rounded-lg hover:bg-status-done-light text-status-done transition-colors">
                 <Phone className="h-4 w-4" />
               </button>
-              <button onClick={() => window.open(`https://wa.me/${contact.phone.replace(/^0/, '212')}`, '_blank')} className="p-2 rounded-lg hover:bg-status-done-light text-status-done transition-colors">
+              <button type="button" onClick={() => window.open(`https://wa.me/${contact.phone.replace(/^0/, '212')}`, '_blank')} aria-label={`WhatsApp ${contact.name}`} className="flex h-10 w-10 items-center justify-center rounded-lg hover:bg-status-done-light text-status-done transition-colors">
                 <MessageCircle className="h-4 w-4" />
               </button>
-              <button onClick={() => { deleteContact(contact.id); toast(t('contacts.deleted')); }} className="p-2 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors">
+              <button type="button" onClick={() => { deleteContact(contact.id); toast(t('contacts.deleted')); }} aria-label={`${t('salesTasks.delete')} ${contact.name}`} className="flex h-10 w-10 items-center justify-center rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors">
                 <Trash2 className="h-4 w-4" />
               </button>
             </div>
-          </motion.div>
+          </div>
         ))}
-      </motion.div>
+      </div>
 
       {filtered.length === 0 && (
-        <div className="text-center py-16 text-muted-foreground">
-          <p className="text-4xl mb-2">🔍</p>
-          <p>{t('contacts.noResults')}</p>
-        </div>
+        <p className="rounded-xl border border-dashed border-border px-4 py-12 text-center text-sm text-muted-foreground">{t('contacts.noResults')}</p>
       )}
 
       <Dialog open={showAdd} onOpenChange={setShowAdd}>
