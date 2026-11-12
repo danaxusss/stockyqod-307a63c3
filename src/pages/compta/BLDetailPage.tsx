@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { Truck, Download, ArrowLeft, FileText, Building2, Loader, Pencil, Check, X, Plus, CopyPlus, Search as SearchIcon, Printer, Eye, EyeOff, Boxes } from 'lucide-react';
+import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { Download, FileText, Building2, Loader, Pencil, Check, Plus, CopyPlus, Search as SearchIcon, Printer, Boxes, ChevronRight, Trash2 } from 'lucide-react';
 import { Quote, QuoteItem, Company, Product } from '../../types';
 import { SupabaseDocumentsService } from '../../utils/supabaseDocuments';
 import { SupabaseCompaniesService } from '../../utils/supabaseCompanies';
@@ -13,9 +13,10 @@ import { ClientDropdown } from '../../components/ClientDropdown';
 import { ClientFormModal } from '../../components/ClientFormModal';
 import { ProductSearchModal } from '../../components/ProductSearchModal';
 import { PrintPreviewModal } from '../../components/PrintPreviewModal';
-import { localDay, recomputeLine } from '../../utils/documentLines';
-
-const inputCls = 'w-full px-2 py-1 text-xs border border-input rounded bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary';
+import { documentTotal, localDay, recomputeLine } from '../../utils/documentLines';
+import { formatMoney } from '../../utils/format';
+import { DocClientCard, DocPhoneBar, DocProgress, DocToggle, type DocStep } from '../../components/documents/DocParts';
+import { docDate, docFieldCls, docInputCls, docPanel, docSideAction, docTh } from '../../components/documents/docStyles';
 
 export default function BLDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -54,6 +55,8 @@ export default function BLDetailPage() {
   const [showClientForm, setShowClientForm] = useState(false);
   const [clientFormInitialName, setClientFormInitialName] = useState('');
   const [proformaOf, setProformaOf] = useState<{ id: string; quoteNumber: string } | null>(null);
+  // Where this BL sits: the quote it came from, and the invoices of its proforma.
+  const [chain, setChain] = useState<{ quote?: { id: string; number: string }; invoices: Array<{ id: string; number: string }> } | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -86,6 +89,25 @@ export default function BLDetailPage() {
   }, [id, showToast]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (!bl) return;
+    let cancelled = false;
+    (async () => {
+      const out: { quote?: { id: string; number: string }; invoices: Array<{ id: string; number: string }> } = { invoices: [] };
+      try {
+        const quote = bl.parent_document_id ? await SupabaseDocumentsService.getById(bl.parent_document_id).catch(() => null) : null;
+        if (quote) out.quote = { id: quote.id, number: quote.quoteNumber };
+        const proforma = proformaOf ? await SupabaseDocumentsService.getById(proformaOf.id).catch(() => null) : null;
+        const billedIds: string[] = (proforma?.items || []).map(i => i.billed_invoice_id).filter((v): v is string => !!v);
+        const invoiceIds = Array.from(new Set<string>(billedIds));
+        const invoices = (await Promise.all(invoiceIds.map(invId => SupabaseDocumentsService.getById(invId).catch(() => null)))).filter((d): d is Quote => !!d);
+        out.invoices = invoices.map(d => ({ id: d.id, number: d.quoteNumber }));
+      } catch { /* the line then shows the links as unknown */ }
+      if (!cancelled) setChain(out);
+    })();
+    return () => { cancelled = true; };
+  }, [bl, proformaOf]);
 
   useEffect(() => {
     if (searchParams.get('new') === '1' && bl && !isEditing) startEdit();
@@ -231,250 +253,319 @@ export default function BLDetailPage() {
     }
   };
 
+  const handlePreview = async () => {
+    if (!bl) return;
+    const freshSettings = await CompanySettingsService.getSettings(bl.company_id!);
+    const showPrices2 = blPricesOverride !== null ? blPricesOverride : (freshSettings?.bl_show_prices ?? true);
+    const { blob, filename } = await PdfExportService.generatePdfBlob(bl, freshSettings, undefined, undefined, useStamp, 'bl', showPrices2);
+    setPreviewBlob(blob);
+    setPreviewFilename(filename);
+    setShowPrintPreview(true);
+  };
+
+  const handleDuplicate = async () => {
+    if (!bl || !window.confirm('Dupliquer ce BL ?')) return;
+    try {
+      const dup = await SupabaseDocumentsService.duplicateDocument(bl.id);
+      navigate(`/compta/bls/${dup.id}`);
+    } catch (e) {
+      showToast({ type: 'error', message: String(e) });
+    }
+  };
+
   if (!isSuperAdmin && !isCompta) return <div className="text-center py-12 text-muted-foreground">Accès réservé au rôle Comptabilité.</div>;
   if (isLoading) return <div className="flex items-center justify-center min-h-[40vh]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>;
   if (!bl) return <div className="text-center py-12 text-muted-foreground">BL introuvable.</div>;
 
   const isFinal = bl.status === 'final';
+  const showPricesNow = blPricesOverride !== null ? blPricesOverride : (companySettings?.bl_show_prices ?? true);
+  const shownItems = isEditing ? draftItems : bl.items;
+  const units = shownItems.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+  const canMakeProforma = !isFinal && !proformaOf;
+  const firstInvoice = chain?.invoices[0];
+
+  const steps: DocStep[] = [
+    chain?.quote
+      ? { label: 'Devis', detail: chain.quote.number, state: 'done', to: `/quote-cart/${chain.quote.id}` }
+      : { label: 'Devis', detail: chain ? 'non lié' : '…', state: 'todo' },
+    { label: 'BL', detail: isFinal ? 'Finalisé' : 'Brouillon', state: isFinal || proformaOf ? 'done' : 'current' },
+    proformaOf
+      ? { label: 'Proforma', detail: proformaOf.quoteNumber, state: 'done', to: `/compta/proformas/${proformaOf.id}` }
+      : { label: 'Proforma', detail: isFinal ? 'non lié' : 'à créer', state: 'todo' },
+    firstInvoice
+      ? { label: 'Facture', detail: firstInvoice.number + (chain!.invoices.length > 1 ? ` +${chain!.invoices.length - 1}` : ''), state: 'done', to: `/compta/invoices/${firstInvoice.id}` }
+      : { label: 'Facture', detail: proformaOf ? 'non facturé' : '—', state: proformaOf ? 'current' : 'todo' },
+  ];
 
   return (
-    <div className="space-y-4 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <button onClick={() => navigate('/compta/bls')} className="p-1.5 hover:bg-accent rounded-lg">
-          <ArrowLeft className="h-4 w-4 text-muted-foreground" />
-        </button>
-        <div className="flex-1 min-w-0">
+    <div className="mx-auto max-w-7xl pb-28 md:pb-0">
+      {/* Title */}
+      <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <div className="min-w-0">
+          <nav aria-label="Fil d’Ariane" className="hidden items-center gap-1.5 text-sm text-muted-foreground sm:flex">
+            <Link to="/compta/bls" className="hover:text-foreground">Bons de livraison</Link>
+            <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+            <span className="text-foreground">{bl.quoteNumber}</span>
+          </nav>
           {isEditing ? (
-            <div className="flex items-center gap-2 flex-wrap">
-              <input value={draftNumber} onChange={e => setDraftNumber(e.target.value)}
-                className="text-lg font-bold font-mono px-2 py-0.5 border border-input rounded bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
-              <input type="date" value={draftDate} onChange={e => setDraftDate(e.target.value)}
-                className="text-xs px-2 py-0.5 border border-input rounded bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <label className="sr-only" htmlFor="bl-number">Numéro du BL</label>
+              <input id="bl-number" value={draftNumber} onChange={e => setDraftNumber(e.target.value)}
+                className="w-48 rounded-lg border border-input bg-background px-2.5 py-1.5 text-lg font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
+              <label className="sr-only" htmlFor="bl-date">Date du BL</label>
+              <input id="bl-date" type="date" value={draftDate} onChange={e => setDraftDate(e.target.value)}
+                className="rounded-lg border border-input bg-background px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
             </div>
           ) : (
-            <>
-              <h1 className="text-lg font-bold text-foreground font-mono">{bl.quoteNumber}</h1>
-              <p className="text-xs text-muted-foreground">{bl.customer?.fullName} — {bl.quote_date ? new Date(bl.quote_date).toLocaleDateString('fr-FR') : new Date(bl.createdAt).toLocaleDateString('fr-FR')}</p>
-            </>
+            <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">Bon de livraison {bl.quoteNumber}</h1>
           )}
         </div>
         {isEditing ? (
-          <select value={proformaOf ? 'final' : draftStatus} onChange={e => setDraftStatus(e.target.value)} disabled={!!proformaOf}
+          <select value={proformaOf ? 'final' : draftStatus} onChange={e => setDraftStatus(e.target.value)} disabled={!!proformaOf} aria-label="Statut du BL"
             title={proformaOf ? `Ce BL est dans le proforma ${proformaOf.quoteNumber}` : undefined}
-            className="text-xs border border-input rounded px-2 py-1 bg-background text-foreground disabled:opacity-60">
+            className="rounded-full border-0 bg-secondary py-1 pl-3 pr-8 text-xs font-semibold text-foreground ring-1 ring-inset ring-border disabled:opacity-60">
             <option value="draft">Brouillon</option>
             <option value="final">Finalisé</option>
           </select>
         ) : (
-          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${isFinal ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'}`}>
-            {isFinal ? 'Finalisé' : 'Brouillon'}
-          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${isFinal ? 'bg-blue-500/10 text-blue-700 ring-blue-600/20 dark:text-blue-300' : 'bg-secondary text-muted-foreground ring-border'}`}>
+              {isFinal ? 'Finalisé' : 'Brouillon'}
+            </span>
+            {stockPosted && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-600/20 dark:text-emerald-300">
+                <Boxes className="h-3.5 w-3.5" aria-hidden="true" />Stock décompté
+              </span>
+            )}
+          </div>
         )}
+      </div>
+
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="min-w-0 space-y-4">
+          <DocProgress steps={steps} />
+
+          {/* Client */}
+          <section className={`${docPanel} p-4 sm:p-5`} aria-labelledby="bl-client-title">
+            <h2 id="bl-client-title" className={isEditing ? 'mb-3 font-semibold text-foreground' : 'sr-only'}>Client</h2>
+            {isEditing ? (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                <div>
+                  <p className="mb-1 text-xs font-medium text-foreground">Client *</p>
+                  <ClientDropdown
+                    value={draftCustomerName}
+                    onChange={(client, val) => {
+                      setDraftCustomerName(client ? client.full_name : val);
+                      if (client) {
+                        setDraftCustomerPhone(client.phone_number || '');
+                        setDraftCustomerCity(client.city || '');
+                      }
+                    }}
+                    onCreateNew={q => { setClientFormInitialName(q || ''); setShowClientForm(true); }}
+                    placeholder="Rechercher un client..."
+                  />
+                </div>
+                <label className="block text-xs font-medium text-foreground">Téléphone
+                  <input value={draftCustomerPhone} onChange={e => setDraftCustomerPhone(e.target.value)} className={`${docFieldCls} mt-1`} placeholder="Téléphone" />
+                </label>
+                <label className="block text-xs font-medium text-foreground">Ville
+                  <input value={draftCustomerCity} onChange={e => setDraftCustomerCity(e.target.value)} className={`${docFieldCls} mt-1`} placeholder="Ville" />
+                </label>
+              </div>
+            ) : (
+              <DocClientCard name={bl.customer?.fullName} details={[bl.customer?.phoneNumber, bl.customer?.city, `livré le ${docDate(bl)}`]} />
+            )}
+          </section>
+
+          {/* Lines */}
+          <section className={docPanel} aria-labelledby="bl-lines-title">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-4 py-3 sm:px-5">
+              <h2 id="bl-lines-title" className="font-semibold text-foreground">Articles</h2>
+              <span className="text-sm text-muted-foreground">{shownItems.length} ligne{shownItems.length !== 1 ? 's' : ''} · {units} unité{units !== 1 ? 's' : ''}</span>
+            </div>
+            {isEditing ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-secondary/40">
+                    <tr>
+                      <th className={`${docTh} w-8 text-left`}>#</th>
+                      <th className={`${docTh} text-left`}>Désignation</th>
+                      <th className={`${docTh} text-left`}>Marque</th>
+                      <th className={`${docTh} text-left`}>Référence</th>
+                      <th className={`${docTh} text-right`}>Quantité</th>
+                      <th className="w-10 px-3 py-2" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {draftItems.map((item, idx) => (
+                      <tr key={item.id}>
+                        <td className="px-3 py-2 text-xs text-muted-foreground">{idx + 1}</td>
+                        <td className="px-2 py-1.5"><input value={item.quoteName || ''} onChange={e => updateDraftItem(idx, 'quoteName', e.target.value)} className={docInputCls} placeholder="Désignation" aria-label="Désignation" /></td>
+                        <td className="px-2 py-1.5"><input value={item.quoteBrand || ''} onChange={e => updateDraftItem(idx, 'quoteBrand', e.target.value)} className={docInputCls} placeholder="Marque" aria-label="Marque" /></td>
+                        <td className="px-2 py-1.5"><input value={item.quoteBarcode || ''} onChange={e => updateDraftItem(idx, 'quoteBarcode', e.target.value)} className={docInputCls} placeholder="Référence" aria-label="Référence" /></td>
+                        <td className="px-2 py-1.5"><input type="number" min="1" value={item.quantity} onChange={e => updateDraftItem(idx, 'quantity', Math.max(1, Number(e.target.value)))} className={`${docInputCls} ml-auto w-20 text-right`} aria-label="Quantité" /></td>
+                        <td className="px-2 py-1.5 text-center">
+                          <button type="button" onClick={() => removeDraftItem(idx)} aria-label="Retirer la ligne" className="rounded p-1.5 text-destructive hover:bg-destructive/10">
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className="flex flex-wrap items-center gap-4 border-t border-border px-4 py-3">
+                  <button type="button" onClick={() => setShowProductSearch(true)} className="flex items-center gap-1.5 text-sm font-semibold text-primary hover:underline">
+                    <SearchIcon className="h-4 w-4" />Chercher un produit
+                  </button>
+                  <button type="button" onClick={addBlankItem} className="flex items-center gap-1.5 text-sm font-semibold text-primary hover:underline">
+                    <Plus className="h-4 w-4" />Ligne vide
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="hidden gap-4 border-b border-border bg-secondary/40 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground md:flex">
+                  <span className="w-6" /><span className="flex-1">Produit</span><span className="w-24 text-right">Quantité</span>
+                </div>
+                {bl.items.length === 0 ? (
+                  <p className="px-5 py-8 text-center text-sm text-muted-foreground">Aucun article sur ce BL.</p>
+                ) : (
+                  <ul className="divide-y divide-border">
+                    {bl.items.map((item, idx) => {
+                      const brandRef = [item.quoteBrand || item.product?.brand, item.quoteBarcode || item.product?.barcode].filter(Boolean).join(' · ');
+                      return (
+                        <li key={item.id} className="flex items-start gap-3 px-4 py-3 sm:px-5 md:items-center md:gap-4">
+                          <span className="w-6 shrink-0 pt-0.5 text-xs tabular-nums text-muted-foreground md:pt-0">{idx + 1}</span>
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium leading-snug text-foreground">{item.quoteName || item.product?.name || '—'}</p>
+                            {brandRef && <p className="truncate text-sm text-muted-foreground">{brandRef}</p>}
+                          </div>
+                          <span className="w-24 shrink-0 text-right text-base font-semibold tabular-nums text-foreground">
+                            {item.quantity}<span className="ml-1 text-xs font-normal text-muted-foreground md:hidden">u.</span>
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </>
+            )}
+          </section>
+
+          {/* Notes */}
+          {isEditing ? (
+            <section className={`${docPanel} p-4 sm:p-5`} aria-labelledby="bl-notes-title">
+              <h2 id="bl-notes-title" className="mb-2 font-semibold text-foreground">Notes</h2>
+              <textarea value={draftNotes} onChange={e => setDraftNotes(e.target.value)} rows={3} placeholder="Notes..." aria-label="Notes"
+                className={`${docFieldCls} resize-none`} />
+            </section>
+          ) : bl.notes ? (
+            <section className={`${docPanel} p-4 sm:p-5`} aria-labelledby="bl-notes-title">
+              <h2 id="bl-notes-title" className="mb-1 font-semibold text-foreground">Notes</h2>
+              <p className="whitespace-pre-line text-sm text-foreground">{bl.notes}</p>
+            </section>
+          ) : null}
+        </div>
+
+        {/* Summary and actions: stays in view while the lines scroll */}
+        <aside className="space-y-4 lg:sticky lg:top-4" aria-label="Livraison et actions">
+          {isEditing && (
+            <section className={`${docPanel} p-5`}>
+              <p className="text-sm font-semibold text-foreground">Modification en cours</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">Ctrl + S pour enregistrer, Échap pour annuler.</p>
+              <button type="button" onClick={() => handleSave()} disabled={isSaving}
+                className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-primary py-2.5 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-60">
+                {isSaving ? <Loader className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}{isSaving ? 'Enregistrement…' : 'Enregistrer'}
+              </button>
+              <button type="button" onClick={() => setIsEditing(false)} className="mt-2 w-full rounded-lg border border-border py-2 text-sm font-semibold text-foreground hover:bg-secondary">Annuler</button>
+            </section>
+          )}
+
+          <section className={`${docPanel} p-5`} aria-labelledby="bl-summary-title">
+            <h2 id="bl-summary-title" className="font-semibold text-foreground">Livraison</h2>
+            <dl className="mt-3 space-y-2 text-sm">
+              <div className="flex justify-between"><dt className="text-muted-foreground">Articles</dt><dd className="font-medium tabular-nums text-foreground">{shownItems.length} ligne{shownItems.length !== 1 ? 's' : ''} · {units} u.</dd></div>
+              <div className="flex justify-between"><dt className="text-muted-foreground">Valeur TTC</dt><dd className="font-medium tabular-nums text-foreground">{formatMoney(isEditing ? documentTotal(draftItems) : bl.totalAmount)}</dd></div>
+              <div className="flex justify-between gap-2">
+                <dt className="text-muted-foreground">Stock</dt>
+                <dd className={`font-medium ${stockPosted ? 'text-emerald-700 dark:text-emerald-300' : 'text-foreground'}`}>{stockPosted ? 'Décompté' : stockPosted === null ? '…' : 'Non décompté'}</dd>
+              </div>
+            </dl>
+            {!isEditing && (
+              <>
+                {proformaOf ? (
+                  <Link to={`/compta/proformas/${proformaOf.id}`}
+                    className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-border py-2.5 text-sm font-semibold text-foreground hover:bg-secondary">
+                    <FileText className="h-4 w-4 text-primary" />Voir le proforma {proformaOf.quoteNumber}
+                  </Link>
+                ) : canMakeProforma ? (
+                  <button type="button" onClick={() => setShowModal(true)}
+                    className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-primary py-2.5 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90">
+                    <FileText className="h-4 w-4" />Créer un proforma
+                  </button>
+                ) : null}
+                {!stockPosted && (
+                  <button type="button" onClick={handlePostStock} disabled={stockBusy || stockPosted === null}
+                    title="Décompter les quantités livrées du stock"
+                    className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-border py-2.5 text-sm font-semibold text-foreground hover:bg-secondary disabled:opacity-60">
+                    {stockBusy ? <Loader className="h-4 w-4 animate-spin" /> : <Boxes className="h-4 w-4 text-primary" />}Décompter le stock
+                  </button>
+                )}
+              </>
+            )}
+          </section>
+
+          {!isEditing && (
+            <section className={`${docPanel} p-5`} aria-labelledby="bl-actions-title">
+              <h2 id="bl-actions-title" className="sr-only">Actions</h2>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={handleExportPdf} className="flex flex-col items-center gap-1 rounded-lg border border-border py-2 text-xs font-semibold text-foreground hover:bg-secondary">
+                  <Download className="h-4 w-4 text-primary" />Télécharger le PDF
+                </button>
+                <button type="button" onClick={handlePreview} className="flex flex-col items-center gap-1 rounded-lg border border-border py-2 text-xs font-semibold text-foreground hover:bg-secondary">
+                  <Printer className="h-4 w-4 text-primary" />Aperçu
+                </button>
+              </div>
+              <div className="mt-3 border-t border-border pt-1">
+                <DocToggle checked={showPricesNow} onChange={setBlPricesOverride} title="Prix sur le BL" hint="Afficher les prix sur le PDF" />
+                {companySettings?.stamp_url ? <DocToggle checked={useStamp} onChange={setUseStamp} title="Tampon" hint="Apposer le tampon de la société" /> : null}
+              </div>
+              <div className="mt-2 space-y-0.5 border-t border-border pt-2">
+                <button type="button" onClick={startEdit} className={docSideAction}><Pencil className="h-4 w-4 text-muted-foreground" />Modifier le BL</button>
+                <button type="button" onClick={handleDuplicate} className={docSideAction}><CopyPlus className="h-4 w-4 text-muted-foreground" />Dupliquer</button>
+              </div>
+            </section>
+          )}
+        </aside>
+      </div>
+
+      {/* Phone: the next step stays at hand, above the tab bar */}
+      <DocPhoneBar label="Articles livrés" value={`${units} unité${units !== 1 ? 's' : ''}`}>
         {isEditing ? (
-          <>
-            <button onClick={() => setIsEditing(false)} className="p-1.5 hover:bg-accent rounded-lg text-muted-foreground" title="Annuler">
-              <X className="h-4 w-4" />
-            </button>
-            <button onClick={() => handleSave()} disabled={isSaving}
-              className="flex items-center space-x-1.5 px-3 py-1.5 text-sm bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg">
-              {isSaving ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-              <span>{isSaving ? 'Sauvegarde...' : 'Sauvegarder'}</span>
-            </button>
-          </>
+          <button type="button" onClick={() => handleSave()} disabled={isSaving}
+            className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+            {isSaving ? <Loader className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}Enregistrer
+          </button>
         ) : (
           <>
-            <button onClick={startEdit} className="p-1.5 hover:bg-accent rounded-lg text-muted-foreground" title="Modifier">
-              <Pencil className="h-4 w-4" />
+            <button type="button" onClick={handleExportPdf} aria-label="Télécharger le PDF"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-border text-foreground">
+              <Download className="h-5 w-5" />
             </button>
-            {companySettings?.stamp_url && (
-              <button
-                onClick={() => setUseStamp(v => !v)}
-                title={useStamp ? 'Retirer le tampon' : 'Apposer le tampon'}
-                className={`p-1.5 rounded-lg transition-colors text-base leading-none ${useStamp ? 'bg-amber-500/20 text-amber-400 ring-1 ring-amber-500/40' : 'hover:bg-accent text-muted-foreground'}`}
-              >
-                🔏
+            {canMakeProforma ? (
+              <button type="button" onClick={() => setShowModal(true)}
+                className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground">
+                <FileText className="h-4 w-4" />Proforma
               </button>
-            )}
-            <button
-              onClick={() => setBlPricesOverride(v => v === null ? !(companySettings?.bl_show_prices ?? true) : !v)}
-              title={`Prix dans le BL : ${(blPricesOverride !== null ? blPricesOverride : (companySettings?.bl_show_prices ?? true)) ? 'affichés' : 'masqués'} — cliquer pour basculer`}
-              className={`p-1.5 rounded-lg transition-colors ${(blPricesOverride !== null ? blPricesOverride : (companySettings?.bl_show_prices ?? true)) ? 'bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/40' : 'hover:bg-accent text-muted-foreground'}`}
-            >
-              {(blPricesOverride !== null ? blPricesOverride : (companySettings?.bl_show_prices ?? true)) ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-            </button>
-            <button
-              onClick={handlePostStock}
-              disabled={stockBusy || stockPosted === true}
-              title={stockPosted ? 'Le stock de ce BL a déjà été décompté' : 'Décompter les quantités livrées du stock'}
-              className={`flex items-center space-x-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors ${
-                stockPosted
-                  ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 cursor-default'
-                  : 'bg-secondary hover:bg-secondary/70 text-foreground border border-border'
-              } disabled:opacity-60`}
-            >
-              {stockBusy ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Boxes className="h-3.5 w-3.5" />}
-              <span>{stockPosted ? 'Stock décompté' : 'Décompter le stock'}</span>
-            </button>
-            <button onClick={handleExportPdf} className="flex items-center space-x-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
-              <Download className="h-3.5 w-3.5" /><span>PDF</span>
-            </button>
-            <button
-              onClick={async () => {
-                if (!bl) return;
-                const freshSettings = await CompanySettingsService.getSettings(bl.company_id!);
-                const showPrices2 = blPricesOverride !== null ? blPricesOverride : (freshSettings?.bl_show_prices ?? true);
-                const { blob, filename } = await PdfExportService.generatePdfBlob(bl, freshSettings, undefined, undefined, useStamp, 'bl', showPrices2);
-                setPreviewBlob(blob);
-                setPreviewFilename(filename);
-                setShowPrintPreview(true);
-              }}
-              className="flex items-center space-x-1.5 px-3 py-1.5 text-sm bg-secondary hover:bg-accent border border-border text-foreground rounded-lg"
-              title="Aperçu avant impression"
-            >
-              <Printer className="h-3.5 w-3.5" /><span>Aperçu</span>
-            </button>
-            {proformaOf && (
-              <button onClick={() => navigate(`/compta/proformas/${proformaOf.id}`)}
-                className="px-3 py-1.5 text-sm text-primary hover:underline font-mono" title="Proforma qui contient ce BL">
-                {proformaOf.quoteNumber} →
+            ) : !stockPosted ? (
+              <button type="button" onClick={handlePostStock} disabled={stockBusy || stockPosted === null}
+                className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+                {stockBusy ? <Loader className="h-4 w-4 animate-spin" /> : <Boxes className="h-4 w-4" />}Décompter
               </button>
-            )}
-            {!isFinal && !proformaOf && (
-              <button onClick={() => setShowModal(true)}
-                className="flex items-center space-x-1.5 px-3 py-1.5 text-sm bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg">
-                <FileText className="h-3.5 w-3.5" /><span>→ Proforma</span>
-              </button>
-            )}
-            <button
-              onClick={async () => {
-                if (!bl || !window.confirm('Dupliquer ce BL ?')) return;
-                try {
-                  const dup = await SupabaseDocumentsService.duplicateDocument(bl.id);
-                  navigate(`/compta/bls/${dup.id}`);
-                } catch (e) {
-                  showToast({ type: 'error', message: String(e) });
-                }
-              }}
-              className="p-1.5 hover:bg-accent rounded-lg text-muted-foreground"
-              title="Dupliquer"
-            >
-              <CopyPlus className="h-4 w-4" />
-            </button>
+            ) : null}
           </>
         )}
-      </div>
-
-      {/* Client info */}
-      <div className="glass rounded-lg p-4 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-        <div className="col-span-2 md:col-span-1">
-          <p className="text-[11px] text-muted-foreground mb-0.5">Client</p>
-          {isEditing
-            ? <ClientDropdown
-                value={draftCustomerName}
-                onChange={(client, val) => {
-                  setDraftCustomerName(client ? client.full_name : val);
-                  if (client) {
-                    setDraftCustomerPhone(client.phone_number || '');
-                    setDraftCustomerCity(client.city || '');
-                  }
-                }}
-                onCreateNew={q => { setClientFormInitialName(q || ''); setShowClientForm(true); }}
-                placeholder="Rechercher un client..."
-              />
-            : <p className="font-medium text-foreground">{bl.customer?.fullName || '—'}</p>}
-        </div>
-        <div>
-          <p className="text-[11px] text-muted-foreground mb-0.5">Téléphone</p>
-          {isEditing
-            ? <input value={draftCustomerPhone} onChange={e => setDraftCustomerPhone(e.target.value)} className={inputCls} placeholder="Téléphone" />
-            : <p className="text-foreground">{bl.customer?.phoneNumber || '—'}</p>}
-        </div>
-        <div>
-          <p className="text-[11px] text-muted-foreground mb-0.5">Ville</p>
-          {isEditing
-            ? <input value={draftCustomerCity} onChange={e => setDraftCustomerCity(e.target.value)} className={inputCls} placeholder="Ville" />
-            : <p className="text-foreground">{bl.customer?.city || '—'}</p>}
-        </div>
-        <div>
-          <p className="text-[11px] text-muted-foreground mb-0.5">Articles</p>
-          <p className="font-bold text-foreground">{isEditing ? draftItems.length : bl.items.length}</p>
-        </div>
-      </div>
-
-      {/* Items table */}
-      <div className="glass rounded-xl shadow-lg overflow-hidden">
-        <div className="px-4 py-3 border-b border-border">
-          <h2 className="text-sm font-semibold text-foreground">Articles</h2>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-secondary">
-              <tr>
-                <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase w-8">#</th>
-                <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Désignation</th>
-                <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Marque</th>
-                <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">Référence</th>
-                <th className="px-3 py-2 text-right text-[11px] font-medium text-muted-foreground uppercase">Quantité</th>
-                {isEditing && <th className="px-3 py-2 w-8" />}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {(isEditing ? draftItems : bl.items).map((item, idx) => (
-                <tr key={item.id} className="hover:bg-accent/50">
-                  <td className="px-3 py-2 text-[10px] text-muted-foreground">{idx + 1}</td>
-                  {isEditing ? (
-                    <>
-                      <td className="px-2 py-1.5"><input value={item.quoteName || ''} onChange={e => updateDraftItem(idx, 'quoteName', e.target.value)} className={inputCls} placeholder="Désignation" /></td>
-                      <td className="px-2 py-1.5"><input value={item.quoteBrand || ''} onChange={e => updateDraftItem(idx, 'quoteBrand', e.target.value)} className={inputCls} placeholder="Marque" /></td>
-                      <td className="px-2 py-1.5"><input value={item.quoteBarcode || ''} onChange={e => updateDraftItem(idx, 'quoteBarcode', e.target.value)} className={inputCls} placeholder="Référence" /></td>
-                      <td className="px-2 py-1.5"><input type="number" min="1" value={item.quantity} onChange={e => updateDraftItem(idx, 'quantity', Math.max(1, Number(e.target.value)))} className={`${inputCls} text-right w-20`} /></td>
-                      <td className="px-2 py-1.5 text-center">
-                        <button onClick={() => removeDraftItem(idx)} className="p-1 text-destructive hover:bg-destructive/10 rounded">
-                          <X className="h-3 w-3" />
-                        </button>
-                      </td>
-                    </>
-                  ) : (
-                    <>
-                      <td className="px-3 py-2.5 text-xs text-foreground">{item.quoteName || item.product?.name || '—'}</td>
-                      <td className="px-3 py-2.5 text-[10px] text-muted-foreground">{item.quoteBrand || item.product?.brand || '—'}</td>
-                      <td className="px-3 py-2.5 text-[10px] font-mono text-muted-foreground">{item.quoteBarcode || item.product?.barcode || '—'}</td>
-                      <td className="px-3 py-2.5 text-right text-sm font-bold text-foreground">{item.quantity}</td>
-                    </>
-                  )}
-                </tr>
-              ))}
-              {isEditing && (
-                <tr>
-                  <td colSpan={6} className="px-3 py-2">
-                    <div className="flex items-center gap-3">
-                      <button onClick={addBlankItem} className="flex items-center space-x-1.5 text-xs text-primary hover:underline">
-                        <Plus className="h-3.5 w-3.5" /><span>Ligne vide</span>
-                      </button>
-                      <button onClick={() => setShowProductSearch(true)} className="flex items-center space-x-1.5 text-xs text-primary hover:underline">
-                        <SearchIcon className="h-3.5 w-3.5" /><span>Chercher produit</span>
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Notes */}
-      {isEditing ? (
-        <div className="glass rounded-lg p-3">
-          <p className="text-[11px] text-muted-foreground mb-1">Notes</p>
-          <textarea value={draftNotes} onChange={e => setDraftNotes(e.target.value)}
-            rows={3} placeholder="Notes..."
-            className="w-full px-2 py-1.5 text-sm border border-input rounded bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-none" />
-        </div>
-      ) : bl.notes ? (
-        <div className="glass rounded-lg p-3 text-sm text-muted-foreground italic">{bl.notes}</div>
-      ) : null}
+      </DocPhoneBar>
 
       {/* Proforma creation modal */}
       {showModal && (
