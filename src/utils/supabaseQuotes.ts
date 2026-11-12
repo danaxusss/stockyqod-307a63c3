@@ -1,6 +1,7 @@
 import { supabase } from './supabaseClient';
 import { Quote, QuoteTemplate, CustomerInfo, QuoteItem } from '../types';
 import { getCompanyContext } from './supabaseCompanyFilter';
+import { readAll } from './readAll';
 
 type QuoteRow = {
   id: string;
@@ -80,7 +81,8 @@ export class SupabaseQuotesService {
       items: quote.items as unknown as import('@/integrations/supabase/types').Json,
       total_amount: quote.totalAmount,
       notes: quote.notes || null,
-      created_by: createdBy,
+      // Whoever created the quote keeps it; the signed-in user only for a new one.
+      created_by: quote.createdBy || createdBy,
     };
     if (quote.notes2 !== undefined) quoteData.notes2 = quote.notes2 || null;
     if (quote.quote_date !== undefined) quoteData.quote_date = quote.quote_date || null;
@@ -122,24 +124,27 @@ export class SupabaseQuotesService {
     return mapQuoteRow(data as unknown as QuoteRow);
   }
 
-  static async getAllQuotes(filterBySalesPerson?: string): Promise<Quote[]> {
+  /**
+   * Every quote of the company, newest first. `createdBy` keeps only the
+   * quotes a user created (salespeople see their own, as on the home page).
+   */
+  static async getAllQuotes(filterBySalesPerson?: string, options: { createdBy?: string } = {}): Promise<Quote[]> {
     const { companyId, bypassFilter } = getCompanyContext();
-    // Only return actual quotes — BLs/proformas/invoices have their own service
-    let query = (supabase.from('quotes') as any).select('*')
-      .or('document_type.eq.quote,document_type.is.null');
-
-    if (!bypassFilter && companyId) query = query.eq('company_id', companyId);
-    if (filterBySalesPerson) {
-      query = query.eq('customer_info->>salesPerson', filterBySalesPerson);
+    let rows: QuoteRow[];
+    try {
+      rows = await readAll<QuoteRow>(() => {
+        // Only actual quotes — BLs/proformas/invoices have their own service
+        let query = (supabase.from('quotes') as any).select('*')
+          .or('document_type.eq.quote,document_type.is.null');
+        if (!bypassFilter && companyId) query = query.eq('company_id', companyId);
+        if (filterBySalesPerson) query = query.eq('customer_info->>salesPerson', filterBySalesPerson);
+        if (options.createdBy) query = query.eq('created_by', options.createdBy);
+        return query.order('created_at', { ascending: false });
+      });
+    } catch (error) {
+      throw new Error(`Failed to fetch quotes: ${(error as { message?: string })?.message || error}`);
     }
-
-    const { data, error } = await query.order('created_at', { ascending: false });
-
-    if (error) {
-      throw new Error(`Failed to fetch quotes: ${error.message}`);
-    }
-
-    return (data || []).map(row => mapQuoteRow(row as unknown as QuoteRow));
+    return rows.map(row => mapQuoteRow(row));
   }
 
   static async deleteQuote(id: string): Promise<void> {

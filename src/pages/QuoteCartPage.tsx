@@ -649,6 +649,7 @@ export function QuoteCartPage() {
 
       const quoteData: Quote = {
         id: quote?.id || crypto.randomUUID(), company_id: quote?.company_id || companyId || undefined, issuing_company_id: quote?.issuing_company_id,
+        createdBy: quote?.createdBy,
         quoteNumber,
         commandNumber: commandNumber || undefined,
         createdAt: quote?.createdAt || now,
@@ -765,6 +766,7 @@ export function QuoteCartPage() {
         id: savedId,
         company_id: quote?.company_id || companyId || undefined,
         issuing_company_id: quote?.issuing_company_id,
+        createdBy: quote?.createdBy,
         quoteNumber,
         commandNumber: commandNumber || undefined,
         createdAt: quote?.createdAt || now,
@@ -805,6 +807,7 @@ export function QuoteCartPage() {
       const { totalAmount } = calculateTotals();
       const quoteData: Quote = {
         id: quote?.id || crypto.randomUUID(), company_id: quote?.company_id || companyId || undefined, issuing_company_id: quote?.issuing_company_id,
+        createdBy: quote?.createdBy,
         quoteNumber,
         commandNumber: commandNumber || undefined,
         createdAt: quote?.createdAt || new Date(),

@@ -9,6 +9,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs'
 import UserManagementPage from './UserManagementPage';
 import { StockLocationsTab } from '../components/StockLocationsTab';
 import { supabase } from '@/integrations/supabase/client';
+import { readAll, type Pageable } from '../utils/readAll';
 
 const FIELD_LABELS: Partial<Record<keyof QuoteVisibleFields, string>> = {
   showLogo: 'Logo de l\'entreprise',
@@ -908,12 +909,12 @@ function ProductSettingsTab() {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      // Load unique brands and providers from products
-      const { data: products } = await supabase.from('products').select('brand, provider');
-      if (products) {
-        setBrands([...new Set(products.map(p => p.brand).filter(Boolean))].sort());
-        setProviders([...new Set(products.map(p => p.provider).filter(Boolean))].sort());
-      }
+      // Unique brands and providers of every product: a single read stops at
+      // the server's 1,000 rows, and the other products' brands were missing.
+      type Names = { brand: string | null; provider: string | null };
+      const products = await readAll<Names>(() => supabase.from('products').select('barcode, brand, provider') as unknown as Pageable<Names>, 'barcode');
+      setBrands([...new Set(products.map(p => p.brand).filter(Boolean))].sort());
+      setProviders([...new Set(products.map(p => p.provider).filter(Boolean))].sort());
       // Load existing overrides
       const { data: ov } = await supabase.from('product_name_overrides').select('*');
       if (ov) setOverrides(ov);

@@ -10,6 +10,7 @@ import { PdfExportService } from '../utils/pdfExport';
 import { CompanySettingsService, CompanySettings, DEFAULT_SHARE_TEMPLATES } from '../utils/companySettings';
 import { ExcelExportService } from '../utils/excelExport';
 import { useAuth } from '../hooks/useAuth';
+import { useAccess } from '../hooks/useAccess';
 import { buildWhatsAppShareUrl, openWhatsAppShare } from '../utils/whatsappShare';
 import { exportToCSV } from '../utils/csvExport';
 import { PrintPreviewModal } from '../components/PrintPreviewModal';
@@ -34,6 +35,9 @@ type SortOrder = 'asc' | 'desc';
 export function QuotesHistoryPage() {
   const navigate = useNavigate();
   const { isAdmin, isSuperAdmin, isCompta, currentUser, authenticatedUser } = useAuth();
+  // Salespeople see the quotes they created, as on the home page and in search.
+  const { access } = useAccess();
+  const ownQuotesOf = access.ownQuotesOnly ? (currentUser?.username || authenticatedUser?.username || '') : undefined;
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [filteredQuotes, setFilteredQuotes] = useState<Quote[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -58,12 +62,13 @@ export function QuotesHistoryPage() {
   const loadQuotes = useCallback(async () => {
     setIsLoading(true); setMessage(null);
     try {
-      const allQuotes = await SupabaseQuotesService.getAllQuotes();
+      // A salesperson without a username sees nothing rather than everyone's quotes.
+      const allQuotes = ownQuotesOf === '' ? [] : await SupabaseQuotesService.getAllQuotes(undefined, { createdBy: ownQuotesOf });
       setQuotes(allQuotes); setFilteredQuotes(allQuotes);
     } catch (error) {
       setMessage({ type: 'error', text: 'Erreur lors du chargement des devis' });
     } finally { setIsLoading(false); }
-  }, [isAdmin, currentUser, authenticatedUser]);
+  }, [ownQuotesOf]);
 
   useEffect(() => { loadQuotes(); }, [loadQuotes]);
 

@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient';
 import { getCompanyContext } from './supabaseCompanyFilter';
+import { readAll } from './readAll';
 import { PCM_SEED, DEFAULT_JOURNALS } from '../accounting/pcmSeed';
 import type { Account, FiscalYear, Journal, JournalEntry, JournalEntryLine } from '../types';
 
@@ -16,22 +17,6 @@ const localDay = (d = new Date()) =>
 const frDay = (day: string) => day.split('-').reverse().join('/');
 const contains = (y: FiscalYear, day: string) => y.start_date <= day && day <= y.end_date;
 const choiceKey = () => `stocky_fiscal_year:${getCompanyContext().companyId || ''}`;
-
-// The server returns at most 1,000 rows per request whatever the limit asked,
-// so whole-ledger reads go page by page, in a stable order.
-const PAGE = 1000;
-interface Pageable<T> {
-  order(column: string): { range(from: number, to: number): PromiseLike<{ data: T[] | null; error: unknown }> };
-}
-async function readAll<T = Record<string, unknown>>(build: () => Pageable<T>): Promise<T[]> {
-  const out: T[] = [];
-  for (let from = 0; ; from += PAGE) {
-    const { data, error } = await build().order('id').range(from, from + PAGE - 1);
-    if (error) throw error;
-    out.push(...(data || []));
-    if (!data || data.length < PAGE) return out;
-  }
-}
 
 export class AccountingService {
   // ── Fiscal years ──────────────────────────────────────────────────────────
