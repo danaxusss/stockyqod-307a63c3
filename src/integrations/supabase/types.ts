@@ -337,6 +337,7 @@ export type Database = {
           provider: string
           reseller_price: number
           sector_ids: string[]
+          series: string | null
           stock_levels: Json
           techsheet: string
           updated_at: string
@@ -353,6 +354,7 @@ export type Database = {
           provider?: string
           reseller_price?: number
           sector_ids?: string[]
+          series?: string | null
           stock_levels?: Json
           techsheet?: string
           updated_at?: string
@@ -369,6 +371,7 @@ export type Database = {
           provider?: string
           reseller_price?: number
           sector_ids?: string[]
+          series?: string | null
           stock_levels?: Json
           techsheet?: string
           updated_at?: string

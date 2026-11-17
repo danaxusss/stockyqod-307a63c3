@@ -27,6 +27,7 @@ import { RowMenu } from '../components/lists/RowMenu';
 import { ColumnPicker } from '../components/lists/ColumnPicker';
 import { usePersistentColumns } from '../components/lists/usePersistentColumns';
 import { formatMoney } from '../utils/format';
+import { knownSeries, normalizeSeries } from '../utils/productSeries';
 import { effectiveChange, saveProductClassifications, type ClassificationChange } from '../utils/productClassification';
 
 const PAGE_SIZES = [20, 50, 100, 200];
@@ -52,7 +53,7 @@ function SectorChips({ names }: { names: string[] }) {
 }
 
 // Optional desktop columns; name, sale price and actions are always shown.
-type OptionalColumn = 'brand' | 'buyprice' | 'provider' | 'kiosk' | 'sectors' | 'stock';
+type OptionalColumn = 'brand' | 'buyprice' | 'provider' | 'kiosk' | 'sectors' | 'series' | 'stock';
 const COLUMN_OPTIONS: Array<{ key: OptionalColumn; label: string }> = [
   { key: 'brand', label: 'Marque' },
   { key: 'buyprice', label: 'Prix d’achat' },
@@ -60,6 +61,7 @@ const COLUMN_OPTIONS: Array<{ key: OptionalColumn; label: string }> = [
   { key: 'stock', label: 'Stock' },
   { key: 'kiosk', label: 'Type kiosque' },
   { key: 'sectors', label: 'Secteur' },
+  { key: 'series', label: 'Série' },
 ];
 const DEFAULT_COLUMNS: OptionalColumn[] = ['brand', 'buyprice', 'stock'];
 
@@ -151,6 +153,10 @@ export default function ProductsPage() {
   const activeFilterCount = [brandFilter, providerFilter, categoryFilter, sectorFilter].filter(Boolean).length;
 
   // Values shown in a row: the pending bulk edit when there is one, else the saved value.
+  const shownSeries = (product: Product) =>
+    pending[product.barcode] && 'series' in pending[product.barcode] ? pending[product.barcode].series ?? null : product.series ?? null;
+  const seriesSuggestions = useMemo(() => knownSeries(state.products || []), [state.products]);
+  const [bulkSeries, setBulkSeries] = useState('');
   const shownKioskCategory = (product: Product) =>
     pending[product.barcode] && 'kiosk_category' in pending[product.barcode] ? pending[product.barcode].kiosk_category ?? null : product.kiosk_category ?? null;
   const shownSectors = (product: Product): string[] =>
@@ -219,7 +225,7 @@ export default function ProductsPage() {
     setEditingBarcode(product.barcode);
     setEditForm({
       name: product.name, price: product.price, buyprice: product.buyprice, reseller_price: product.reseller_price, provider: product.provider,
-      kiosk_category: product.kiosk_category ?? null, sector_ids: product.sector_ids || [],
+      kiosk_category: product.kiosk_category ?? null, sector_ids: product.sector_ids || [], series: product.series ?? null,
     });
   };
 
@@ -234,7 +240,7 @@ export default function ProductsPage() {
         buyprice: editForm.buyprice,
         reseller_price: editForm.reseller_price,
         provider: editForm.provider,
-        ...(canEditProducts ? { kiosk_category: editForm.kiosk_category ?? null, sector_ids: editForm.sector_ids || [] } : {}),
+        ...(canEditProducts ? { kiosk_category: editForm.kiosk_category ?? null, sector_ids: editForm.sector_ids || [], series: normalizeSeries(editForm.series) } : {}),
       };
       const { error } = await supabase.from('products').update(values).eq('barcode', barcode);
       if (error) throw error;
@@ -447,6 +453,13 @@ export default function ProductsPage() {
             <input type="text" value={editForm.provider || ''} aria-label="Fournisseur" onChange={e => setEditForm(f => ({ ...f, provider: e.target.value }))} className={`${field} mt-1`} />
           </label>
           {canEditProducts && (
+            <label className={label}>Série
+              <input type="text" value={editForm.series || ''} aria-label="Série" list="edit-series-options" placeholder="Aucune"
+                onChange={e => setEditForm(f => ({ ...f, series: e.target.value }))} className={`${field} mt-1`} />
+              <datalist id="edit-series-options">{seriesSuggestions.map(value => <option key={value} value={value} />)}</datalist>
+            </label>
+          )}
+          {canEditProducts && (
             <div className={label}>Type kiosque
               <div className="mt-1">{renderKioskType(product, true, true, kioskCategory)}</div>
             </div>
@@ -513,7 +526,7 @@ export default function ProductsPage() {
   // Columns follow the "Colonnes" choice. Bulk classification needs the kiosk
   // type and sector columns, so they stay shown (and locked in the picker)
   // while it is on; a single row is edited in a panel under it instead.
-  const BULK_COLUMNS: OptionalColumn[] = ['kiosk', 'sectors'];
+  const BULK_COLUMNS: OptionalColumn[] = ['kiosk', 'sectors', 'series'];
   const showColumn = (key: OptionalColumn) => columns.includes(key) || (bulkMode && BULK_COLUMNS.includes(key));
   const visibleColumnCount = 4 + (bulkMode ? 1 : 0) + COLUMN_OPTIONS.filter(option => showColumn(option.key)).length;
 
@@ -708,6 +721,7 @@ export default function ProductsPage() {
                     ))}
                     {showColumn('kiosk') && <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Type kiosque</th>}
                     {showColumn('sectors') && <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Secteur</th>}
+                    {showColumn('series') && <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Série</th>}
                     {showColumn('stock') && <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Stock</th>}
                     <th className="sticky right-0 bg-card px-3 py-2 shadow-[inset_0_0_0_999px_hsl(var(--secondary)/0.4)]"><span className="sr-only">Actions</span></th>
                   </tr>
@@ -782,6 +796,13 @@ export default function ProductsPage() {
                         )}
                         {showColumn('kiosk') && <td className="px-3 py-2">{renderKioskType(product, false, editClassification, kioskCategory)}</td>}
                         {showColumn('sectors') && <td className="px-3 py-2">{renderSectors(product, false, editClassification, rowSectors)}</td>}
+                        {showColumn('series') && (
+                          <td className="whitespace-nowrap px-3 py-2">
+                            {shownSeries(product)
+                              ? <span className="rounded-full bg-secondary px-2 py-1 text-[11px] font-medium text-foreground">Série {shownSeries(product)}</span>
+                              : <span className="text-[11px] text-muted-foreground">—</span>}
+                          </td>
+                        )}
                         {showColumn('stock') && <td className="px-3 py-2">{renderStock(product)}</td>}
                         {/* Actions stay in view even when many columns are shown. */}
                         <td className="sticky right-0 bg-card px-3 py-2 shadow-[-8px_0_12px_-12px_rgba(17,24,39,0.35)]">{renderActions(product, false)}</td>
@@ -955,6 +976,22 @@ export default function ProductsPage() {
               <option value="">Ajouter un secteur…</option>
               {sectors.map(sector => <option key={sector.id} value={sector.id}>{sector.name}</option>)}
             </select>
+            <form className="flex shrink-0 items-center gap-1" onSubmit={event => {
+              event.preventDefault();
+              const value = normalizeSeries(bulkSeries);
+              applyToSelection(() => ({ series: value }));
+              setBulkSeries('');
+            }}>
+              <input value={bulkSeries} onChange={e => setBulkSeries(e.target.value)} disabled={!selected.size} list="bulk-series-options"
+                aria-label="Série pour la sélection" placeholder="Série… (Aucune pour retirer)"
+                className="w-40 rounded-md border border-input bg-background px-2 py-1.5 disabled:opacity-50 sm:py-1" />
+              <datalist id="bulk-series-options">
+                <option value="Aucune" />
+                {seriesSuggestions.map(value => <option key={value} value={value} />)}
+              </datalist>
+              <button type="submit" disabled={!selected.size || !bulkSeries.trim()}
+                className="rounded-md border border-border px-2 py-1.5 font-medium hover:bg-secondary disabled:opacity-50 sm:py-1">Appliquer</button>
+            </form>
             <select value="" disabled={!selected.size} aria-label="Retirer un secteur de la sélection"
               onChange={e => { const id = e.target.value; if (id) applyToSelection(product => ({ sector_ids: shownSectors(product).filter(item => item !== id) })); }}
               className="shrink-0 rounded-md border border-input bg-background px-2 py-1.5 disabled:opacity-50 sm:py-1">

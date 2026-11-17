@@ -203,20 +203,28 @@ serve(async (req) => {
       const kiosk = profile as KioskProfile & Record<string, unknown>;
 
       if (action === "public_profile") {
-        const [brandsResult, sectorsResult] = await Promise.all([
+        const [brandsResult, sectorsResult, seriesResult] = await Promise.all([
           supabase.rpc("kiosk_product_brands", { p_profile_id: kiosk.id }),
           supabase.rpc("kiosk_product_sectors", { p_profile_id: kiosk.id }),
+          supabase.rpc("kiosk_product_brand_series", { p_profile_id: kiosk.id }),
         ]);
         if (brandsResult.error) throw brandsResult.error;
-        // Sectors are an optional filter: a database without the sectors
+        // Sectors and series are optional filters: a database without their
         // migration yet must not take the kiosk down.
         if (sectorsResult.error) console.warn("kiosk sectors unavailable:", sectorsResult.error.message);
+        if (seriesResult.error) console.warn("kiosk series unavailable:", seriesResult.error.message);
+        const brandSeries: Record<string, string[]> = {};
+        for (const row of (seriesResult.error ? [] : seriesResult.data || []) as Array<{ brand: string; series: string }>) {
+          if (!row.brand || !row.series) continue;
+          (brandSeries[row.brand] ||= []).push(row.series);
+        }
         return json(req, {
           profile: publicProfile(kiosk),
           brands: (brandsResult.data || []).map((row: Record<string, unknown>) => row.brand),
           sectors: sectorsResult.error ? [] : (sectorsResult.data || []).map((row: Record<string, unknown>) => ({
             id: row.id, name: row.name, name_en: row.name_en || null, name_ar: row.name_ar || null,
           })),
+          brand_series: brandSeries,
         });
       }
 
@@ -225,6 +233,8 @@ serve(async (req) => {
         const category = ["utensils", "furniture", "equipment", "decoration", "raw_materials"].includes(body.category) ? body.category : null;
         const brand = text(body.brand, 200) || null;
         const sector = UUID_RE.test(text(body.sector, 80)) ? text(body.sector, 80) : null;
+        const series = text(body.series, 40) || null;
+        const sort = ["price_asc", "price_desc", "name", "available", "newest"].includes(body.sort) ? body.sort : null;
         const page = Math.max(0, Math.floor(Number(body.page) || 0));
         const pageSize = Math.min(72, Math.max(12, Math.floor(Number(body.page_size) || 48)));
         const { data, error } = await supabase.rpc("kiosk_product_search", {
@@ -239,6 +249,9 @@ serve(async (req) => {
           // Only sent when used, so the call still matches the function
           // signature of a database that has not run the sectors migration.
           ...(sector ? { p_sector: sector } : {}),
+          // Same for series and sort (kiosk sort/series migration).
+          ...(series ? { p_series: series } : {}),
+          ...(sort ? { p_sort: sort } : {}),
         });
         if (error) throw error;
         const rows = data || [];

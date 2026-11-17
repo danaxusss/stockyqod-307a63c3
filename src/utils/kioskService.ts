@@ -30,6 +30,9 @@ export class KioskRequestError extends Error {
 export type KioskLanguage = 'fr' | 'en' | 'ar';
 export type KioskPriceMode = 'retail' | 'reseller';
 export type { KioskCategory } from './kioskCategories';
+
+import type { KioskSort } from './kioskSort';
+export type { KioskSort } from './kioskSort';
 import type { KioskCategory } from './kioskCategories';
 export type KioskRequestStatus = 'new' | 'assigned' | 'reviewing' | 'prepared' | 'contacted' | 'converted' | 'rejected';
 
@@ -229,7 +232,7 @@ export class KioskService {
     return `${KioskService.publicUrl(token)}/install`;
   }
 
-  static async loadPublic(token: string): Promise<{ profile: KioskPublicProfile; brands: string[]; sectors?: KioskSector[] }> {
+  static async loadPublic(token: string): Promise<{ profile: KioskPublicProfile; brands: string[]; sectors?: KioskSector[]; brand_series?: Record<string, string[]> }> {
     return invoke({ action: 'public_profile', token });
   }
 
@@ -240,6 +243,8 @@ export class KioskService {
     onlyAvailable?: boolean;
     featuredOnly?: boolean;
     sector?: string | null;
+    series?: string | null;
+    sort?: KioskSort;
     page?: number;
     pageSize?: number;
   } = {}): Promise<{ products: KioskProduct[]; total: number; page: number; page_size: number }> {
@@ -249,6 +254,9 @@ export class KioskService {
       brand: options.brand || null, only_available: options.onlyAvailable === true,
       featured_only: options.featuredOnly === true,
       sector: options.sector || null,
+      // Sent only when used, like the sector, for older kiosk functions.
+      ...(options.series ? { series: options.series } : {}),
+      ...(options.sort && options.sort !== 'relevance' ? { sort: options.sort } : {}),
       page: options.page || 0, page_size: options.pageSize || 30,
     });
   }

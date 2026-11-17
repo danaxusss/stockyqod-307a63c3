@@ -255,12 +255,28 @@ describe('ProductsPage business sectors', () => {
   });
 });
 
+describe('ProductsPage series', () => {
+  it('sets a series on the selection in bulk mode', async () => {
+    renderProducts();
+    fireEvent.click(screen.getByRole('button', { name: 'Modification groupée' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sélectionner Hachoir' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Série pour la sélection' }), { target: { value: 'Série 700' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Appliquer' }));
+    // The series column is shown in bulk mode, with the pending value.
+    expect(screen.getByRole('columnheader', { name: 'Série' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+    expect(save).toHaveBeenCalledWith({ P3: { series: '700' } });
+  });
+});
+
 describe('effectiveChange', () => {
   it('keeps only fields that differ from the saved product', () => {
     const saved = { kiosk_category: 'equipment' as const, sector_ids: ['a', 'b'] };
     expect(effectiveChange(saved, { sector_ids: ['b', 'a'], kiosk_category: 'equipment' })).toEqual({});
     expect(effectiveChange(saved, { sector_ids: ['a'] })).toEqual({ sector_ids: ['a'] });
     expect(effectiveChange(saved, { kiosk_category: null })).toEqual({ kiosk_category: null });
+    expect(effectiveChange({ ...saved, series: '700' }, { series: '700' })).toEqual({});
+    expect(effectiveChange({ ...saved, series: '700' }, { series: null })).toEqual({ series: null });
   });
 });
 

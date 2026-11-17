@@ -1,7 +1,7 @@
 import { supabase } from '../integrations/supabase/client';
 import type { Product } from '../types';
 
-export type ClassificationChange = Partial<Pick<Product, 'kiosk_category' | 'sector_ids'>>;
+export type ClassificationChange = Partial<Pick<Product, 'kiosk_category' | 'sector_ids' | 'series'>>;
 
 export type ClassificationSaveResult = {
   saved: Record<string, ClassificationChange>;
@@ -23,6 +23,7 @@ export async function saveProductClassifications(changes: Record<string, Classif
       const values = {
         ...('kiosk_category' in change ? { kiosk_category: change.kiosk_category ?? null } : {}),
         ...('sector_ids' in change ? { sector_ids: change.sector_ids ?? [] } : {}),
+        ...('series' in change ? { series: change.series ?? null } : {}),
       };
       const { data, error } = await supabase.from('products').update(values).eq('barcode', barcode).select('barcode');
       if (error) result.failed.push({ barcode, message: error.message });
@@ -36,9 +37,10 @@ export async function saveProductClassifications(changes: Record<string, Classif
 const sameSectors = (a: string[] = [], b: string[] = []) => a.length === b.length && a.every(id => b.includes(id));
 
 /** Drop fields equal to the product's saved values, so only real edits are kept. */
-export function effectiveChange(product: Pick<Product, 'kiosk_category' | 'sector_ids'>, change: ClassificationChange): ClassificationChange {
+export function effectiveChange(product: Pick<Product, 'kiosk_category' | 'sector_ids' | 'series'>, change: ClassificationChange): ClassificationChange {
   const next: ClassificationChange = {};
   if ('kiosk_category' in change && (change.kiosk_category ?? null) !== (product.kiosk_category ?? null)) next.kiosk_category = change.kiosk_category ?? null;
   if ('sector_ids' in change && !sameSectors(change.sector_ids, product.sector_ids)) next.sector_ids = change.sector_ids ?? [];
+  if ('series' in change && (change.series ?? null) !== (product.series ?? null)) next.series = change.series ?? null;
   return next;
 }

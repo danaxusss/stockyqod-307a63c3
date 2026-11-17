@@ -6,6 +6,8 @@ export interface Product {
   kiosk_category?: 'utensils' | 'furniture' | 'equipment' | 'decoration' | 'raw_materials' | null;
   /** Business sectors (restaurant, café…) the product is sold to; several allowed. */
   sector_ids?: string[];
+  /** Product line inside the brand (e.g. 600, 700, 900): a sub-filter of the brand on the kiosk. */
+  series?: string | null;
   techsheet: string;
   price: number;
   buyprice: number;
