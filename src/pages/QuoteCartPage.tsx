@@ -25,7 +25,8 @@ import {
   AlertCircle,
   ChevronDown,
   ChevronUp,
-  ChevronRight
+  ChevronRight,
+  ClipboardList
 } from 'lucide-react';
 import { Quote, QuoteItem, CustomerInfo, Product, Provider } from '../types';
 import { StockLocationsService } from '../utils/supabaseStockLocations';
@@ -53,6 +54,7 @@ import { applyQuoteItemDisplayOverride, getQuoteItemBarcode, getQuoteItemBrand, 
 import { buildWhatsAppShareUrl, canSharePdfFile, downloadPdfFile, openPreparingWhatsAppWindow, redirectPreparingWindowToWhatsApp, openWhatsAppShare, sharePdfFile } from '../utils/whatsappShare';
 import { SupabaseDocumentsService } from '../utils/supabaseDocuments';
 import { formatMoney } from '../utils/format';
+import { exportSupplierPurchasePdf } from '../utils/supplierPurchasePdf';
 import { resolveProductImageUrl } from '../utils/productImages';
 
 const ITEMS_PER_PAGE = 40;
@@ -1029,6 +1031,14 @@ export function QuoteCartPage() {
     return false;
   };
   const handleWhatsAppShare = () => { if (guardDirty()) prepareWhatsAppPdf(); };
+  // Internal purchasing sheet: the quote's products grouped by supplier.
+  const handleSupplierPdf = () => {
+    try {
+      exportSupplierPurchasePdf(items, { quoteNumber, clientName: customer.fullName, sellerName: customer.salesPerson, quoteDate }, companySettings);
+    } catch {
+      showToast({ type: 'error', title: 'Erreur', message: 'Impossible de créer la liste d’achat.' });
+    }
+  };
   const handleEmailShare = async () => {
     if (!guardDirty()) return;
     // Export PDF first
@@ -1496,6 +1506,11 @@ export function QuoteCartPage() {
                 <Mail className="h-4 w-4 text-primary" />E-mail
               </button>
             </div>
+            <button type="button" onClick={handleSupplierPdf} disabled={items.length === 0}
+              title="PDF interne : les articles regroupés par fournisseur, avec prix d’achat, stock et quantités à commander"
+              className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-border py-2 text-sm font-semibold text-foreground hover:bg-secondary disabled:opacity-50">
+              <ClipboardList className="h-4 w-4 text-primary" />Liste d’achat par fournisseur
+            </button>
             {isDirty && items.length > 0 && <p className="mt-2 flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-300"><Info className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />Enregistrez avant d’envoyer le devis.</p>}
             {(isCompta || isSuperAdmin) && (
               <button type="button" onClick={handleCreateBL} disabled={isCreatingBL || isSaving || items.length === 0}
