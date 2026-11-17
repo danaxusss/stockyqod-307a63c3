@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 import {
-  AlertTriangle, ArrowLeft, Check, ChevronDown, ChevronRight, Expand, Languages, Loader2,
+  AlertTriangle, ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, Expand, Languages, Loader2,
   Package, RotateCcw, Search, ShoppingCart, Star, UserRound, WifiOff, X,
 } from 'lucide-react';
 import {
@@ -600,28 +600,38 @@ export default function KioskPage() {
                 {brands.length > 0 && (
                   <>
                     <span aria-hidden="true" className="mx-1 w-px self-stretch bg-slate-200" />
+                    {/* Shows the chosen brand and series, so the row can stay closed. */}
                     <Chip active={brandsOpen || !!brand}
-                      label={<span className="inline-flex items-center gap-1.5">{t.brands}<ChevronDown aria-hidden="true" className={`h-4 w-4 transition-transform ${brandsOpen ? 'rotate-180' : ''}`} /></span>}
+                      label={<span className="inline-flex items-center gap-1.5">{brand ? `${brand}${series ? ` · ${series}` : ''}` : t.brands}<ChevronDown aria-hidden="true" className={`h-4 w-4 transition-transform ${brandsOpen ? 'rotate-180' : ''}`} /></span>}
                       onClick={() => setBrandsOpen(open => !open)} />
                   </>
                 )}
               </div>
             </div>
+            {/* One row: the brands, then once a brand is chosen, that brand and its series. */}
             {brandsOpen && brands.length > 0 && (
-              <div className="mx-auto max-w-[1800px] overflow-x-auto border-t border-slate-100 px-3 py-2.5">
-                <div role="group" aria-label={t.brands} className="flex min-w-max gap-2">
-                  <Chip active={!brand} label={t.allBrands} onClick={() => chooseBrand('')} />
-                  {brands.map(value => <Chip key={value} active={brand === value} label={value} onClick={() => chooseBrand(value)} />)}
-                </div>
-              </div>
-            )}
-            {brandsOpen && brandSeriesList.length > 0 && (
-              <div className="mx-auto max-w-[1800px] overflow-x-auto bg-slate-50 px-3 py-2.5">
-                <div role="group" aria-label={t.series} className="flex min-w-max items-center gap-2">
-                  <span className="pe-1 text-sm font-bold text-slate-500">{brand}</span>
-                  <Chip active={!series} label={t.allSeries} onClick={() => setSeries(null)} />
-                  {brandSeriesList.map(value => <Chip key={value} active={series === value} label={`${t.series} ${value}`} onClick={() => setSeries(value)} />)}
-                </div>
+              <div className="mx-auto max-w-[1800px] overflow-x-auto border-t border-slate-100 bg-slate-50 px-3 py-2.5">
+                {brand ? (
+                  <div role="group" aria-label={brandSeriesList.length > 0 ? t.series : brand} className="flex min-w-max items-center gap-2">
+                    <button type="button" onClick={() => chooseBrand('')} aria-label={t.allBrands}
+                      className="flex min-h-11 items-center gap-1 rounded-xl px-2 text-sm font-bold text-slate-500 active:bg-slate-200">
+                      <ChevronLeft aria-hidden="true" className="h-4 w-4 rtl:rotate-180" />{t.brands}
+                    </button>
+                    <span className="rounded-xl px-1 text-base font-extrabold text-slate-900">{brand}</span>
+                    {brandSeriesList.length > 0 && (
+                      <>
+                        <span aria-hidden="true" className="mx-1 w-px self-stretch bg-slate-200" />
+                        <span className="text-sm font-bold text-slate-500">{t.series}</span>
+                        <Chip active={!series} label={t.all} onClick={() => setSeries(null)} />
+                        {brandSeriesList.map(value => <Chip key={value} active={series === value} label={value} onClick={() => setSeries(value)} />)}
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  <div role="group" aria-label={t.brands} className="flex min-w-max gap-2">
+                    {brands.map(value => <Chip key={value} active={false} label={value} onClick={() => chooseBrand(value)} />)}
+                  </div>
+                )}
               </div>
             )}
           </header>
@@ -630,8 +640,8 @@ export default function KioskPage() {
             <div className="mb-3 flex min-h-9 flex-wrap items-center gap-2">
               <p className="text-sm font-semibold text-slate-500">{totalProducts} {t.products}</p>
               {sector && <ActivePill label={sectorName(sector)} onRemove={() => setSector(null)} removeLabel={t.remove} />}
-              {brand && <ActivePill label={brand} onRemove={() => chooseBrand('')} removeLabel={t.remove} />}
-              {series && <ActivePill label={`${t.series} ${series}`} onRemove={() => setSeries(null)} removeLabel={t.remove} />}
+              {brand && !brandsOpen && <ActivePill label={brand} onRemove={() => chooseBrand('')} removeLabel={t.remove} />}
+              {series && !brandsOpen && <ActivePill label={`${t.series} ${series}`} onRemove={() => setSeries(null)} removeLabel={t.remove} />}
               {onlyAvailable && <ActivePill label={t.availableOnly} onRemove={() => setOnlyAvailable(false)} removeLabel={t.remove} />}
               {(category || featuredOnly || activeFilterCount > 0) && <button onClick={clearFilters} className="min-h-9 rounded-lg px-2 text-sm font-bold text-slate-500 underline-offset-2 active:bg-slate-100">{t.clearFilters}</button>}
               {catalogLoading && <Loader2 className="ms-auto h-5 w-5 animate-spin" style={{ color: accent }} />}

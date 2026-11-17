@@ -162,17 +162,21 @@ describe('KioskPage', () => {
     expect(screen.queryByRole('group', { name: 'Marques' })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Marques' }));
-    const brandsRow = screen.getByRole('group', { name: 'Marques' });
-    fireEvent.click(within(brandsRow).getByRole('button', { name: 'OLIS' }));
+    fireEvent.click(within(screen.getByRole('group', { name: 'Marques' })).getByRole('button', { name: 'OLIS' }));
     await waitFor(() => expect(service.listPublicProducts).toHaveBeenLastCalledWith(TOKEN, expect.objectContaining({ brand: 'OLIS' })));
 
+    // The same row now shows the brand and its series; no duplicate pills while it is open.
     const seriesRow = screen.getByRole('group', { name: 'Série' });
-    expect(within(seriesRow).getAllByRole('button').map(b => b.textContent)).toEqual(['Toutes les séries', 'Série 700', 'Série 900']);
-    fireEvent.click(within(seriesRow).getByRole('button', { name: 'Série 700' }));
+    expect(within(seriesRow).getAllByRole('button').map(b => b.textContent)).toEqual(['Marques', 'Tous', '700', '900']);
+    expect(within(seriesRow).getByText('OLIS')).toBeInTheDocument();
+    fireEvent.click(within(seriesRow).getByRole('button', { name: '700' }));
     await waitFor(() => expect(service.listPublicProducts).toHaveBeenLastCalledWith(TOKEN, expect.objectContaining({ brand: 'OLIS', series: '700' })));
+    expect(screen.getByRole('button', { name: /OLIS · 700/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retirer Série 700' })).not.toBeInTheDocument();
 
-    // A brand without series shows no series row, and changing brand clears the series.
-    fireEvent.click(within(brandsRow).getByRole('button', { name: 'Stocky' }));
+    // Back to the brands; a brand without series shows no series, and changing brand clears the series.
+    fireEvent.click(within(seriesRow).getByRole('button', { name: 'Toutes les marques' }));
+    fireEvent.click(within(screen.getByRole('group', { name: 'Marques' })).getByRole('button', { name: 'Stocky' }));
     await waitFor(() => expect(service.listPublicProducts).toHaveBeenLastCalledWith(TOKEN, expect.objectContaining({ brand: 'Stocky', series: null })));
     expect(screen.queryByRole('group', { name: 'Série' })).not.toBeInTheDocument();
   });
