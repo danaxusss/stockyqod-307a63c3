@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { FileText, Download, Eye, Calendar, AlertCircle, X, Image as ImageIcon, Loader2, Files } from 'lucide-react';
-import { buildSheetBundle, bundleFileName, downloadBundle, sectionsForShare } from '../utils/sheetBundle';
+import { buildSheetBundle, bundleFileName, companyFromSettings, downloadBundle, sectionsForShare } from '../utils/sheetBundle';
+import { CompanySettingsService } from '../utils/companySettings';
 import { supabase } from '@/integrations/supabase/client';
 import { TechnicalSheet, SheetShareLink, SharedProductImage } from '../types';
 
@@ -108,7 +109,14 @@ export function PublicSharePage() {
     setBundleProgress({ done: 0, total: sheets.length + images.length });
     try {
       const result = await buildSheetBundle(
-        { title: shareLink?.title || 'Documents partagés', subtitle: 'Fiches techniques et photos des produits', sections: sectionsForShare(sheets, images) },
+        {
+          title: 'Fiches techniques',
+          subtitle: shareLink?.title || 'Documents partagés',
+          details: ['Fiches techniques et photos des produits'],
+          // The link's company (older links: the default company).
+          company: companyFromSettings(await CompanySettingsService.getSettings((shareLink as { company_id?: string | null } | null)?.company_id || undefined).catch(() => null)),
+          sections: sectionsForShare(sheets, images),
+        },
         { onProgress: (done, total) => setBundleProgress({ done, total }) },
       );
       downloadBundle(result.bytes, bundleFileName('Documents', shareLink?.title || 'partages'));

@@ -18,11 +18,42 @@ export interface BundleSection {
   files: BundleFile[];
 }
 
+/** The business shown on the cover: logo and contact details. */
+export interface BundleCompany {
+  name: string;
+  logoUrl?: string | null;
+  address?: string;
+  phones?: string[];
+  email?: string;
+  website?: string;
+  ice?: string;
+}
+
 export interface BundleInput {
   title: string;
   subtitle?: string;
-  company?: string;
+  /** Extra lines under the title (quote number, client, date). */
+  details?: string[];
+  company?: string | BundleCompany;
   sections: BundleSection[];
+}
+
+/** The cover's company block from the company settings. */
+export function companyFromSettings(settings?: {
+  company_name?: string; logo_url?: string | null; address?: string; phone?: string; phone2?: string;
+  phone_gsm?: string; phone_dir?: string; email?: string; website?: string; ice?: string;
+} | null): BundleCompany | undefined {
+  if (!settings?.company_name) return undefined;
+  const phones = [settings.phone, settings.phone2, settings.phone_gsm, settings.phone_dir].map(v => (v || '').trim()).filter(Boolean);
+  return {
+    name: settings.company_name,
+    logoUrl: settings.logo_url || null,
+    address: settings.address || '',
+    phones: [...new Set(phones)],
+    email: settings.email || '',
+    website: settings.website || '',
+    ice: settings.ice || '',
+  };
 }
 
 export interface BundleResult {
@@ -159,22 +190,72 @@ export async function buildSheetBundle(input: BundleInput, options: BundleOption
     sectionStatus.push(status);
   }
 
-  // Cover: title, then the contents with what could not be included.
+  // Cover: the business (logo, contact details), the title, then the contents
+  // with what could not be included.
   const [width, height] = A4;
-  let y = height - MARGIN - 10;
-  if (input.company) {
-    cover.drawText(pdfSafe(input.company), { x: MARGIN, y, size: 10, font: bold, color: rgb(0.12, 0.23, 0.54) });
-    y -= 26;
+  const company: BundleCompany | undefined = typeof input.company === 'string' ? { name: input.company } : input.company;
+  const accent = rgb(0.12, 0.23, 0.54);
+  const grey = rgb(0.42, 0.45, 0.5);
+  const dark = rgb(0.07, 0.09, 0.15);
+  const top = height - MARGIN;
+  let headerBottom = top;
+  if (company) {
+    // Logo on the left, at most 170 × 70 pt.
+    let logoBottom = top;
+    if (company.logoUrl) {
+      try {
+        const response = await fetcher(company.logoUrl);
+        if (!response.ok) throw new Error('logo');
+        const blob = await response.blob();
+        let bytes = new Uint8Array(await blob.arrayBuffer());
+        let kind = sniff(bytes);
+        if (kind === 'other-image') { bytes = await toJpeg(blob); kind = 'jpg'; }
+        if (kind === 'png' || kind === 'jpg') {
+          const logo = kind === 'png' ? await out.embedPng(bytes) : await out.embedJpg(bytes);
+          const scale = Math.min(170 / logo.width, 70 / logo.height);
+          cover.drawImage(logo, { x: MARGIN, y: top - logo.height * scale, width: logo.width * scale, height: logo.height * scale });
+          logoBottom = top - logo.height * scale;
+        }
+      } catch { /* no logo: the name stands alone */ }
+    }
+    // Contact details on the right.
+    const right = width - MARGIN;
+    const blockWidth = 230;
+    let cy = top - 10;
+    const drawRight = (text: string, size: number, f: PDFFont, color = grey) => {
+      for (const line of wrap(text, f, size, blockWidth)) {
+        cover.drawText(line, { x: right - f.widthOfTextAtSize(line, size), y: cy, size, font: f, color });
+        cy -= size + 3.5;
+      }
+    };
+    drawRight(company.name, 13, bold, dark);
+    cy -= 2;
+    if (company.address) drawRight(company.address, 9, font);
+    if (company.phones?.length) drawRight(`Tél : ${company.phones.join(' / ')}`, 9, font);
+    if (company.email) drawRight(company.email, 9, font);
+    if (company.website) drawRight(company.website, 9, font, accent);
+    if (company.ice) drawRight(`ICE : ${company.ice}`, 9, font);
+    headerBottom = Math.min(logoBottom, cy + 6) - 16;
+    cover.drawRectangle({ x: MARGIN, y: headerBottom, width: width - 2 * MARGIN, height: 2.5, color: accent });
+    // Contact line at the foot of the cover.
+    const foot = pdfSafe([company.name, company.phones?.[0], company.email, company.website].filter(Boolean).join('  ·  '));
+    cover.drawLine({ start: { x: MARGIN, y: 38 }, end: { x: width - MARGIN, y: 38 }, thickness: 0.5, color: rgb(0.82, 0.84, 0.86) });
+    cover.drawText(foot.slice(0, 130), { x: (width - font.widthOfTextAtSize(foot.slice(0, 130), 8)) / 2, y: 26, size: 8, font, color: grey });
   }
-  for (const line of wrap(input.title, bold, 22, width - 2 * MARGIN)) {
-    cover.drawText(line, { x: MARGIN, y, size: 22, font: bold, color: rgb(0.07, 0.09, 0.15) });
-    y -= 27;
+  let y = headerBottom - 48;
+  for (const line of wrap(input.title, bold, 24, width - 2 * MARGIN)) {
+    cover.drawText(line, { x: MARGIN, y, size: 24, font: bold, color: dark });
+    y -= 29;
   }
   if (input.subtitle) {
-    for (const line of wrap(input.subtitle, font, 11, width - 2 * MARGIN)) {
-      cover.drawText(line, { x: MARGIN, y, size: 11, font, color: rgb(0.29, 0.33, 0.39) });
-      y -= 15;
+    for (const line of wrap(input.subtitle, font, 11.5, width - 2 * MARGIN)) {
+      cover.drawText(line, { x: MARGIN, y, size: 11.5, font, color: rgb(0.29, 0.33, 0.39) });
+      y -= 16;
     }
+  }
+  for (const detail of input.details || []) {
+    cover.drawText(pdfSafe(detail).slice(0, 110), { x: MARGIN, y, size: 10.5, font, color: rgb(0.29, 0.33, 0.39) });
+    y -= 15;
   }
   y -= 14;
   cover.drawText('Contenu', { x: MARGIN, y, size: 13, font: bold, color: rgb(0.07, 0.09, 0.15) });
@@ -183,7 +264,7 @@ export async function buildSheetBundle(input: BundleInput, options: BundleOption
   y -= 18;
   let coverPage = cover;
   for (const { section, ok, failed } of sectionStatus) {
-    if (y < MARGIN + 40) {
+    if (y < MARGIN + 50) {
       // Long quotes: the contents continue on a second page, kept right after the cover.
       coverPage = out.insertPage(out.getPages().indexOf(coverPage) + 1, A4);
       y = height - MARGIN - 10;
