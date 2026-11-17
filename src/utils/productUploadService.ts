@@ -254,6 +254,7 @@ export class ProductUploadService {
           image: row.image,
           kiosk_category: row.kiosk_category as Product['kiosk_category'],
           sector_ids: row.sector_ids || [],
+          series: row.series ?? null,
           techsheet: row.techsheet,
           price: Number(row.price),
           buyprice: Number(row.buyprice),

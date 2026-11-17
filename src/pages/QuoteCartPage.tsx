@@ -25,7 +25,8 @@ import {
   AlertCircle,
   ChevronDown,
   ChevronUp,
-  ChevronRight
+  ChevronRight,
+  ClipboardList
 } from 'lucide-react';
 import { Quote, QuoteItem, CustomerInfo, Product, Provider } from '../types';
 import { StockLocationsService } from '../utils/supabaseStockLocations';
@@ -33,7 +34,8 @@ import { ExcelExportService } from '../utils/excelExport';
 import { PdfExportService } from '../utils/pdfExport';
 import { CompanySettingsService, CompanySettings, DEFAULT_SHARE_TEMPLATES } from '../utils/companySettings';
 import { quoteCompanyId, SupabaseQuotesService } from '../utils/supabaseQuotes';
-import { attachmentsSummary, createAttachmentsLink, findQuoteAttachments, NO_ATTACHMENTS, type QuoteAttachments } from '../utils/quoteAttachments';
+import { attachmentsSummary, createAttachmentsLink, findQuoteAttachments, NO_ATTACHMENTS, quoteBundleSections, type QuoteAttachments } from '../utils/quoteAttachments';
+import { buildSheetBundle, bundleFileName, downloadBundle } from '../utils/sheetBundle';
 import { ActivityLogger } from '../utils/activityLogger';
 import { useAppContext } from '../context/AppContext';
 import { SupabaseUsersService } from '../utils/supabaseUsers';
@@ -53,6 +55,7 @@ import { applyQuoteItemDisplayOverride, getQuoteItemBarcode, getQuoteItemBrand, 
 import { buildWhatsAppShareUrl, canSharePdfFile, downloadPdfFile, openPreparingWhatsAppWindow, redirectPreparingWindowToWhatsApp, openWhatsAppShare, sharePdfFile } from '../utils/whatsappShare';
 import { SupabaseDocumentsService } from '../utils/supabaseDocuments';
 import { formatMoney } from '../utils/format';
+import { exportSupplierPurchasePdf } from '../utils/supplierPurchasePdf';
 import { resolveProductImageUrl } from '../utils/productImages';
 
 const ITEMS_PER_PAGE = 40;
@@ -147,6 +150,28 @@ export function QuoteCartPage() {
   const [techSheetsExpiry, setTechSheetsExpiry] = useState<string>('30');
   const [attachments, setAttachments] = useState<QuoteAttachments>(NO_ATTACHMENTS);
   const hasAttachments = attachments.sheetIds.length + attachments.images.length > 0;
+  // "Tout télécharger" of the sheets and photos as one PDF: files done / total.
+  const [bundleProgress, setBundleProgress] = useState<{ done: number; total: number } | null>(null);
+  const handleSheetBundle = async () => {
+    setBundleProgress({ done: 0, total: 0 });
+    try {
+      const sections = await quoteBundleSections(items, attachments);
+      const result = await buildSheetBundle({
+        title: `Fiches techniques - Devis ${quoteNumber}`,
+        subtitle: customer.fullName ? `Client : ${customer.fullName}` : undefined,
+        company: companySettings?.company_name || undefined,
+        sections,
+      }, { onProgress: (done, total) => setBundleProgress({ done, total }) });
+      downloadBundle(result.bytes, bundleFileName('Fiches', quoteNumber));
+      if (result.skipped.length) {
+        showToast({ type: 'warning', title: 'Fichier créé', message: `${result.skipped.length} document(s) n’ont pas pu être inclus : ${result.skipped.join(', ')}` });
+      }
+    } catch (error) {
+      showToast({ type: 'error', title: 'Erreur', message: `Impossible de créer le fichier des fiches : ${(error as Error)?.message || 'erreur inconnue'}` });
+    } finally {
+      setBundleProgress(null);
+    }
+  };
 
   // BL creation state
   const [isCreatingBL, setIsCreatingBL] = useState(false);
@@ -1029,6 +1054,14 @@ export function QuoteCartPage() {
     return false;
   };
   const handleWhatsAppShare = () => { if (guardDirty()) prepareWhatsAppPdf(); };
+  // Internal purchasing sheet: the quote's products grouped by supplier.
+  const handleSupplierPdf = () => {
+    try {
+      exportSupplierPurchasePdf(items, { quoteNumber, clientName: customer.fullName, sellerName: customer.salesPerson, quoteDate }, companySettings);
+    } catch {
+      showToast({ type: 'error', title: 'Erreur', message: 'Impossible de créer la liste d’achat.' });
+    }
+  };
   const handleEmailShare = async () => {
     if (!guardDirty()) return;
     // Export PDF first
@@ -1496,6 +1529,11 @@ export function QuoteCartPage() {
                 <Mail className="h-4 w-4 text-primary" />E-mail
               </button>
             </div>
+            <button type="button" onClick={handleSupplierPdf} disabled={items.length === 0}
+              title="PDF interne : les articles regroupés par fournisseur, avec prix d’achat, stock et quantités à commander"
+              className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-border py-2 text-sm font-semibold text-foreground hover:bg-secondary disabled:opacity-50">
+              <ClipboardList className="h-4 w-4 text-primary" />Liste d’achat par fournisseur
+            </button>
             {isDirty && items.length > 0 && <p className="mt-2 flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-300"><Info className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />Enregistrez avant d’envoyer le devis.</p>}
             {(isCompta || isSuperAdmin) && (
               <button type="button" onClick={handleCreateBL} disabled={isCreatingBL || isSaving || items.length === 0}
@@ -1514,6 +1552,13 @@ export function QuoteCartPage() {
             {hasAttachments && (
               <>
                 {pdfOption(attachTechSheets, setAttachTechSheets, 'Fiches techniques', `Lien vers ${attachmentsSummary(attachments)}`)}
+                <button type="button" onClick={handleSheetBundle} disabled={!!bundleProgress}
+                  title="Toutes les fiches techniques et photos des produits du devis, réunies dans un seul PDF"
+                  className="mb-2 flex w-full items-center justify-center gap-2 rounded-lg border border-border py-2 text-xs font-semibold text-foreground hover:bg-secondary disabled:opacity-60">
+                  {bundleProgress
+                    ? <><Loader className="h-3.5 w-3.5 animate-spin" />{bundleProgress.total ? `${bundleProgress.done} / ${bundleProgress.total}` : 'Préparation…'}</>
+                    : <><FileDown className="h-3.5 w-3.5 text-primary" />Télécharger toutes les fiches (1 PDF)</>}
+                </button>
                 {attachTechSheets && (
                   <label className="flex items-center justify-between gap-2 pb-2 text-xs text-muted-foreground">Le lien expire après
                     <select value={techSheetsExpiry} onChange={(e) => setTechSheetsExpiry(e.target.value)} className="rounded-md border border-input bg-background px-2 py-1 text-xs text-foreground">

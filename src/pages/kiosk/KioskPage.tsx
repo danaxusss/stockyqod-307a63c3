@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 import {
-  AlertTriangle, ArrowLeft, Check, ChevronRight, Expand, Languages, Loader2,
+  AlertTriangle, ArrowLeft, Check, ChevronDown, ChevronRight, Expand, Languages, Loader2,
   Package, RotateCcw, Search, ShoppingCart, Star, UserRound, WifiOff, X,
 } from 'lucide-react';
 import {
@@ -13,6 +13,7 @@ import { SHOWCASE_COPY } from '../../utils/kioskShowcase';
 import { KioskReviewPage, KioskShowcase, ReviewInvite } from './KioskShowcase';
 import { rememberKioskToken } from '../../utils/kioskApp';
 import { KIOSK_CATEGORY_VALUES } from '../../utils/kioskCategories';
+import { KIOSK_SORTS, sortSeries, type KioskSort } from '../../utils/kioskSort';
 import { copy, fmt, LANGUAGE_NAMES, withCount, type KioskCopy } from './kioskCopy';
 import {
   Chip, FilterGroup, FiltersButton, FiltersPanel, KioskImageViewer, KioskInput, ProductCard, ProductDialog, ReviewLine, Steps,
@@ -126,6 +127,13 @@ export default function KioskPage() {
   const [onlyAvailable, setOnlyAvailable] = useState(false);
   const [featuredOnly, setFeaturedOnly] = useState(false);
   const [sector, setSector] = useState<string | null>(null);
+  // Brand → its series on this kiosk (empty until the kiosk migration runs).
+  const [brandSeries, setBrandSeries] = useState<Record<string, string[]>>({});
+  const [series, setSeries] = useState<string | null>(null);
+  const [brandsOpen, setBrandsOpen] = useState(false);
+  const [sort, setSort] = useState<KioskSort>('relevance');
+  // A series belongs to one brand: changing brand clears it.
+  const chooseBrand = (value: string) => { setBrand(value); setSeries(null); };
   const [cart, setCart] = useState<Record<string, CartLine>>(saved?.cart || {});
   const [selectedProduct, setSelectedProduct] = useState<KioskProduct | null>(null);
   const [zoomProduct, setZoomProduct] = useState<KioskProduct | null>(null);
@@ -184,6 +192,7 @@ export default function KioskPage() {
       rememberKioskToken(token);
       setBrands(data.brands || []);
       setSectors(data.sectors || []);
+      setBrandSeries(data.brand_series || {});
       setFatal(null);
       // Featured products are a bonus: the kiosk works the same without them.
       KioskService.listPublicProducts(token, { featuredOnly: true, page: 0, pageSize: 24 })
@@ -217,6 +226,9 @@ export default function KioskPage() {
     setDebouncedQuery('');
     setCategory(null);
     setBrand('');
+    setSeries(null);
+    setBrandsOpen(false);
+    setSort('relevance');
     setOnlyAvailable(false);
     setSelectedProduct(null);
     setZoomProduct(null);
@@ -334,14 +346,16 @@ export default function KioskPage() {
     return () => clearTimeout(timer);
   }, [query]);
 
-  const catalogKey = JSON.stringify([debouncedQuery, category, brand, onlyAvailable, featuredOnly, sector, catalogReload]);
+  // Price sorts only where prices are shown (the kiosk function also ignores them).
+  const effectiveSort: KioskSort = !profile?.show_prices && sort.startsWith('price') ? 'relevance' : sort;
+  const catalogKey = JSON.stringify([debouncedQuery, category, brand, series, effectiveSort, onlyAvailable, featuredOnly, sector, catalogReload]);
 
   useEffect(() => {
     if (!profile || stage !== 'catalog' || loadedCatalogKey.current === catalogKey) return;
     const requestId = ++catalogRequest.current;
     setCatalogLoading(true);
     setCatalogError('');
-    KioskService.listPublicProducts(token, { search: debouncedQuery, category, brand, onlyAvailable, featuredOnly, sector, page: 0, pageSize: PAGE_SIZE })
+    KioskService.listPublicProducts(token, { search: debouncedQuery, category, brand, series, sort: effectiveSort, onlyAvailable, featuredOnly, sector, page: 0, pageSize: PAGE_SIZE })
       .then(data => {
         if (requestId !== catalogRequest.current) return;
         loadedCatalogKey.current = catalogKey;
@@ -352,7 +366,7 @@ export default function KioskPage() {
       .catch(error => { if (requestId === catalogRequest.current) setCatalogError(describeKioskError(error, t)); })
       .finally(() => { if (requestId === catalogRequest.current) setCatalogLoading(false); });
     // `t` only changes with the profile language, which already re-runs this.
-  }, [brand, catalogKey, category, debouncedQuery, featuredOnly, onlyAvailable, profile, sector, stage, token]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [brand, catalogKey, category, debouncedQuery, effectiveSort, featuredOnly, onlyAvailable, profile, sector, series, stage, token]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (stage === 'catalog') {
@@ -410,7 +424,7 @@ export default function KioskPage() {
     setCatalogError('');
     try {
       const data = await KioskService.listPublicProducts(token, {
-        search: debouncedQuery, category, brand, onlyAvailable, featuredOnly, sector, page: nextPage, pageSize: PAGE_SIZE,
+        search: debouncedQuery, category, brand, series, sort: effectiveSort, onlyAvailable, featuredOnly, sector, page: nextPage, pageSize: PAGE_SIZE,
       });
       // Filters changed while this page was loading: it belongs to another list.
       if (requestId !== catalogRequest.current) return;
@@ -500,8 +514,14 @@ export default function KioskPage() {
     </button>
   );
 
-  const activeFilterCount = (sector ? 1 : 0) + (brand ? 1 : 0) + (onlyAvailable ? 1 : 0);
-  const clearFilters = () => { selectCategory(null); setSector(null); setBrand(''); setOnlyAvailable(false); };
+  const activeFilterCount = (sector ? 1 : 0) + (brand ? 1 : 0) + (series ? 1 : 0) + (onlyAvailable ? 1 : 0);
+  const clearFilters = () => { selectCategory(null); setSector(null); chooseBrand(''); setOnlyAvailable(false); };
+  const sortOptions = KIOSK_SORTS.filter(value => profile.show_prices || !value.startsWith('price'));
+  const sortLabel: Record<KioskSort, string> = {
+    relevance: t.sortRelevance, price_asc: t.sortPriceAsc, price_desc: t.sortPriceDesc,
+    name: t.sortName, available: t.sortAvailable, newest: t.sortNewest,
+  };
+  const brandSeriesList = brand ? sortSeries(brandSeries[brand] || []) : [];
   const sectorName = (id: string) => { const item = sectors.find(s => s.id === id); return item ? sectorLabel(item, language) : ''; };
 
   return (
@@ -577,18 +597,51 @@ export default function KioskPage() {
                 <Chip active={!category && !featuredOnly} label={t.all} onClick={() => selectCategory(null)} />
                 {featured.length > 0 && <Chip active={featuredOnly} label={`★ ${t.featured}`} onClick={() => selectCategory(null, true)} />}
                 {KIOSK_CATEGORY_VALUES.map(value => <Chip key={value} active={category === value} label={t[value]} onClick={() => selectCategory(value)} />)}
+                {brands.length > 0 && (
+                  <>
+                    <span aria-hidden="true" className="mx-1 w-px self-stretch bg-slate-200" />
+                    <Chip active={brandsOpen || !!brand}
+                      label={<span className="inline-flex items-center gap-1.5">{t.brands}<ChevronDown aria-hidden="true" className={`h-4 w-4 transition-transform ${brandsOpen ? 'rotate-180' : ''}`} /></span>}
+                      onClick={() => setBrandsOpen(open => !open)} />
+                  </>
+                )}
               </div>
             </div>
+            {brandsOpen && brands.length > 0 && (
+              <div className="mx-auto max-w-[1800px] overflow-x-auto border-t border-slate-100 px-3 py-2.5">
+                <div role="group" aria-label={t.brands} className="flex min-w-max gap-2">
+                  <Chip active={!brand} label={t.allBrands} onClick={() => chooseBrand('')} />
+                  {brands.map(value => <Chip key={value} active={brand === value} label={value} onClick={() => chooseBrand(value)} />)}
+                </div>
+              </div>
+            )}
+            {brandsOpen && brandSeriesList.length > 0 && (
+              <div className="mx-auto max-w-[1800px] overflow-x-auto bg-slate-50 px-3 py-2.5">
+                <div role="group" aria-label={t.series} className="flex min-w-max items-center gap-2">
+                  <span className="pe-1 text-sm font-bold text-slate-500">{brand}</span>
+                  <Chip active={!series} label={t.allSeries} onClick={() => setSeries(null)} />
+                  {brandSeriesList.map(value => <Chip key={value} active={series === value} label={`${t.series} ${value}`} onClick={() => setSeries(value)} />)}
+                </div>
+              </div>
+            )}
           </header>
 
           <main className="mx-auto max-w-[1800px] px-3 pt-3">
             <div className="mb-3 flex min-h-9 flex-wrap items-center gap-2">
               <p className="text-sm font-semibold text-slate-500">{totalProducts} {t.products}</p>
               {sector && <ActivePill label={sectorName(sector)} onRemove={() => setSector(null)} removeLabel={t.remove} />}
-              {brand && <ActivePill label={brand} onRemove={() => setBrand('')} removeLabel={t.remove} />}
+              {brand && <ActivePill label={brand} onRemove={() => chooseBrand('')} removeLabel={t.remove} />}
+              {series && <ActivePill label={`${t.series} ${series}`} onRemove={() => setSeries(null)} removeLabel={t.remove} />}
               {onlyAvailable && <ActivePill label={t.availableOnly} onRemove={() => setOnlyAvailable(false)} removeLabel={t.remove} />}
               {(category || featuredOnly || activeFilterCount > 0) && <button onClick={clearFilters} className="min-h-9 rounded-lg px-2 text-sm font-bold text-slate-500 underline-offset-2 active:bg-slate-100">{t.clearFilters}</button>}
               {catalogLoading && <Loader2 className="ms-auto h-5 w-5 animate-spin" style={{ color: accent }} />}
+              <label className={`flex items-center gap-2 text-sm font-bold text-slate-500 ${catalogLoading ? '' : 'ms-auto'}`}>
+                <span className="hidden sm:inline">{t.sort}</span>
+                <select value={effectiveSort} onChange={event => setSort(event.target.value as KioskSort)} aria-label={t.sort}
+                  className="min-h-11 rounded-xl border-2 border-slate-200 bg-white px-3 text-base font-bold text-slate-800 outline-none focus:border-slate-900">
+                  {sortOptions.map(value => <option key={value} value={value}>{sortLabel[value]}</option>)}
+                </select>
+              </label>
             </div>
             {catalogError && (
               <div role="alert" className="mb-3 flex flex-col gap-3 rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 text-amber-900 sm:flex-row sm:items-center sm:justify-between">
@@ -627,8 +680,8 @@ export default function KioskPage() {
             )}
             {brands.length > 0 && (
               <FilterGroup label={t.brand}>
-                <Chip active={!brand} label={t.allBrands} onClick={() => setBrand('')} />
-                {brands.map(value => <Chip key={value} active={brand === value} label={value} onClick={() => setBrand(value)} />)}
+                <Chip active={!brand} label={t.allBrands} onClick={() => chooseBrand('')} />
+                {brands.map(value => <Chip key={value} active={brand === value} label={value} onClick={() => chooseBrand(value)} />)}
               </FilterGroup>
             )}
             <label className="flex min-h-14 cursor-pointer items-center justify-between gap-4 rounded-2xl border-2 border-slate-200 px-4 text-base font-bold">

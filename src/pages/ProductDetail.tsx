@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Package, ArrowLeft, ChevronRight, Copy, MapPin, ShoppingCart, Home, AlertCircle, Search, Calculator, Plus, Minus, Upload, Download, Loader, FileText, X, Images, ImagePlus, Globe, Settings } from 'lucide-react';
 import { Product, TechnicalSheet, StockLocation } from '../types';
@@ -18,6 +18,7 @@ import { TechnicalSheetFinder } from '../components/TechnicalSheetFinder';
 import { ImageViewer } from '../components/ImageViewer';
 import { BusinessSectorsService, sectorNames, useBusinessSectors } from '../utils/businessSectors';
 import { KIOSK_CATEGORIES, KIOSK_CATEGORY_HELP } from '../utils/kioskCategories';
+import { knownSeries, normalizeSeries } from '../utils/productSeries';
 import { formatMoney } from '../utils/format';
 
 export function ProductDetail() {
@@ -293,6 +294,30 @@ export function ProductDetail() {
     showToast({ type: 'success', message: 'Type kiosque mis à jour' });
   };
 
+  // Series: saved when the field is left (or Enter), not on every key.
+  const [seriesDraft, setSeriesDraft] = useState('');
+  useEffect(() => { setSeriesDraft(product?.series || ''); }, [product?.barcode, product?.series]);
+  const seriesSuggestions = useMemo(() => knownSeries(state.products, product?.brand), [state.products, product?.brand]);
+  const updateSeries = async (raw: string) => {
+    if (!product || !canEditProducts) return;
+    const value = normalizeSeries(raw);
+    setSeriesDraft(value || '');
+    if (value === (product.series || null)) return;
+    const previous = product.series || null;
+    setProduct(current => current ? { ...current, series: value } : current);
+    const { error: seriesError } = await supabase.from('products')
+      .update({ series: value })
+      .eq('barcode', product.barcode);
+    if (seriesError) {
+      setProduct(current => current ? { ...current, series: previous } : current);
+      setSeriesDraft(previous || '');
+      showToast({ type: 'error', title: 'Série non enregistrée', message: seriesError.message });
+      return;
+    }
+    applyProductChanges({ [product.barcode]: { series: value } });
+    showToast({ type: 'success', message: value ? `Série ${value} enregistrée` : 'Série retirée' });
+  };
+
   const handleBackToSearch = () => navigate('/search');
   const handleBackNavigation = () => { if (cameFromSearch) navigate('/search'); else navigate(-1); };
 
@@ -531,7 +556,8 @@ export function ProductDetail() {
                 </>
               )}
               <div><dt className="text-muted-foreground">Type kiosque</dt><dd className="font-semibold text-foreground">{kioskLabel}</dd></div>
-              <div className="col-span-2"><dt className="text-muted-foreground">Secteur</dt><dd className="font-semibold text-foreground">{sectorLabel}</dd></div>
+              <div><dt className="text-muted-foreground">Secteur</dt><dd className="font-semibold text-foreground">{sectorLabel}</dd></div>
+              <div><dt className="text-muted-foreground">Série</dt><dd className="font-semibold text-foreground">{product.series ? `Série ${product.series}` : 'Aucune'}</dd></div>
             </dl>
           </section>
 
@@ -613,6 +639,18 @@ export function ProductDetail() {
                     onCreate={name => BusinessSectorsService.create(name)} size="md" />
                 </div>
               </div>
+              <label className="block">
+                <span className="mb-1 block text-sm font-semibold text-foreground">Série</span>
+                <input value={seriesDraft} list="product-series-options" placeholder="Aucune (ex. 600, 700, 900)"
+                  onChange={event => setSeriesDraft(event.target.value)}
+                  onBlur={event => updateSeries(event.target.value)}
+                  onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); (event.target as HTMLInputElement).blur(); } }}
+                  className="h-10 w-full max-w-xs rounded-lg border border-input bg-background px-3 text-sm text-foreground" />
+                <datalist id="product-series-options">
+                  {seriesSuggestions.map(value => <option key={value} value={value} />)}
+                </datalist>
+                <span className="mt-1 block text-xs leading-snug text-muted-foreground">Gamme de la marque, proposée comme sous-filtre de la marque sur le kiosque. Laisser vide si aucune.</span>
+              </label>
             </div>
 
             <div className="md:col-span-2">

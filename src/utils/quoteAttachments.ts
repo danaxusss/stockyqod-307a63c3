@@ -2,6 +2,7 @@ import { supabase } from './supabaseClient';
 import { loadCurrentProductImages, resolveProductImageUrl } from './productImages';
 import { getQuoteItemBrand, getQuoteItemName } from './quoteItemDisplay';
 import type { QuoteItem, SharedProductImage } from '../types';
+import { sectionsForQuote, type BundleSection } from './sheetBundle';
 
 // Documents joined to a quote: the technical sheet of each product that has
 // one, and the photo of each product that has none, so the client gets
@@ -91,4 +92,25 @@ export async function createAttachmentsLink(
     label: attachmentsLabel(imagesDropped ? { ...a, images: [] } : a),
     imagesDropped,
   };
+}
+
+/**
+ * Sections of the single-file bundle for a quote: each product in quote
+ * order with its technical sheets, or its photo when it has none.
+ */
+export async function quoteBundleSections(items: QuoteItem[], attachments: QuoteAttachments): Promise<BundleSection[]> {
+  const barcodes = Array.from(new Set(items.map(i => i.product?.barcode).filter((b): b is string => !!b)));
+  let links: { sheet_id: string; product_barcode: string }[] = [];
+  let sheets: { id: string; title: string; manufacturer: string | null; file_url: string }[] = [];
+  if (attachments.sheetIds.length && barcodes.length) {
+    const [linkRes, sheetRes] = await Promise.all([
+      supabase.from('technical_sheet_products').select('sheet_id, product_barcode').in('product_barcode', barcodes),
+      supabase.from('technical_sheets').select('id, title, manufacturer, file_url').in('id', attachments.sheetIds),
+    ]);
+    if (linkRes.error) throw linkRes.error;
+    if (sheetRes.error) throw sheetRes.error;
+    links = (linkRes.data || []) as typeof links;
+    sheets = (sheetRes.data || []) as typeof sheets;
+  }
+  return sectionsForQuote(items, sheets, links, attachments.images);
 }

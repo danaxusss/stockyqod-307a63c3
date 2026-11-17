@@ -30,7 +30,7 @@ const FEATURED = { ...DRILL, barcode: '611000000099', name: 'Aspirateur vedette'
 
 type Sector = { id: string; name: string; name_en: string | null; name_ar: string | null };
 
-function mockKiosk(overrides: Record<string, unknown> = {}, featured: typeof FEATURED[] = [], sectors: Sector[] = []) {
+function mockKiosk(overrides: Record<string, unknown> = {}, featured: typeof FEATURED[] = [], sectors: Sector[] = [], brandSeries?: Record<string, string[]>) {
   service.loadPublic.mockResolvedValue({
     profile: {
       id: 'profile-1', name: 'Accueil', company_name: 'Stocky Test',
@@ -41,8 +41,9 @@ function mockKiosk(overrides: Record<string, unknown> = {}, featured: typeof FEA
       inactivity_timeout_seconds: 180,
       ...overrides,
     },
-    brands: ['Stocky'],
+    brands: brandSeries ? Object.keys(brandSeries) : ['Stocky'],
     sectors,
+    ...(brandSeries ? { brand_series: brandSeries } : {}),
   });
   service.listPublicProducts.mockImplementation(async (_token, options = {}) => (
     options.featuredOnly
@@ -128,6 +129,52 @@ describe('KioskPage', () => {
     await waitFor(() => expect(service.listPublicProducts).toHaveBeenLastCalledWith(TOKEN, expect.objectContaining({ category: 'decoration' })));
     fireEvent.click(types.getByRole('button', { name: 'Matière première' }));
     await waitFor(() => expect(service.listPublicProducts).toHaveBeenLastCalledWith(TOKEN, expect.objectContaining({ category: 'raw_materials' })));
+  });
+
+  it('sorts the catalogue, and offers price sorts only when prices are shown', async () => {
+    mockKiosk();
+    const { unmount } = renderKiosk();
+    fireEvent.click(await screen.findByRole('button', { name: /Commencer/i }));
+    expect(await screen.findByText('Perceuse de test')).toBeInTheDocument();
+    const sort = screen.getByRole('combobox', { name: 'Trier' });
+    expect(within(sort).getByRole('option', { name: 'Prix croissant' })).toBeInTheDocument();
+    fireEvent.change(sort, { target: { value: 'price_desc' } });
+    await waitFor(() => expect(service.listPublicProducts).toHaveBeenLastCalledWith(TOKEN, expect.objectContaining({ sort: 'price_desc', page: 0 })));
+    fireEvent.change(sort, { target: { value: 'newest' } });
+    await waitFor(() => expect(service.listPublicProducts).toHaveBeenLastCalledWith(TOKEN, expect.objectContaining({ sort: 'newest' })));
+    unmount();
+
+    sessionStorage.clear();
+    mockKiosk({ show_prices: false });
+    renderKiosk();
+    fireEvent.click(await screen.findByRole('button', { name: /Commencer/i }));
+    expect(await screen.findByText('Perceuse de test')).toBeInTheDocument();
+    const hiddenPrices = screen.getByRole('combobox', { name: 'Trier' });
+    expect(within(hiddenPrices).queryByRole('option', { name: 'Prix croissant' })).not.toBeInTheDocument();
+    expect(within(hiddenPrices).getByRole('option', { name: 'Nom de A à Z' })).toBeInTheDocument();
+  });
+
+  it('opens the brands row, then the series of the chosen brand', async () => {
+    mockKiosk({}, [], [], { OLIS: ['900', '700'], Stocky: [] });
+    renderKiosk();
+    fireEvent.click(await screen.findByRole('button', { name: /Commencer/i }));
+    expect(await screen.findByText('Perceuse de test')).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Marques' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Marques' }));
+    const brandsRow = screen.getByRole('group', { name: 'Marques' });
+    fireEvent.click(within(brandsRow).getByRole('button', { name: 'OLIS' }));
+    await waitFor(() => expect(service.listPublicProducts).toHaveBeenLastCalledWith(TOKEN, expect.objectContaining({ brand: 'OLIS' })));
+
+    const seriesRow = screen.getByRole('group', { name: 'Série' });
+    expect(within(seriesRow).getAllByRole('button').map(b => b.textContent)).toEqual(['Toutes les séries', 'Série 700', 'Série 900']);
+    fireEvent.click(within(seriesRow).getByRole('button', { name: 'Série 700' }));
+    await waitFor(() => expect(service.listPublicProducts).toHaveBeenLastCalledWith(TOKEN, expect.objectContaining({ brand: 'OLIS', series: '700' })));
+
+    // A brand without series shows no series row, and changing brand clears the series.
+    fireEvent.click(within(brandsRow).getByRole('button', { name: 'Stocky' }));
+    await waitFor(() => expect(service.listPublicProducts).toHaveBeenLastCalledWith(TOKEN, expect.objectContaining({ brand: 'Stocky', series: null })));
+    expect(screen.queryByRole('group', { name: 'Série' })).not.toBeInTheDocument();
   });
 
   it('filters the full Stocky product list by kiosk type, brand, and availability', async () => {
