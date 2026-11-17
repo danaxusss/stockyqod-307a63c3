@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { FileText, Download, Eye, Calendar, AlertCircle, X, Image as ImageIcon } from 'lucide-react';
+import { FileText, Download, Eye, Calendar, AlertCircle, X, Image as ImageIcon, Loader2, Files } from 'lucide-react';
+import { buildSheetBundle, bundleFileName, downloadBundle, sectionsForShare } from '../utils/sheetBundle';
 import { supabase } from '@/integrations/supabase/client';
 import { TechnicalSheet, SheetShareLink, SharedProductImage } from '../types';
 
@@ -12,6 +13,8 @@ export function PublicSharePage() {
   const [error, setError] = useState<string | null>(null);
   const [pdfViewerUrl, setPdfViewerUrl] = useState<string | null>(null);
   const [photoViewer, setPhotoViewer] = useState<SharedProductImage | null>(null);
+  const [bundleProgress, setBundleProgress] = useState<{ done: number; total: number } | null>(null);
+  const [bundleNote, setBundleNote] = useState<string | null>(null);
   // Products of the quote that have no technical sheet: their photo instead.
   const images: SharedProductImage[] = Array.isArray(shareLink?.product_images)
     ? shareLink!.product_images!.filter(i => i && /^https?:\/\//.test(i.url))
@@ -98,6 +101,28 @@ export function PublicSharePage() {
     }
   };
 
+  // Everything in one PDF: the sheets, then the photos. Each sheet that made
+  // it into the file counts as one download, like a single download does.
+  const downloadAll = async () => {
+    setBundleNote(null);
+    setBundleProgress({ done: 0, total: sheets.length + images.length });
+    try {
+      const result = await buildSheetBundle(
+        { title: shareLink?.title || 'Documents partagés', subtitle: 'Fiches techniques et photos des produits', sections: sectionsForShare(sheets, images) },
+        { onProgress: (done, total) => setBundleProgress({ done, total }) },
+      );
+      downloadBundle(result.bytes, bundleFileName('Documents', shareLink?.title || 'partages'));
+      const skipped = new Set(result.skipped);
+      await Promise.all(sheets.filter(sheet => !skipped.has(sheet.title)).map(sheet =>
+        supabase.from('technical_sheets').update({ download_count: (sheet.download_count || 0) + 1 }).eq('id', sheet.id).then(() => undefined, () => undefined)));
+      if (result.skipped.length) setBundleNote(`${result.skipped.length} document(s) n’ont pas pu être inclus : ${result.skipped.join(', ')}. Vous pouvez les télécharger un par un ci-dessous.`);
+    } catch {
+      setBundleNote('Le fichier unique n’a pas pu être créé. Vous pouvez télécharger les documents un par un ci-dessous.');
+    } finally {
+      setBundleProgress(null);
+    }
+  };
+
   const handleViewPdf = async (fileUrl: string) => {
     try {
       const response = await fetch(fileUrl);
@@ -155,6 +180,19 @@ export function PublicSharePage() {
             )}
           </p>
         </div>
+
+        {sheets.length + images.length > 1 && (
+          <div className="mb-6 flex flex-col items-center gap-2">
+            <button onClick={downloadAll} disabled={!!bundleProgress}
+              className="flex min-h-11 items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-70">
+              {bundleProgress
+                ? <><Loader2 className="h-4 w-4 animate-spin" />Préparation… {bundleProgress.done} / {bundleProgress.total}</>
+                : <><Files className="h-4 w-4" />Tout télécharger en un seul PDF</>}
+            </button>
+            <p className="text-xs text-muted-foreground">Ou téléchargez les documents un par un ci-dessous.</p>
+            {bundleNote && <p role="status" className="max-w-xl text-center text-xs text-amber-700 dark:text-amber-300">{bundleNote}</p>}
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {sheets.map(sheet => (
