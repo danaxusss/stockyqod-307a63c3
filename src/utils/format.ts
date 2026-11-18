@@ -24,3 +24,11 @@ export function daysSince(date: Date | string, now = new Date()): number {
   const d = typeof date === 'string' ? new Date(date) : date;
   return Math.max(0, Math.floor((now.getTime() - d.getTime()) / 86_400_000));
 }
+
+/** A date as a date-input value (yyyy-mm-dd) in local time; today by default. */
+export function toDateInputValue(date: Date | string = new Date()): string {
+  const d = typeof date === 'string' ? new Date(date) : date;
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}

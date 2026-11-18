@@ -54,7 +54,7 @@ import { useProductOverrides } from '../hooks/useProductOverrides';
 import { applyQuoteItemDisplayOverride, getQuoteItemBarcode, getQuoteItemBrand, getQuoteItemName } from '../utils/quoteItemDisplay';
 import { buildWhatsAppShareUrl, canSharePdfFile, downloadPdfFile, openPreparingWhatsAppWindow, redirectPreparingWindowToWhatsApp, openWhatsAppShare, sharePdfFile } from '../utils/whatsappShare';
 import { SupabaseDocumentsService } from '../utils/supabaseDocuments';
-import { formatMoney } from '../utils/format';
+import { formatMoney, toDateInputValue } from '../utils/format';
 import { exportSupplierPurchasePdf } from '../utils/supplierPurchasePdf';
 import { resolveProductImageUrl } from '../utils/productImages';
 
@@ -87,7 +87,8 @@ export function QuoteCartPage() {
   const [status, setStatus] = useState<'draft' | 'final'>('draft');
   const [notes, setNotes] = useState('');
   const [notes2, setNotes2] = useState('');
-  const [quoteDate, setQuoteDate] = useState('');
+  // A new quote is dated today; it can be changed in the Date field.
+  const [quoteDate, setQuoteDate] = useState(() => toDateInputValue());
   const [globalMargin, setGlobalMargin] = useState<number>(20);
   const [globalDiscount, setGlobalDiscount] = useState<number>(0);
 
@@ -231,7 +232,8 @@ export function QuoteCartPage() {
           setStatus(loadedQuote.status);
           setNotes(loadedQuote.notes || '');
           setNotes2(loadedQuote.notes2 || '');
-          setQuoteDate(loadedQuote.quote_date || '');
+          // Quotes saved without a date show their creation date.
+          setQuoteDate(loadedQuote.quote_date || (loadedQuote.createdAt ? toDateInputValue(loadedQuote.createdAt) : ''));
         } else {
           showToast({
             type: 'error',
@@ -920,7 +922,7 @@ export function QuoteCartPage() {
       setCommandNumber('');
       setNotes('');
       setNotes2('');
-      setQuoteDate('');
+      setQuoteDate(toDateInputValue());
       setValidationErrors({});
     }
   };
@@ -1136,7 +1138,7 @@ export function QuoteCartPage() {
   );
 
   return (
-    <div className="mx-auto max-w-7xl pb-28 md:pb-0">
+    <div className="mx-auto max-w-[110rem] pb-28 md:pb-0">
       {/* Title */}
       <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
         <div className="min-w-0">
@@ -1158,7 +1160,7 @@ export function QuoteCartPage() {
         </span>
       </div>
 
-      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_20rem] 2xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="min-w-0 space-y-4">
           {/* Client */}
           <section className={`${panel} p-4 sm:p-5`} aria-labelledby="quote-client-title">
@@ -1306,15 +1308,15 @@ export function QuoteCartPage() {
               </div>
             ) : (
               <>
-                <div className="hidden grid-cols-[3rem_minmax(0,1fr)_7rem_10.5rem_8.5rem_2.5rem] gap-x-3 border-b border-border bg-secondary/40 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground md:grid">
-                  <span /><span>Produit</span><span className="text-center">Quantité</span><span className="text-right">Prix {priceMode.toUpperCase()}</span><span className="text-right">Total {priceMode.toUpperCase()}</span><span />
+                <div className="hidden grid-cols-[3.5rem_minmax(0,1fr)_8rem_9.5rem_6rem_9rem_2.5rem] gap-x-4 border-b border-border bg-secondary/40 px-6 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground md:grid">
+                  <span /><span>Produit</span><span className="text-center">Quantité</span><span className="text-right">Prix {priceMode.toUpperCase()}</span><span className="text-center">Remise</span><span className="text-right">Total {priceMode.toUpperCase()}</span><span />
                 </div>
                 <ul className="divide-y divide-border">
                   {currentItems.map((item) => {
                     const img = resolveProductImageUrl(item.product?.image);
                     const editingText = editingLineId === item.id;
                     return (
-                      <li key={item.id} className="grid grid-cols-[3rem_minmax(0,1fr)_2.5rem] gap-x-3 gap-y-3 px-4 py-2.5 sm:px-5 md:grid-cols-[3rem_minmax(0,1fr)_7rem_10.5rem_8.5rem_2.5rem] md:items-center md:gap-x-3">
+                      <li key={item.id} className="grid grid-cols-[3rem_minmax(0,1fr)_2.5rem] gap-x-3 gap-y-3 px-4 py-3 sm:px-5 md:grid-cols-[3.5rem_minmax(0,1fr)_8rem_9.5rem_6rem_9rem_2.5rem] md:items-center md:gap-x-4 md:px-6">
                         <span className="row-span-2 flex h-[3.75rem] w-12 items-center justify-center overflow-hidden rounded-md border border-border bg-white md:row-span-1">
                           {img ? <img src={img} alt="" className="h-full w-full object-contain" loading="lazy" /> : <Package className="h-5 w-5 text-muted-foreground" aria-hidden="true" />}
                         </span>
@@ -1369,13 +1371,17 @@ export function QuoteCartPage() {
                                 className="w-28 rounded-md border border-transparent bg-transparent px-1 py-0.5 text-right text-sm font-medium tabular-nums text-foreground underline decoration-dotted decoration-muted-foreground/40 underline-offset-4 hover:border-input focus:border-input focus:no-underline focus:ring-2 focus:ring-ring" />
                               <span className="text-sm text-muted-foreground">Dh</span>
                             </label>
-                            <label className="mt-0.5 flex items-center justify-end gap-1 text-xs text-muted-foreground">
-                              Remise
-                              <input type="number" step="1" min="0" max="100" value={item.discount ?? 0} onChange={(e) => updateItemDiscount(item.id, parseFloat(e.target.value) || 0)} onFocus={(e) => e.target.select()}
-                                className={`w-10 rounded border border-transparent bg-transparent px-0.5 text-right tabular-nums hover:border-input focus:border-input ${(item.discount ?? 0) > 0 ? 'font-semibold text-amber-700 dark:text-amber-300' : ''}`} />
-                              %
-                            </label>
                           </div>
+                          {/* Discount: its own column on wide screens, its own row on phones. */}
+                          <label className="flex items-center justify-end gap-1.5 text-sm text-muted-foreground max-md:order-last max-md:col-span-3 md:justify-center">
+                            <span className="text-xs md:sr-only">Remise</span>
+                            <span className={`flex items-center rounded-md border px-1.5 ${(item.discount ?? 0) > 0 ? 'border-amber-500/50 bg-amber-500/10' : 'border-input'}`}>
+                              <input type="number" step="1" min="0" max="100" value={item.discount ?? 0} onChange={(e) => updateItemDiscount(item.id, parseFloat(e.target.value) || 0)} onFocus={(e) => e.target.select()}
+                                aria-label="Remise (%)"
+                                className={`h-8 w-9 border-0 bg-transparent p-0 text-right text-sm tabular-nums [appearance:textfield] focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none ${(item.discount ?? 0) > 0 ? 'font-semibold text-amber-700 dark:text-amber-300' : 'text-foreground'}`} />
+                              <span className="ps-0.5 text-xs">%</span>
+                            </span>
+                          </label>
                           <p className="text-right font-semibold tabular-nums text-foreground">{formatMoney(priceMode === 'ttc' ? item.subtotal : lineHT(item))}</p>
                         </div>
                       </li>
