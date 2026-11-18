@@ -223,7 +223,7 @@ export default function EmployeesPage() {
   }
 
   return (
-    <div className="space-y-4 max-w-5xl mx-auto">
+    <div className="space-y-4 max-w-[110rem] mx-auto">
       <div className="flex items-center justify-between gap-2">
         <div>
           <h1 className="text-lg font-bold text-foreground">Employés</h1>

@@ -95,7 +95,7 @@ export default function StockReceivePage() {
   const units = lines.reduce((s, l) => s + (Number(l.qty) || 0), 0);
 
   return (
-    <div className="mx-auto max-w-6xl pb-28 md:pb-0">
+    <div className="mx-auto max-w-[110rem] pb-28 md:pb-0">
       <PageHeader title="Réception de stock" subtitle="Entrée de marchandises — met à jour le CMUP" />
 
       {loading ? <OpsLoading /> : (

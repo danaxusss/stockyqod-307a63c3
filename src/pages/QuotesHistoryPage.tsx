@@ -299,7 +299,7 @@ export function QuotesHistoryPage() {
   const field = 'w-full rounded-lg border border-input bg-background px-2.5 py-2 text-sm text-foreground focus:ring-2 focus:ring-ring';
 
   return (
-    <div className="mx-auto max-w-7xl space-y-4">
+    <div className="mx-auto max-w-[110rem] space-y-4">
       <PageHeader
         title="Devis"
         subtitle={isAdmin ? 'Tous les devis' : 'Vos devis'}

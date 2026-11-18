@@ -85,7 +85,7 @@ export default function AdminToolsPage() {
   };
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="mx-auto max-w-[110rem]">
       <PageHeader title="Outils système" subtitle={`${new Intl.NumberFormat('fr-FR').format(state.products.length)} produits dans la base`} />
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <Tool icon={RefreshCw} label="Synchroniser" sub="Recharger les produits du serveur" onClick={sync} disabled={syncing || !state.isOnline} busy={syncing} />

@@ -205,7 +205,7 @@ export default function BLDirectoryPage() {
   const th = 'px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground';
 
   return (
-    <div className="mx-auto max-w-7xl space-y-4">
+    <div className="mx-auto max-w-[110rem] space-y-4">
       <PageHeader
         title="Bons de livraison"
         subtitle={`${filtered.length} BL${filtered.length !== 1 ? 's' : ''}`}

@@ -399,7 +399,7 @@ export function ProductDetail() {
   );
 
   return (
-    <div className="mx-auto max-w-6xl pb-28 md:pb-0">
+    <div className="mx-auto max-w-[110rem] pb-28 md:pb-0">
       {viewerImage && <ImageViewer src={viewerImage.src} alt={viewerImage.alt} onClose={() => setViewerImage(null)} />}
 
       {/* Title */}

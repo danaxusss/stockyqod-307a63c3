@@ -146,7 +146,7 @@ export default function JournalEntryPage() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto py-6 px-3">
+    <div className="max-w-[110rem] mx-auto py-6 px-3">
       <datalist id="acc-list">
         {accounts.map(a => <option key={a.code} value={a.code}>{a.code} — {a.label}</option>)}
       </datalist>

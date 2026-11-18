@@ -186,7 +186,7 @@ export default function PayslipDetailPage() {
   );
 
   return (
-    <div className="space-y-4 max-w-4xl mx-auto">
+    <div className="space-y-4 max-w-[110rem] mx-auto">
       <div className="flex items-center gap-2 flex-wrap">
         <button onClick={() => navigate('/paie/bulletins')} className="p-1.5 hover:bg-accent rounded-lg"><ArrowLeft className="h-4 w-4 text-muted-foreground" /></button>
         <div className="flex-1 min-w-0">

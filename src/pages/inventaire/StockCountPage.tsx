@@ -105,7 +105,7 @@ export default function StockCountPage() {
   const imageOf = useMemo(() => new Map(products.map(p => [p.barcode, p.image])), [products]);
 
   return (
-    <div className="mx-auto max-w-6xl pb-28 md:pb-0">
+    <div className="mx-auto max-w-[110rem] pb-28 md:pb-0">
       <PageHeader title="Inventaire physique" subtitle="Comptez, saisissez le réel — seuls les écarts génèrent un mouvement" />
 
       {loading || locationsLoading ? <OpsLoading /> : (

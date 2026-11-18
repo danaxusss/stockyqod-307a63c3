@@ -330,7 +330,7 @@ export default function ProductPhotosPage() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto">
+    <div className="max-w-[110rem] mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
         <div className="flex items-center gap-2.5">

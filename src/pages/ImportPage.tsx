@@ -97,7 +97,7 @@ export default function ImportPage() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-4">
+    <div className="max-w-[110rem] mx-auto space-y-4">
       {/* Header */}
       <div className="flex items-center gap-3">
         <button onClick={() => navigate(-1)} className="p-1.5 hover:bg-accent rounded-lg text-muted-foreground">

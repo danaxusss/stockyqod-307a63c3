@@ -230,7 +230,7 @@ export function StatisticsPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto space-y-4">
+    <div className="max-w-[110rem] mx-auto space-y-4">
       {/* Header */}
       <div className="glass rounded-xl shadow-lg p-4">
         <div className="flex items-center space-x-2.5">

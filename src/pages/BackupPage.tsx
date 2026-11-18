@@ -195,7 +195,7 @@ export default function BackupPage() {
   };
 
   return (
-    <div className="space-y-5 max-w-3xl mx-auto">
+    <div className="space-y-5 max-w-[110rem] mx-auto">
       {/* Header */}
       <div className="flex items-center space-x-3">
         <div className="p-2 bg-primary/10 rounded-lg">

@@ -105,7 +105,7 @@ export default function ComptabiliteHome() {
   ];
 
   return (
-    <div className="max-w-5xl mx-auto py-6 px-3">
+    <div className="max-w-[110rem] mx-auto py-6 px-3">
       <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
         <div className="flex items-center gap-2">
           <div className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-primary/10"><BookMarked className="h-5 w-5 text-primary" /></div>

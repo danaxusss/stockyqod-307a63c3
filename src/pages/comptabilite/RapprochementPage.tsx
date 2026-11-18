@@ -34,7 +34,7 @@ export default function RapprochementPage() {
   if (loading) return <div className="flex items-center justify-center py-24 text-muted-foreground"><Loader className="h-5 w-5 animate-spin mr-2" />Chargement…</div>;
 
   return (
-    <div className="max-w-4xl mx-auto py-6 px-3">
+    <div className="max-w-[110rem] mx-auto py-6 px-3">
       <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
         <div className="flex items-center gap-2">
           {view !== 'list' && <button onClick={() => { setView('list'); setDetail(null); load(); }} className="p-1.5 hover:bg-secondary rounded-lg"><ArrowLeft className="h-4 w-4 text-muted-foreground" /></button>}

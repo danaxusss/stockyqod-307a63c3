@@ -256,7 +256,7 @@ export default function CataloguePage() {
   const scopeItems = selected.size ? products.filter(p => selected.has(p.id)) : filtered;
 
   return (
-    <div className="max-w-7xl mx-auto py-6 px-3">
+    <div className="max-w-[110rem] mx-auto py-6 px-3">
       <input ref={photoInput} type="file" accept="image/*" className="hidden"
         onChange={e => { onPhoto(e.target.files?.[0]); e.target.value = ''; }} />
 

@@ -357,7 +357,7 @@ export default function InvoiceDirectoryPage() {
   const field = 'rounded-lg border border-input bg-background px-2.5 py-2 text-sm text-foreground';
 
   return (
-    <div className="mx-auto max-w-7xl space-y-4">
+    <div className="mx-auto max-w-[110rem] space-y-4">
       <PageHeader
         title="Factures"
         subtitle={`${filtered.length} / ${invoices.length} facture${invoices.length !== 1 ? 's' : ''}`}

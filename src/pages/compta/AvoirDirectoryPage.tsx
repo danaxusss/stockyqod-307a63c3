@@ -152,7 +152,7 @@ export default function AvoirDirectoryPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto space-y-4">
+    <div className="max-w-[110rem] mx-auto space-y-4">
       <div className="glass rounded-xl shadow-lg p-4">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center space-x-2.5">

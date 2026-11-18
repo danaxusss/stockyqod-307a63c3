@@ -86,7 +86,7 @@ export default function DeclarationsPage() {
   const TABS: [Tab, string][] = [['cnss', 'CNSS / BDS'], ['ir', 'IR'], ['cimr', 'CIMR'], ['virements', 'Ordre de virement']];
 
   return (
-    <div className="max-w-4xl mx-auto py-6 px-3">
+    <div className="max-w-[110rem] mx-auto py-6 px-3">
       <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
         <div className="flex items-center gap-2">
           <div className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-primary/10"><FileSpreadsheet className="h-5 w-5 text-primary" /></div>

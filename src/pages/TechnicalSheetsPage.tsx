@@ -496,7 +496,7 @@ export function TechnicalSheetsPage() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto">
+    <div className="max-w-[110rem] mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>

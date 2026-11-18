@@ -119,7 +119,7 @@ export default function StockReportsPage() {
   const segment = (active: boolean) => `min-h-9 px-3 text-sm font-medium transition-colors ${active ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground hover:text-foreground'}`;
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-[110rem]">
       <PageHeader
         title="Valorisation & rapports"
         subtitle="Valeur du stock, rotation et articles dormants"

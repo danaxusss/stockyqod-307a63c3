@@ -244,7 +244,7 @@ function ImageFinder() {
   const altQuery = current ? barcodeQuery(current.barcode) : null;
 
   return (
-    <div className="mx-auto max-w-[1500px]">
+    <div className="mx-auto max-w-[110rem]">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
           <Link to="/photos" className="rounded-lg border border-border p-2 text-muted-foreground hover:bg-accent" aria-label="Retour à la galerie"><ArrowLeft className="h-4 w-4" /></Link>

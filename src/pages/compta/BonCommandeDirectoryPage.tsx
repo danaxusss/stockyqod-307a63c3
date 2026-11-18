@@ -128,7 +128,7 @@ export default function BonCommandeDirectoryPage() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-4">
+    <div className="max-w-[110rem] mx-auto space-y-4">
       <div className="glass rounded-xl shadow-lg p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
