@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ProductUploadService } from '../utils/productUploadService';
 import type { Product } from '../types';
 
-const db = vi.hoisted(() => ({ upserts: [] as Array<Record<string, unknown>[]>, movements: [] as unknown[] }));
+const db = vi.hoisted(() => ({ upserts: [] as Array<Record<string, unknown>[]>, movements: [] as unknown[], costs: [] as unknown[] }));
 
 vi.mock('../utils/supabaseCompanyFilter', () => ({ getCompanyContext: () => ({ companyId: 'c1' }) }));
 vi.mock('../utils/supabaseClient', () => ({
@@ -17,13 +17,17 @@ vi.mock('../utils/supabaseClient', () => ({
       upsert: async (rows: Record<string, unknown>[]) => { db.upserts.push(rows); return { error: null }; },
       insert: async (rows: unknown[]) => { db.movements.push(...rows); return { error: null }; },
     }),
+    rpc: async (fn: string, args: { p_costs: unknown[] }) => {
+      if (fn === 'stocky_set_product_costs') db.costs.push(...args.p_costs);
+      return { data: args.p_costs.length, error: null };
+    },
   },
 }));
 
 const product = (barcode: string, stock: Record<string, number>): Product =>
   ({ barcode, name: barcode, brand: 'B', provider: 'P', price: 10, buyprice: 5, reseller_price: 8, image: null, techsheet: '', stock_levels: stock }) as Product;
 
-afterEach(() => { db.upserts = []; db.movements = []; });
+afterEach(() => { db.upserts = []; db.movements = []; db.costs = []; });
 
 describe('Excel product import', () => {
   it('seeds stock for new products only and leaves existing stock untouched', async () => {
@@ -37,5 +41,8 @@ describe('Excel product import', () => {
     // Batches never mix rows with and without stock.
     expect(db.upserts.every(batch => batch.every(r => ('stock_levels' in r) === ('stock_levels' in batch[0])))).toBe(true);
     expect(db.movements).toEqual([expect.objectContaining({ barcode: 'NEW', location_key: 'DEP', quantity: 4, balance_after: 4 })]);
+    // Purchase prices go through the database function, not the upsert.
+    expect(rows.every(r => !('buyprice' in r))).toBe(true);
+    expect(db.costs).toEqual(expect.arrayContaining([{ barcode: 'OLD', buyprice: 5 }, { barcode: 'NEW', buyprice: 5 }]));
   });
 });

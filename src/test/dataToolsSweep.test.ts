@@ -176,6 +176,26 @@ describe('converter Excel cells', () => {
 });
 
 describe('product Excel import', () => {
+  // The database's purchase-price writer (an upsert can no longer set buyprice).
+  beforeEach(() => {
+    state.db.rpc.stocky_set_product_costs = ({ p_costs }: { p_costs: { barcode: string; buyprice: number }[] }) => {
+      for (const cost of p_costs) {
+        const row = state.db.tables.products.find(p => p.barcode === cost.barcode);
+        if (row) row.buyprice = cost.buyprice;
+      }
+      return p_costs.length;
+    };
+  });
+
+  it('saves purchase prices apart from the products upsert', async () => {
+    state.db.tables.products = [];
+    state.db.tables.product_name_overrides = [];
+    state.db.tables.stock_movements = [];
+    const [a] = products(1);
+    await ProductUploadService.uploadProducts([{ ...a, buyprice: 7 }]);
+    expect(state.db.tables.products[0].buyprice).toBe(7);
+  });
+
   it('never resets the stock of an existing product, past the 1,000-row cap and with a changing server order', async () => {
     state.db.tables.products = products(1500);
     state.db.tables.product_name_overrides = [];

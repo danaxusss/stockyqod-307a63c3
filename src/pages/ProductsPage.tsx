@@ -234,10 +234,13 @@ export default function ProductsPage() {
   const saveEdit = async (barcode: string) => {
     setIsSaving(true);
     try {
+      // The purchase price is sent only when it was changed: a catalogue
+      // loaded without it (reseller, failed read) must never write 0 over it.
+      const original = products.find(p => p.barcode === barcode);
       const values = {
         name: editForm.name,
         price: editForm.price,
-        buyprice: editForm.buyprice,
+        ...(original && Number(editForm.buyprice) === Number(original.buyprice) ? {} : { buyprice: editForm.buyprice }),
         reseller_price: editForm.reseller_price,
         provider: editForm.provider,
         ...(canEditProducts ? { kiosk_category: editForm.kiosk_category ?? null, sector_ids: editForm.sector_ids || [], series: normalizeSeries(editForm.series) } : {}),
@@ -527,7 +530,9 @@ export default function ProductsPage() {
   // type and sector columns, so they stay shown (and locked in the picker)
   // while it is on; a single row is edited in a panel under it instead.
   const BULK_COLUMNS: OptionalColumn[] = ['kiosk', 'sectors', 'series'];
-  const showColumn = (key: OptionalColumn) => columns.includes(key) || (bulkMode && BULK_COLUMNS.includes(key));
+  // Resellers are never sent purchase prices (the database withholds them).
+  const hidesCosts = getPriceDisplayType() === 'reseller';
+  const showColumn = (key: OptionalColumn) => !(key === 'buyprice' && hidesCosts) && (columns.includes(key) || (bulkMode && BULK_COLUMNS.includes(key)));
   const visibleColumnCount = 4 + (bulkMode ? 1 : 0) + COLUMN_OPTIONS.filter(option => showColumn(option.key)).length;
 
   return (
@@ -667,7 +672,7 @@ export default function ProductsPage() {
                           ) : (
                             <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
                               <span className="text-sm font-semibold text-foreground">{formatCurrency(product.price)}</span>
-                              <span className="text-[11px] text-muted-foreground">achat {formatCurrency(product.buyprice)}</span>
+                              {!hidesCosts && <span className="text-[11px] text-muted-foreground">achat {formatCurrency(product.buyprice)}</span>}
                               {renderStock(product)}
                             </div>
                           )}

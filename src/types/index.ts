@@ -178,6 +178,8 @@ export interface Company {
   qr_code_url: string;
   bl_show_prices: boolean;
   special_pin: string;
+  /** Users see only the documents they created (enforced by the database). */
+  restrict_docs_to_creator?: boolean;
   created_at: string;
   updated_at: string;
 }
