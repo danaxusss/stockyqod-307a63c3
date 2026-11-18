@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { clientIp, guard, rateLimit } from "../_shared/security.ts";
 import { verifySessionLive } from "../_shared/session.ts";
+import { appMetadataFor } from "../_shared/authSession.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -65,6 +66,20 @@ function userFields(payload: Record<string, unknown>, creating: boolean): { valu
   if (has("phone")) values.phone = typeof payload.phone === "string" ? payload.phone.trim().slice(0, 30) : "";
   if (has("tasks_role")) values.tasks_role = TASK_ROLES.includes(payload.tasks_role as string) ? payload.tasks_role : null;
   return { values };
+}
+
+/** Copy an app user's role and company into their hidden Auth account, if it exists. */
+async function syncAuthClaims(supabase: any, userId: string): Promise<void> {
+  try {
+    const { data: found } = await supabase.auth.admin.getUserById(userId);
+    if (!found?.user) return;
+    const { data: user } = await supabase.from("app_users")
+      .select("id, company_id, new_role, is_admin, is_superadmin").eq("id", userId).maybeSingle();
+    if (!user) return;
+    await supabase.auth.admin.updateUserById(userId, { app_metadata: appMetadataFor(user) });
+  } catch (e) {
+    console.warn(`[admin-users] auth claims of ${userId} not updated:`, e instanceof Error ? e.message : e);
+  }
 }
 
 serve(async (req) => {
@@ -171,6 +186,9 @@ serve(async (req) => {
         if (error.code === "23505") return jsonResponse({ error: "Ce nom d'utilisateur existe déjà" }, 409);
         return jsonResponse({ error: error.message }, 500);
       }
+      // Role and company claims of the user's Supabase session follow at its
+      // next refresh (within the hour).
+      await syncAuthClaims(supabase, user_id);
       return jsonResponse({ success: true, user: data });
     }
 
@@ -180,6 +198,9 @@ serve(async (req) => {
       if (user_id === caller.id) return jsonResponse({ error: "Vous ne pouvez pas supprimer votre propre compte." }, 400);
       const { error } = await supabase.from("app_users").delete().eq("id", user_id);
       if (error) return jsonResponse({ error: error.message }, 500);
+      // Close the deleted user's Supabase sessions too (their hidden account).
+      const { error: authError } = await supabase.auth.admin.deleteUser(user_id);
+      if (authError && !/not.?found/i.test(authError.message)) console.warn(`[admin-users] auth account of ${user_id} not deleted: ${authError.message}`);
       return jsonResponse({ success: true });
     }
 

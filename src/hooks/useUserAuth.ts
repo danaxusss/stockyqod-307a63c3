@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { ActivityLogger } from '../utils/activityLogger';
 import { setLastAuthError, rateLimitMessage } from '../utils/authError';
 import {
-  saveSession, readSession, clearSession, validateSessionShared,
+  saveSession, adoptAuthSession, readSession, clearSession, validateSessionShared,
   hasLocallyValidSession, touchSession, remainingMs,
 } from '../utils/session';
 
@@ -121,7 +121,7 @@ export function useUserAuth() {
     };
   }, []);
 
-  const applyLogin = useCallback((data: any, rememberMe: boolean): AppUser => {
+  const applyLogin = useCallback(async (data: any, rememberMe: boolean): Promise<AppUser> => {
     const user = data.user as AppUser;
     if (!data.session_token) {
       // The server verified the PIN but is running a build without session
@@ -133,6 +133,7 @@ export function useUserAuth() {
       );
     }
     saveSession(data.session_token ?? null, user, data.expires_at, rememberMe);
+    await adoptAuthSession(data.auth_session);
     setIsAuthenticated(true);
     setAuthenticatedUser(user);
     userAuthStateManager.notify();
@@ -146,7 +147,7 @@ export function useUserAuth() {
       });
       if (error) { setLastAuthError(await rateLimitMessage(error)); return false; }
       if (!data?.success) { setLastAuthError(null); return false; }
-      const user = applyLogin(data, rememberMe);
+      const user = await applyLogin(data, rememberMe);
       ActivityLogger.log('login', `User ${user.username} logged in`);
       return true;
     } catch (error) {
@@ -162,7 +163,7 @@ export function useUserAuth() {
       });
       if (error) { setLastAuthError(await rateLimitMessage(error)); return false; }
       if (!data?.success) { setLastAuthError(null); return false; }
-      applyLogin(data, rememberMe);
+      await applyLogin(data, rememberMe);
       return true;
     } catch (error) {
       console.error('PIN login failed:', error);
