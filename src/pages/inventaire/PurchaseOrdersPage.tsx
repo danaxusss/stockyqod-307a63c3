@@ -48,7 +48,7 @@ export default function PurchaseOrdersPage() {
   useEffect(() => { load(); }, [load]);
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-[110rem]">
       <PageHeader title="Commandes fournisseur" subtitle="Commandes fournisseurs → réception"
         actions={(
           <button onClick={() => setShowCreate(true)} className={opsPrimaryBtn}>

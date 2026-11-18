@@ -108,7 +108,7 @@ export default function PayslipsPage() {
   const selectCls = 'text-xs px-2 py-1.5 border border-input rounded-lg bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary';
 
   return (
-    <div className="space-y-4 max-w-5xl mx-auto">
+    <div className="space-y-4 max-w-[110rem] mx-auto">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div>
           <h1 className="text-lg font-bold text-foreground">Bulletins de paie</h1>

@@ -114,7 +114,7 @@ export default function PurchaseOrderDetailPage() {
   const dateFr = (d: string | null) => d ? new Date(d).toLocaleDateString('fr-FR') : '—';
 
   return (
-    <div className="mx-auto max-w-6xl pb-28 md:pb-0">
+    <div className="mx-auto max-w-[110rem] pb-28 md:pb-0">
       <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
         <div className="min-w-0">
           <nav aria-label="Fil d’Ariane" className="hidden items-center gap-1.5 text-sm text-muted-foreground sm:flex">

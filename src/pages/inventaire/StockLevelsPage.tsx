@@ -136,7 +136,7 @@ export default function StockLevelsPage() {
   const shown = useMemo(() => filtered.slice(pageStart, pageStart + pageSize), [filtered, pageStart, pageSize]);
 
   return (
-    <div className="mx-auto max-w-7xl">
+    <div className="mx-auto max-w-[110rem]">
       <PageHeader
         title="Niveaux de stock"
         subtitle={`${products.length} articles · ${locationKeys.length} emplacements`}

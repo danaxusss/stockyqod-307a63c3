@@ -463,7 +463,7 @@ export default function CompaniesPage() {
       setS({ share_templates: { ...(s?.share_templates || DEFAULT_SHARE_TEMPLATES), ...patch } });
 
     return (
-      <div className="max-w-4xl mx-auto space-y-4">
+      <div className="max-w-[110rem] mx-auto space-y-4">
         {/* Top bar */}
         <div className="glass rounded-xl shadow-lg p-4 flex items-center justify-between">
           <div className="flex items-center space-x-3">
@@ -790,7 +790,7 @@ export default function CompaniesPage() {
 
   // ---- LIST VIEW ----
   return (
-    <div className="max-w-7xl mx-auto space-y-4">
+    <div className="max-w-[110rem] mx-auto space-y-4">
       {/* Header */}
       <div className="glass rounded-xl shadow-lg p-4">
         <div className="flex items-center justify-between mb-4">

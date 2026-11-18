@@ -387,7 +387,7 @@ export default function BonCommandeDetailPage() {
     : 'bg-secondary text-muted-foreground ring-border';
 
   return (
-    <div className="mx-auto max-w-7xl pb-28 md:pb-0">
+    <div className="mx-auto max-w-[110rem] pb-28 md:pb-0">
       {/* Title */}
       <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
         <div className="min-w-0">

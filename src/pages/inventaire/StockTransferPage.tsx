@@ -107,7 +107,7 @@ export default function StockTransferPage() {
   const units = lines.reduce((s, l) => s + (Number(l.qty) || 0), 0);
 
   return (
-    <div className="mx-auto max-w-6xl pb-28 md:pb-0">
+    <div className="mx-auto max-w-[110rem] pb-28 md:pb-0">
       <PageHeader title="Transfert de stock" subtitle="Déplacer des articles entre emplacements" />
 
       {loading ? <OpsLoading /> : (

@@ -96,7 +96,7 @@ export default function StockMovementsPage() {
   const qtyClass = (q: number) => q >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300';
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-[110rem]">
       <PageHeader
         title="Mouvements de stock"
         subtitle={loading ? 'Journal des entrées, sorties et ajustements' : `${filtered.length} mouvement${filtered.length !== 1 ? 's' : ''} · entrées, sorties et ajustements`}

@@ -89,7 +89,7 @@ export default function StockDashboardPage() {
   const quickLink = 'flex min-h-10 items-center gap-2 rounded-lg border border-border bg-card px-3 text-sm font-semibold text-foreground hover:bg-secondary';
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-[110rem]">
       <PageHeader
         title="Stock"
         subtitle="Vue d’ensemble de l’inventaire"
