@@ -177,7 +177,7 @@ serve(async (req) => {
     if (!action) return json(req, { error: "action is required" }, 400);
 
     // ── Public tablet endpoints ─────────────────────────────────────────────
-    if (action === "public_profile" || action === "public_catalog" || action === "public_submit") {
+    if (action === "public_profile" || action === "public_catalog" || action === "public_brands" || action === "public_submit") {
       const token = text(body.token, 80);
       if (!UUID_RE.test(token)) return json(req, { error: "Kiosk unavailable" }, 404);
 
@@ -226,6 +226,30 @@ serve(async (req) => {
           })),
           brand_series: brandSeries,
         });
+      }
+
+      // Brands and their series for the filters in use (all but brand/series).
+      if (action === "public_brands") {
+        const search = text(body.search, 100);
+        const category = ["utensils", "furniture", "equipment", "decoration", "raw_materials"].includes(body.category) ? body.category : null;
+        const sector = UUID_RE.test(text(body.sector, 80)) ? text(body.sector, 80) : null;
+        const { data, error } = await supabase.rpc("kiosk_filter_brands", {
+          p_profile_id: kiosk.id,
+          p_search: search,
+          p_category: category,
+          p_sector: sector,
+          p_only_available: body.only_available === true,
+          p_featured_only: body.featured_only === true,
+        });
+        if (error) throw error;
+        const brands: string[] = [];
+        const brandSeries: Record<string, string[]> = {};
+        for (const row of (data || []) as Array<{ brand: string; series: string | null }>) {
+          if (!row.brand) continue;
+          if (!brands.includes(row.brand)) brands.push(row.brand);
+          if (row.series) (brandSeries[row.brand] ||= []).push(row.series);
+        }
+        return json(req, { brands, brand_series: brandSeries });
       }
 
       if (action === "public_catalog") {

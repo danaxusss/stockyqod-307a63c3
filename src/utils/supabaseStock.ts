@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient';
 import { getCompanyContext } from './supabaseCompanyFilter';
+import { loadProductCosts, withProductCosts } from './productCosts';
 import type { Product, StockMovement, StockMovementType, StockSourceType, ProductStockSetting } from '../types';
 
 export interface ApplyMovementParams {
@@ -50,10 +51,12 @@ export class StockService {
     // The API returns at most 1000 rows per request: read every page.
     const pageSize = 1000;
     const rows: any[] = [];
+    // Purchase prices come apart (empty for resellers): see productCosts.ts.
+    const costsPromise = loadProductCosts();
     for (let from = 0; ; from += pageSize) {
       const { data, error } = await supabase
         .from('products')
-        .select('barcode, name, brand, image, price, buyprice, reseller_price, provider, stock_levels, updated_at')
+        .select('barcode, name, brand, image, price, reseller_price, provider, stock_levels, updated_at')
         .order('name', { ascending: true })
         .order('barcode', { ascending: true })
         .range(from, from + pageSize - 1);
@@ -61,10 +64,10 @@ export class StockService {
       rows.push(...(data || []));
       if (!data || data.length < pageSize) break;
     }
-    return rows.map((p: any) => ({
+    return withProductCosts(rows.map((p: any) => ({
       ...p,
       stock_levels: (p.stock_levels || {}) as Record<string, number>,
-    })) as Product[];
+    })), await costsPromise) as Product[];
   }
 
   /**

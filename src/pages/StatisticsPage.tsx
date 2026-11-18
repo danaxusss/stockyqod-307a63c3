@@ -18,6 +18,8 @@ import { useAppContext } from '../context/AppContext';
 import { SupabaseQuotesService } from '../utils/supabaseQuotes';
 import { SupabaseUsersService } from '../utils/supabaseUsers';
 import { Quote, AppUser } from '../types';
+import { PageHeader, Panel } from '../components/PageHeader';
+import { EmptyState, KpiTile, LoadingState, panel } from '../components/backoffice/BackOfficeUi';
 
 interface ProductStats {
   totalProducts: number;
@@ -74,20 +76,14 @@ export function StatisticsPage() {
   // Redirect if not admin
   if (!isAdmin) {
     return (
-      <div className="max-w-4xl mx-auto">
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl p-8 text-center">
-          <BarChart3 className="h-16 w-16 text-red-600 dark:text-red-400 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-red-900 dark:text-red-100 mb-2">
-            Accès Refusé
-          </h1>
-          <p className="text-red-700 dark:text-red-300">
-            Vous devez être administrateur pour accéder aux statistiques.
-          </p>
+      <div className="mx-auto max-w-[110rem]">
+        <div className={panel}>
+          <EmptyState icon={BarChart3} title={<span className="text-base font-semibold">Accès Refusé</span>}
+            hint="Vous devez être administrateur pour accéder aux statistiques." />
         </div>
       </div>
     );
   }
-
 
   const calculateProductStats = (products: any[]): ProductStats => {
     const totalProducts = products.length;
@@ -219,265 +215,152 @@ export function StatisticsPage() {
   };
 
   if (isLoading) {
-    return (
-      <div className="max-w-7xl mx-auto">
-        <div className="text-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
-          <p className="text-muted-foreground mt-4">Chargement des statistiques...</p>
-        </div>
-      </div>
-    );
+    return <LoadingState label="Chargement des statistiques..." />;
   }
 
+  const listRow = 'flex items-center justify-between gap-3 px-4 py-2.5 text-sm sm:px-5';
+  const subTitle = (Icon: typeof Package, label: string) => (
+    <span className="flex items-center gap-2"><Icon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />{label}</span>
+  );
+  const rankTone = (index: number) => index === 0 ? 'bg-amber-500 text-white' : index === 1 ? 'bg-slate-400 text-white' : index === 2 ? 'bg-orange-600 text-white' : 'bg-secondary text-muted-foreground ring-1 ring-inset ring-border';
+  const share = (n: number) => quoteStats && quoteStats.totalQuotes ? (n / quoteStats.totalQuotes) * 100 : 0;
+
   return (
-    <div className="max-w-[110rem] mx-auto space-y-4">
-      {/* Header */}
-      <div className="glass rounded-xl shadow-lg p-4">
-        <div className="flex items-center space-x-2.5">
-          <div className="p-2 bg-primary rounded-lg">
-            <BarChart3 className="h-4 w-4 text-primary-foreground" />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold text-foreground">Statistiques</h1>
-            <p className="text-xs text-muted-foreground">Vue d'ensemble inventaire & activité</p>
-          </div>
-        </div>
-      </div>
+    <div className="mx-auto max-w-[110rem] space-y-6">
+      <PageHeader title="Statistiques" subtitle="Vue d'ensemble inventaire & activité" />
 
       {/* Product & Inventory Statistics */}
-      <div className="glass rounded-xl shadow-lg p-4">
-        <h2 className="text-base font-semibold text-foreground mb-4 flex items-center space-x-2">
-          <Package className="h-4 w-4" />
-          <span>Produits & Inventaire</span>
+      <section className="space-y-3">
+        <h2 className="flex items-center gap-2 text-base font-semibold text-foreground">
+          <Package className="h-4 w-4 text-primary" /><span>Produits & Inventaire</span>
         </h2>
 
         {productStats && (
           <>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-              <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">
-                <div className="flex items-center space-x-2">
-                  <Package className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                  <div>
-                    <p className="text-[11px] text-blue-600 dark:text-blue-400">Produits</p>
-                    <p className="text-lg font-bold text-blue-900 dark:text-blue-100">{formatNumber(productStats.totalProducts)}</p>
-                  </div>
-                </div>
-              </div>
-              <div className="bg-emerald-50 dark:bg-emerald-900/20 p-3 rounded-lg">
-                <div className="flex items-center space-x-2">
-                  <DollarSign className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-                  <div>
-                    <p className="text-[11px] text-emerald-600 dark:text-emerald-400">Valeur Stock</p>
-                    <p className="text-lg font-bold text-emerald-900 dark:text-emerald-100">{formatCurrency(productStats.totalStockValue)} Dh</p>
-                  </div>
-                </div>
-              </div>
-              <div className="bg-orange-50 dark:bg-orange-900/20 p-3 rounded-lg">
-                <div className="flex items-center space-x-2">
-                  <Building className="h-5 w-5 text-orange-600 dark:text-orange-400" />
-                  <div>
-                    <p className="text-[11px] text-orange-600 dark:text-orange-400">Marques</p>
-                    <p className="text-lg font-bold text-orange-900 dark:text-orange-100">{productStats.brandDistribution.length}</p>
-                  </div>
-                </div>
-              </div>
-              <div className="bg-red-50 dark:bg-red-900/20 p-3 rounded-lg">
-                <div className="flex items-center space-x-2">
-                  <Target className="h-5 w-5 text-red-600 dark:text-red-400" />
-                  <div>
-                    <p className="text-[11px] text-red-600 dark:text-red-400">Stock Faible</p>
-                    <p className="text-lg font-bold text-red-900 dark:text-red-100">{formatNumber(productStats.lowStockProducts)}</p>
-                  </div>
-                </div>
-              </div>
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <KpiTile icon={Package} tone="text-blue-600 bg-blue-500/10 dark:text-blue-400" label="Produits" value={formatNumber(productStats.totalProducts)} />
+              <KpiTile icon={DollarSign} tone="text-emerald-600 bg-emerald-500/10 dark:text-emerald-400" label="Valeur Stock" value={`${formatCurrency(productStats.totalStockValue)} Dh`} />
+              <KpiTile icon={Building} tone="text-orange-600 bg-orange-500/10 dark:text-orange-400" label="Marques" value={productStats.brandDistribution.length} />
+              <KpiTile icon={Target} tone="text-red-600 bg-red-500/10 dark:text-red-400" label="Stock Faible" value={formatNumber(productStats.lowStockProducts)} />
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-              <div>
-                <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center space-x-1.5">
-                  <MapPin className="h-4 w-4" /><span>Stock par Emplacement</span>
-                </h3>
-                <div className="space-y-2">
+            <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+              <Panel title={subTitle(MapPin, 'Stock par Emplacement')}>
+                <ul className="divide-y divide-border">
                   {productStats.stockByLocation.slice(0, 5).map((location) => (
-                    <div key={location.location} className="flex items-center justify-between p-2 bg-secondary rounded-lg text-sm">
-                      <div>
-                        <p className="font-medium text-foreground capitalize">{location.location.replace(/_/g, ' ')}</p>
+                    <li key={location.location} className={listRow}>
+                      <div className="min-w-0">
+                        <p className="truncate font-medium capitalize text-foreground">{location.location.replace(/_/g, ' ')}</p>
                         <p className="text-xs text-muted-foreground">{formatNumber(location.count)} articles</p>
                       </div>
-                      <p className="font-semibold text-emerald-600 dark:text-emerald-400 text-sm">{formatCurrency(location.value)} Dh</p>
-                    </div>
+                      <p className="shrink-0 font-semibold tabular-nums text-emerald-700 dark:text-emerald-300">{formatCurrency(location.value)} Dh</p>
+                    </li>
                   ))}
-                </div>
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center space-x-1.5">
-                  <Building className="h-4 w-4" /><span>Top Marques</span>
-                </h3>
-                <div className="space-y-2">
+                </ul>
+              </Panel>
+              <Panel title={subTitle(Building, 'Top Marques')}>
+                <ul className="divide-y divide-border">
                   {productStats.brandDistribution.slice(0, 5).map((brand) => (
-                    <div key={brand.brand} className="flex items-center justify-between p-2 bg-secondary rounded-lg text-sm">
-                      <div>
-                        <p className="font-medium text-foreground">{brand.brand}</p>
+                    <li key={brand.brand} className={listRow}>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-medium text-foreground">{brand.brand}</p>
                         <p className="text-xs text-muted-foreground">{formatNumber(brand.count)} produits</p>
+                        <span className="mt-1.5 block h-1.5 w-full max-w-[16rem] overflow-hidden rounded-full bg-secondary" aria-hidden="true">
+                          <span className="block h-full rounded-full bg-primary" style={{ width: `${Math.min(100, brand.percentage)}%` }} />
+                        </span>
                       </div>
-                      <p className="font-semibold text-blue-600 dark:text-blue-400 text-sm">{brand.percentage.toFixed(1)}%</p>
-                    </div>
+                      <p className="shrink-0 font-semibold tabular-nums text-foreground">{brand.percentage.toFixed(1)}%</p>
+                    </li>
                   ))}
-                </div>
-              </div>
+                </ul>
+              </Panel>
             </div>
           </>
         )}
-      </div>
+      </section>
 
       {/* Sellers & Quotes */}
-      <div className="glass rounded-xl shadow-lg p-4">
-        <h2 className="text-base font-semibold text-foreground mb-4 flex items-center space-x-2">
-          <FileText className="h-4 w-4" /><span>Vendeurs & Devis</span>
+      <section className="space-y-3">
+        <h2 className="flex items-center gap-2 text-base font-semibold text-foreground">
+          <FileText className="h-4 w-4 text-primary" /><span>Vendeurs & Devis</span>
         </h2>
 
         {quoteStats && (
           <>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-              <div className="bg-primary/10 p-3 rounded-lg">
-                <div className="flex items-center space-x-2">
-                  <FileText className="h-5 w-5 text-primary" />
-                  <div>
-                    <p className="text-[11px] text-primary">Total Devis</p>
-                    <p className="text-lg font-bold text-foreground dark:text-foreground">{formatNumber(quoteStats.totalQuotes)}</p>
-                  </div>
-                </div>
-              </div>
-              <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-lg">
-                <div className="flex items-center space-x-2">
-                  <DollarSign className="h-5 w-5 text-green-600 dark:text-green-400" />
-                  <div>
-                    <p className="text-[11px] text-green-600 dark:text-green-400">Valeur Totale</p>
-                    <p className="text-lg font-bold text-green-900 dark:text-green-100">{formatCurrency(quoteStats.totalValue)} Dh</p>
-                  </div>
-                </div>
-              </div>
-              <div className="bg-primary/10 p-3 rounded-lg">
-                <div className="flex items-center space-x-2">
-                  <TrendingUp className="h-5 w-5 text-primary" />
-                  <div>
-                    <p className="text-[11px] text-primary">Moy.</p>
-                    <p className="text-lg font-bold text-foreground dark:text-foreground">{formatCurrency(quoteStats.averageQuoteValue)} Dh</p>
-                  </div>
-                </div>
-              </div>
-              <div className="bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded-lg">
-                <div className="flex items-center space-x-2">
-                  <Calendar className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
-                  <div>
-                    <p className="text-[11px] text-yellow-600 dark:text-yellow-400">Ce Mois</p>
-                    <p className="text-lg font-bold text-yellow-900 dark:text-yellow-100">{formatNumber(quoteStats.quotesThisMonth)}</p>
-                  </div>
-                </div>
-              </div>
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <KpiTile icon={FileText} label="Total Devis" value={formatNumber(quoteStats.totalQuotes)} />
+              <KpiTile icon={DollarSign} tone="text-emerald-600 bg-emerald-500/10 dark:text-emerald-400" label="Valeur Totale" value={`${formatCurrency(quoteStats.totalValue)} Dh`} />
+              <KpiTile icon={TrendingUp} label="Moy." value={`${formatCurrency(quoteStats.averageQuoteValue)} Dh`} />
+              <KpiTile icon={Calendar} tone="text-amber-600 bg-amber-500/10 dark:text-amber-400" label="Ce Mois" value={formatNumber(quoteStats.quotesThisMonth)} />
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-              <div>
-                <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center space-x-1.5">
-                  <Award className="h-4 w-4" /><span>Top Vendeurs</span>
-                </h3>
-                <div className="space-y-2">
+            <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+              <Panel title={subTitle(Award, 'Top Vendeurs')}>
+                <ul className="divide-y divide-border">
                   {quoteStats.topSellers.map((seller, index) => (
-                    <div key={seller.name} className="flex items-center justify-between p-2 bg-secondary rounded-lg">
-                      <div className="flex items-center space-x-2">
-                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-primary-foreground text-xs font-bold ${
-                          index === 0 ? 'bg-yellow-500' : index === 1 ? 'bg-gray-400' : index === 2 ? 'bg-orange-600' : 'bg-blue-500'
-                        }`}>{index + 1}</div>
-                        <div>
-                          <p className="text-sm font-medium text-foreground">{seller.name}</p>
+                    <li key={seller.name} className={listRow}>
+                      <div className="flex min-w-0 items-center gap-3">
+                        <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${rankTone(index)}`}>{index + 1}</span>
+                        <div className="min-w-0">
+                          <p className="truncate font-medium text-foreground">{seller.name}</p>
                           <p className="text-xs text-muted-foreground">{formatNumber(seller.quotesCount)} devis</p>
                         </div>
                       </div>
-                      <p className="font-semibold text-emerald-600 dark:text-emerald-400 text-sm">{formatCurrency(seller.totalValue)} Dh</p>
-                    </div>
+                      <p className="shrink-0 font-semibold tabular-nums text-emerald-700 dark:text-emerald-300">{formatCurrency(seller.totalValue)} Dh</p>
+                    </li>
                   ))}
-                </div>
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center space-x-1.5">
-                  <Activity className="h-4 w-4" /><span>Activité Récente</span>
-                </h3>
-                <div className="space-y-2 max-h-60 overflow-y-auto">
+                </ul>
+              </Panel>
+              <Panel title={subTitle(Activity, 'Activité Récente')}>
+                <ul className="max-h-72 divide-y divide-border overflow-y-auto">
                   {quoteStats.recentActivity.map((activity, index) => (
-                    <div key={index} className="flex items-start space-x-2 p-2 bg-secondary rounded-lg">
-                      <div className="w-1.5 h-1.5 bg-blue-500 rounded-full mt-1.5 flex-shrink-0"></div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-foreground">{activity.action}</p>
-                        <p className="text-[11px] text-muted-foreground truncate">{activity.details}</p>
-                        <p className="text-[10px] text-gray-500">{activity.date.toLocaleDateString('fr-FR')} à {activity.date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</p>
+                    <li key={index} className="flex items-start gap-3 px-4 py-2.5 sm:px-5">
+                      <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary" aria-hidden="true" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-foreground">{activity.action}</p>
+                        <p className="truncate text-xs text-muted-foreground">{activity.details}</p>
+                        <p className="text-xs text-muted-foreground">{activity.date.toLocaleDateString('fr-FR')} à {activity.date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</p>
                       </div>
-                    </div>
+                    </li>
                   ))}
-                </div>
-              </div>
+                </ul>
+              </Panel>
             </div>
 
             {/* Status Distribution */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded-lg">
-                <div className="flex items-center space-x-2">
-                  <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
-                  <div>
-                    <p className="text-[11px] text-yellow-600 dark:text-yellow-400">En attente</p>
-                    <p className="text-base font-bold text-yellow-900 dark:text-yellow-100">{formatNumber(quoteStats.draftQuotes)} ({((quoteStats.draftQuotes / quoteStats.totalQuotes) * 100).toFixed(1)}%)</p>
-                  </div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className={`${panel} p-4`}>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="flex items-center gap-2 text-sm font-medium text-muted-foreground"><span className="h-2.5 w-2.5 rounded-full bg-amber-500" aria-hidden="true" />En attente</span>
+                  <span className="text-base font-bold tabular-nums text-foreground">{formatNumber(quoteStats.draftQuotes)} ({((quoteStats.draftQuotes / quoteStats.totalQuotes) * 100).toFixed(1)}%)</span>
                 </div>
+                <span className="mt-3 block h-2 overflow-hidden rounded-full bg-secondary" aria-hidden="true"><span className="block h-full rounded-full bg-amber-500" style={{ width: `${share(quoteStats.draftQuotes)}%` }} /></span>
               </div>
-              <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-lg">
-                <div className="flex items-center space-x-2">
-                  <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                  <div>
-                    <p className="text-[11px] text-green-600 dark:text-green-400">Finalisés</p>
-                    <p className="text-base font-bold text-green-900 dark:text-green-100">{formatNumber(quoteStats.finalQuotes)} ({((quoteStats.finalQuotes / quoteStats.totalQuotes) * 100).toFixed(1)}%)</p>
-                  </div>
+              <div className={`${panel} p-4`}>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="flex items-center gap-2 text-sm font-medium text-muted-foreground"><span className="h-2.5 w-2.5 rounded-full bg-emerald-500" aria-hidden="true" />Finalisés</span>
+                  <span className="text-base font-bold tabular-nums text-foreground">{formatNumber(quoteStats.finalQuotes)} ({((quoteStats.finalQuotes / quoteStats.totalQuotes) * 100).toFixed(1)}%)</span>
                 </div>
+                <span className="mt-3 block h-2 overflow-hidden rounded-full bg-secondary" aria-hidden="true"><span className="block h-full rounded-full bg-emerald-500" style={{ width: `${share(quoteStats.finalQuotes)}%` }} /></span>
               </div>
             </div>
           </>
         )}
-      </div>
+      </section>
 
       {/* Users Overview */}
-      <div className="glass rounded-xl shadow-lg p-4">
-        <h2 className="text-base font-semibold text-foreground mb-4 flex items-center space-x-2">
-          <Users className="h-4 w-4" /><span>Utilisateurs</span>
+      <section className="space-y-3">
+        <h2 className="flex items-center gap-2 text-base font-semibold text-foreground">
+          <Users className="h-4 w-4 text-primary" /><span>Utilisateurs</span>
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">
-            <div className="flex items-center space-x-2">
-              <Users className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-              <div>
-                <p className="text-[11px] text-blue-600 dark:text-blue-400">Total</p>
-                <p className="text-lg font-bold text-blue-900 dark:text-blue-100">{formatNumber(users.length)}</p>
-              </div>
-            </div>
-          </div>
-          <div className="bg-primary/10 p-3 rounded-lg">
-            <div className="flex items-center space-x-2">
-              <Award className="h-5 w-5 text-primary" />
-              <div>
-                <p className="text-[11px] text-primary">Admins</p>
-                <p className="text-lg font-bold text-foreground dark:text-foreground">{formatNumber(users.filter(u => u.is_admin).length)}</p>
-              </div>
-            </div>
-          </div>
-          <div className="bg-emerald-50 dark:bg-emerald-900/20 p-3 rounded-lg">
-            <div className="flex items-center space-x-2">
-              <FileText className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-              <div>
-                <p className="text-[11px] text-emerald-600 dark:text-emerald-400">Accès Devis</p>
-                <p className="text-lg font-bold text-emerald-900 dark:text-emerald-100">{formatNumber(users.filter(u => u.can_create_quote).length)}</p>
-              </div>
-            </div>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+          <KpiTile icon={Users} tone="text-blue-600 bg-blue-500/10 dark:text-blue-400" label="Total" value={formatNumber(users.length)} />
+          <KpiTile icon={Award} label="Admins" value={formatNumber(users.filter(u => u.is_admin).length)} />
+          <div className="col-span-2 md:col-span-1">
+            <KpiTile icon={FileText} tone="text-emerald-600 bg-emerald-500/10 dark:text-emerald-400" label="Accès Devis" value={formatNumber(users.filter(u => u.can_create_quote).length)} />
           </div>
         </div>
-      </div>
+      </section>
     </div>
   );
 }

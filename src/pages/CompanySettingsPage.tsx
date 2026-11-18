@@ -8,6 +8,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 import UserManagementPage from './UserManagementPage';
 import { StockLocationsTab } from '../components/StockLocationsTab';
+import { DocumentVisibilitySetting } from '../components/settings/DocumentVisibilitySetting';
 import { supabase } from '@/integrations/supabase/client';
 import { readAll, type Pageable } from '../utils/readAll';
 
@@ -867,6 +868,7 @@ export default function CompanySettingsPage() {
         </TabsList>
 
         <TabsContent value="company">
+          <DocumentVisibilitySetting companyId={companyId} />
           <CompanySettingsTab />
         </TabsContent>
 

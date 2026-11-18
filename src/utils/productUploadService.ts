@@ -2,6 +2,7 @@ import { supabase } from './supabaseClient';
 import { getCompanyContext } from './supabaseCompanyFilter';
 import { Product } from '../types';
 import { readAll, type Pageable } from './readAll';
+import { PRODUCT_COLUMNS, costsSavedSeparately, loadProductCosts, saveProductCosts, withProductCosts } from './productCosts';
 
 export class ProductUploadService {
   static async uploadProducts(products: Product[]): Promise<void> {
@@ -106,6 +107,9 @@ export class ProductUploadService {
     let totalUploaded = 0;
     let totalFailed = 0;
 
+    // Purchase prices are saved apart once the database protects them (an
+    // upsert can no longer set that column); before, in the upsert as always.
+    const separateCosts = await costsSavedSeparately();
     const upsert = async (list: Product[], withStock: boolean) => {
       for (let i = 0; i < list.length; i += BATCH_SIZE) {
         const batch = list.slice(i, i + BATCH_SIZE);
@@ -117,7 +121,7 @@ export class ProductUploadService {
           kiosk_category: p.kiosk_category ?? null,
           techsheet: p.techsheet,
           price: p.price,
-          buyprice: p.buyprice,
+          ...(separateCosts ? {} : { buyprice: p.buyprice }),
           reseller_price: p.reseller_price,
           provider: p.provider,
           ...(withStock ? { stock_levels: p.stock_levels as unknown as import('@/integrations/supabase/types').Json } : {}),
@@ -127,6 +131,15 @@ export class ProductUploadService {
           .from('products') as any)
           .upsert(rows, { onConflict: 'barcode', ignoreDuplicates: false });
 
+        if (!error && separateCosts) {
+          try {
+            await saveProductCosts(batch);
+          } catch (costError) {
+            console.error('Purchase prices of a batch not saved:', costError);
+            totalFailed += batch.length;
+            continue;
+          }
+        }
         if (error) {
           console.error(`Batch failed:`, error);
           totalFailed += batch.length;
@@ -217,7 +230,7 @@ export class ProductUploadService {
   static async getProductCount(): Promise<number> {
     const { count, error } = await supabase
       .from('products')
-      .select('*', { count: 'exact', head: true });
+      .select('barcode', { count: 'exact', head: true });
 
     if (error) {
       throw new Error(`Failed to get product count: ${error.message}`);
@@ -234,9 +247,12 @@ export class ProductUploadService {
     // one after another made the start of the app wait for each in turn.
     const BATCH_SIZE = 1000;
     const pages = Math.ceil(totalCount / BATCH_SIZE);
+    // The purchase price is read apart (product_costs, empty for resellers):
+    // the database no longer hands that column out with the products.
+    const costsPromise = loadProductCosts();
     const results = await Promise.all(Array.from({ length: pages }, (_, index) => supabase
       .from('products')
-      .select('*')
+      .select(PRODUCT_COLUMNS)
       .order('name')
       .order('barcode') // names repeat: a unique last key keeps the pages stable
       .range(index * BATCH_SIZE, index * BATCH_SIZE + BATCH_SIZE - 1)));
@@ -257,7 +273,7 @@ export class ProductUploadService {
           series: row.series ?? null,
           techsheet: row.techsheet,
           price: Number(row.price),
-          buyprice: Number(row.buyprice),
+          buyprice: 0,
           reseller_price: Number(row.reseller_price),
           provider: row.provider,
           stock_levels: (row.stock_levels || {}) as Record<string, number>,
@@ -267,7 +283,7 @@ export class ProductUploadService {
       }
     }
 
-    return allProducts;
+    return withProductCosts(allProducts, await costsPromise);
   }
 
   static async analyzeProducts(): Promise<{

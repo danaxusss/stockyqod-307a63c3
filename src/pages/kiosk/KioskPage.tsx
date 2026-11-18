@@ -131,6 +131,9 @@ export default function KioskPage() {
   const [brandSeries, setBrandSeries] = useState<Record<string, string[]>>({});
   const [series, setSeries] = useState<string | null>(null);
   const [brandsOpen, setBrandsOpen] = useState(false);
+  // Brands (and series) that still have products for the other filters;
+  // null until known, or when the kiosk function is older: then all brands.
+  const [filteredBrands, setFilteredBrands] = useState<{ brands: string[]; brand_series: Record<string, string[]> } | null>(null);
   const [sort, setSort] = useState<KioskSort>('relevance');
   // A series belongs to one brand: changing brand clears it.
   const chooseBrand = (value: string) => { setBrand(value); setSeries(null); };
@@ -348,6 +351,20 @@ export default function KioskPage() {
 
   // Price sorts only where prices are shown (the kiosk function also ignores them).
   const effectiveSort: KioskSort = !profile?.show_prices && sort.startsWith('price') ? 'relevance' : sort;
+  // The brand row only offers brands that still have products for the
+  // category, sector, search and availability chosen.
+  useEffect(() => {
+    if (!profile || stage !== 'catalog') return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      Promise.resolve()
+        .then(() => KioskService.listPublicBrands(token, { search: debouncedQuery, category, onlyAvailable, featuredOnly, sector }))
+        .then(result => { if (!cancelled) setFilteredBrands({ brands: result.brands || [], brand_series: result.brand_series || {} }); })
+        .catch(() => { if (!cancelled) setFilteredBrands(null); });
+    }, 150);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [profile, stage, token, debouncedQuery, category, onlyAvailable, featuredOnly, sector]);
+
   const catalogKey = JSON.stringify([debouncedQuery, category, brand, series, effectiveSort, onlyAvailable, featuredOnly, sector, catalogReload]);
 
   useEffect(() => {
@@ -521,7 +538,10 @@ export default function KioskPage() {
     relevance: t.sortRelevance, price_asc: t.sortPriceAsc, price_desc: t.sortPriceDesc,
     name: t.sortName, available: t.sortAvailable, newest: t.sortNewest,
   };
-  const brandSeriesList = brand ? sortSeries(brandSeries[brand] || []) : [];
+  // The chosen brand stays listed even if the other filters no longer match it.
+  const shownBrands = filteredBrands ? (brand && !filteredBrands.brands.includes(brand) ? [brand, ...filteredBrands.brands] : filteredBrands.brands) : brands;
+  const seriesOf = (value: string) => sortSeries((filteredBrands?.brand_series ?? brandSeries)[value] || []);
+  const brandSeriesList = brand ? seriesOf(brand) : [];
   const sectorName = (id: string) => { const item = sectors.find(s => s.id === id); return item ? sectorLabel(item, language) : ''; };
 
   return (
@@ -597,7 +617,7 @@ export default function KioskPage() {
                 <Chip active={!category && !featuredOnly} label={t.all} onClick={() => selectCategory(null)} />
                 {featured.length > 0 && <Chip active={featuredOnly} label={`★ ${t.featured}`} onClick={() => selectCategory(null, true)} />}
                 {KIOSK_CATEGORY_VALUES.map(value => <Chip key={value} active={category === value} label={t[value]} onClick={() => selectCategory(value)} />)}
-                {brands.length > 0 && (
+                {shownBrands.length > 0 && (
                   <>
                     <span aria-hidden="true" className="mx-1 w-px self-stretch bg-slate-200" />
                     {/* Shows the chosen brand and series, so the row can stay closed. */}
@@ -609,7 +629,7 @@ export default function KioskPage() {
               </div>
             </div>
             {/* One row: the brands, then once a brand is chosen, that brand and its series. */}
-            {brandsOpen && brands.length > 0 && (
+            {brandsOpen && shownBrands.length > 0 && (
               <div className="mx-auto max-w-[1800px] overflow-x-auto border-t border-slate-100 bg-slate-50 px-3 py-2.5">
                 {brand ? (
                   <div role="group" aria-label={brandSeriesList.length > 0 ? t.series : brand} className="flex min-w-max items-center gap-2">
@@ -629,7 +649,7 @@ export default function KioskPage() {
                   </div>
                 ) : (
                   <div role="group" aria-label={t.brands} className="flex min-w-max gap-2">
-                    {brands.map(value => <Chip key={value} active={false} label={value} onClick={() => chooseBrand(value)} />)}
+                    {shownBrands.map(value => <Chip key={value} active={false} label={<BrandLabel name={value} series={seriesOf(value)} />} onClick={() => chooseBrand(value)} />)}
                   </div>
                 )}
               </div>
@@ -688,10 +708,16 @@ export default function KioskPage() {
                 {sectors.map(item => <Chip key={item.id} active={sector === item.id} label={sectorLabel(item, language)} onClick={() => setSector(item.id)} />)}
               </FilterGroup>
             )}
-            {brands.length > 0 && (
+            {shownBrands.length > 0 && (
               <FilterGroup label={t.brand}>
                 <Chip active={!brand} label={t.allBrands} onClick={() => chooseBrand('')} />
-                {brands.map(value => <Chip key={value} active={brand === value} label={value} onClick={() => chooseBrand(value)} />)}
+                {shownBrands.map(value => <Chip key={value} active={brand === value} label={<BrandLabel name={value} series={seriesOf(value)} />} onClick={() => chooseBrand(value)} />)}
+              </FilterGroup>
+            )}
+            {brandSeriesList.length > 0 && (
+              <FilterGroup label={t.series}>
+                <Chip active={!series} label={t.all} onClick={() => setSeries(null)} />
+                {brandSeriesList.map(value => <Chip key={value} active={series === value} label={value} onClick={() => setSeries(value)} />)}
               </FilterGroup>
             )}
             <label className="flex min-h-14 cursor-pointer items-center justify-between gap-4 rounded-2xl border-2 border-slate-200 px-4 text-base font-bold">
@@ -819,4 +845,15 @@ function ActivePill({ label, onRemove, removeLabel }: { label: string; onRemove:
 
 function KioskCentered({ children }: { children: ReactNode }) {
   return <main className="min-h-screen flex flex-col items-center justify-center gap-4 bg-slate-50 p-6 text-center text-slate-600">{children}</main>;
+}
+
+/** A brand chip; brands with series show them, so customers know there is a next step. */
+function BrandLabel({ name, series }: { name: string; series: string[] }) {
+  if (!series.length) return <>{name}</>;
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {name}
+      <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-xs font-bold text-slate-500">{series.join(' · ')}</span>
+    </span>
+  );
 }

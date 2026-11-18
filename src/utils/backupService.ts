@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient';
-import { readAll } from './readAll';
+import { readAll, type Pageable } from './readAll';
+import { PRODUCT_COLUMNS, costsSavedSeparately, loadProductCosts, saveProductCosts, withProductCosts } from './productCosts';
 
 export interface BackupData {
   version: string;
@@ -53,6 +54,15 @@ const missingTable = (error: unknown) => {
 async function fetchAllRows(table: string, key: string[]): Promise<unknown[] | null> {
   const [last, ...firsts] = [...key].reverse();
   try {
+    // products: the purchase price is not readable with the table any more
+    // (see productCosts.ts); it is read apart and put back in each row.
+    if (table === 'products') {
+      const [rows, costs] = await Promise.all([
+        readAll<{ barcode: string }>(() => supabase.from('products').select(PRODUCT_COLUMNS) as unknown as Pageable<{ barcode: string }>, 'barcode'),
+        loadProductCosts(),
+      ]);
+      return withProductCosts(rows, costs);
+    }
     return await readAll(() => {
       let q = (supabase as any).from(table).select('*');
       for (const col of firsts.reverse()) q = q.order(col);
@@ -121,11 +131,18 @@ export class BackupService {
       let upserted = 0;
       let errors = 0;
       const CHUNK = 200;
+      // An upsert cannot set the protected purchase price: saved right after.
+      const separateCosts = table === 'products' && await costsSavedSeparately();
       for (let j = 0; j < rows.length; j += CHUNK) {
-        const chunk = rows.slice(j, j + CHUNK);
+        const chunk = rows.slice(j, j + CHUNK) as Array<Record<string, unknown>>;
+        const payload = separateCosts ? chunk.map(({ buyprice: _cost, ...row }) => row) : chunk;
         const { error } = await (supabase as any).from(table)
-          .upsert(chunk, { onConflict: key.join(',') });
-        if (error) errors += chunk.length;
+          .upsert(payload, { onConflict: key.join(',') });
+        let failed = !!error;
+        if (!failed && separateCosts) {
+          try { await saveProductCosts(chunk as Array<{ barcode: string; buyprice?: number }>); } catch { failed = true; }
+        }
+        if (failed) errors += chunk.length;
         else upserted += chunk.length;
       }
       results[table] = { upserted, errors };

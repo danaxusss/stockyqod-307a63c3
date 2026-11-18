@@ -5,7 +5,7 @@ import { ActivityLogger } from '../utils/activityLogger';
 import { setLastAuthError, rateLimitMessage } from '../utils/authError';
 import {
   saveSession, adoptAuthSession, readSession, clearSession, validateSessionShared,
-  hasLocallyValidSession, touchSession, remainingMs,
+  hasLocallyValidSession, touchSession, remainingMs, requireAuthSession,
 } from '../utils/session';
 
 const USER_AUTH_CHANGE_EVENT = 'user-auth-state-change';
@@ -121,7 +121,8 @@ export function useUserAuth() {
     };
   }, []);
 
-  const applyLogin = useCallback(async (data: any, rememberMe: boolean): Promise<AppUser> => {
+  /** Null when the login's Supabase session could not be opened (see requireAuthSession). */
+  const applyLogin = useCallback(async (data: any, rememberMe: boolean): Promise<AppUser | null> => {
     const user = data.user as AppUser;
     if (!data.session_token) {
       // The server verified the PIN but is running a build without session
@@ -134,6 +135,7 @@ export function useUserAuth() {
     }
     saveSession(data.session_token ?? null, user, data.expires_at, rememberMe);
     await adoptAuthSession(data.auth_session);
+    if (!(await requireAuthSession(user?.id))) return null;
     setIsAuthenticated(true);
     setAuthenticatedUser(user);
     userAuthStateManager.notify();
@@ -148,6 +150,7 @@ export function useUserAuth() {
       if (error) { setLastAuthError(await rateLimitMessage(error)); return false; }
       if (!data?.success) { setLastAuthError(null); return false; }
       const user = await applyLogin(data, rememberMe);
+      if (!user) return false;
       ActivityLogger.log('login', `User ${user.username} logged in`);
       return true;
     } catch (error) {
@@ -163,8 +166,7 @@ export function useUserAuth() {
       });
       if (error) { setLastAuthError(await rateLimitMessage(error)); return false; }
       if (!data?.success) { setLastAuthError(null); return false; }
-      await applyLogin(data, rememberMe);
-      return true;
+      return !!(await applyLogin(data, rememberMe));
     } catch (error) {
       console.error('PIN login failed:', error);
       return false;

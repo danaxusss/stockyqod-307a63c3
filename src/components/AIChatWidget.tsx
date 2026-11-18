@@ -9,6 +9,7 @@ import { Product, Quote, QuoteItem, CustomerInfo } from '../types';
 import { SupabaseQuotesService } from '../utils/supabaseQuotes';
 import ReactMarkdown from 'react-markdown';
 import { getToken } from '../utils/session';
+import { supabase } from '@/integrations/supabase/client';
 
 type Msg = { role: 'user' | 'assistant'; content: string };
 type CreatedQuote = { id: string; quoteNumber: string };
@@ -58,11 +59,16 @@ async function streamChat({
   onDone: () => void;
   onError: (err: string) => void;
 }) {
+  // The signed-in user's Supabase session, not the public key: the answer is
+  // streamed, so this is a plain fetch rather than functions.invoke().
+  const accessToken = (await supabase.auth.getSession().catch(() => null))?.data.session?.access_token;
+  if (!accessToken) { onError('Session expirée : reconnectez-vous.'); return; }
   const resp = await fetch(CHAT_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+      apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+      Authorization: `Bearer ${accessToken}`,
     },
     body: JSON.stringify({ messages, company_id, username, session_token: getToken() }),
   });

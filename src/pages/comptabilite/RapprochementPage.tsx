@@ -1,11 +1,14 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { Landmark, Upload, Loader, Check, ArrowLeft, Sparkles, Trash2, Link2, Zap } from 'lucide-react';
+import { Landmark, Upload, Loader, Check, ArrowLeft, Sparkles, Trash2, Link2, Zap, ChevronRight } from 'lucide-react';
 import { BankService, type BankStatement, type BankStatementLine } from '../../utils/supabaseBank';
 import { AccountingService } from '../../utils/supabaseAccounting';
 import type { Account, FiscalYear, Journal } from '../../types';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
 import { localDay } from '../../utils/documentLines';
+import { PageHeader } from '../../components/PageHeader';
+import { StatusPill } from '../../components/lists/StatusPill';
+import { btnPrimary, btnSoft, EmptyState, field, fieldLabel, fieldSm, iconBtnDanger, LoadingState, panel } from '../../components/backoffice/BackOfficeUi';
 
 function fmt(n: number) { return n ? new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(n) : ''; }
 const readAsDataURL = (f: File) => new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result as string); r.onerror = rej; r.readAsDataURL(f); });
@@ -31,37 +34,48 @@ export default function RapprochementPage() {
     if (s) { setDetail(s); setView('detail'); }
   };
 
-  if (loading) return <div className="flex items-center justify-center py-24 text-muted-foreground"><Loader className="h-5 w-5 animate-spin mr-2" />Chargement…</div>;
+  if (loading) return <LoadingState />;
+
+  const statusPill = (s: BankStatement) => s.status === 'reconciled' ? <StatusPill tone="success">Rapproché</StatusPill> : <StatusPill tone="warning">À rapprocher</StatusPill>;
 
   return (
-    <div className="max-w-[110rem] mx-auto py-6 px-3">
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-        <div className="flex items-center gap-2">
-          {view !== 'list' && <button onClick={() => { setView('list'); setDetail(null); load(); }} className="p-1.5 hover:bg-secondary rounded-lg"><ArrowLeft className="h-4 w-4 text-muted-foreground" /></button>}
-          <div className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-primary/10"><Landmark className="h-5 w-5 text-primary" /></div>
-          <div>
-            <h1 className="text-lg font-bold text-foreground leading-tight">Rapprochement bancaire</h1>
-            <p className="text-xs text-muted-foreground">Import de relevé par scan (lecture automatique)</p>
-          </div>
-        </div>
-        {view === 'list' && <button onClick={() => setView('import')} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium"><Upload className="h-4 w-4" /> Importer un relevé</button>}
-      </div>
+    <div className="mx-auto max-w-[110rem]">
+      {view !== 'list' && (
+        <button onClick={() => { setView('list'); setDetail(null); load(); }} aria-label="Retour aux relevés"
+          className="mb-3 inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2 text-sm font-medium text-muted-foreground hover:bg-secondary hover:text-foreground">
+          <ArrowLeft className="h-4 w-4" />Relevés
+        </button>
+      )}
+      <PageHeader
+        title="Rapprochement bancaire"
+        subtitle="Import de relevé par scan (lecture automatique)"
+        actions={view === 'list' && <button onClick={() => setView('import')} className={btnPrimary}><Upload className="h-4 w-4" /> Importer un relevé</button>}
+      />
 
       {view === 'import' && <ImportView onSaved={() => { setView('list'); load(); }} createdBy={currentUser?.username || null} />}
       {view === 'detail' && detail && <DetailView statement={detail} onReload={() => openDetail(detail.id)} createdBy={currentUser?.username || null} />}
       {view === 'list' && (
-        <div className="bg-card border border-border/60 rounded-xl overflow-hidden">
+        <div className={`${panel} overflow-hidden`}>
           {statements.length === 0 ? (
-            <div className="px-3 py-12 text-center text-sm text-muted-foreground">Aucun relevé. Importez un scan pour commencer.</div>
-          ) : statements.map(s => (
-            <button key={s.id} onClick={() => openDetail(s.id)} className="w-full flex items-center justify-between px-3 py-3 border-b border-border/40 last:border-0 hover:bg-secondary/30 text-left">
-              <div>
-                <div className="font-medium text-foreground text-sm">{s.bank_name || s.label || 'Relevé'} · {s.account_code}</div>
-                <div className="text-[11px] text-muted-foreground">{s.period_start || '?'} → {s.period_end || '?'}</div>
-              </div>
-              <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${s.status === 'reconciled' ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' : 'bg-amber-500/15 text-amber-600 dark:text-amber-400'}`}>{s.status === 'reconciled' ? 'Rapproché' : 'À rapprocher'}</span>
-            </button>
-          ))}
+            <EmptyState icon={Landmark} title="Aucun relevé. Importez un scan pour commencer." />
+          ) : (
+            <ul className="divide-y divide-border">
+              {statements.map(s => (
+                <li key={s.id}>
+                  <button onClick={() => openDetail(s.id)} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-secondary/40 sm:px-5">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10"><Landmark className="h-5 w-5 text-primary" aria-hidden="true" /></span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold text-foreground">{s.bank_name || s.label || 'Relevé'} · <span className="font-mono">{s.account_code}</span></span>
+                      <span className="block text-xs tabular-nums text-muted-foreground">{s.period_start || '?'} → {s.period_end || '?'}</span>
+                      <span className="mt-1 block sm:hidden">{statusPill(s)}</span>
+                    </span>
+                    <span className="hidden sm:block">{statusPill(s)}</span>
+                    <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
     </div>
@@ -116,53 +130,57 @@ function ImportView({ onSaved, createdBy }: { onSaved: () => void; createdBy: st
     finally { setSaving(false); }
   };
 
+  const lineGrid = 'md:grid-cols-[10rem_minmax(0,1fr)_8rem_8rem_2.75rem]';
+
   return (
     <div className="space-y-4">
       {lines.length === 0 ? (
-        <label className="block bg-card border-2 border-dashed border-border rounded-xl p-10 text-center cursor-pointer hover:border-primary/50 transition-colors">
+        <label className="block cursor-pointer rounded-xl border-2 border-dashed border-border bg-card p-10 text-center shadow-sm transition-colors hover:border-primary/50 hover:bg-primary/[0.03]">
           <input type="file" accept="image/*" capture="environment" className="hidden" onChange={e => e.target.files?.[0] && onFile(e.target.files[0])} />
           {parsing ? (
             <div className="flex flex-col items-center gap-2 text-muted-foreground"><Loader className="h-6 w-6 animate-spin" /><span className="text-sm">Lecture du relevé par IA…</span></div>
           ) : (
             <div className="flex flex-col items-center gap-2">
-              <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary/10"><Sparkles className="h-6 w-6 text-primary" /></div>
-              <span className="text-sm font-medium text-foreground">Prendre en photo / importer le relevé</span>
+              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10"><Sparkles className="h-6 w-6 text-primary" /></span>
+              <span className="text-sm font-semibold text-foreground">Prendre en photo / importer le relevé</span>
               <span className="text-xs text-muted-foreground">L'IA extrait automatiquement les opérations (image JPG/PNG)</span>
             </div>
           )}
         </label>
       ) : (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-card border border-border/60 rounded-xl p-3">
+          <div className={`${panel} grid grid-cols-2 gap-3 p-4 sm:grid-cols-4`}>
             <Field label="Banque" value={header.bank_name} onChange={v => setHeader(h => ({ ...h, bank_name: v }))} />
             <Field label="Compte" value={header.account_code} onChange={v => setHeader(h => ({ ...h, account_code: v }))} />
             <Field label="Du" type="date" value={header.period_start} onChange={v => setHeader(h => ({ ...h, period_start: v }))} />
             <Field label="Au" type="date" value={header.period_end} onChange={v => setHeader(h => ({ ...h, period_end: v }))} />
           </div>
-          <div className="bg-card border border-border/60 rounded-xl overflow-hidden">
-            <table className="w-full text-sm">
-              <thead><tr className="bg-secondary/50 text-xs text-muted-foreground border-b border-border/60">
-                <th className="text-left font-medium px-2 py-1.5 w-28">Date</th>
-                <th className="text-left font-medium px-2 py-1.5">Libellé</th>
-                <th className="text-right font-medium px-2 py-1.5 w-24">Débit</th>
-                <th className="text-right font-medium px-2 py-1.5 w-24">Crédit</th>
-                <th className="w-8"></th>
-              </tr></thead>
-              <tbody>
-                {lines.map((l, i) => (
-                  <tr key={i} className="border-b border-border/30">
-                    <td className="px-2 py-1"><input type="date" value={l.line_date || ''} onChange={e => setLine(i, 'line_date', e.target.value)} className="w-full px-1.5 py-1 text-xs rounded bg-secondary border border-border" /></td>
-                    <td className="px-2 py-1"><input value={l.label || ''} onChange={e => setLine(i, 'label', e.target.value)} className="w-full px-1.5 py-1 text-sm rounded bg-secondary border border-border" /></td>
-                    <td className="px-2 py-1"><input type="number" step="0.01" value={l.debit || ''} onChange={e => setLine(i, 'debit', Number(e.target.value))} className="w-full px-1.5 py-1 text-sm text-right rounded bg-secondary border border-border" /></td>
-                    <td className="px-2 py-1"><input type="number" step="0.01" value={l.credit || ''} onChange={e => setLine(i, 'credit', Number(e.target.value))} className="w-full px-1.5 py-1 text-sm text-right rounded bg-secondary border border-border" /></td>
-                    <td className="px-1 text-center"><button onClick={() => removeLine(i)} className="p-1 text-muted-foreground hover:bg-secondary rounded"><Trash2 className="h-3.5 w-3.5" /></button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className={`${panel} overflow-hidden`}>
+            <div className={`hidden gap-2 border-b border-border bg-secondary/40 px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground md:grid ${lineGrid}`}>
+              <span>Date</span><span>Libellé</span><span className="text-right">Débit</span><span className="text-right">Crédit</span><span />
+            </div>
+            <ul className="divide-y divide-border">
+              {lines.map((l, i) => (
+                <li key={i} className={`grid grid-cols-2 gap-2 px-3 py-3 md:items-center md:py-2 ${lineGrid}`}>
+                  <input type="date" value={l.line_date || ''} onChange={e => setLine(i, 'line_date', e.target.value)} aria-label={`Date, ligne ${i + 1}`} className={fieldSm} />
+                  <input value={l.label || ''} onChange={e => setLine(i, 'label', e.target.value)} aria-label={`Libellé, ligne ${i + 1}`} placeholder="Libellé" className={`${fieldSm} col-span-2 row-start-2 md:col-span-1 md:row-start-auto`} />
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-muted-foreground md:sr-only">Débit</span>
+                    <input type="number" step="0.01" value={l.debit || ''} onChange={e => setLine(i, 'debit', Number(e.target.value))} className={`${fieldSm} text-right tabular-nums`} />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-muted-foreground md:sr-only">Crédit</span>
+                    <input type="number" step="0.01" value={l.credit || ''} onChange={e => setLine(i, 'credit', Number(e.target.value))} className={`${fieldSm} text-right tabular-nums`} />
+                  </label>
+                  <div className="col-start-2 row-start-1 flex justify-end md:col-start-auto md:row-start-auto">
+                    <button onClick={() => removeLine(i)} aria-label={`Supprimer la ligne ${i + 1}`} title="Supprimer la ligne" className={iconBtnDanger}><Trash2 className="h-4 w-4" /></button>
+                  </div>
+                </li>
+              ))}
+            </ul>
           </div>
           <div className="flex justify-end">
-            <button onClick={save} disabled={saving} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50">
+            <button onClick={save} disabled={saving} className={`${btnPrimary} w-full sm:w-auto`}>
               {saving ? <Loader className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Enregistrer le relevé
             </button>
           </div>
@@ -174,8 +192,8 @@ function ImportView({ onSaved, createdBy }: { onSaved: () => void; createdBy: st
 
 function Field({ label, value, onChange, type = 'text' }: { label: string; value: string; onChange: (v: string) => void; type?: string }) {
   return (
-    <div><label className="block text-[11px] text-muted-foreground mb-1">{label}</label>
-      <input type={type} value={value} onChange={e => onChange(e.target.value)} className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border" /></div>
+    <label className="block min-w-0"><span className={fieldLabel}>{label}</span>
+      <input type={type} value={value} onChange={e => onChange(e.target.value)} className={field} /></label>
   );
 }
 
@@ -256,54 +274,58 @@ function DetailView({ statement, onReload, createdBy }: { statement: BankStateme
 
   const reconciledCount = (statement.lines || []).filter(l => l.reconciled).length;
 
+  const total = (statement.lines || []).length;
+
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between bg-card border border-border/60 rounded-xl p-3">
-        <div className="text-sm">
-          <div className="font-semibold text-foreground">{statement.bank_name || 'Relevé'} · {statement.account_code}</div>
-          <div className="text-[11px] text-muted-foreground">{reconciledCount}/{(statement.lines || []).length} rapprochées</div>
+    <div className="space-y-4">
+      <div className={`${panel} flex flex-wrap items-center justify-between gap-3 p-4`}>
+        <div className="min-w-0">
+          <div className="truncate font-semibold text-foreground">{statement.bank_name || 'Relevé'} · <span className="font-mono">{statement.account_code}</span></div>
+          <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="h-1.5 w-24 overflow-hidden rounded-full bg-secondary" aria-hidden="true">
+              <span className="block h-full rounded-full bg-emerald-500" style={{ width: `${total ? (reconciledCount / total) * 100 : 0}%` }} />
+            </span>
+            <span className="tabular-nums">{reconciledCount}/{total} rapprochées</span>
+          </div>
         </div>
-        <button onClick={autoMatch} disabled={busy} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50">
+        <button onClick={autoMatch} disabled={busy} className={`${btnPrimary} w-full sm:w-auto`}>
           {busy ? <Loader className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />} Rapprochement automatique
         </button>
       </div>
 
-      <div className="bg-card border border-border/60 rounded-xl overflow-hidden">
-        <table className="w-full text-sm">
-          <thead><tr className="bg-secondary/50 text-xs text-muted-foreground border-b border-border/60">
-            <th className="text-left font-medium px-2 py-1.5 w-24">Date</th>
-            <th className="text-left font-medium px-2 py-1.5">Libellé</th>
-            <th className="text-right font-medium px-2 py-1.5 w-24">Débit</th>
-            <th className="text-right font-medium px-2 py-1.5 w-24">Crédit</th>
-            <th className="text-right font-medium px-2 py-1.5 w-32">État</th>
-          </tr></thead>
-          <tbody>
-            {(statement.lines || []).map((l, i) => (
-              <React.Fragment key={l.id}>
-                <tr className="border-b border-border/30">
-                  <td className="px-2 py-1.5 whitespace-nowrap text-muted-foreground text-xs">{l.line_date}</td>
-                  <td className="px-2 py-1.5">{l.label}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums">{fmt(Number(l.debit))}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums">{fmt(Number(l.credit))}</td>
-                  <td className="px-2 py-1.5 text-right">
-                    {l.reconciled ? <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400"><Link2 className="h-3 w-3" />Rapproché</span>
-                      : <button onClick={() => { setGenFor(genFor === i ? null : i); setCounterpart(''); }} className="text-[11px] px-2 py-1 rounded-md bg-secondary border border-border">Générer l'écriture</button>}
-                  </td>
-                </tr>
-                {genFor === i && !l.reconciled && (
-                  <tr className="bg-secondary/20"><td colSpan={5} className="px-3 py-2">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs text-muted-foreground">Contrepartie :</span>
-                      <input list="cp-accounts" value={counterpart} onChange={e => setCounterpart(e.target.value.split(' ')[0])} placeholder="compte" className="px-2 py-1 text-sm rounded bg-secondary border border-border font-mono w-40" />
-                      <datalist id="cp-accounts">{accounts.map(a => <option key={a.code} value={a.code}>{a.code} — {a.label}</option>)}</datalist>
-                      <button onClick={() => generateEntry(l, i)} disabled={busy} className="px-3 py-1 rounded-md bg-primary text-primary-foreground text-xs font-medium disabled:opacity-50">Valider</button>
-                    </div>
-                  </td></tr>
-                )}
-              </React.Fragment>
-            ))}
-          </tbody>
-        </table>
+      <div className={`${panel} overflow-hidden`}>
+        <div className="hidden grid-cols-[7rem_minmax(0,1fr)_8rem_8rem_11rem] gap-3 border-b border-border bg-secondary/40 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground md:grid">
+          <span>Date</span><span>Libellé</span><span className="text-right">Débit</span><span className="text-right">Crédit</span><span className="text-right">État</span>
+        </div>
+        <ul className="divide-y divide-border">
+          {(statement.lines || []).map((l, i) => (
+            <li key={l.id}>
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-4 py-2.5 md:grid-cols-[7rem_minmax(0,1fr)_8rem_8rem_11rem]">
+                <span className="hidden whitespace-nowrap text-xs tabular-nums text-muted-foreground md:block">{l.line_date}</span>
+                <span className="min-w-0">
+                  <span className="block truncate text-sm text-foreground">{l.label}</span>
+                  <span className="block text-xs tabular-nums text-muted-foreground md:hidden">
+                    {l.line_date}{Number(l.debit) ? ` · Débit ${fmt(Number(l.debit))}` : ''}{Number(l.credit) ? ` · Crédit ${fmt(Number(l.credit))}` : ''}
+                  </span>
+                </span>
+                <span className="hidden text-right text-sm tabular-nums text-foreground md:block">{fmt(Number(l.debit))}</span>
+                <span className="hidden text-right text-sm tabular-nums text-foreground md:block">{fmt(Number(l.credit))}</span>
+                <span className="text-right">
+                  {l.reconciled ? <StatusPill tone="success" icon={<Link2 className="h-3 w-3" />}>Rapproché</StatusPill>
+                    : <button onClick={() => { setGenFor(genFor === i ? null : i); setCounterpart(''); }} aria-expanded={genFor === i} className={btnSoft}>Générer l'écriture</button>}
+                </span>
+              </div>
+              {genFor === i && !l.reconciled && (
+                <div className="flex flex-wrap items-center gap-2 border-t border-border bg-secondary/40 px-4 py-3">
+                  <label htmlFor={`cp-${i}`} className="text-xs font-semibold text-muted-foreground">Contrepartie :</label>
+                  <input id={`cp-${i}`} list="cp-accounts" value={counterpart} onChange={e => setCounterpart(e.target.value.split(' ')[0])} placeholder="compte" className={`${fieldSm} w-40 font-mono`} />
+                  <datalist id="cp-accounts">{accounts.map(a => <option key={a.code} value={a.code}>{a.code} — {a.label}</option>)}</datalist>
+                  <button onClick={() => generateEntry(l, i)} disabled={busy} className={`${btnPrimary} min-h-9`}>Valider</button>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
       </div>
     </div>
   );

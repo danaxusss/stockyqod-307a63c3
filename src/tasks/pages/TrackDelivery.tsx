@@ -1,22 +1,16 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { useLanguage } from '@/tasks/contexts/LanguageContext';
-import { supabase } from '@/integrations/supabase/client';
+import { loadTracking, pollTracking, setTrackingDestination, trackingAddress, type PublicTrackingSession } from '@/utils/publicPages';
 import { Truck, MapPin, Clock, AlertTriangle, Phone, Navigation } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-interface TrackingSession {
-  id: string;
-  token: string;
-  task_id: string;
-  driver_id: string;
-  client_name: string;
-  is_active: boolean;
-  expires_at: string;
-  destination_latitude: number | null;
-  destination_longitude: number | null;
-  destination_source: string | null;
-}
+// What the public-tracking function returns: the customer has no login, so
+// the page never reads the database itself.
+type TrackingSession = PublicTrackingSession;
+
+/** The driver sends a position every 15 s. */
+const POLL_MS = 15000;
 
 interface DriverLocation {
   latitude: number;
@@ -57,25 +51,21 @@ export default function TrackDelivery() {
     if (!token) return;
 
     async function loadSession() {
-      const { data, error: err } = await supabase
-        .from('tracking_sessions')
-        .select('*')
-        .eq('token', token)
-        .maybeSingle();
+      const data = await loadTracking(token!).catch(() => null);
 
-      if (err || !data) {
-        setError(t('track.invalidLink'));
+      if (!data || data.status === 'missing' || !data.session) {
+        setError(data?.status === 'expired' ? t('track.expiredLink') : t('track.invalidLink'));
         setLoading(false);
         return;
       }
 
-      if (!data.is_active || new Date(data.expires_at) < new Date()) {
+      if (data.status === 'expired') {
         setError(t('track.expiredLink'));
         setLoading(false);
         return;
       }
 
-      const sessionData = data as unknown as TrackingSession;
+      const sessionData = data.session;
       setSession(sessionData);
 
       if (sessionData.destination_latitude && sessionData.destination_longitude) {
@@ -85,22 +75,9 @@ export default function TrackDelivery() {
         }
       }
 
-      // Users are not readable publicly: this returns only the phone of the
-      // driver of this (live) tracking link.
-      const { data: driverPhone } = await (supabase as any).rpc('get_tracking_driver_phone', { p_token: token });
-      if (typeof driverPhone === 'string' && driverPhone) setDriverPhone(driverPhone);
-
-      const { data: locData } = await supabase
-        .from('driver_locations')
-        .select('*')
-        .eq('session_id', data.id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (locData) {
-        setLocation(locData as DriverLocation);
-      }
+      // Only the phone of this delivery's driver.
+      if (data.driver_phone) setDriverPhone(data.driver_phone);
+      if (data.location) setLocation(data.location as DriverLocation);
       setLoading(false);
     }
 
@@ -108,17 +85,10 @@ export default function TrackDelivery() {
   }, [token, t]);
 
   const handleAcceptGPS = useCallback(async () => {
-    if (!session) return;
+    if (!session || !token) return;
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
-        await supabase
-          .from('tracking_sessions')
-          .update({
-            destination_latitude: pos.coords.latitude,
-            destination_longitude: pos.coords.longitude,
-            destination_source: 'gps',
-          } as any)
-          .eq('id', session.id);
+        await setTrackingDestination(token, pos.coords.latitude, pos.coords.longitude, 'gps').catch(() => undefined);
 
         setSession((prev) =>
           prev ? { ...prev, destination_latitude: pos.coords.latitude, destination_longitude: pos.coords.longitude, destination_source: 'gps' } : prev
@@ -129,24 +99,24 @@ export default function TrackDelivery() {
       () => { handleGPSRefused(); },
       { enableHighAccuracy: true, timeout: 10000 }
     );
-  }, [session]);
+  }, [session, token]);
 
   const handleGPSRefused = useCallback(async () => {
-    if (!session) { setGpsPromptState('dismissed'); return; }
+    if (!session || !token) { setGpsPromptState('dismissed'); return; }
     if (session.destination_latitude && session.destination_longitude) {
       setGpsPromptState('done');
       setAddressFallback(true);
       return;
     }
     try {
-      const { data: taskData } = await supabase.from('tasks').select('address').eq('id', session.task_id).maybeSingle();
-      if (taskData?.address) {
-        const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(taskData.address)}&format=json&limit=1`);
+      const address = await trackingAddress(token);
+      if (address) {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`);
         const results = await res.json();
         if (results?.length > 0) {
           const lat = parseFloat(results[0].lat);
           const lon = parseFloat(results[0].lon);
-          await supabase.from('tracking_sessions').update({ destination_latitude: lat, destination_longitude: lon, destination_source: 'address' } as any).eq('id', session.id);
+          await setTrackingDestination(token, lat, lon, 'address');
           setSession(prev => prev ? { ...prev, destination_latitude: lat, destination_longitude: lon, destination_source: 'address' } : prev);
           setAddressFallback(true);
           setGpsPromptState('done');
@@ -155,7 +125,7 @@ export default function TrackDelivery() {
       }
     } catch (e) { console.warn('[Track] Address geocoding failed:', e); }
     setGpsPromptState('dismissed');
-  }, [session]);
+  }, [session, token]);
 
   const eta = (() => {
     if (!location || !session?.destination_latitude || !session?.destination_longitude) return null;
@@ -165,15 +135,26 @@ export default function TrackDelivery() {
     return { arrived: false, minutes: Math.max(1, minutes), distKm };
   })();
 
+  // Follow the driver: ask for the last position while the page is open
+  // (the customer has no login, so no realtime subscription).
+  const live = !!session;
   useEffect(() => {
-    if (!session) return;
-    const channel = supabase
-      .channel(`tracking-${session.id}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'driver_locations', filter: `session_id=eq.${session.id}` },
-        (payload) => { setLocation(payload.new as DriverLocation); }
-      ).subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [session]);
+    if (!live || !token) return;
+    let cancelled = false;
+    const refresh = async () => {
+      if (document.hidden) return;
+      const data = await pollTracking(token).catch(() => null);
+      if (cancelled || !data) return;
+      if (data.status !== 'ok') { setError(data.status === 'expired' ? t('track.expiredLink') : t('track.invalidLink')); return; }
+      if (data.location) {
+        const next = data.location as DriverLocation;
+        setLocation(prev => (prev && prev.created_at === next.created_at ? prev : next));
+      }
+    };
+    const id = setInterval(refresh, POLL_MS);
+    document.addEventListener('visibilitychange', refresh);
+    return () => { cancelled = true; clearInterval(id); document.removeEventListener('visibilitychange', refresh); };
+  }, [live, token, t]);
 
   useEffect(() => {
     if (!location || !mapRef.current) return;

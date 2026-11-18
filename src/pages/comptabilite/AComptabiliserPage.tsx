@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { Inbox, Loader, Check, Zap } from 'lucide-react';
+import { Loader, Check, Zap, FileText, Wallet, Undo2, Users } from 'lucide-react';
 import type { Quote, Payslip, FiscalYear, Journal } from '../../types';
 import { AccountingService } from '../../utils/supabaseAccounting';
 import { SupabaseDocumentsService } from '../../utils/supabaseDocuments';
@@ -10,6 +10,9 @@ import { buildInvoiceEntry, buildAvoirEntry, buildPaymentEntries, buildPayslipEn
 import { invoicePayment } from '../../utils/documentLines';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
+import { PageHeader, Panel } from '../../components/PageHeader';
+import { StatusPill } from '../../components/lists/StatusPill';
+import { btnPrimary, btnSoft, checkbox, KpiTile, LoadingState, PhoneActionBar } from '../../components/backoffice/BackOfficeUi';
 
 function fmtMad(n: number) { return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(n) + ' MAD'; }
 
@@ -112,49 +115,56 @@ export default function AComptabiliserPage() {
   };
 
   const Row = ({ label, sub, amount, done, onGen, k }: { label: string; sub: string; amount: number; done: boolean; onGen: () => void; k: string }) => (
-    <div className="flex items-center justify-between px-3 py-2 border-b border-border/40 last:border-0">
+    <li className="flex items-center justify-between gap-3 px-4 py-3 sm:px-5">
       <div className="min-w-0">
-        <div className="font-medium text-foreground text-sm truncate max-w-[280px]">{label}</div>
-        <div className="text-[11px] text-muted-foreground">{sub}</div>
+        <div className="truncate text-sm font-medium text-foreground">{label}</div>
+        <div className="truncate text-xs text-muted-foreground">{sub}</div>
       </div>
-      <div className="flex items-center gap-3 shrink-0">
-        <span className="tabular-nums text-sm text-foreground">{fmtMad(amount)}</span>
+      <div className="flex shrink-0 flex-col items-end gap-1.5 sm:flex-row sm:items-center sm:gap-4">
+        <span className="whitespace-nowrap text-sm font-semibold tabular-nums text-foreground">{fmtMad(amount)}</span>
         {done ? (
-          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400"><Check className="h-3.5 w-3.5" />Fait</span>
+          <StatusPill tone="success" icon={<Check className="h-3 w-3" />}>Fait</StatusPill>
         ) : (
-          <button onClick={onGen} disabled={busy === k} className="px-2.5 py-1 rounded-md bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 disabled:opacity-50">
-            {busy === k ? '…' : 'Générer'}
+          <button onClick={onGen} disabled={busy === k} className={`${btnSoft} min-w-[5.5rem]`}>
+            {busy === k ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}{busy === k ? '…' : 'Générer'}
           </button>
         )}
       </div>
-    </div>
+    </li>
   );
 
-  if (loading) return <div className="flex items-center justify-center py-24 text-muted-foreground"><Loader className="h-5 w-5 animate-spin mr-2" />Chargement…</div>;
+  if (loading) return <LoadingState />;
+
+  const autoPostToggle = (
+    <label className="flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-3 text-sm text-foreground">
+      <input type="checkbox" checked={autoPost} onChange={e => setAutoPost(e.target.checked)} className={checkbox} />
+      Valider automatiquement
+    </label>
+  );
+  const genAllButton = (
+    <button onClick={genAll} disabled={busy !== null || pending.total === 0} className={btnPrimary}>
+      {busy === 'all' ? <Loader className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />} Tout générer
+    </button>
+  );
 
   return (
-    <div className="max-w-[110rem] mx-auto py-6 px-3">
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-        <div className="flex items-center gap-2">
-          <div className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-primary/10"><Inbox className="h-5 w-5 text-primary" /></div>
-          <div>
-            <h1 className="text-lg font-bold text-foreground leading-tight">À comptabiliser</h1>
-            <p className="text-xs text-muted-foreground">{pending.total} document(s) en attente · exercice {fy?.label}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
-            <input type="checkbox" checked={autoPost} onChange={e => setAutoPost(e.target.checked)} className="accent-[hsl(var(--primary))]" />
-            Valider automatiquement
-          </label>
-          <button onClick={genAll} disabled={busy !== null || pending.total === 0}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50">
-            {busy === 'all' ? <Loader className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />} Tout générer
-          </button>
-        </div>
+    <div className="mx-auto max-w-[110rem]">
+      <PageHeader
+        title="À comptabiliser"
+        subtitle={`${pending.total} document(s) en attente · exercice ${fy?.label ?? ''}`}
+        actions={<>{autoPostToggle}<span className="hidden md:inline-flex">{genAllButton}</span></>}
+      />
+
+      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <KpiTile icon={FileText} label="Factures de vente" value={pending.inv.length} hint="en attente" tone={pending.inv.length ? 'text-amber-600 bg-amber-500/10 dark:text-amber-400' : undefined} />
+        <KpiTile icon={Wallet} label="Encaissements" value={pending.invPay.length} hint="en attente" tone={pending.invPay.length ? 'text-amber-600 bg-amber-500/10 dark:text-amber-400' : undefined} />
+        <KpiTile icon={Undo2} label="Avoirs" value={pending.av.length} hint="en attente" tone={pending.av.length ? 'text-amber-600 bg-amber-500/10 dark:text-amber-400' : undefined} />
+        <KpiTile icon={Users} label="Bulletins de paie" value={pending.ps.length} hint="en attente" tone={pending.ps.length ? 'text-amber-600 bg-amber-500/10 dark:text-amber-400' : undefined} />
       </div>
 
-      <div className="space-y-4">
+      <PhoneActionBar>{genAllButton}</PhoneActionBar>
+
+      <div className="grid items-start gap-4 xl:grid-cols-2">
         <Section title="Factures de vente" count={pending.inv.length}>
           {invoices.map(q => (
             <Row key={q.id} k={q.id}
@@ -207,13 +217,14 @@ export default function AComptabiliserPage() {
 
 function Section({ title, count, children }: { title: string; count: number; children: React.ReactNode }) {
   return (
-    <div className="bg-card border border-border/60 rounded-xl overflow-hidden">
-      <div className="flex items-center justify-between px-3 py-2 bg-secondary/50 border-b border-border/60">
-        <span className="text-sm font-semibold text-foreground">{title}</span>
-        {count > 0 && <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">{count} en attente</span>}
-      </div>
-      <div>{children}</div>
-    </div>
+    <Panel
+      title={title}
+      action={count > 0
+        ? <StatusPill tone="warning">{count} en attente</StatusPill>
+        : <StatusPill tone="success" icon={<Check className="h-3 w-3" />}>À jour</StatusPill>}
+    >
+      <ul className="divide-y divide-border">{children}</ul>
+    </Panel>
   );
 }
-const Empty = () => <div className="px-3 py-6 text-center text-xs text-muted-foreground">Aucun document</div>;
+const Empty = () => <li className="px-4 py-8 text-center text-sm text-muted-foreground">Aucun document</li>;

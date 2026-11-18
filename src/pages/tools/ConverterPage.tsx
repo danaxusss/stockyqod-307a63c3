@@ -12,6 +12,9 @@ import {
 import { hardReloadApp } from '../../utils/appReload';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
+import { PageHeader } from '../../components/PageHeader';
+import { StatusPill } from '../../components/lists/StatusPill';
+import { btnPrimary, btnSecondary, field, iconBtn, panel } from '../../components/backoffice/BackOfficeUi';
 
 type PageState = { status: 'pending' | 'running' | 'ok' | 'error'; error?: string; result?: any };
 type Phase = 'pick' | 'rendering' | 'extracting' | 'done';
@@ -132,47 +135,46 @@ export default function ConverterPage() {
     } catch (e: any) { showToast({ type: 'error', message: e?.message || 'Échec de l\'export' }); }
   };
 
-  if (!isAdmin && !isSuperAdmin) return <div className="text-center py-12 text-muted-foreground">Accès réservé aux administrateurs.</div>;
+  if (!isAdmin && !isSuperAdmin) return <div className="py-12 text-center text-muted-foreground">Accès réservé aux administrateurs.</div>;
 
   const busy = phase === 'rendering' || phase === 'extracting';
 
   return (
-    <div className="max-w-[110rem] mx-auto py-6 px-3">
-      <div className="flex items-center gap-2 mb-4">
-        <div className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10"><FileSpreadsheet className="h-5 w-5 text-primary" /></div>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-lg font-bold text-foreground leading-tight">Convertisseur de documents</h1>
-          <p className="text-xs text-muted-foreground">PDF ou scan → Excel, lecture par IA (même clé que l'assistant)</p>
-        </div>
-        <button onClick={openSettings}
-          className={`shrink-0 flex items-center gap-1.5 px-2.5 py-2 rounded-lg border text-xs ${showSettings ? 'bg-primary/10 border-primary/40' : 'bg-secondary border-border'}`}
-          title="Choisir le modèle IA">
-          <Settings2 className="h-3.5 w-3.5" /> Modèle
-        </button>
-        <button onClick={runHealthCheck} disabled={checking}
-          className="shrink-0 flex items-center gap-1.5 px-2.5 py-2 rounded-lg bg-secondary border border-border text-xs disabled:opacity-60"
-          title="Vérifier que les fonctions IA sont déployées">
-          {checking ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Stethoscope className="h-3.5 w-3.5" />}
-          Diagnostic
-        </button>
-      </div>
+    <div className="mx-auto max-w-[110rem]">
+      <PageHeader
+        title="Convertisseur de documents"
+        subtitle="PDF ou scan → Excel, lecture par IA (même clé que l'assistant)"
+        actions={<>
+          <button onClick={openSettings} aria-expanded={showSettings}
+            className={`${btnSecondary} ${showSettings ? 'border-primary/40 bg-primary/10 text-primary' : ''}`}
+            title="Choisir le modèle IA">
+            <Settings2 className="h-4 w-4" /> Modèle
+          </button>
+          <button onClick={runHealthCheck} disabled={checking}
+            className={btnSecondary}
+            title="Vérifier que les fonctions IA sont déployées">
+            {checking ? <Loader className="h-4 w-4 animate-spin" /> : <Stethoscope className="h-4 w-4" />}
+            Diagnostic
+          </button>
+        </>}
+      />
 
       {showSettings && (
-        <div className="mb-4 bg-card border border-border/60 rounded-lg p-3">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+        <section className={`${panel} mb-4 p-4`}>
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h2 className="flex items-center gap-2 font-semibold text-foreground">
               <Settings2 className="h-4 w-4 text-primary" /> Modèle IA
             </h2>
             <div className="flex items-center gap-1">
-              <button onClick={loadModels} disabled={loadingModels} className="p-1 rounded hover:bg-secondary disabled:opacity-50" title="Actualiser la liste">
-                <RefreshCw className={`h-3.5 w-3.5 ${loadingModels ? 'animate-spin' : ''}`} />
+              <button onClick={loadModels} disabled={loadingModels} className={iconBtn} title="Actualiser la liste" aria-label="Actualiser la liste">
+                <RefreshCw className={`h-4 w-4 ${loadingModels ? 'animate-spin' : ''}`} />
               </button>
-              <button onClick={() => setShowSettings(false)} className="p-1 rounded hover:bg-secondary"><X className="h-3.5 w-3.5" /></button>
+              <button onClick={() => setShowSettings(false)} className={iconBtn} aria-label="Fermer"><X className="h-4 w-4" /></button>
             </div>
           </div>
 
-          <select value={model} onChange={e => chooseModel(e.target.value)}
-            className="w-full px-2 py-2 text-sm rounded-lg bg-secondary border border-border">
+          <select value={model} onChange={e => chooseModel(e.target.value)} aria-label="Modèle IA"
+            className={field}>
             <option value="">Automatique (essaie les meilleurs, puis les gratuits)</option>
             {models?.filter(m => !m.free).length ? (
               <optgroup label="Payants — meilleure lecture">
@@ -190,9 +192,9 @@ export default function ConverterPage() {
             ) : null}
           </select>
 
-          <div className="mt-1.5 text-[11px] text-muted-foreground space-y-0.5">
+          <div className="mt-2 space-y-0.5 text-xs text-muted-foreground">
             {loadingModels && <p className="flex items-center gap-1"><Loader className="h-3 w-3 animate-spin" /> Chargement des modèles disponibles…</p>}
-            {modelsError && <p className="text-red-600 dark:text-red-400">{modelsError}</p>}
+            {modelsError && <p className="text-red-700 dark:text-red-300">{modelsError}</p>}
             {models && !loadingModels && (
               <p>{models.length} modèle(s) capables de lire des images sur votre compte OpenRouter.</p>
             )}
@@ -200,43 +202,43 @@ export default function ConverterPage() {
               ? <p>Modèle imposé : <code className="font-mono">{model}</code>. En cas d'échec, les autres sont essayés en secours.</p>
               : <p>Les modèles payants nécessitent du crédit OpenRouter ; sans crédit, les gratuits prennent le relais automatiquement.</p>}
           </div>
-        </div>
+        </section>
       )}
 
-      <div className="mb-4 bg-primary/5 border border-primary/20 rounded-lg px-3 py-2 text-xs text-muted-foreground">
-        Relevés bancaires, factures, listes de prix, inventaires — le convertisseur lit
-        n'importe quel document contenant un tableau et le restitue en Excel.
+      <div className="mb-4 flex gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2.5 text-sm text-muted-foreground">
+        <FileSpreadsheet className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+        <span>Relevés bancaires, factures, listes de prix, inventaires — le convertisseur lit
+        n'importe quel document contenant un tableau et le restitue en Excel.</span>
       </div>
 
       {/* upload + convert */}
-      <div className="bg-card border border-border/60 rounded-lg p-4 mb-4">
+      <section className={`${panel} mb-4 p-4 sm:p-5`}>
         <input ref={fileRef} type="file" accept=".pdf,image/*" className="hidden"
           onChange={e => { onFile(e.target.files?.[0]); e.target.value = ''; }} />
         {!file ? (
           <button onClick={() => fileRef.current?.click()}
-            className="w-full border-2 border-dashed border-border rounded-lg p-10 text-center hover:border-primary/50 transition-colors">
-            <Upload className="h-6 w-6 mx-auto text-primary mb-2" />
-            <div className="text-sm font-medium text-foreground">Choisir un PDF ou une image</div>
-            <div className="text-xs text-muted-foreground mt-1">Relevés scannés ou numériques · multi-pages · max 25 Mo</div>
+            className="w-full rounded-xl border-2 border-dashed border-border p-10 text-center transition-colors hover:border-primary/50 hover:bg-primary/[0.03]">
+            <span className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10"><Upload className="h-6 w-6 text-primary" /></span>
+            <div className="text-sm font-semibold text-foreground">Choisir un PDF ou une image</div>
+            <div className="mt-1 text-xs text-muted-foreground">Relevés scannés ou numériques · multi-pages · max 25 Mo</div>
           </button>
         ) : (
-          <div className="flex items-center gap-3 flex-wrap">
-            <FileText className="h-5 w-5 text-primary shrink-0" />
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium text-foreground truncate">{file.name}</div>
-              <div className="text-[11px] text-muted-foreground">{(file.size / 1024 / 1024).toFixed(1)} Mo</div>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10"><FileText className="h-5 w-5 text-primary" /></span>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-medium text-foreground">{file.name}</div>
+              <div className="text-xs text-muted-foreground">{(file.size / 1024 / 1024).toFixed(1)} Mo</div>
             </div>
             {!busy && phase !== 'done' && (
               <>
-                <button onClick={reset} className="p-1.5 rounded-lg hover:bg-secondary" title="Retirer"><X className="h-4 w-4" /></button>
-                <button onClick={convert}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium">
+                <button onClick={reset} className={iconBtn} title="Retirer" aria-label="Retirer"><X className="h-4 w-4" /></button>
+                <button onClick={convert} className={btnPrimary}>
                   <Sparkles className="h-4 w-4" /> Convertir
                 </button>
               </>
             )}
             {phase === 'done' && (
-              <button onClick={reset} className="flex items-center gap-1 px-3 py-2 rounded-lg bg-secondary border border-border text-sm">
+              <button onClick={reset} className={btnSecondary}>
                 <ChevronLeft className="h-4 w-4" /> Autre fichier
               </button>
             )}
@@ -244,7 +246,7 @@ export default function ConverterPage() {
         )}
 
         {phase === 'rendering' && (
-          <div className="mt-3 text-sm text-muted-foreground flex items-center gap-2">
+          <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
             <Loader className="h-4 w-4 animate-spin" />
             Préparation des pages… {renderProgress.total > 1 ? `${renderProgress.done}/${renderProgress.total}` : ''}
           </div>
@@ -252,16 +254,16 @@ export default function ConverterPage() {
 
         {/* per-page extraction status */}
         {pages.length > 0 && phase !== 'rendering' && (
-          <div className="mt-3 space-y-1">
+          <div className="mt-4 space-y-1.5 border-t border-border pt-3">
             {pages.map((p, i) => (
-              <div key={i} className="flex items-center gap-2 text-xs">
-                <span className="w-14 text-muted-foreground">Page {i + 1}</span>
+              <div key={i} className="flex items-center gap-2 text-sm">
+                <span className="w-16 shrink-0 text-muted-foreground">Page {i + 1}</span>
                 {p.status === 'pending' && <span className="text-muted-foreground">en attente…</span>}
-                {p.status === 'running' && <span className="flex items-center gap-1 text-primary"><Loader className="h-3 w-3 animate-spin" /> analyse IA…</span>}
-                {p.status === 'ok' && <span className="flex items-center gap-1 text-emerald-700 dark:text-emerald-400"><Check className="h-3 w-3" /> extraite</span>}
+                {p.status === 'running' && <span className="flex items-center gap-1 text-primary"><Loader className="h-3.5 w-3.5 animate-spin" /> analyse IA…</span>}
+                {p.status === 'ok' && <StatusPill tone="success" icon={<Check className="h-3 w-3" />}>extraite</StatusPill>}
                 {p.status === 'error' && (
-                  <span className="flex items-start gap-1 text-red-600 dark:text-red-400 min-w-0">
-                    <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5" />
+                  <span className="flex min-w-0 items-start gap-1 text-red-700 dark:text-red-300">
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                     {/* full text, wrapped — the reason is the whole point */}
                     <span className="break-words">{p.error}</span>
                   </span>
@@ -269,15 +271,15 @@ export default function ConverterPage() {
               </div>
             ))}
             {phase === 'done' && failedCount > 0 && (
-              <button onClick={retryFailed} className="mt-1 flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-secondary border border-border text-xs">
-                <RefreshCw className="h-3.5 w-3.5" /> Réessayer les {failedCount} page(s) en échec
+              <button onClick={retryFailed} className={`${btnSecondary} mt-2`}>
+                <RefreshCw className="h-4 w-4" /> Réessayer les {failedCount} page(s) en échec
               </button>
             )}
             {phase === 'done' && failedCount === pages.length && (
-              <div className="text-[11px] text-amber-600 dark:text-amber-400 space-y-1">
+              <div className="mt-2 space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-200">
                 <p className="font-medium">Toutes les pages ont échoué.</p>
                 <button onClick={runHealthCheck} disabled={checking}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/15 border border-amber-500/40 text-xs font-medium disabled:opacity-60">
+                  className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-amber-500/40 bg-card px-3 text-xs font-medium disabled:opacity-60">
                   {checking ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Stethoscope className="h-3.5 w-3.5" />}
                   Diagnostiquer
                 </button>
@@ -285,31 +287,31 @@ export default function ConverterPage() {
             )}
           </div>
         )}
-      </div>
+      </section>
 
       {health && (
-        <div className="mb-4 bg-card border border-border/60 rounded-lg p-3">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+        <section className={`${panel} mb-4 p-4`}>
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h2 className="flex items-center gap-2 font-semibold text-foreground">
               <Stethoscope className="h-4 w-4 text-primary" /> Diagnostic
             </h2>
-            <button onClick={() => setHealth(null)} className="p-1 rounded hover:bg-secondary"><X className="h-3.5 w-3.5" /></button>
+            <button onClick={() => setHealth(null)} className={iconBtn} aria-label="Fermer le diagnostic"><X className="h-4 w-4" /></button>
           </div>
-          <ul className="space-y-1 text-xs">
+          <ul className="space-y-1.5 text-sm">
             {health.map(h => (
               <li key={h.fn} className="flex items-start gap-2">
                 {h.state === 'ok'
-                  ? <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
-                  : <AlertTriangle className="h-3.5 w-3.5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />}
+                  ? <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                  : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600 dark:text-red-400" />}
                 <span className="min-w-0">
-                  <code className="font-mono text-[11px]">{h.fn}</code>
-                  <span className={`ml-1.5 ${h.state === 'ok' ? 'text-muted-foreground' : 'text-red-600 dark:text-red-400'}`}>{h.detail}</span>
+                  <code className="font-mono text-xs text-foreground">{h.fn}</code>
+                  <span className={`ml-1.5 ${h.state === 'ok' ? 'text-muted-foreground' : 'text-red-700 dark:text-red-300'}`}>{h.detail}</span>
                 </span>
               </li>
             ))}
           </ul>
           {health.some(h => h.state !== 'ok') && (
-            <div className="mt-2 pt-2 border-t border-border/60 text-[11px] text-muted-foreground space-y-1">
+            <div className="mt-3 space-y-1 border-t border-border pt-3 text-xs text-muted-foreground">
               <p className="font-medium text-foreground">Déployer sans installer d'outil :</p>
               <p>1. Tableau de bord Supabase → <b>Edge Functions</b> → <b>Deploy a new function</b></p>
               <p>2. Nommer la fonction exactement comme ci-dessus</p>
@@ -318,24 +320,25 @@ export default function ConverterPage() {
                 <code className="font-mono"> npx supabase functions deploy &lt;nom&gt;</code></p>
             </div>
           )}
-        </div>
+        </section>
       )}
 
       {/* preview + export */}
       {phase === 'done' && merged && (
-        <div className="bg-card border border-border/60 rounded-lg overflow-hidden">
-          <div className="px-3 py-2 bg-secondary/50 border-b border-border/60 flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-semibold text-foreground">Aperçu</span>
-            <span className="text-[11px] text-muted-foreground">vérifiez les montants avant d'utiliser le fichier — l'OCR peut se tromper</span>
-            <button onClick={exportExcel}
-              className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium">
+        <section className={`${panel} overflow-hidden`}>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-3">
+            <div className="min-w-0 flex-1">
+              <h2 className="font-semibold text-foreground">Aperçu</h2>
+              <p className="text-xs text-muted-foreground">vérifiez les montants avant d'utiliser le fichier — l'OCR peut se tromper</p>
+            </div>
+            <button onClick={exportExcel} className={`${btnPrimary} w-full sm:w-auto`}>
               <Download className="h-4 w-4" /> Télécharger Excel
             </button>
           </div>
-          <div className="overflow-x-auto max-h-[480px] overflow-y-auto">
+          <div className="max-h-[480px] overflow-auto">
             <TablePreview t={merged} />
           </div>
-        </div>
+        </section>
       )}
     </div>
   );
@@ -344,16 +347,16 @@ export default function ConverterPage() {
 /* ── preview ─────────────────────────────────────────────────────────────── */
 function TablePreview({ t }: { t: TableResult }) {
   return (
-    <table className="w-full text-xs">
-      <thead className="sticky top-0 bg-secondary/80">
-        <tr className="text-muted-foreground">
-          {t.columns.map((c, i) => <th key={i} className="text-left font-medium px-3 py-1.5">{c}</th>)}
+    <table className="w-full text-sm">
+      <thead className="sticky top-0 bg-secondary">
+        <tr className="border-b border-border">
+          {t.columns.map((c, i) => <th key={i} className="whitespace-nowrap px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{c}</th>)}
         </tr>
       </thead>
-      <tbody>
+      <tbody className="divide-y divide-border">
         {t.rows.map((r, i) => (
-          <tr key={i} className="border-b border-border/30">
-            {r.map((v, j) => <td key={j} className="px-3 py-1">{String(v ?? '')}</td>)}
+          <tr key={i} className="hover:bg-secondary/40">
+            {r.map((v, j) => <td key={j} className="px-3 py-1.5 text-foreground">{String(v ?? '')}</td>)}
           </tr>
         ))}
       </tbody>

@@ -5,6 +5,9 @@ import { SupabaseEmployeesService } from '../../utils/supabaseEmployees';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
 import { getCompanyContext } from '../../utils/supabaseCompanyFilter';
+import { PageHeader } from '../../components/PageHeader';
+import { StatusPill } from '../../components/lists/StatusPill';
+import { btnPrimary, btnSecondary, EmptyState, field, fieldLabel, iconBtn, iconBtnDanger, LoadingState, panel, td, tdNum, th, theadRow, thRight } from '../../components/backoffice/BackOfficeUi';
 
 function fmt(n: number) {
   return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(n);
@@ -58,85 +61,102 @@ function EmployeeForm({ initial, companyId, onSave, onCancel, saving }: Employee
     onSave({ ...form, company_id: companyId });
   };
 
-  const inputCls = 'w-full text-sm px-2.5 py-1.5 border border-input rounded-lg bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary';
-  const labelCls = 'block text-[11px] text-muted-foreground mb-0.5';
+  const inputCls = field;
+  const labelCls = fieldLabel;
+  const legendCls = 'mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground';
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
-        <div className="col-span-2">
-          <label className={labelCls}>Nom complet *</label>
-          <input required className={inputCls} value={form.full_name} onChange={e => set('full_name', e.target.value)} />
+    <form onSubmit={handleSubmit} className="space-y-5">
+      <fieldset>
+        <legend className={legendCls}>Identité</legend>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="sm:col-span-2">
+            <label className={labelCls} htmlFor="emp-full-name">Nom complet *</label>
+            <input id="emp-full-name" required className={inputCls} value={form.full_name} onChange={e => set('full_name', e.target.value)} />
+          </div>
+          <div>
+            <label className={labelCls} htmlFor="emp-cin">CIN</label>
+            <input id="emp-cin" className={inputCls} value={form.cin || ''} onChange={e => set('cin', e.target.value)} />
+          </div>
+          <div>
+            <label className={labelCls} htmlFor="emp-gender">Genre</label>
+            <select id="emp-gender" className={inputCls} value={form.gender || ''} onChange={e => set('gender', e.target.value || undefined)}>
+              <option value="">—</option>
+              <option value="M">Homme</option>
+              <option value="F">Femme</option>
+            </select>
+          </div>
+          <div>
+            <label className={labelCls} htmlFor="emp-birth">Date de naissance</label>
+            <input id="emp-birth" type="date" className={inputCls} value={form.birth_date || ''} onChange={e => set('birth_date', e.target.value || undefined)} />
+          </div>
+          <div>
+            <label className={labelCls} htmlFor="emp-marital">Situation familiale</label>
+            <select id="emp-marital" className={inputCls} value={form.marital_status || ''} onChange={e => set('marital_status', e.target.value as Employee['marital_status'] || undefined)}>
+              <option value="">—</option>
+              {Object.entries(MARITAL_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={labelCls} htmlFor="emp-dependents">Nombre de personnes à charge</label>
+            <input id="emp-dependents" type="number" min={0} max={6} className={inputCls} value={form.dependents_count} onChange={e => set('dependents_count', parseInt(e.target.value) || 0)} />
+          </div>
         </div>
-        <div>
-          <label className={labelCls}>CIN</label>
-          <input className={inputCls} value={form.cin || ''} onChange={e => set('cin', e.target.value)} />
+      </fieldset>
+
+      <fieldset className="border-t border-border pt-4">
+        <legend className={`${legendCls} float-left w-full`}>Poste</legend>
+        <div className="clear-both grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <label className={labelCls} htmlFor="emp-position">Poste / Fonction</label>
+            <input id="emp-position" className={inputCls} value={form.position || ''} onChange={e => set('position', e.target.value)} />
+          </div>
+          <div>
+            <label className={labelCls} htmlFor="emp-department">Département</label>
+            <input id="emp-department" className={inputCls} value={form.department || ''} onChange={e => set('department', e.target.value)} />
+          </div>
+          <div>
+            <label className={labelCls} htmlFor="emp-contract">Type de contrat</label>
+            <select id="emp-contract" className={inputCls} value={form.contract_type} onChange={e => set('contract_type', e.target.value as Employee['contract_type'])}>
+              {Object.entries(CONTRACT_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={labelCls} htmlFor="emp-hire">Date d'embauche</label>
+            <input id="emp-hire" type="date" className={inputCls} value={form.hire_date || ''} onChange={e => set('hire_date', e.target.value || undefined)} />
+          </div>
         </div>
-        <div>
-          <label className={labelCls}>Genre</label>
-          <select className={inputCls} value={form.gender || ''} onChange={e => set('gender', e.target.value || undefined)}>
-            <option value="">—</option>
-            <option value="M">Homme</option>
-            <option value="F">Femme</option>
-          </select>
+      </fieldset>
+
+      <fieldset className="border-t border-border pt-4">
+        <legend className={`${legendCls} float-left w-full`}>Paie et organismes</legend>
+        <div className="clear-both grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <label className={labelCls} htmlFor="emp-cnss">N° CNSS</label>
+            <input id="emp-cnss" className={`${inputCls} font-mono`} value={form.cnss_number || ''} onChange={e => set('cnss_number', e.target.value)} />
+          </div>
+          <div>
+            <label className={labelCls} htmlFor="emp-cimr">N° CIMR</label>
+            <input id="emp-cimr" className={`${inputCls} font-mono`} value={form.cimr_number || ''} onChange={e => set('cimr_number', e.target.value)} />
+          </div>
+          <div>
+            <label className={labelCls} htmlFor="emp-cimr-rate">Taux CIMR salarié (%)</label>
+            <input id="emp-cimr-rate" type="number" min={0} max={20} step={0.01} className={`${inputCls} tabular-nums`} value={form.cimr_rate ?? 0} onChange={e => set('cimr_rate', parseFloat(e.target.value) || 0)} />
+          </div>
+          <div>
+            <label className={labelCls} htmlFor="emp-rib">RIB bancaire</label>
+            <input id="emp-rib" className={`${inputCls} font-mono`} value={form.bank_iban || ''} onChange={e => set('bank_iban', e.target.value)} />
+          </div>
+          <div className="sm:col-span-2">
+            <label className={labelCls} htmlFor="emp-salary">Salaire de base (MAD)</label>
+            <input id="emp-salary" type="number" min={0} step={0.01} required className={`${inputCls} tabular-nums`} value={form.base_salary} onChange={e => set('base_salary', parseFloat(e.target.value) || 0)} />
+          </div>
         </div>
-        <div>
-          <label className={labelCls}>Date de naissance</label>
-          <input type="date" className={inputCls} value={form.birth_date || ''} onChange={e => set('birth_date', e.target.value || undefined)} />
-        </div>
-        <div>
-          <label className={labelCls}>Situation familiale</label>
-          <select className={inputCls} value={form.marital_status || ''} onChange={e => set('marital_status', e.target.value as Employee['marital_status'] || undefined)}>
-            <option value="">—</option>
-            {Object.entries(MARITAL_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className={labelCls}>Nombre de personnes à charge</label>
-          <input type="number" min={0} max={6} className={inputCls} value={form.dependents_count} onChange={e => set('dependents_count', parseInt(e.target.value) || 0)} />
-        </div>
-        <div>
-          <label className={labelCls}>Poste / Fonction</label>
-          <input className={inputCls} value={form.position || ''} onChange={e => set('position', e.target.value)} />
-        </div>
-        <div>
-          <label className={labelCls}>Département</label>
-          <input className={inputCls} value={form.department || ''} onChange={e => set('department', e.target.value)} />
-        </div>
-        <div>
-          <label className={labelCls}>Type de contrat</label>
-          <select className={inputCls} value={form.contract_type} onChange={e => set('contract_type', e.target.value as Employee['contract_type'])}>
-            {Object.entries(CONTRACT_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className={labelCls}>Date d'embauche</label>
-          <input type="date" className={inputCls} value={form.hire_date || ''} onChange={e => set('hire_date', e.target.value || undefined)} />
-        </div>
-        <div>
-          <label className={labelCls}>N° CNSS</label>
-          <input className={inputCls} value={form.cnss_number || ''} onChange={e => set('cnss_number', e.target.value)} />
-        </div>
-        <div>
-          <label className={labelCls}>N° CIMR</label>
-          <input className={inputCls} value={form.cimr_number || ''} onChange={e => set('cimr_number', e.target.value)} />
-        </div>
-        <div>
-          <label className={labelCls}>Taux CIMR salarié (%)</label>
-          <input type="number" min={0} max={20} step={0.01} className={inputCls} value={form.cimr_rate ?? 0} onChange={e => set('cimr_rate', parseFloat(e.target.value) || 0)} />
-        </div>
-        <div>
-          <label className={labelCls}>RIB bancaire</label>
-          <input className={inputCls} value={form.bank_iban || ''} onChange={e => set('bank_iban', e.target.value)} />
-        </div>
-        <div className="col-span-2">
-          <label className={labelCls}>Salaire de base (MAD)</label>
-          <input type="number" min={0} step={0.01} required className={inputCls} value={form.base_salary} onChange={e => set('base_salary', parseFloat(e.target.value) || 0)} />
-        </div>
-      </div>
-      <div className="flex gap-2 justify-end pt-2 border-t border-border">
-        <button type="button" onClick={onCancel} className="px-3 py-1.5 text-sm rounded-lg border border-border hover:bg-accent text-foreground">Annuler</button>
-        <button type="submit" disabled={saving} className="px-4 py-1.5 text-sm rounded-lg bg-primary hover:bg-primary/90 text-white disabled:opacity-50">
+      </fieldset>
+
+      <div className="flex gap-2 border-t border-border pt-4 sm:justify-end">
+        <button type="button" onClick={onCancel} className={`${btnSecondary} flex-1 sm:flex-none`}>Annuler</button>
+        <button type="submit" disabled={saving} className={`${btnPrimary} flex-1 sm:flex-none`}>
           {saving ? 'Enregistrement…' : 'Enregistrer'}
         </button>
       </div>
@@ -219,97 +239,119 @@ export default function EmployeesPage() {
   const displayed = employees.filter(e => showInactive ? true : e.is_active);
 
   if (isLoading) {
-    return <div className="flex items-center justify-center min-h-[40vh]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>;
+    return <LoadingState />;
   }
 
+  const statusPill = (emp: Employee) => emp.is_active ? <StatusPill tone="success">Actif</StatusPill> : <StatusPill tone="neutral">Inactif</StatusPill>;
+  const rowActions = (emp: Employee) => (
+    <>
+      <button onClick={() => { setEditingEmployee(emp); setShowForm(true); }} className={iconBtn} title="Modifier" aria-label={`Modifier ${emp.full_name}`}>
+        <Pencil className="h-4 w-4" />
+      </button>
+      {emp.is_active ? (
+        <button onClick={() => handleDeactivate(emp)} className={iconBtnDanger} title="Désactiver" aria-label={`Désactiver ${emp.full_name}`}>
+          <UserX className="h-4 w-4" />
+        </button>
+      ) : (
+        <button onClick={() => handleReactivate(emp)} className={`${iconBtn} hover:bg-emerald-500/10 hover:text-emerald-600`} title="Réactiver" aria-label={`Réactiver ${emp.full_name}`}>
+          <UserCheckIcon className="h-4 w-4" />
+        </button>
+      )}
+    </>
+  );
+
   return (
-    <div className="space-y-4 max-w-[110rem] mx-auto">
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <h1 className="text-lg font-bold text-foreground">Employés</h1>
-          <p className="text-xs text-muted-foreground">{employees.filter(e => e.is_active).length} actifs</p>
-        </div>
-        <div className="flex items-center gap-2">
+    <div className="mx-auto max-w-[110rem]">
+      <PageHeader
+        title="Employés"
+        subtitle={`${employees.filter(e => e.is_active).length} actifs`}
+        actions={<>
           <button
             onClick={() => setShowInactive(v => !v)}
-            className={`text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${showInactive ? 'bg-secondary border-border text-foreground' : 'border-transparent text-muted-foreground hover:bg-accent'}`}
+            aria-pressed={showInactive}
+            className={`${btnSecondary} ${showInactive ? 'border-primary/40 text-primary' : ''}`}
           >
             {showInactive ? 'Tous' : 'Actifs seulement'}
           </button>
           <button
             onClick={() => { setEditingEmployee(null); setShowForm(true); }}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-primary hover:bg-primary/90 text-white rounded-lg"
+            className={btnPrimary}
           >
-            <Plus className="h-3.5 w-3.5" /> Nouvel employé
+            <Plus className="h-4 w-4" /> Nouvel employé
           </button>
-        </div>
-      </div>
+        </>}
+      />
 
       {showForm && (
-        <div className="glass rounded-lg p-4">
-          <h2 className="text-sm font-semibold text-foreground mb-3">
+        <section className={`${panel} mb-4 border-primary/40`}>
+          <h2 className="border-b border-border px-4 py-3 font-semibold text-foreground sm:px-5">
             {editingEmployee ? `Modifier — ${editingEmployee.full_name}` : 'Nouvel employé'}
           </h2>
-          <EmployeeForm
-            initial={editingEmployee || {}}
-            companyId={companyId}
-            onSave={handleSave}
-            onCancel={() => { setShowForm(false); setEditingEmployee(null); }}
-            saving={saving}
-          />
-        </div>
+          <div className="p-4 sm:p-5">
+            <EmployeeForm
+              initial={editingEmployee || {}}
+              companyId={companyId}
+              onSave={handleSave}
+              onCancel={() => { setShowForm(false); setEditingEmployee(null); }}
+              saving={saving}
+            />
+          </div>
+        </section>
       )}
 
       {displayed.length === 0 ? (
-        <div className="glass rounded-lg p-12 text-center">
-          <Users className="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" />
-          <p className="text-sm text-muted-foreground">Aucun employé trouvé.</p>
+        <div className={panel}>
+          <EmptyState icon={Users} title="Aucun employé trouvé." />
         </div>
       ) : (
-        <div className="glass rounded-lg overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead className="bg-secondary/30">
-                <tr>
-                  <th className="px-4 py-2 text-left font-medium text-muted-foreground">Nom</th>
-                  <th className="px-4 py-2 text-left font-medium text-muted-foreground">Poste</th>
-                  <th className="px-4 py-2 text-left font-medium text-muted-foreground">Département</th>
-                  <th className="px-4 py-2 text-left font-medium text-muted-foreground">Contrat</th>
-                  <th className="px-4 py-2 text-left font-medium text-muted-foreground">CNSS</th>
-                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Salaire base</th>
-                  <th className="px-4 py-2 text-center font-medium text-muted-foreground">Statut</th>
-                  <th className="px-4 py-2 text-center font-medium text-muted-foreground">Actions</th>
+        <div className={`${panel} overflow-hidden`}>
+          <ul className="divide-y divide-border md:hidden">
+            {displayed.map(emp => (
+              <li key={emp.id} className={`flex items-start gap-3 px-4 py-3 ${!emp.is_active ? 'opacity-60' : ''}`}>
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold uppercase text-primary" aria-hidden="true">
+                  {emp.full_name.split(' ').map(w => w[0]).slice(0, 2).join('')}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="truncate font-medium text-foreground">{emp.full_name}</p>
+                    {statusPill(emp)}
+                  </div>
+                  <p className="truncate text-xs text-muted-foreground">{[emp.position, emp.department, emp.contract_type].filter(Boolean).join(' · ')}</p>
+                  <div className="mt-1 flex items-center justify-between gap-2">
+                    <span className="font-mono text-xs text-muted-foreground">{emp.cnss_number || '—'}</span>
+                    <span className="text-sm font-semibold tabular-nums text-foreground">{fmt(emp.base_salary)} MAD</span>
+                  </div>
+                </div>
+                <div className="-mr-2 flex shrink-0 flex-col">{rowActions(emp)}</div>
+              </li>
+            ))}
+          </ul>
+          <div className="hidden overflow-x-auto md:block">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className={theadRow}>
+                  <th className={th}>Nom</th>
+                  <th className={th}>Poste</th>
+                  <th className={th}>Département</th>
+                  <th className={th}>Contrat</th>
+                  <th className={th}>CNSS</th>
+                  <th className={thRight}>Salaire base</th>
+                  <th className={th}>Statut</th>
+                  <th className={`${th} w-24`}><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {displayed.map(emp => (
-                  <tr key={emp.id} className={`hover:bg-accent/20 ${!emp.is_active ? 'opacity-50' : ''}`}>
-                    <td className="px-4 py-2.5 font-medium text-foreground">{emp.full_name}</td>
-                    <td className="px-4 py-2.5 text-muted-foreground">{emp.position || '—'}</td>
-                    <td className="px-4 py-2.5 text-muted-foreground">{emp.department || '—'}</td>
-                    <td className="px-4 py-2.5 text-muted-foreground">{emp.contract_type}</td>
-                    <td className="px-4 py-2.5 font-mono text-muted-foreground">{emp.cnss_number || '—'}</td>
-                    <td className="px-4 py-2.5 text-right font-mono font-semibold text-foreground">{fmt(emp.base_salary)} MAD</td>
-                    <td className="px-4 py-2.5 text-center">
-                      <span className={`inline-block text-[10px] font-bold px-1.5 py-0.5 rounded-full ${emp.is_active ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' : 'bg-secondary text-muted-foreground'}`}>
-                        {emp.is_active ? 'Actif' : 'Inactif'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2.5 text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <button onClick={() => { setEditingEmployee(emp); setShowForm(true); }} className="p-1 rounded hover:bg-accent" title="Modifier">
-                          <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
-                        </button>
-                        {emp.is_active ? (
-                          <button onClick={() => handleDeactivate(emp)} className="p-1 rounded hover:bg-destructive/10" title="Désactiver">
-                            <UserX className="h-3.5 w-3.5 text-muted-foreground" />
-                          </button>
-                        ) : (
-                          <button onClick={() => handleReactivate(emp)} className="p-1 rounded hover:bg-emerald-500/10" title="Réactiver">
-                            <UserCheckIcon className="h-3.5 w-3.5 text-muted-foreground" />
-                          </button>
-                        )}
-                      </div>
+                  <tr key={emp.id} className={`hover:bg-secondary/40 ${!emp.is_active ? 'opacity-60' : ''}`}>
+                    <td className={`${td} font-medium text-foreground`}>{emp.full_name}</td>
+                    <td className={`${td} text-muted-foreground`}>{emp.position || '—'}</td>
+                    <td className={`${td} text-muted-foreground`}>{emp.department || '—'}</td>
+                    <td className={`${td} text-muted-foreground`}>{emp.contract_type}</td>
+                    <td className={`${td} font-mono text-xs text-muted-foreground`}>{emp.cnss_number || '—'}</td>
+                    <td className={`${tdNum} font-semibold text-foreground`}>{fmt(emp.base_salary)} MAD</td>
+                    <td className={td}>{statusPill(emp)}</td>
+                    <td className={`${td} py-1.5`}>
+                      <div className="flex items-center justify-end gap-0.5">{rowActions(emp)}</div>
                     </td>
                   </tr>
                 ))}

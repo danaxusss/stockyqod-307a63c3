@@ -1,8 +1,11 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { BookMarked, Search, Plus, Loader, X, Check } from 'lucide-react';
+import { BookMarked, Search, Plus, X, Check } from 'lucide-react';
 import type { Account } from '../../types';
 import { AccountingService } from '../../utils/supabaseAccounting';
 import { useToast } from '../../context/ToastContext';
+import { PageHeader } from '../../components/PageHeader';
+import { StatusPill } from '../../components/lists/StatusPill';
+import { btnPrimary, btnSecondary, EmptyState, field, fieldLabel, LoadingState, panel } from '../../components/backoffice/BackOfficeUi';
 
 const CLASS_LABELS: Record<number, string> = {
   1: 'Financement permanent', 2: 'Actif immobilisé', 3: 'Actif circulant',
@@ -53,66 +56,71 @@ export default function PlanComptablePage() {
   };
 
   return (
-    <div className="max-w-[110rem] mx-auto py-6 px-3">
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-        <div className="flex items-center gap-2">
-          <div className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-primary/10"><BookMarked className="h-5 w-5 text-primary" /></div>
-          <div>
-            <h1 className="text-lg font-bold text-foreground leading-tight">Plan comptable</h1>
-            <p className="text-xs text-muted-foreground">{accounts.length} comptes (CGNC)</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Code ou libellé…"
-              className="pl-8 pr-3 py-2 text-sm rounded-lg bg-secondary border border-border w-56 focus:outline-none focus:ring-2 focus:ring-primary/30" />
-          </div>
-          <button onClick={() => setAdding(v => !v)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium">
+    <div className="mx-auto max-w-[110rem]">
+      <PageHeader
+        title="Plan comptable"
+        subtitle={`${accounts.length} comptes (CGNC)`}
+        actions={
+          <button onClick={() => setAdding(v => !v)} aria-expanded={adding} className={btnPrimary}>
             <Plus className="h-4 w-4" /> Compte
           </button>
+        }
+      >
+        <div className={`${panel} p-3`}>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+            <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Code ou libellé…" aria-label="Rechercher un compte"
+              className={`${field} pl-9`} />
+          </div>
         </div>
-      </div>
+      </PageHeader>
 
       {adding && (
-        <div className="bg-card border border-primary/30 rounded-xl p-3 mb-4 grid grid-cols-1 sm:grid-cols-[110px_1fr_90px_auto] gap-2 items-end">
-          <div><label className="block text-[11px] text-muted-foreground mb-1">Code</label>
-            <input value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value }))} placeholder="ex: 6182" className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border" /></div>
-          <div><label className="block text-[11px] text-muted-foreground mb-1">Libellé</label>
-            <input value={form.label} onChange={e => setForm(f => ({ ...f, label: e.target.value }))} className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border" /></div>
-          <div><label className="block text-[11px] text-muted-foreground mb-1">TVA %</label>
-            <input value={form.vat_rate} onChange={e => setForm(f => ({ ...f, vat_rate: e.target.value }))} placeholder="—" className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border" /></div>
-          <div className="flex gap-1">
-            <button onClick={save} disabled={saving} className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm disabled:opacity-50">{saving ? '…' : <Check className="h-4 w-4" />}</button>
-            <button onClick={() => setAdding(false)} className="px-2 py-1.5 rounded-lg bg-secondary border border-border"><X className="h-4 w-4" /></button>
+        <div className={`${panel} mb-4 border-primary/40 p-4`}>
+          <h2 className="mb-3 text-sm font-semibold text-foreground">Nouveau compte</h2>
+          <div className="grid grid-cols-2 items-end gap-3 sm:grid-cols-[8rem_1fr_7rem_auto]">
+            <div><label className={fieldLabel} htmlFor="pc-code">Code</label>
+              <input id="pc-code" value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value }))} placeholder="ex: 6182" className={`${field} font-mono`} /></div>
+            <div className="col-span-2 row-start-2 sm:col-span-1 sm:row-start-auto"><label className={fieldLabel} htmlFor="pc-label">Libellé</label>
+              <input id="pc-label" value={form.label} onChange={e => setForm(f => ({ ...f, label: e.target.value }))} className={field} /></div>
+            <div><label className={fieldLabel} htmlFor="pc-tva">TVA %</label>
+              <input id="pc-tva" value={form.vat_rate} onChange={e => setForm(f => ({ ...f, vat_rate: e.target.value }))} placeholder="—" className={`${field} tabular-nums`} /></div>
+            <div className="col-span-2 flex gap-2 sm:col-span-1">
+              <button onClick={() => setAdding(false)} className={`${btnSecondary} flex-1 sm:flex-none`} aria-label="Annuler"><X className="h-4 w-4" /><span className="sm:hidden">Annuler</span></button>
+              <button onClick={save} disabled={saving} className={`${btnPrimary} flex-1 sm:flex-none`} aria-label="Enregistrer le compte">{saving ? '…' : <Check className="h-4 w-4" />}<span className="sm:hidden">Enregistrer</span></button>
+            </div>
           </div>
         </div>
       )}
 
       {loading ? (
-        <div className="flex items-center justify-center py-16 text-muted-foreground"><Loader className="h-5 w-5 animate-spin mr-2" />Chargement…</div>
+        <LoadingState />
+      ) : filtered.length === 0 ? (
+        <div className={panel}><EmptyState icon={BookMarked} title={query ? 'Aucun compte ne correspond à la recherche' : 'Aucun compte'} /></div>
       ) : (
         <div className="space-y-4">
           {filtered.map(([cls, list]) => (
-            <div key={cls} className="bg-card border border-border/60 rounded-xl overflow-hidden">
-              <div className="px-3 py-2 bg-secondary/50 text-xs font-semibold text-foreground border-b border-border/60">
-                Classe {cls} — {CLASS_LABELS[cls] || ''}
+            <section key={cls} className={`${panel} overflow-hidden`}>
+              <div className="flex items-center justify-between gap-3 border-b border-border bg-secondary/40 px-4 py-2.5">
+                <h2 className="text-sm font-semibold text-foreground">
+                  <span className="mr-2 inline-flex h-6 min-w-6 items-center justify-center rounded-md bg-primary/10 px-1.5 text-xs font-bold text-primary">{cls}</span>
+                  Classe {cls} — {CLASS_LABELS[cls] || ''}
+                </h2>
+                <span className="text-xs tabular-nums text-muted-foreground">{list.length}</span>
               </div>
-              <table className="w-full text-sm">
-                <tbody>
-                  {list.map(a => (
-                    <tr key={a.id} className="border-b border-border/40 last:border-0 hover:bg-secondary/30">
-                      <td className="px-3 py-2 font-mono text-foreground w-24">{a.code}</td>
-                      <td className="px-3 py-2 text-foreground">{a.label}</td>
-                      <td className="px-3 py-2 text-right text-xs text-muted-foreground">
-                        {a.vat_rate != null && <span className="mr-2">TVA {a.vat_rate}%</span>}
-                        {a.lettrable && <span className="px-1.5 py-0.5 rounded bg-secondary">lettrable</span>}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+              <ul className="divide-y divide-border">
+                {list.map(a => (
+                  <li key={a.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-secondary/40">
+                    <span className="w-20 shrink-0 font-mono text-sm font-semibold text-foreground">{a.code}</span>
+                    <span className="min-w-0 flex-1 text-sm text-foreground">{a.label}</span>
+                    <span className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+                      {a.vat_rate != null && <StatusPill tone="info">TVA {a.vat_rate}%</StatusPill>}
+                      {a.lettrable && <StatusPill tone="neutral">lettrable</StatusPill>}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
           ))}
         </div>
       )}

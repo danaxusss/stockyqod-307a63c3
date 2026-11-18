@@ -1,10 +1,13 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { HandCoins, Plus, Loader, Check, Trash2 } from 'lucide-react';
+import { HandCoins, Plus, Check, Trash2 } from 'lucide-react';
 import { LoanService, type EmployeeLoan } from '../../utils/supabasePayrollHr';
 import { SupabaseEmployeesService } from '../../utils/supabaseEmployees';
 import type { Employee } from '../../types';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
+import { PageHeader } from '../../components/PageHeader';
+import { StatusPill } from '../../components/lists/StatusPill';
+import { btnPrimary, EmptyState, field, fieldLabel, iconBtnDanger, LoadingState, MobileField, panel, td, tdNum, th, theadRow, thRight } from '../../components/backoffice/BackOfficeUi';
 
 function fmt(n: number) { return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(n); }
 
@@ -34,57 +37,86 @@ export default function AvancesPage() {
     } catch (e: any) { showToast({ type: 'error', message: e?.message || 'Échec' }); }
   };
 
-  if (!isPaie && !isSuperAdmin) return <div className="text-center py-12 text-muted-foreground">Accès réservé au rôle Paie.</div>;
-  if (loading) return <div className="flex items-center justify-center py-24 text-muted-foreground"><Loader className="h-5 w-5 animate-spin mr-2" />Chargement…</div>;
+  if (!isPaie && !isSuperAdmin) return <div className="py-12 text-center text-muted-foreground">Accès réservé au rôle Paie.</div>;
+  if (loading) return <LoadingState />;
+
+  const statePill = (l: EmployeeLoan) => l.active && l.remaining > 0 ? <StatusPill tone="warning">En cours</StatusPill> : <StatusPill tone="success">Soldé</StatusPill>;
+  const deleteButton = (l: EmployeeLoan) => (
+    <button onClick={() => LoanService.remove(l.id).then(load)} aria-label="Supprimer" title="Supprimer" className={iconBtnDanger}><Trash2 className="h-4 w-4" /></button>
+  );
 
   return (
-    <div className="max-w-[110rem] mx-auto py-6 px-3">
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-        <div className="flex items-center gap-2">
-          <div className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-primary/10"><HandCoins className="h-5 w-5 text-primary" /></div>
-          <div><h1 className="text-lg font-bold text-foreground leading-tight">Avances & prêts</h1><p className="text-xs text-muted-foreground">Retenues automatiques sur la paie du mois</p></div>
-        </div>
-        <button onClick={() => setAdding(v => !v)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium"><Plus className="h-4 w-4" /> Avance / prêt</button>
-      </div>
+    <div className="mx-auto max-w-[110rem]">
+      <PageHeader
+        title="Avances & prêts"
+        subtitle="Retenues automatiques sur la paie du mois"
+        actions={<button onClick={() => setAdding(v => !v)} aria-expanded={adding} className={btnPrimary}><Plus className="h-4 w-4" /> Avance / prêt</button>}
+      />
 
       {adding && (
-        <div className="bg-card border border-primary/30 rounded-xl p-3 mb-4 grid grid-cols-2 sm:grid-cols-5 gap-2 items-end">
-          <div className="col-span-2 sm:col-span-1"><label className="block text-[11px] text-muted-foreground mb-1">Employé</label>
-            <select value={form.employee_id} onChange={e => setForm(f => ({ ...f, employee_id: e.target.value }))} className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border"><option value="">—</option>{employees.map(e => <option key={e.id} value={e.id}>{e.full_name}</option>)}</select></div>
-          <div><label className="block text-[11px] text-muted-foreground mb-1">Type</label>
-            <select value={form.kind} onChange={e => setForm(f => ({ ...f, kind: e.target.value }))} className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border"><option value="avance">Avance</option><option value="pret">Prêt</option></select></div>
-          <div><label className="block text-[11px] text-muted-foreground mb-1">Montant</label><input type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border" /></div>
-          <div><label className="block text-[11px] text-muted-foreground mb-1">Échéance/mois</label><input type="number" value={form.monthly_installment} onChange={e => setForm(f => ({ ...f, monthly_installment: e.target.value }))} className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border" /></div>
-          <button onClick={submit} className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm"><Check className="h-4 w-4 mx-auto" /></button>
-        </div>
+        <section className={`${panel} mb-4 border-primary/40 p-4`}>
+          <h2 className="mb-3 text-sm font-semibold text-foreground">Nouvelle avance / prêt</h2>
+          <div className="grid grid-cols-2 items-end gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
+            <div className="col-span-2 sm:col-span-1"><label className={fieldLabel} htmlFor="ln-employee">Employé</label>
+              <select id="ln-employee" value={form.employee_id} onChange={e => setForm(f => ({ ...f, employee_id: e.target.value }))} className={field}><option value="">—</option>{employees.map(e => <option key={e.id} value={e.id}>{e.full_name}</option>)}</select></div>
+            <div className="col-span-2 sm:col-span-1"><label className={fieldLabel} htmlFor="ln-kind">Type</label>
+              <select id="ln-kind" value={form.kind} onChange={e => setForm(f => ({ ...f, kind: e.target.value }))} className={field}><option value="avance">Avance</option><option value="pret">Prêt</option></select></div>
+            <div><label className={fieldLabel} htmlFor="ln-amount">Montant</label><input id="ln-amount" type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} className={`${field} tabular-nums`} /></div>
+            <div><label className={fieldLabel} htmlFor="ln-monthly">Échéance/mois</label><input id="ln-monthly" type="number" value={form.monthly_installment} onChange={e => setForm(f => ({ ...f, monthly_installment: e.target.value }))} className={`${field} tabular-nums`} /></div>
+            <button onClick={submit} aria-label="Enregistrer l'avance ou le prêt" className={`${btnPrimary} col-span-2 sm:col-span-1`}><Check className="h-4 w-4" /><span className="sm:hidden">Enregistrer</span></button>
+          </div>
+        </section>
       )}
 
-      <div className="bg-card border border-border/60 rounded-xl overflow-hidden">
-        <table className="w-full text-sm">
-          <thead><tr className="bg-secondary/50 text-xs text-muted-foreground border-b border-border/60">
-            <th className="text-left font-medium px-3 py-2">Employé</th>
-            <th className="text-left font-medium px-3 py-2">Type</th>
-            <th className="text-right font-medium px-3 py-2">Montant</th>
-            <th className="text-right font-medium px-3 py-2">Échéance</th>
-            <th className="text-right font-medium px-3 py-2">Restant</th>
-            <th className="text-left font-medium px-3 py-2">État</th>
-            <th className="w-8"></th>
-          </tr></thead>
-          <tbody>
-            {loans.map(l => (
-              <tr key={l.id} className="border-b border-border/40">
-                <td className="px-3 py-2">{(l.employee as any)?.full_name || '—'}</td>
-                <td className="px-3 py-2 text-xs">{l.kind === 'pret' ? 'Prêt' : 'Avance'} · {l.label}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{fmt(l.amount)}</td>
-                <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{fmt(l.monthly_installment)}</td>
-                <td className="px-3 py-2 text-right tabular-nums font-semibold">{fmt(l.remaining)}</td>
-                <td className="px-3 py-2"><span className={`text-[11px] font-semibold ${l.active && l.remaining > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>{l.active && l.remaining > 0 ? 'En cours' : 'Soldé'}</span></td>
-                <td className="px-2 text-center"><button onClick={() => LoanService.remove(l.id).then(load)} className="p-1 text-muted-foreground hover:bg-secondary rounded"><Trash2 className="h-3.5 w-3.5" /></button></td>
-              </tr>
-            ))}
-            {loans.length === 0 && <tr><td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">Aucune avance / prêt</td></tr>}
-          </tbody>
-        </table>
+      <div className={`${panel} overflow-hidden`}>
+        {loans.length === 0 ? <EmptyState icon={HandCoins} title="Aucune avance / prêt" /> : (
+          <>
+            <ul className="divide-y divide-border md:hidden">
+              {loans.map(l => (
+                <li key={l.id} className="px-4 py-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-foreground">{l.employee?.full_name || '—'}</p>
+                      <p className="truncate text-xs text-muted-foreground">{l.kind === 'pret' ? 'Prêt' : 'Avance'} · {l.label}</p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">{statePill(l)}{deleteButton(l)}</div>
+                  </div>
+                  <dl className="mt-2 grid grid-cols-3 gap-x-3">
+                    <MobileField label="Montant">{fmt(l.amount)}</MobileField>
+                    <MobileField label="Échéance">{fmt(l.monthly_installment)}</MobileField>
+                    <MobileField label="Restant"><span className="font-semibold">{fmt(l.remaining)}</span></MobileField>
+                  </dl>
+                </li>
+              ))}
+            </ul>
+            <div className="hidden overflow-x-auto md:block">
+              <table className="w-full text-sm">
+                <thead><tr className={theadRow}>
+                  <th className={th}>Employé</th>
+                  <th className={th}>Type</th>
+                  <th className={thRight}>Montant</th>
+                  <th className={thRight}>Échéance</th>
+                  <th className={thRight}>Restant</th>
+                  <th className={th}>État</th>
+                  <th className={`${th} w-12`}><span className="sr-only">Actions</span></th>
+                </tr></thead>
+                <tbody className="divide-y divide-border">
+                  {loans.map(l => (
+                    <tr key={l.id} className="hover:bg-secondary/40">
+                      <td className={`${td} font-medium text-foreground`}>{l.employee?.full_name || '—'}</td>
+                      <td className={`${td} text-muted-foreground`}>{l.kind === 'pret' ? 'Prêt' : 'Avance'} · {l.label}</td>
+                      <td className={`${tdNum} text-foreground`}>{fmt(l.amount)}</td>
+                      <td className={`${tdNum} text-muted-foreground`}>{fmt(l.monthly_installment)}</td>
+                      <td className={`${tdNum} font-semibold text-foreground`}>{fmt(l.remaining)}</td>
+                      <td className={td}>{statePill(l)}</td>
+                      <td className={`${td} py-1.5 text-center`}>{deleteButton(l)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

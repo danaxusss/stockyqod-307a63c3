@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { FileBarChart, Loader, Download } from 'lucide-react';
+import { Download, AlertTriangle } from 'lucide-react';
 import type { Account, FiscalYear } from '../../types';
 import { AccountingService } from '../../utils/supabaseAccounting';
 import { useToast } from '../../context/ToastContext';
+import { PageHeader } from '../../components/PageHeader';
+import { btnSecondary, LoadingState, panel, Segmented } from '../../components/backoffice/BackOfficeUi';
 
 function fmt(n: number) { return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(n); }
 
@@ -85,68 +87,75 @@ export default function EtatsSynthesePage() {
     const a = document.createElement('a'); a.href = url; a.download = `${tab}-${fy?.label || ''}.csv`; a.click(); URL.revokeObjectURL(url);
   };
 
-  if (loading) return <div className="flex items-center justify-center py-24 text-muted-foreground"><Loader className="h-5 w-5 animate-spin mr-2" />Chargement…</div>;
+  if (loading) return <LoadingState />;
 
   const Line = ({ label, amount, bold, muted }: { label: string; amount: number; bold?: boolean; muted?: boolean }) => (
-    <div className={`flex justify-between py-1.5 px-3 ${bold ? 'font-semibold border-t border-border/60 bg-secondary/30' : ''}`}>
-      <span className={muted ? 'text-muted-foreground text-sm' : 'text-sm'}>{label}</span>
-      <span className="tabular-nums text-sm">{fmt(amount)}</span>
+    <div className={`flex items-baseline justify-between gap-4 px-4 py-2.5 sm:px-5 ${bold ? 'bg-secondary/40 font-semibold' : ''}`}>
+      <span className={`min-w-0 text-sm ${muted ? 'text-muted-foreground' : 'text-foreground'}`}>{label}</span>
+      <span className="whitespace-nowrap text-sm tabular-nums text-foreground">{fmt(amount)}</span>
     </div>
   );
+  const groupTitle = 'border-b border-border px-4 py-3 font-semibold text-foreground sm:px-5';
 
   return (
-    <div className="max-w-[110rem] mx-auto py-6 px-3">
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-        <div className="flex items-center gap-2">
-          <div className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-primary/10"><FileBarChart className="h-5 w-5 text-primary" /></div>
-          <div>
-            <h1 className="text-lg font-bold text-foreground leading-tight">États de synthèse</h1>
-            <p className="text-xs text-muted-foreground">Modèle simplifié · exercice {fy?.label}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex rounded-lg border border-border overflow-hidden">
-            <button onClick={() => setTab('cpc')} className={`px-3 py-1.5 text-xs font-medium ${tab === 'cpc' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'}`}>CPC</button>
-            <button onClick={() => setTab('bilan')} className={`px-3 py-1.5 text-xs font-medium ${tab === 'bilan' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'}`}>Bilan</button>
-          </div>
-          <button onClick={exportCsv} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-secondary border border-border text-sm"><Download className="h-3.5 w-3.5" /> CSV</button>
-        </div>
-      </div>
+    <div className="mx-auto max-w-[110rem]">
+      <PageHeader
+        title="États de synthèse"
+        subtitle={`Modèle simplifié · exercice ${fy?.label ?? ''}`}
+        actions={<>
+          <Segmented<'bilan' | 'cpc'> label="État affiché" value={tab} onChange={setTab}
+            options={[{ value: 'cpc', label: 'CPC' }, { value: 'bilan', label: 'Bilan' }]} />
+          <button onClick={exportCsv} className={btnSecondary}><Download className="h-4 w-4" /> CSV</button>
+        </>}
+      />
 
       {tab === 'cpc' ? (
-        <div className="bg-card border border-border/60 rounded-xl overflow-hidden">
-          <div className="px-3 py-2 bg-secondary/50 border-b border-border/60 text-sm font-semibold">Produits</div>
-          {cpc.produits.map(r => <Line key={r.code} label={`${r.code} — ${r.label}`} amount={r.amount} muted />)}
-          <Line label="Total produits" amount={cpc.totalProduits} bold />
-          <div className="px-3 py-2 bg-secondary/50 border-y border-border/60 text-sm font-semibold">Charges</div>
-          {cpc.charges.map(r => <Line key={r.code} label={`${r.code} — ${r.label}`} amount={r.amount} muted />)}
-          <Line label="Total charges" amount={cpc.totalCharges} bold />
-          <div className={`flex justify-between py-2.5 px-3 font-bold border-t-2 border-border ${cpc.resultat >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
-            <span>Résultat net {cpc.resultat >= 0 ? '(bénéfice)' : '(perte)'}</span>
-            <span className="tabular-nums">{fmt(cpc.resultat)}</span>
+        <div className="grid items-start gap-4 lg:grid-cols-2">
+          <section className={`${panel} overflow-hidden`}>
+            <h2 className={groupTitle}>Produits</h2>
+            <div className="divide-y divide-border">
+              {cpc.produits.map(r => <Line key={r.code} label={`${r.code} — ${r.label}`} amount={r.amount} muted />)}
+              <Line label="Total produits" amount={cpc.totalProduits} bold />
+            </div>
+          </section>
+          <section className={`${panel} overflow-hidden`}>
+            <h2 className={groupTitle}>Charges</h2>
+            <div className="divide-y divide-border">
+              {cpc.charges.map(r => <Line key={r.code} label={`${r.code} — ${r.label}`} amount={r.amount} muted />)}
+              <Line label="Total charges" amount={cpc.totalCharges} bold />
+            </div>
+          </section>
+          <div className={`${panel} flex items-center justify-between gap-4 px-4 py-4 sm:px-5 lg:col-span-2 ${cpc.resultat >= 0 ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-red-500/30 bg-red-500/5'}`}>
+            <span className="font-semibold text-foreground">Résultat net {cpc.resultat >= 0 ? '(bénéfice)' : '(perte)'}</span>
+            <span className={`whitespace-nowrap text-lg font-bold tabular-nums ${cpc.resultat >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}`}>{fmt(cpc.resultat)}</span>
           </div>
         </div>
       ) : (
-        <div className="grid md:grid-cols-2 gap-4">
-          <div className="bg-card border border-border/60 rounded-xl overflow-hidden">
-            <div className="px-3 py-2 bg-secondary/50 border-b border-border/60 text-sm font-semibold">Actif</div>
-            <Line label="Immobilisations (net)" amount={bilan.immob} />
-            <Line label="Actif circulant" amount={bilan.actifCirc} />
-            <Line label="Trésorerie - Actif" amount={bilan.tresoActif} />
-            <Line label="Total Actif" amount={bilan.totalActif} bold />
-          </div>
-          <div className="bg-card border border-border/60 rounded-xl overflow-hidden">
-            <div className="px-3 py-2 bg-secondary/50 border-b border-border/60 text-sm font-semibold">Passif</div>
-            <Line label="Capitaux propres" amount={bilan.capitaux} />
-            <Line label="Résultat net de l'exercice" amount={bilan.resultat} />
-            <Line label="Dettes du passif circulant" amount={bilan.dettes} />
-            <Line label="Trésorerie - Passif" amount={bilan.tresoPassif} />
-            <Line label="Total Passif" amount={bilan.totalPassif} bold />
-          </div>
-          {Math.abs(bilan.totalActif - bilan.totalPassif) > 0.5 && (
-            <div className="md:col-span-2 text-xs text-amber-600 dark:text-amber-400">
-              ⚠ Écart Actif/Passif de {fmt(Math.abs(bilan.totalActif - bilan.totalPassif))} — écritures d'à-nouveaux ou de régularisation manquantes.
+        <div className="grid items-start gap-4 md:grid-cols-2">
+          <section className={`${panel} overflow-hidden`}>
+            <h2 className={groupTitle}>Actif</h2>
+            <div className="divide-y divide-border">
+              <Line label="Immobilisations (net)" amount={bilan.immob} />
+              <Line label="Actif circulant" amount={bilan.actifCirc} />
+              <Line label="Trésorerie - Actif" amount={bilan.tresoActif} />
+              <Line label="Total Actif" amount={bilan.totalActif} bold />
             </div>
+          </section>
+          <section className={`${panel} overflow-hidden`}>
+            <h2 className={groupTitle}>Passif</h2>
+            <div className="divide-y divide-border">
+              <Line label="Capitaux propres" amount={bilan.capitaux} />
+              <Line label="Résultat net de l'exercice" amount={bilan.resultat} />
+              <Line label="Dettes du passif circulant" amount={bilan.dettes} />
+              <Line label="Trésorerie - Passif" amount={bilan.tresoPassif} />
+              <Line label="Total Passif" amount={bilan.totalPassif} bold />
+            </div>
+          </section>
+          {Math.abs(bilan.totalActif - bilan.totalPassif) > 0.5 && (
+            <p className="flex gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-800 dark:text-amber-200 md:col-span-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>Écart Actif/Passif de {fmt(Math.abs(bilan.totalActif - bilan.totalPassif))} — écritures d'à-nouveaux ou de régularisation manquantes.</span>
+            </p>
           )}
         </div>
       )}
