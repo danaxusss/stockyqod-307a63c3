@@ -1,3 +1,4 @@
+import { SupabaseCompaniesService, invalidateCompaniesCache } from './supabaseCompanies';
 import { supabase } from '@/integrations/supabase/client';
 import { getCompanyContext } from './supabaseCompanyFilter';
 
@@ -162,12 +163,9 @@ export class CompanySettingsService {
    */
   static async getSettings(companyId?: string): Promise<CompanySettings | null> {
     if (companyId) {
-      const { data, error } = await supabase
-        .from('companies')
-        .select('*')
-        .eq('id', companyId)
-        .maybeSingle();
-      if (!error && data) {
+      // Same shared, short-lived cache as the rest of the app's company reads.
+      const data = await SupabaseCompaniesService.getCompanyById(companyId).catch(() => null);
+      if (data) {
         return this.mapCompanyRow(data as any);
       }
     }
@@ -319,6 +317,7 @@ export class CompanySettingsService {
     // Remove undefined keys
     Object.keys(updateData).forEach(k => updateData[k] === undefined && delete updateData[k]);
     const { error } = await supabase.from('companies').update(updateData as any).eq('id', companyId);
+    invalidateCompaniesCache();
     if (error) throw error;
   }
 

@@ -31,7 +31,8 @@ import {
 import { Quote, QuoteItem, CustomerInfo, Product, Provider } from '../types';
 import { StockLocationsService } from '../utils/supabaseStockLocations';
 import { ExcelExportService } from '../utils/excelExport';
-import { PdfExportService } from '../utils/pdfExport';
+// The PDF library (~400 kB) loads when a PDF is made, not with the page.
+const loadPdfExport = () => import('../utils/pdfExport').then(m => m.PdfExportService);
 import { CompanySettingsService, CompanySettings, DEFAULT_SHARE_TEMPLATES } from '../utils/companySettings';
 import { quoteCompanyId, SupabaseQuotesService } from '../utils/supabaseQuotes';
 import { attachmentsSummary, createAttachmentsLink, findQuoteAttachments, NO_ATTACHMENTS, quoteBundleSections, type QuoteAttachments } from '../utils/quoteAttachments';
@@ -55,7 +56,6 @@ import { applyQuoteItemDisplayOverride, getQuoteItemBarcode, getQuoteItemBrand, 
 import { buildWhatsAppShareUrl, canSharePdfFile, downloadPdfFile, openPreparingWhatsAppWindow, redirectPreparingWindowToWhatsApp, openWhatsAppShare, sharePdfFile } from '../utils/whatsappShare';
 import { SupabaseDocumentsService } from '../utils/supabaseDocuments';
 import { formatMoney, toDateInputValue } from '../utils/format';
-import { exportSupplierPurchasePdf } from '../utils/supplierPurchasePdf';
 import { resolveProductImageUrl } from '../utils/productImages';
 
 const ITEMS_PER_PAGE = 40;
@@ -875,7 +875,7 @@ export function QuoteCartPage() {
 
       // Sheets (and photos of products without one) shared through a link.
       const link = await attachmentsLink();
-      await PdfExportService.exportQuoteToPdf(quoteData, freshSettings || companySettings, link?.url, link?.expiryLabel, useStamp, 'quote', undefined, printTTCOnly, includeProductImages, false, link?.label);
+      await (await loadPdfExport()).exportQuoteToPdf(quoteData, freshSettings || companySettings, link?.url, link?.expiryLabel, useStamp, 'quote', undefined, printTTCOnly, includeProductImages, false, link?.label);
       showToast({
         type: 'success',
         title: 'Export réussi',
@@ -1006,7 +1006,7 @@ export function QuoteCartPage() {
       const freshSettings = await CompanySettingsService.getSettings(quoteCompanyId(quote)).catch(() => companySettings);
       const quoteData: Quote = { id: quote?.id || crypto.randomUUID(), company_id: quote?.company_id || companyId || undefined, issuing_company_id: quote?.issuing_company_id, quoteNumber, commandNumber: commandNumber || undefined, createdAt: quote?.createdAt || new Date(), updatedAt: new Date(), status, customer, items, totalAmount, notes, notes2: notes2 || undefined, quote_date: quoteDate || undefined };
       const link = await attachmentsLink();
-      const { blob, filename } = await PdfExportService.generatePdfBlob(quoteData, freshSettings || companySettings, link?.url, link?.expiryLabel, useStamp, 'quote', undefined, printTTCOnly, includeProductImages, link?.label);
+      const { blob, filename } = await (await loadPdfExport()).generatePdfBlob(quoteData, freshSettings || companySettings, link?.url, link?.expiryLabel, useStamp, 'quote', undefined, printTTCOnly, includeProductImages, link?.label);
       setWaPdfShare({ blob, filename, message: buildQuoteWhatsAppMessage(freshSettings || companySettings) });
     } catch (error) {
       setWaPdfError(error instanceof Error ? error.message : 'Impossible de préparer le PDF');
@@ -1070,8 +1070,9 @@ export function QuoteCartPage() {
   };
   const handleWhatsAppShare = () => { if (guardDirty()) prepareWhatsAppPdf(); };
   // Internal purchasing sheet: the quote's products grouped by supplier.
-  const handleSupplierPdf = () => {
+  const handleSupplierPdf = async () => {
     try {
+      const { exportSupplierPurchasePdf } = await import('../utils/supplierPurchasePdf');
       exportSupplierPurchasePdf(items, { quoteNumber, clientName: customer.fullName, sellerName: customer.salesPerson, quoteDate }, companySettings);
     } catch {
       showToast({ type: 'error', title: 'Erreur', message: 'Impossible de créer la liste d’achat.' });
@@ -1085,7 +1086,7 @@ export function QuoteCartPage() {
       const freshSettings = await CompanySettingsService.getSettings(quoteCompanyId(quote)).catch(() => companySettings);
       const quoteData: Quote = { id: quote?.id || crypto.randomUUID(), company_id: quote?.company_id || companyId || undefined, issuing_company_id: quote?.issuing_company_id, quoteNumber, commandNumber: commandNumber || undefined, createdAt: quote?.createdAt || new Date(), updatedAt: new Date(), status, customer, items, totalAmount, notes, notes2: notes2 || undefined, quote_date: quoteDate || undefined };
       const link = await attachmentsLink();
-      await PdfExportService.exportQuoteToPdf(quoteData, freshSettings || companySettings, link?.url, link?.expiryLabel, useStamp, 'quote', undefined, printTTCOnly, includeProductImages, false, link?.label);
+      await (await loadPdfExport()).exportQuoteToPdf(quoteData, freshSettings || companySettings, link?.url, link?.expiryLabel, useStamp, 'quote', undefined, printTTCOnly, includeProductImages, false, link?.label);
     } catch { /* continue */ }
     setIsExporting(false);
 
