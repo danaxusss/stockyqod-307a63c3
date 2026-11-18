@@ -63,6 +63,7 @@ function stores(): Storage[] {
  * deployed.
  */
 export function saveSession(token: string | null, user: AppUser, expiresAt: number | null | undefined, rememberMe: boolean): void {
+  sharedCheck = null;
   clearSession({ keepRememberedUsername: true });
   const store = rememberMe ? localStorage : sessionStorage;
   const exp = expiresAt && Number(expiresAt) > 0
@@ -115,6 +116,7 @@ export function forgetRememberedUsername(): void {
 }
 
 export function clearSession(opts: { keepRememberedUsername?: boolean } = {}): void {
+  sharedCheck = null;
   for (const store of stores()) {
     try {
       [TOKEN_KEY, USER_KEY, EXPIRY_KEY, LAST_SEEN_KEY, ...LEGACY_KEYS].forEach(k => store.removeItem(k));
@@ -190,6 +192,29 @@ export async function validateSession(): Promise<AppUser | null> {
   } catch {
     return s.user;
   }
+}
+
+// One server check shared by the whole app. Every component that knows the
+// user (pages, sidebar, header, search…) used to ask on mount, so each page
+// change sent several validate-session calls to the edge function and each
+// answer re-rendered the app. Callers now share one in-flight request and
+// reuse its answer for a few minutes; the hourly re-check still happens.
+const SHARED_CHECK_MS = 5 * 60 * 1000;
+let sharedCheck: { token: string | null; at: number; promise: Promise<AppUser | null> } | null = null;
+
+export function validateSessionShared(maxAgeMs = SHARED_CHECK_MS): Promise<AppUser | null> {
+  const token = readSession()?.token ?? null;
+  if (sharedCheck && sharedCheck.token === token && Date.now() - sharedCheck.at < maxAgeMs) return sharedCheck.promise;
+  const promise = validateSession();
+  sharedCheck = { token, at: Date.now(), promise };
+  // A failed or logged-out check is not reused.
+  promise.then(user => { if (!user && sharedCheck?.promise === promise) sharedCheck = null; }, () => { if (sharedCheck?.promise === promise) sharedCheck = null; });
+  return promise;
+}
+
+/** Forget the shared answer (login, logout, user change). */
+export function resetSharedSessionCheck(): void {
+  sharedCheck = null;
 }
 
 /** Remaining session time in ms (0 when none). */

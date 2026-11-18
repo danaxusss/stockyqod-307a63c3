@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { ActivityLogger } from '../utils/activityLogger';
 import { setLastAuthError, rateLimitMessage } from '../utils/authError';
 import {
-  saveSession, readSession, clearSession, validateSession,
+  saveSession, readSession, clearSession, validateSessionShared,
   hasLocallyValidSession, touchSession, remainingMs,
 } from '../utils/session';
 
@@ -86,24 +86,26 @@ export function useUserAuth() {
   }, [isAuthenticated]);
 
   // Confirm with the server that the stored token is genuine and still valid,
-  // and refresh the cached user so revoked rights apply immediately. Runs once
-  // on mount and then hourly.
+  // and refresh the cached user so revoked rights apply immediately. Every
+  // component using this hook shares one check (see validateSessionShared),
+  // on mount and then hourly; the user object only changes when its content
+  // does, so components depending on it don't reload for nothing.
   useEffect(() => {
     let cancelled = false;
-    const check = async () => {
+    const check = async (maxAgeMs?: number) => {
       if (!readSession()) return;
-      const fresh = await validateSession();
+      const fresh = await validateSessionShared(maxAgeMs);
       if (cancelled) return;
       if (!fresh) {
         setIsAuthenticated(false);
         setAuthenticatedUser(null);
         userAuthStateManager.notify();
       } else {
-        setAuthenticatedUser(fresh);
+        setAuthenticatedUser(current => (current && JSON.stringify(current) === JSON.stringify(fresh) ? current : fresh));
       }
     };
     check();
-    const id = setInterval(check, 60 * 60 * 1000);
+    const id = setInterval(() => check(0), 60 * 60 * 1000);
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 

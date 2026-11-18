@@ -1,6 +1,14 @@
 // @ts-nocheck
 import { Quote, QuoteItem, QuoteTemplate } from '../types';
-import * as ExcelJS from 'exceljs';
+import type * as ExcelJS from 'exceljs';
+
+// exceljs is large (~900 kB): load it only when a workbook is actually built,
+// so pages using this module's small helpers (quote numbers, copy text,
+// currency format) don't download it.
+const loadExcel = async () => {
+  const mod = await import('exceljs');
+  return ((mod as unknown as { default?: typeof ExcelJS }).default ?? mod) as typeof ExcelJS;
+};
 import { getQuoteItemBarcode, getQuoteItemBrand, getQuoteItemName } from './quoteItemDisplay';
 
 export class ExcelExportService {
@@ -52,7 +60,7 @@ export class ExcelExportService {
       reader.onload = async (e) => {
         try {
           const buffer = e.target?.result as ArrayBuffer;
-          const workbook = new ExcelJS.Workbook();
+          const workbook = new (await loadExcel()).Workbook();
           await workbook.xlsx.load(buffer);
           
           // Check if workbook has at least one worksheet
@@ -88,7 +96,7 @@ export class ExcelExportService {
         console.log('Using provided template with ExcelJS:', template.name);
         try {
           // Load template with ExcelJS (preserves formatting)
-          workbook = new ExcelJS.Workbook();
+          workbook = new (await loadExcel()).Workbook();
           const buffer = new Uint8Array(template.fileData);
           await workbook.xlsx.load(buffer);
           
@@ -173,7 +181,7 @@ export class ExcelExportService {
 
   // Create default Excel template with ExcelJS (with basic formatting)
   private static async createDefaultTemplateWithExcelJS(): Promise<ExcelJS.Workbook> {
-    const workbook = new ExcelJS.Workbook();
+    const workbook = new (await loadExcel()).Workbook();
     const worksheet = workbook.addWorksheet('Devis');
     
     // Set column widths
@@ -324,7 +332,7 @@ export class ExcelExportService {
 
   // Export items to simple Excel format (for cart copy functionality)
   static async exportItemsToExcel(items: QuoteItem[], filename?: string): Promise<void> {
-    const workbook = new ExcelJS.Workbook();
+    const workbook = new (await loadExcel()).Workbook();
     const worksheet = workbook.addWorksheet('Articles');
     
     // Set column widths
