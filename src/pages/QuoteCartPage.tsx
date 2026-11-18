@@ -54,7 +54,7 @@ import { useProductOverrides } from '../hooks/useProductOverrides';
 import { applyQuoteItemDisplayOverride, getQuoteItemBarcode, getQuoteItemBrand, getQuoteItemName } from '../utils/quoteItemDisplay';
 import { buildWhatsAppShareUrl, canSharePdfFile, downloadPdfFile, openPreparingWhatsAppWindow, redirectPreparingWindowToWhatsApp, openWhatsAppShare, sharePdfFile } from '../utils/whatsappShare';
 import { SupabaseDocumentsService } from '../utils/supabaseDocuments';
-import { formatMoney } from '../utils/format';
+import { formatMoney, toDateInputValue } from '../utils/format';
 import { exportSupplierPurchasePdf } from '../utils/supplierPurchasePdf';
 import { resolveProductImageUrl } from '../utils/productImages';
 
@@ -87,7 +87,8 @@ export function QuoteCartPage() {
   const [status, setStatus] = useState<'draft' | 'final'>('draft');
   const [notes, setNotes] = useState('');
   const [notes2, setNotes2] = useState('');
-  const [quoteDate, setQuoteDate] = useState('');
+  // A new quote is dated today; it can be changed in the Date field.
+  const [quoteDate, setQuoteDate] = useState(() => toDateInputValue());
   const [globalMargin, setGlobalMargin] = useState<number>(20);
   const [globalDiscount, setGlobalDiscount] = useState<number>(0);
 
@@ -231,7 +232,8 @@ export function QuoteCartPage() {
           setStatus(loadedQuote.status);
           setNotes(loadedQuote.notes || '');
           setNotes2(loadedQuote.notes2 || '');
-          setQuoteDate(loadedQuote.quote_date || '');
+          // Quotes saved without a date show their creation date.
+          setQuoteDate(loadedQuote.quote_date || (loadedQuote.createdAt ? toDateInputValue(loadedQuote.createdAt) : ''));
         } else {
           showToast({
             type: 'error',
@@ -920,7 +922,7 @@ export function QuoteCartPage() {
       setCommandNumber('');
       setNotes('');
       setNotes2('');
-      setQuoteDate('');
+      setQuoteDate(toDateInputValue());
       setValidationErrors({});
     }
   };

@@ -126,3 +126,13 @@ describe('global search matching', () => {
     expect(ilikePattern('50%_off, (x)')).toBe('%50\\%\\_off   x %');
   });
 });
+
+describe('toDateInputValue', () => {
+  it('formats a local date for a date input, today by default', async () => {
+    const { toDateInputValue } = await import('../utils/format');
+    expect(toDateInputValue(new Date(2026, 10, 3))).toBe('2026-11-03');
+    expect(toDateInputValue('2026-01-31T10:00:00')).toBe('2026-01-31');
+    expect(toDateInputValue('pas une date')).toBe('');
+    expect(toDateInputValue()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+});
