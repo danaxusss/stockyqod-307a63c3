@@ -82,7 +82,15 @@ export interface ClientFinancialRow {
   remaining: number;
   proformaCount: number;
   invoiceCount: number;
+  /**
+   * Lower-case name whose documents without a phone belong to this client too
+   * (a registered client without a phone, or whose old documents had none).
+   * The statement uses the same rule, so it always matches the balance.
+   */
+  nameMatch?: string;
 }
+
+const nameKey = (name: string | null | undefined) => (name || '').trim().toLowerCase();
 
 export class SupabaseDocumentsService {
   // Format a sequential counter.
@@ -607,7 +615,7 @@ export class SupabaseDocumentsService {
       const name  = (info?.fullName   || '').trim();
       if (!phone && !name) continue;
       const map = phone ? byPhone : byName;
-      const key = phone || name;
+      const key = phone || nameKey(name);
       const agg = map.get(key) || empty(name);
       const total = Number(doc.total_amount || 0);
       if (doc.document_type === 'proforma') {
@@ -637,13 +645,30 @@ export class SupabaseDocumentsService {
     });
 
     // ── 4. Build rows — registered clients first ────────────────────────────
+    // Documents without a phone go to the registered client of that name, when
+    // only one registered client has it (two "Ali" stay apart: ambiguous).
+    const registered = (clientRows || []) as Array<{ id: string; full_name: string; phone_number: string | null; client_code: string | null }>;
+    const registeredNames = new Map<string, number>();
+    for (const c of registered) registeredNames.set(nameKey(c.full_name), (registeredNames.get(nameKey(c.full_name)) || 0) + 1);
     const rows: ClientFinancialRow[] = [];
     const seenPhones = new Set<string>();
-    for (const c of (clientRows as any[]) || []) {
+    for (const c of registered) {
       const phone = (c.phone_number || '').trim();
-      const agg = (phone && byPhone.get(phone)) || empty(c.full_name);
+      const key = nameKey(c.full_name);
+      const byPhoneAgg = phone ? byPhone.get(phone) : undefined;
+      const byNameAgg = key && registeredNames.get(key) === 1 ? byName.get(key) : undefined;
+      const agg = empty(c.full_name);
+      for (const part of [byPhoneAgg, byNameAgg]) {
+        if (!part) continue;
+        agg.totalAmount += part.totalAmount; agg.paidAmount += part.paidAmount;
+        agg.proformaCount += part.proformaCount; agg.invoiceCount += part.invoiceCount;
+      }
+      if (byNameAgg) byName.delete(key);
       if (phone) seenPhones.add(phone);
-      rows.push(toRow(agg, { clientId: c.id, clientCode: c.client_code || undefined, clientName: c.full_name, phoneNumber: phone }));
+      rows.push(toRow(agg, {
+        clientId: c.id, clientCode: c.client_code || undefined, clientName: c.full_name, phoneNumber: phone,
+        ...(byNameAgg || (!phone && registeredNames.get(key) === 1) ? { nameMatch: key } : {}),
+      }));
     }
 
     // ── 5. Legacy: document customers not in clients table (by phone) ───────
@@ -653,8 +678,8 @@ export class SupabaseDocumentsService {
     }
 
     // ── 6. Legacy: name-only customers (no phone) ───────────────────────────
-    for (const [name, agg] of byName) {
-      rows.push(toRow(agg, { clientName: name, phoneNumber: '' }));
+    for (const [key, agg] of byName) {
+      rows.push(toRow(agg, { clientName: agg.name || key, phoneNumber: '', nameMatch: key }));
     }
 
     // Sort: clients with balance first, then alphabetical
@@ -1065,27 +1090,35 @@ export class SupabaseDocumentsService {
   }
 
   /**
-   * Invoices of one client for their statement, matched like the balance in
-   * getClientFinancialSummary: by phone when the client has one, otherwise by
-   * name among documents without a phone. (A substring match put "Ali Benali"
-   * and "Café Alibaba" on the statement of "Ali".)
+   * Invoices and credit notes of one client for their statement, matched like
+   * the balance in getClientFinancialSummary: documents with the client's
+   * phone, plus documents without a phone whose name is the row's nameMatch.
+   * (A substring match put "Ali Benali" and "Café Alibaba" on the statement
+   * of "Ali".) Oldest first.
    */
-  static async getInvoicesForClient(phone: string, name: string): Promise<Quote[]> {
+  static async getStatementDocuments(phone: string, nameMatch?: string | null): Promise<Quote[]> {
     const { companyId, isSuperAdmin } = getCompanyContext();
     const wantedPhone = (phone || '').trim();
-    const wantedName = (name || '').trim().toLowerCase();
+    const wantedName = nameKey(nameMatch);
     const rows = await this.readDocs(() => {
       let q = (supabase.from('quotes') as any)
         .select('*')
-        .eq('document_type', 'invoice')
-        .order('created_at', { ascending: false });
+        .in('document_type', ['invoice', 'avoir'])
+        .order('created_at', { ascending: true });
       if (!isSuperAdmin && companyId) q = q.eq('company_id', companyId);
       return q;
-    }, 'factures');
+    }, 'factures et avoirs');
     return rows.filter(q => {
       const docPhone = (q.customer?.phoneNumber || '').trim();
-      if (wantedPhone) return docPhone === wantedPhone;
-      return !docPhone && (q.customer?.fullName || '').trim().toLowerCase() === wantedName;
+      if (docPhone) return !!wantedPhone && docPhone === wantedPhone;
+      return !!wantedName && nameKey(q.customer?.fullName) === wantedName;
     });
+  }
+
+  /** Invoices only, by phone when there is one, else by name (kept for callers). */
+  static async getInvoicesForClient(phone: string, name: string): Promise<Quote[]> {
+    const wantedPhone = (phone || '').trim();
+    const docs = await this.getStatementDocuments(wantedPhone, wantedPhone ? null : name);
+    return docs.filter(d => d.document_type === 'invoice').reverse();
   }
 }

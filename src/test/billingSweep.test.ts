@@ -129,3 +129,52 @@ describe('deleting a delivery note or a credit note', () => {
     await expect(SupabaseDocumentsService.deleteDocument('b2')).rejects.toThrow(/stock n'a pas pu être remis/);
   });
 });
+
+describe('client balances and statement for clients without a phone', () => {
+  const clients = (rows: Array<{ id: string; full_name: string; phone_number: string }>) => {
+    state.db.tables.clients = rows.map(r => ({ ...r, client_code: null, company_id: 'c1' }));
+  };
+
+  it('puts the documents without a phone on the registered client of that name, once', async () => {
+    clients([{ id: 'k1', full_name: 'Snack Karim', phone_number: '' }]);
+    state.db.tables.quotes = [
+      doc('f1', 'invoice', { total_amount: 500, customer_info: { fullName: 'snack karim ', phoneNumber: '' } }),
+      doc('a1', 'avoir', { total_amount: 100, customer_info: { fullName: 'Snack Karim', phoneNumber: '' } }),
+    ];
+    const rows = await SupabaseDocumentsService.getClientFinancialSummary();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ clientId: 'k1', totalAmount: 400, remaining: 400, invoiceCount: 1, nameMatch: 'snack karim' });
+  });
+
+  it('adds old documents without a phone to a client who now has one', async () => {
+    clients([{ id: 'k2', full_name: 'Hôtel Atlas', phone_number: '0661234510' }]);
+    state.db.tables.quotes = [
+      doc('f1', 'invoice', { total_amount: 300, customer_info: { fullName: 'Hôtel Atlas', phoneNumber: '0661234510' } }),
+      doc('f2', 'invoice', { total_amount: 200, customer_info: { fullName: 'Hôtel Atlas', phoneNumber: '' } }),
+    ];
+    const rows = await SupabaseDocumentsService.getClientFinancialSummary();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ clientId: 'k2', totalAmount: 500, invoiceCount: 2 });
+    const statement = await SupabaseDocumentsService.getStatementDocuments(rows[0].phoneNumber, rows[0].nameMatch);
+    expect(statement.map(d => d.id).sort()).toEqual(['f1', 'f2']);
+  });
+
+  it('keeps two registered clients of the same name apart', async () => {
+    clients([{ id: 'k3', full_name: 'Ali', phone_number: '0600000001' }, { id: 'k4', full_name: 'Ali', phone_number: '0600000002' }]);
+    state.db.tables.quotes = [doc('f1', 'invoice', { total_amount: 100, customer_info: { fullName: 'Ali', phoneNumber: '' } })];
+    const rows = await SupabaseDocumentsService.getClientFinancialSummary();
+    expect(rows.filter(r => r.clientId).every(r => r.totalAmount === 0)).toBe(true);
+    expect(rows.find(r => !r.clientId)).toMatchObject({ clientName: 'Ali', totalAmount: 100, nameMatch: 'ali' });
+  });
+
+  it('puts the credit notes on the statement, with the invoices, oldest first', async () => {
+    state.db.tables.quotes = [
+      doc('f2', 'invoice', { created_at: '2026-11-05T10:00:00Z', customer_info: { fullName: 'Ali', phoneNumber: '0600' } }),
+      doc('a1', 'avoir', { created_at: '2026-11-06T10:00:00Z', customer_info: { fullName: 'Ali', phoneNumber: '0600' } }),
+      doc('f1', 'invoice', { created_at: '2026-11-01T10:00:00Z', customer_info: { fullName: 'Ali', phoneNumber: '0600' } }),
+      doc('b1', 'bl', { customer_info: { fullName: 'Ali', phoneNumber: '0600' } }),
+      doc('x1', 'avoir', { customer_info: { fullName: 'Autre', phoneNumber: '0700' } }),
+    ];
+    expect((await SupabaseDocumentsService.getStatementDocuments('0600')).map(d => d.id)).toEqual(['f1', 'f2', 'a1']);
+  });
+});
