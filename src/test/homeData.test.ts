@@ -10,7 +10,7 @@ vi.mock('../utils/supabaseCompanyFilter', () => ({
 import { loadHomeData, docStatus, docPath } from '../utils/homeData';
 import { computeAccess, type AccessFlags } from '../lib/navigation';
 import { formatMoney, formatRelativeDay } from '../utils/format';
-import { searchProducts, searchPages, ilikePattern } from '../utils/commandSearch';
+import { searchProducts, searchPages, ilikePattern, documentNumberPattern, accentLoosePattern, nameMatches, compact } from '../utils/commandSearch';
 import { buildModules } from '../lib/navigation';
 import type { Product } from '../types';
 
@@ -122,8 +122,52 @@ describe('global search matching', () => {
     expect(searchPages(sales, 'factures')).toEqual([]);
   });
 
-  it('escapes search text for the database', () => {
-    expect(ilikePattern('50%_off, (x)')).toBe('%50\\%\\_off   x %');
+  it('escapes search text for the database; commas and brackets match any one character', () => {
+    expect(ilikePattern('50%_off, (x)')).toBe('%50\\%\\_off_ _x_%');
+    expect(ilikePattern('Dar Zitoun (Fès)')).toBe('%Dar Zitoun _Fès_%');
+  });
+
+  it('finds references whatever their case or separators', () => {
+    const refs = [p('74/10CEEPT', 'CUISINIERE ELECTRIQUE 4 PLAQUE RONDE FOUR', 'OLIS'), p('AB-1234', 'TABLE INOX', 'RESTOK'), p('EL ES 18 E A', 'SECHOIR ES18', 'IMESA'), ...products];
+    for (const q of ['74/10CEEPT', '74/10ceept', '7410CEEPT', '10CEEPT', '74 10 ceept']) {
+      expect(searchProducts(refs, q)[0]?.barcode, q).toBe('74/10CEEPT');
+    }
+    expect(searchProducts(refs, 'AB1234')[0].barcode).toBe('AB-1234');
+    expect(searchProducts(refs, 'ab-1234')[0].barcode).toBe('AB-1234');
+    expect(searchProducts(refs, 'eles18ea')[0].barcode).toBe('EL ES 18 E A');
+    expect(compact('74/10-CEEPT')).toBe('7410ceept');
+  });
+
+  it('ranks whole words before words found inside other words', () => {
+    const list = [p('1', 'FOURNISSEUR KIT', 'X'), p('2', 'GRAND FOUR GAZ', 'X')];
+    expect(searchProducts(list, 'four').map(x => x.barcode)).toEqual(['2', '1']);
+  });
+
+  it('also matches other names of a product (renamed brand, supplier)', () => {
+    const list = [p('9', 'FRITEUSE', 'RESTOM')];
+    expect(searchProducts(list, 'chm')).toEqual([]);
+    expect(searchProducts(list, 'chm', { extraText: () => 'CHM CUISIMAT' }).map(x => x.barcode)).toEqual(['9']);
+  });
+
+  it('puts pages whose words start with the text first, and knows short names', () => {
+    const all = buildModules(access({ canCreateQuote: true, isSuperAdmin: true, isAdmin: true }));
+    expect(searchPages(all, 'bl')[0]).toMatchObject({ to: '/compta/bls', strong: true });
+    expect(searchPages(all, 'bl').map(x => x.label)).not.toContain('Tableau de bord');
+    expect(searchPages(all, 'factu')[0].strong).toBeUndefined();
+    expect(searchPages(all, 'tva')[0].to).toBe('/comptabilite/tva');
+    expect(searchPages(all, 'bc').map(x => x.to)).toContain('/compta/bons-commande');
+  });
+
+  it('matches document numbers and names loosely, then exactly on the results', () => {
+    expect(documentNumberPattern('BL12')).toBe('%bl%12%');
+    expect(documentNumberPattern('bl-0012')).toBe('%bl%0012%');
+    expect(documentNumberPattern('--')).toBeNull();
+    expect(accentLoosePattern('Société')).toBe('%s____t_%');
+    expect(nameMatches('Société Atlas', 'societe')).toBe(true);
+    expect(nameMatches('Jean Dupont', 'Dupont Jean')).toBe(true);
+    expect(nameMatches('Jean Dupont', 'Dupont, Jean')).toBe(true);
+    expect(nameMatches('Jean Durand', 'Dupont')).toBe(false);
+    expect(nameMatches('Café Le Central Casablanca', 'bl')).toBe(false);
   });
 });
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ownedQuotesFilter, quoteOwnerOf } from '../utils/quoteOwnership';
 import { useNavigate } from 'react-router-dom';
-import { Search, Plus, FileText, Receipt, Users, CornerDownLeft, Package } from 'lucide-react';
+import { Search, Plus, FileText, Receipt, Users, CornerDownLeft, Package, Loader2, ArrowRight, User } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { useAuth } from '../hooks/useAuth';
 import { useAccess } from '../hooks/useAccess';
@@ -10,13 +10,24 @@ import { useProductOverrides } from '../hooks/useProductOverrides';
 import { useToast } from '../context/ToastContext';
 import { getCompanyContext } from '../utils/supabaseCompanyFilter';
 import { resolveProductImageUrl } from '../utils/productImages';
-import { searchProducts, searchPages, ilikePattern } from '../utils/commandSearch';
+import { searchProducts, searchPages, ilikePattern, documentNumberPattern, accentLoosePattern, nameMatches, normalize } from '../utils/commandSearch';
+import type { NavModule } from '../lib/navigation';
 import { onOpenSearch } from '../utils/searchEvents';
 import { formatMoney } from '../utils/format';
 import { DOC_LABEL, docPath, looseDb, type DocType } from '../utils/homeData';
 import type { Product } from '../types';
 
 interface DocHit { id: string; number: string; type: DocType; client: string; total: number; }
+interface ClientHit { id: string; name: string; detail: string; }
+
+/** Pages always reachable but not in the side menu. */
+const EXTRA_PAGES = (catalogue: boolean): NavModule => ({
+  id: 'general', label: 'Général', icon: Search,
+  items: [
+    { to: '/', label: 'Accueil' },
+    ...(catalogue ? [{ to: '/search', label: 'Recherche de produits' }, { to: '/photos/finder', label: 'Recherche d’images produit' }] : []),
+  ],
+} as NavModule);
 interface Option { key: string; run: () => void; addToQuote?: () => void; render: (active: boolean) => ReactNode; }
 
 const DOC_TONE: Record<DocType, string> = {
@@ -32,7 +43,7 @@ const DOC_TONE: Record<DocType, string> = {
 export function CommandPalette() {
   const navigate = useNavigate();
   const { state } = useAppContext();
-  const { canAccessBrand, canAccessStockLocation, getDisplayPrice, currentUser } = useAuth();
+  const { canAccessBrand, canAccessStockLocation, getDisplayPrice, getPriceDisplayType, currentUser } = useAuth();
   const { access, modules } = useAccess();
   const { addToCart } = useQuoteCart();
   const { getAllNames } = useProductOverrides();
@@ -41,6 +52,9 @@ export function CommandPalette() {
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const [docs, setDocs] = useState<DocHit[]>([]);
+  const [clients, setClients] = useState<ClientHit[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const lastFocus = useRef<HTMLElement | null>(null);
@@ -53,31 +67,41 @@ export function CommandPalette() {
     setOpen(false);
     setQuery('');
     setDocs([]);
+    setClients([]);
     lastFocus.current?.focus?.();
   }, []);
 
   useEffect(() => onOpenSearch(show), [show]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); show(); }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        // Already open: just go back to the field (the focus to restore stays the original one).
+        if (open) inputRef.current?.focus(); else show();
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [show]);
+  }, [show, open]);
   useEffect(() => { if (open) requestAnimationFrame(() => inputRef.current?.focus()); }, [open]);
 
   const brandAllowed = useCallback((p: Product) => getAllNames('brand', p.brand || '').some(name => canAccessBrand(name)), [getAllNames, canAccessBrand]);
-  const products = useMemo(() => (access.catalogue ? searchProducts(state.products, query, 6, brandAllowed) : []), [access.catalogue, state.products, query, brandAllowed]);
-  const pages = useMemo(() => searchPages(modules, query), [modules, query]);
+  // Renamed brands and the supplier are searchable too, as on the Recherche page.
+  const extraText = useCallback((p: Product) => `${getAllNames('brand', p.brand || '').join(' ')} ${p.provider || ''}`, [getAllNames]);
+  const products = useMemo(() => (access.catalogue ? searchProducts(state.products, query, { limit: 6, allowed: brandAllowed, extraText }) : []), [access.catalogue, state.products, query, brandAllowed, extraText]);
+  const pages = useMemo(() => searchPages([EXTRA_PAGES(access.catalogue), ...modules], query), [modules, query, access.catalogue]);
 
-  // Documents: by number or client name, in the user's scope.
+  // Documents (by number, client name or phone) and clients, in the user's scope.
   useEffect(() => {
     const q = query.trim();
-    if (!open || q.length < 2 || !(access.quotes || access.billing)) { setDocs([]); return; }
+    const wantDocs = access.quotes || access.billing;
+    const wantClients = access.catalogue;
+    if (!open || q.length < 2 || !(wantDocs || wantClients)) { setDocs([]); setClients([]); setLoading(false); setFailed(false); return; }
     let cancelled = false;
+    setLoading(true);
     const timer = setTimeout(async () => {
       const { companyId, bypassFilter } = getCompanyContext();
-      const base = () => {
+      const base = (limit: number) => {
         let b = looseDb().from('quotes').select('id, quote_number, document_type, customer_info, total_amount');
         if (!bypassFilter && companyId) b = b.eq('company_id', companyId);
         if (!access.billing) {
@@ -90,36 +114,87 @@ export function CommandPalette() {
         } else if (!access.quotes) {
           b = b.not('document_type', 'is', null).neq('document_type', 'quote');
         }
-        return b.order('created_at', { ascending: false }).limit(5);
+        return b.order('created_at', { ascending: false }).limit(limit);
       };
-      const pattern = ilikePattern(q);
-      const [byNumber, byClient] = await Promise.all([
-        base().ilike('quote_number', pattern),
-        base().ilike('customer_info->>fullName', pattern),
-      ]);
+      const nameWords = normalize(q).split(/[\s,;]+/).filter(w => w.length >= 2).slice(0, 4);
+      const digits = q.replace(/\D/g, '');
+      const numberPattern = documentNumberPattern(q);
+      type Row = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any -- loose rows of two tables
+      const requests: Promise<{ kind: 'doc' | 'client'; data: Row[] | null; error: unknown }>[] = [];
+      const run = (kind: 'doc' | 'client', request: PromiseLike<{ data: Row[] | null; error: unknown }>) =>
+        requests.push(Promise.resolve(request).then(r => ({ kind, data: r.data, error: r.error })));
+      if (wantDocs) {
+        if (numberPattern) run('doc', base(5).ilike('quote_number', numberPattern));
+        if (nameWords.length) {
+          // Each word on its own, accents loosened; the exact check follows below.
+          let byName = base(25);
+          for (const w of nameWords) byName = byName.ilike('customer_info->>fullName', accentLoosePattern(w));
+          run('doc', byName);
+        }
+        if (digits.length >= 6) run('doc', base(5).ilike('customer_info->>phoneNumber', `%${digits.split('').join('%')}%`));
+      }
+      if (wantClients) {
+        const pattern = ilikePattern(q);
+        const first = nameWords[0] ? accentLoosePattern(nameWords[0]) : pattern;
+        let c = looseDb().from('clients').select('id, full_name, phone_number, city, client_code, ice')
+          .or([`full_name.ilike.${first}`, `phone_number.ilike.${digits.length >= 6 ? `%${digits.split('').join('%')}%` : pattern}`, `client_code.ilike.${pattern}`, `ice.ilike.${pattern}`, `city.ilike.${pattern}`].join(','));
+        if (!bypassFilter && companyId) c = c.eq('company_id', companyId);
+        run('client', c.order('full_name').limit(25));
+      }
+      const results = await Promise.all(requests);
       if (cancelled) return;
       const seen = new Set<string>();
-      const hits: DocHit[] = [];
-      for (const r of [...(byNumber.data || []), ...(byClient.data || [])]) {
-        if (seen.has(r.id)) continue;
-        seen.add(r.id);
-        hits.push({ id: r.id, number: r.quote_number, type: (r.document_type || 'quote') as DocType, client: r.customer_info?.fullName || '', total: Number(r.total_amount) || 0 });
+      const docHits: DocHit[] = [];
+      const clientHits: ClientHit[] = [];
+      const phoneOf = (v: unknown) => String(v || '').replace(/\D/g, '');
+      for (const r of results) {
+        for (const row of r.data || []) {
+          if (r.kind === 'doc') {
+            if (seen.has(row.id)) continue;
+            const client = row.customer_info?.fullName || '';
+            const byNumber = numberPattern && new RegExp(numberPattern.slice(1, -1).split('%').join('.*'), 'i').test(row.quote_number || '');
+            const byPhone = digits.length >= 6 && phoneOf(row.customer_info?.phoneNumber).includes(digits);
+            if (!byNumber && !byPhone && !nameMatches(client, q)) continue;
+            seen.add(row.id);
+            docHits.push({ id: row.id, number: row.quote_number, type: (row.document_type || 'quote') as DocType, client, total: Number(row.total_amount) || 0 });
+          } else {
+            const text = `${row.full_name || ''} ${row.city || ''} ${row.client_code || ''} ${row.ice || ''}`;
+            const byPhone = digits.length >= 6 && phoneOf(row.phone_number).includes(digits);
+            if (!byPhone && !nameMatches(`${text} ${row.phone_number || ''}`, q)) continue;
+            clientHits.push({ id: row.id, name: row.full_name || '', detail: [row.client_code, row.phone_number, row.city].filter(Boolean).join(' · ') });
+          }
+        }
       }
-      setDocs(hits.slice(0, 5));
+      setDocs(docHits.slice(0, 5));
+      setClients(clientHits.slice(0, 4));
+      setFailed(results.some(r => r.error));
+      setLoading(false);
     }, 250);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [open, query, access.quotes, access.billing, access.ownQuotesOnly, currentUser]);
+  }, [open, query, access.quotes, access.billing, access.catalogue, access.ownQuotesOnly, currentUser]);
 
   const go = useCallback((to: string) => { close(); navigate(to); }, [close, navigate]);
 
   const addProduct = useCallback((p: Product) => {
     const saved = Number(localStorage.getItem('inventory_margin_percentage'));
-    addToCart(p, 'normal', Number.isFinite(saved) && saved > 0 ? saved : 20, 1);
+    // Same price as the Produits page: resellers add at the reseller price.
+    addToCart(p, getPriceDisplayType() === 'reseller' ? 'reseller' : 'normal', Number.isFinite(saved) && saved > 0 ? saved : 20, 1);
     showToast({ type: 'success', message: `${p.name} ajouté au devis` });
-  }, [addToCart, showToast]);
+  }, [addToCart, showToast, getPriceDisplayType]);
 
   const sections = useMemo(() => {
     const out: { title: string; options: Option[] }[] = [];
+    const pagesSection = pages.length ? {
+      title: 'Pages',
+      options: pages.map(pg => ({
+        key: `g:${pg.to}`,
+        run: () => go(pg.to),
+        render: () => (<><span className="min-w-0 flex-1 truncate text-foreground">{pg.label}</span><span className="shrink-0 text-xs text-muted-foreground">{pg.module}</span></>),
+      })),
+    } : null;
+    // Typed a page's short name ("bl", "tva"): pages first, then the rest.
+    const pagesFirst = pages.some(pg => pg.strong);
+    if (pagesSection && pagesFirst) out.push(pagesSection);
     if (products.length) {
       out.push({
         title: 'Produits',
@@ -170,16 +245,23 @@ export function CommandPalette() {
         })),
       });
     }
-    if (pages.length) {
+    if (clients.length) {
       out.push({
-        title: 'Pages',
-        options: pages.map(pg => ({
-          key: `g:${pg.to}`,
-          run: () => go(pg.to),
-          render: () => (<><span className="min-w-0 flex-1 truncate text-foreground">{pg.label}</span><span className="shrink-0 text-xs text-muted-foreground">{pg.module}</span></>),
+        title: 'Clients',
+        options: clients.map(c => ({
+          key: `c:${c.id}`,
+          run: () => go(`/clients?q=${encodeURIComponent(c.name)}`),
+          render: () => (
+            <>
+              <User className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <span className="min-w-0 flex-1 truncate font-medium text-foreground">{c.name}</span>
+              <span className="shrink-0 truncate text-xs text-muted-foreground">{c.detail}</span>
+            </>
+          ),
         })),
       });
     }
+    if (pagesSection && !pagesFirst) out.push(pagesSection);
     if (!query.trim()) {
       const actions: Option[] = [];
       const action = (key: string, label: string, to: string, Icon: typeof Plus) => actions.push({
@@ -191,9 +273,18 @@ export function CommandPalette() {
       if (access.quotes) action('a:quotes', 'Historique des devis', '/quotes-history', FileText);
       if (access.catalogue) action('a:clients', 'Clients', '/clients', Users);
       if (actions.length) out.push({ title: 'Raccourcis', options: actions });
+    } else if (access.catalogue) {
+      out.push({
+        title: '',
+        options: [{
+          key: 'all',
+          run: () => go(`/search?q=${encodeURIComponent(query.trim())}`),
+          render: () => (<><ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" /><span className="flex-1 text-foreground">Voir tous les produits pour « {query.trim()} »</span></>),
+        }],
+      });
     }
     return out;
-  }, [products, docs, pages, query, access, canAccessStockLocation, getDisplayPrice, go, addProduct]);
+  }, [products, docs, clients, pages, query, access, canAccessStockLocation, getDisplayPrice, go, addProduct]);
 
   const options = useMemo(() => sections.flatMap(s => s.options), [sections]);
   useEffect(() => { setActive(0); }, [query]);
@@ -217,6 +308,7 @@ export function CommandPalette() {
   };
 
   const searching = query.trim().length > 0;
+  const hasResults = products.length + docs.length + clients.length + pages.length > 0;
   let index = -1;
   return (
     <div className="fixed inset-0 z-[150] flex items-start justify-center bg-slate-950/40 px-3 pt-[8vh] backdrop-blur-[2px] sm:pt-[12vh]" onMouseDown={e => { if (e.target === e.currentTarget) close(); }}>
@@ -231,8 +323,8 @@ export function CommandPalette() {
             aria-expanded="true"
             aria-controls="command-results"
             aria-activedescendant={options[active] ? `command-option-${active}` : undefined}
-            aria-label="Chercher un produit, un document ou une page"
-            placeholder="Produit, document, page…"
+            aria-label="Chercher un produit, un document, un client ou une page"
+            placeholder="Produit, référence, document, client, page…"
             className="h-14 min-w-0 flex-1 bg-transparent text-[15px] text-foreground outline-none placeholder:text-muted-foreground focus-visible:outline-none"
           />
           <button type="button" onClick={close} className="shrink-0 rounded-md border border-border bg-secondary px-2 py-1 text-xs font-semibold text-muted-foreground hover:text-foreground">Échap</button>
@@ -240,7 +332,7 @@ export function CommandPalette() {
         <div ref={listRef} id="command-results" role="listbox" aria-label="Résultats" className="min-h-0 flex-1 overflow-y-auto p-2 text-sm">
           {sections.map(section => (
             <div key={section.title} role="group" aria-label={section.title}>
-              <p className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{section.title}</p>
+              {section.title && <p className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{section.title}</p>}
               {section.options.map(option => {
                 index += 1;
                 const i = index;
@@ -261,7 +353,13 @@ export function CommandPalette() {
               })}
             </div>
           ))}
-          {searching && options.length === 0 && (
+          {searching && loading && (
+            <p className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground" role="status"><Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />Recherche des documents et clients…</p>
+          )}
+          {searching && !loading && failed && (
+            <p className="px-3 py-2 text-xs text-amber-700 dark:text-amber-300" role="status">Une partie de la recherche n’a pas répondu. Réessayez dans un instant.</p>
+          )}
+          {searching && !loading && !hasResults && (
             <p className="px-3 py-8 text-center text-muted-foreground">Aucun résultat pour « {query.trim()} »</p>
           )}
         </div>

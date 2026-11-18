@@ -76,7 +76,8 @@ describe('client search', () => {
     // Three conditions only: the typed text adds no separator or group.
     expect(filter.split(',')).toHaveLength(3);
     expect(filter).not.toMatch(/[()]/);
-    expect(filter).toContain('full_name.ilike.%Dar Zitoun  Fès   100\\%%');
+    // Commas and brackets stand for any one character, so the real name still matches.
+    expect(filter).toContain('full_name.ilike.%Dar Zitoun _Fès__ 100\\%%');
   });
 });
 
