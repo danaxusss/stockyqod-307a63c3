@@ -3,6 +3,7 @@ import { ownedQuotesFilter, type QuoteOwner } from './quoteOwnership';
 import { Quote, QuoteTemplate, CustomerInfo, QuoteItem } from '../types';
 import { getCompanyContext } from './supabaseCompanyFilter';
 import { readAll } from './readAll';
+import { hydrateItemCosts } from './productCosts';
 
 type QuoteRow = {
   id: string;
@@ -122,7 +123,10 @@ export class SupabaseQuotesService {
     }
 
     if (!data) return null;
-    return mapQuoteRow(data as unknown as QuoteRow);
+    const quote = mapQuoteRow(data as unknown as QuoteRow);
+    // Lines no longer store the purchase price: the margin tools get the
+    // catalogue's (none for resellers).
+    return { ...quote, items: await hydrateItemCosts(quote.items) };
   }
 
   /**
