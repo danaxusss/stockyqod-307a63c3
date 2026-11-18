@@ -1,8 +1,11 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { Link2, Loader, Check, Unlink } from 'lucide-react';
+import { Link2, Check, Unlink } from 'lucide-react';
 import type { Account, FiscalYear } from '../../types';
 import { AccountingService } from '../../utils/supabaseAccounting';
 import { useToast } from '../../context/ToastContext';
+import { PageHeader } from '../../components/PageHeader';
+import { StatusPill } from '../../components/lists/StatusPill';
+import { btnPrimary, checkbox, EmptyState, fieldAuto, LoadingState, panel, PhoneActionBar } from '../../components/backoffice/BackOfficeUi';
 
 function fmt(n: number) { return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(n); }
 
@@ -87,86 +90,117 @@ export default function LettragePage() {
     finally { setBusy(false); }
   };
 
-  if (loading) return <div className="flex items-center justify-center py-24 text-muted-foreground"><Loader className="h-5 w-5 animate-spin mr-2" />Chargement…</div>;
+  if (loading) return <LoadingState />;
+
+  const amount = (n: unknown) => Number(n) ? fmt(Number(n)) : '';
+  const selectionSummary = selected.size > 0 && (
+    <StatusPill tone={selTotals.balanced ? 'success' : 'warning'}>
+      <span className="tabular-nums">D {fmt(selTotals.d)} · C {fmt(selTotals.c)}</span>
+    </StatusPill>
+  );
+  const letterButton = (
+    <button onClick={doLetter} disabled={busy || !selTotals.balanced} className={btnPrimary}>
+      <Check className="h-4 w-4" /> Lettrer
+    </button>
+  );
+  const rowGrid = 'md:grid md:grid-cols-[6.5rem_9rem_minmax(0,1fr)] md:items-center md:gap-3';
 
   return (
-    <div className="max-w-[110rem] mx-auto py-6 px-3">
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-        <div className="flex items-center gap-2">
-          <div className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-primary/10"><Link2 className="h-5 w-5 text-primary" /></div>
-          <div>
-            <h1 className="text-lg font-bold text-foreground leading-tight">Lettrage</h1>
-            <p className="text-xs text-muted-foreground">Rapprocher débits et crédits · exercice {fy?.label}</p>
-          </div>
-        </div>
-        <select value={accountCode} onChange={e => setAccountCode(e.target.value)}
-          className="px-3 py-2 text-sm rounded-lg bg-secondary border border-border focus:outline-none focus:ring-2 focus:ring-primary/30">
-          {lettrable.map(a => <option key={a.code} value={a.code}>{a.code} — {a.label}</option>)}
-        </select>
-      </div>
+    <div className="mx-auto max-w-[110rem]">
+      <PageHeader
+        title="Lettrage"
+        subtitle={`Rapprocher débits et crédits · exercice ${fy?.label ?? ''}`}
+        actions={
+          <select value={accountCode} onChange={e => setAccountCode(e.target.value)} aria-label="Compte lettrable"
+            className={`${fieldAuto} min-w-0 sm:min-w-[16rem]`}>
+            {lettrable.map(a => <option key={a.code} value={a.code}>{a.code} — {a.label}</option>)}
+          </select>
+        }
+      />
 
       {linesLoading ? (
-        <div className="flex items-center justify-center py-12 text-muted-foreground"><Loader className="h-5 w-5 animate-spin mr-2" />Chargement…</div>
+        <LoadingState />
       ) : (
-        <>
-          <div className="bg-card border border-border/60 rounded-xl overflow-hidden mb-4">
-            <div className="flex items-center justify-between px-3 py-2 bg-secondary/50 border-b border-border/60">
-              <span className="text-sm font-semibold text-foreground">Non lettré</span>
-              <div className="flex items-center gap-3 text-xs">
-                {selected.size > 0 && (
-                  <span className={selTotals.balanced ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}>
-                    D {fmt(selTotals.d)} · C {fmt(selTotals.c)}
-                  </span>
-                )}
-                <button onClick={doLetter} disabled={busy || !selTotals.balanced}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-primary text-primary-foreground font-medium disabled:opacity-40">
-                  <Check className="h-3.5 w-3.5" /> Lettrer
-                </button>
+        <div className="space-y-4">
+          <section className={`${panel} overflow-hidden`}>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
+              <h2 className="font-semibold text-foreground">Non lettré <span className="ml-1 text-sm font-normal text-muted-foreground">({unlettered.length})</span></h2>
+              <div className="hidden items-center gap-3 md:flex">
+                {selectionSummary}
+                {letterButton}
               </div>
             </div>
-            <table className="w-full text-sm">
-              <tbody>
-                {unlettered.map(l => (
-                  <tr key={l.id} onClick={() => toggle(l.id)} className={`border-b border-border/40 cursor-pointer ${selected.has(l.id) ? 'bg-primary/[0.06]' : 'hover:bg-secondary/30'}`}>
-                    <td className="px-3 py-1.5 w-8"><input type="checkbox" readOnly checked={selected.has(l.id)} className="accent-[hsl(var(--primary))]" /></td>
-                    <td className="px-2 py-1.5 whitespace-nowrap text-muted-foreground">{new Date(l.entry_date).toLocaleDateString('fr-FR')}</td>
-                    <td className="px-2 py-1.5 text-xs text-muted-foreground">{l.reference || '—'}</td>
-                    <td className="px-2 py-1.5">{l.label || l.entry_label || ''}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{Number(l.debit) ? fmt(Number(l.debit)) : ''}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{Number(l.credit) ? fmt(Number(l.credit)) : ''}</td>
-                  </tr>
-                ))}
-                {unlettered.length === 0 && <tr><td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">Tout est lettré</td></tr>}
-              </tbody>
-            </table>
-          </div>
+            {unlettered.length === 0 ? (
+              <EmptyState icon={Link2} title="Tout est lettré" />
+            ) : (
+              <>
+                <div className="hidden items-center gap-3 border-b border-border bg-secondary/40 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:px-5 md:flex">
+                  <span className="w-4" />
+                  <span className={`min-w-0 flex-1 ${rowGrid}`}><span>Date</span><span>Pièce</span><span>Libellé</span></span>
+                  <span className="w-32 text-right">Débit</span>
+                  <span className="w-32 text-right">Crédit</span>
+                </div>
+                <ul className="divide-y divide-border">
+                  {unlettered.map(l => (
+                    <li key={l.id} onClick={() => toggle(l.id)} className={`flex cursor-pointer items-center gap-3 px-4 py-2.5 sm:px-5 ${selected.has(l.id) ? 'bg-primary/[0.06]' : 'hover:bg-secondary/40'}`}>
+                      <input type="checkbox" readOnly checked={selected.has(l.id)} className={checkbox} aria-label={`Sélectionner ${l.label || l.entry_label || l.reference || 'la ligne'}`} />
+                      <span className={`min-w-0 flex-1 ${rowGrid}`}>
+                        <span className="hidden whitespace-nowrap text-sm text-muted-foreground md:block">{new Date(l.entry_date).toLocaleDateString('fr-FR')}</span>
+                        <span className="hidden truncate font-mono text-xs text-muted-foreground md:block">{l.reference || '—'}</span>
+                        <span className="block truncate text-sm text-foreground">{l.label || l.entry_label || ''}</span>
+                        <span className="block truncate text-xs text-muted-foreground md:hidden">{new Date(l.entry_date).toLocaleDateString('fr-FR')} · {l.reference || '—'}</span>
+                      </span>
+                      <span className="hidden w-32 text-right text-sm tabular-nums text-foreground md:block">{amount(l.debit)}</span>
+                      <span className="hidden w-32 text-right text-sm tabular-nums text-foreground md:block">{amount(l.credit)}</span>
+                      <span className="shrink-0 text-right text-sm tabular-nums text-foreground md:hidden">
+                        {Number(l.debit) ? <><span className="text-xs text-muted-foreground">D </span>{amount(l.debit)}</> : <><span className="text-xs text-muted-foreground">C </span>{amount(l.credit)}</>}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </section>
 
           {groups.length > 0 && (
-            <div className="bg-card border border-border/60 rounded-xl overflow-hidden">
-              <div className="px-3 py-2 bg-secondary/50 border-b border-border/60 text-sm font-semibold text-foreground">Lettré</div>
-              {groups.map(([code, ls]) => (
-                <div key={code} className="border-b border-border/40 last:border-0">
-                  <div className="flex items-center justify-between px-3 py-1.5 bg-secondary/20">
-                    <span className="text-xs font-semibold text-foreground">Lettrage {code}</span>
-                    <button onClick={() => doUnletter(code)} disabled={busy} className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-red-600 dark:hover:text-red-400"><Unlink className="h-3 w-3" /> Délettrer</button>
-                  </div>
-                  <table className="w-full text-sm">
-                    <tbody>
+            <section className={`${panel} overflow-hidden`}>
+              <div className="border-b border-border px-4 py-3 sm:px-5">
+                <h2 className="font-semibold text-foreground">Lettré <span className="ml-1 text-sm font-normal text-muted-foreground">({groups.length})</span></h2>
+              </div>
+              <div className="divide-y divide-border">
+                {groups.map(([code, ls]) => (
+                  <div key={code}>
+                    <div className="flex items-center justify-between gap-3 bg-secondary/40 px-4 py-1.5 sm:px-5">
+                      <span className="inline-flex items-center gap-2 text-xs font-semibold text-foreground">
+                        <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-md bg-primary/10 px-1.5 font-mono text-primary">{code}</span>
+                        Lettrage {code}
+                      </span>
+                      <button onClick={() => doUnletter(code)} disabled={busy} className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-xs font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"><Unlink className="h-3.5 w-3.5" /> Délettrer</button>
+                    </div>
+                    <ul className="divide-y divide-border">
                       {ls.map(l => (
-                        <tr key={l.id} className="border-t border-border/30">
-                          <td className="px-3 py-1 whitespace-nowrap text-muted-foreground text-xs">{new Date(l.entry_date).toLocaleDateString('fr-FR')}</td>
-                          <td className="px-2 py-1 text-xs">{l.label || l.entry_label || ''}</td>
-                          <td className="px-2 py-1 text-right tabular-nums text-xs">{Number(l.debit) ? fmt(Number(l.debit)) : ''}</td>
-                          <td className="px-2 py-1 text-right tabular-nums text-xs">{Number(l.credit) ? fmt(Number(l.credit)) : ''}</td>
-                        </tr>
+                        <li key={l.id} className="flex items-center gap-3 px-4 py-2 text-sm sm:px-5">
+                          <span className="hidden w-[6.5rem] shrink-0 whitespace-nowrap text-xs text-muted-foreground sm:block">{new Date(l.entry_date).toLocaleDateString('fr-FR')}</span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-foreground">{l.label || l.entry_label || ''}</span>
+                            <span className="block text-xs text-muted-foreground sm:hidden">{new Date(l.entry_date).toLocaleDateString('fr-FR')}</span>
+                          </span>
+                          <span className="w-24 text-right tabular-nums text-foreground sm:w-32">{amount(l.debit)}</span>
+                          <span className="w-24 text-right tabular-nums text-foreground sm:w-32">{amount(l.credit)}</span>
+                        </li>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
-              ))}
-            </div>
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </section>
           )}
-        </>
+
+          <PhoneActionBar>
+            {selected.size > 0 && <span className="flex !flex-none items-center">{selectionSummary}</span>}
+            {letterButton}
+          </PhoneActionBar>
+        </div>
       )}
     </div>
   );

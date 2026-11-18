@@ -4,6 +4,9 @@ import type { FiscalYear } from '../../types';
 import { AccountingService } from '../../utils/supabaseAccounting';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
+import { PageHeader, Panel } from '../../components/PageHeader';
+import { StatusPill } from '../../components/lists/StatusPill';
+import { btnPrimary, LoadingState, PhoneActionBar } from '../../components/backoffice/BackOfficeUi';
 
 function fmtMad(n: number) { return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(n) + ' MAD'; }
 
@@ -59,60 +62,68 @@ export default function CloturePage() {
     } finally { setBusy(false); }
   };
 
-  if (loading) return <div className="flex items-center justify-center py-24 text-muted-foreground"><Loader className="h-5 w-5 animate-spin mr-2" />Chargement…</div>;
+  if (loading) return <LoadingState />;
+
+  const closeButton = (
+    <button onClick={close} disabled={busy || !canClose} className={btnPrimary}>
+      {busy ? <Loader className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
+      Clôturer l'exercice {openFy?.label}
+    </button>
+  );
+  const row = 'flex items-center justify-between gap-4 px-4 py-3 text-sm sm:px-5';
+  const note = 'flex gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-800 dark:text-amber-200';
 
   return (
-    <div className="max-w-[110rem] mx-auto py-6 px-3">
-      <div className="flex items-center gap-2 mb-4">
-        <div className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-primary/10"><Lock className="h-5 w-5 text-primary" /></div>
-        <div>
-          <h1 className="text-lg font-bold text-foreground leading-tight">Clôture d'exercice</h1>
-          <p className="text-xs text-muted-foreground">Verrou + report des à-nouveaux</p>
-        </div>
-      </div>
+    <div className="mx-auto max-w-[110rem]">
+      <PageHeader title="Clôture d'exercice" subtitle="Verrou + report des à-nouveaux" actions={<span className="hidden md:inline-flex">{closeButton}</span>} />
 
-      <div className="bg-card border border-border/60 rounded-xl p-4 mb-4">
-        <div className="flex justify-between py-1.5 text-sm"><span className="text-muted-foreground">Exercice courant</span><span className="font-semibold">{openFy?.label}</span></div>
-        <div className="flex justify-between py-1.5 text-sm"><span className="text-muted-foreground">Résultat de l'exercice</span><span className={`font-semibold tabular-nums ${resultat >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>{fmtMad(resultat)}</span></div>
-        <div className="flex justify-between py-1.5 text-sm items-center">
-          <span className="text-muted-foreground">Écritures en brouillon</span>
-          {draftCount === 0
-            ? <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium"><CheckCircle2 className="h-4 w-4" />Aucune</span>
-            : <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-medium"><AlertTriangle className="h-4 w-4" />{draftCount} à traiter</span>}
-        </div>
-      </div>
-
-      {openFy && !yearOver && (
-        <p className="text-xs text-amber-600 dark:text-amber-400 mb-3">
-          L'exercice {openFy.label} se termine le {openFy.end_date.split('-').reverse().join('/')} : la clôture sera possible après cette date.
-        </p>
-      )}
-      {draftCount > 0 && (
-        <p className="text-xs text-amber-600 dark:text-amber-400 mb-3">
-          Validez ou supprimez les écritures en brouillon avant de clôturer (Saisie / Journaux).
-        </p>
-      )}
-
-      <button onClick={close} disabled={busy || !canClose}
-        className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50">
-        {busy ? <Loader className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
-        Clôturer l'exercice {openFy?.label}
-      </button>
-
-      <div className="mt-6">
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Exercices</h2>
-        <div className="bg-card border border-border/60 rounded-xl overflow-hidden">
-          {years.map(y => (
-            <div key={y.id} className="flex items-center justify-between px-3 py-2 border-b border-border/40 last:border-0 text-sm">
-              <span className="font-medium">{y.label}</span>
-              <span className="text-muted-foreground">{y.start_date} → {y.end_date}</span>
-              {y.status === 'closed'
-                ? <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-muted-foreground"><Lock className="h-3 w-3" />Clôturé</span>
-                : <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">Ouvert</span>}
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="space-y-3">
+          <Panel title="Exercice courant">
+            <div className="divide-y divide-border">
+              <div className={row}><span className="text-muted-foreground">Exercice courant</span><span className="font-semibold text-foreground">{openFy?.label}</span></div>
+              <div className={row}><span className="text-muted-foreground">Résultat de l'exercice</span><span className={`whitespace-nowrap font-semibold tabular-nums ${resultat >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}`}>{fmtMad(resultat)}</span></div>
+              <div className={row}>
+                <span className="text-muted-foreground">Écritures en brouillon</span>
+                {draftCount === 0
+                  ? <StatusPill tone="success" icon={<CheckCircle2 className="h-3 w-3" />}>Aucune</StatusPill>
+                  : <StatusPill tone="warning" icon={<AlertTriangle className="h-3 w-3" />}>{draftCount} à traiter</StatusPill>}
+              </div>
             </div>
-          ))}
+          </Panel>
+
+          {openFy && !yearOver && (
+            <p className={note}>
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>L'exercice {openFy.label} se termine le {openFy.end_date.split('-').reverse().join('/')} : la clôture sera possible après cette date.</span>
+            </p>
+          )}
+          {draftCount > 0 && (
+            <p className={note}>
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>Validez ou supprimez les écritures en brouillon avant de clôturer (Saisie / Journaux).</span>
+            </p>
+          )}
         </div>
+
+        <Panel title="Exercices">
+          <ul className="divide-y divide-border">
+            {years.map(y => (
+              <li key={y.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm sm:px-5">
+                <span className="min-w-0">
+                  <span className="block font-semibold text-foreground">{y.label}</span>
+                  <span className="block text-xs tabular-nums text-muted-foreground">{y.start_date} → {y.end_date}</span>
+                </span>
+                {y.status === 'closed'
+                  ? <StatusPill tone="neutral" icon={<Lock className="h-3 w-3" />}>Clôturé</StatusPill>
+                  : <StatusPill tone="success">Ouvert</StatusPill>}
+              </li>
+            ))}
+          </ul>
+        </Panel>
       </div>
+
+      <PhoneActionBar>{closeButton}</PhoneActionBar>
     </div>
   );
 }

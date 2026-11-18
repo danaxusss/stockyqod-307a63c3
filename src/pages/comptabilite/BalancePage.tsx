@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { Scale, Loader, Download } from 'lucide-react';
+import { Scale, Download } from 'lucide-react';
 import type { Account, FiscalYear } from '../../types';
 import { AccountingService } from '../../utils/supabaseAccounting';
 import { useToast } from '../../context/ToastContext';
+import { PageHeader } from '../../components/PageHeader';
+import { btnSecondary, EmptyState, LoadingState, MobileField, panel, td, tdNum, tfootRow, th, theadRow, thRight } from '../../components/backoffice/BackOfficeUi';
 
 function fmt(n: number) { return n === 0 ? '' : new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n); }
 
@@ -56,58 +58,82 @@ export default function BalancePage() {
   };
 
   return (
-    <div className="max-w-[110rem] mx-auto py-6 px-3">
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-        <div className="flex items-center gap-2">
-          <div className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-primary/10"><Scale className="h-5 w-5 text-primary" /></div>
-          <div>
-            <h1 className="text-lg font-bold text-foreground leading-tight">Balance générale</h1>
-            <p className="text-xs text-muted-foreground">Exercice {fy?.label}</p>
-          </div>
-        </div>
-        <button onClick={exportCsv} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-secondary border border-border text-sm"><Download className="h-3.5 w-3.5" /> CSV</button>
-      </div>
+    <div className="mx-auto max-w-[110rem]">
+      <PageHeader
+        title="Balance générale"
+        subtitle={`Exercice ${fy?.label ?? ''} · ${rows.length} compte${rows.length !== 1 ? 's' : ''} mouvementé${rows.length !== 1 ? 's' : ''}`}
+        actions={<button onClick={exportCsv} className={btnSecondary}><Download className="h-4 w-4" /> CSV</button>}
+      />
 
       {loading ? (
-        <div className="flex items-center justify-center py-16 text-muted-foreground"><Loader className="h-5 w-5 animate-spin mr-2" />Chargement…</div>
+        <LoadingState />
       ) : (
-        <div className="bg-card border border-border/60 rounded-xl overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border/60 bg-secondary/50 text-xs text-muted-foreground">
-                  <th className="text-left font-medium px-3 py-2">Compte</th>
-                  <th className="text-left font-medium px-3 py-2">Libellé</th>
-                  <th className="text-right font-medium px-3 py-2">Débit</th>
-                  <th className="text-right font-medium px-3 py-2">Crédit</th>
-                  <th className="text-right font-medium px-3 py-2">Solde D.</th>
-                  <th className="text-right font-medium px-3 py-2">Solde C.</th>
-                </tr>
-              </thead>
-              <tbody>
+        <div className={`${panel} overflow-hidden`}>
+          {rows.length === 0 ? (
+            <EmptyState icon={Scale} title="Aucun mouvement comptabilisé" hint="Les comptes apparaissent ici dès qu’une écriture est validée." />
+          ) : (
+            <>
+              {/* Phones: one card per account. */}
+              <ul className="divide-y divide-border md:hidden">
                 {rows.map(r => (
-                  <tr key={r.code} className="border-b border-border/40">
-                    <td className="px-3 py-1.5 font-mono">{r.code}</td>
-                    <td className="px-3 py-1.5 truncate max-w-[220px]">{r.label}</td>
-                    <td className="px-3 py-1.5 text-right tabular-nums">{fmt(r.debit)}</td>
-                    <td className="px-3 py-1.5 text-right tabular-nums">{fmt(r.credit)}</td>
-                    <td className="px-3 py-1.5 text-right tabular-nums">{fmt(r.soldeD)}</td>
-                    <td className="px-3 py-1.5 text-right tabular-nums">{fmt(r.soldeC)}</td>
-                  </tr>
+                  <li key={r.code} className="px-4 py-3">
+                    <p className="flex items-baseline gap-2"><span className="font-mono text-sm font-semibold text-foreground">{r.code}</span><span className="truncate text-sm text-muted-foreground">{r.label}</span></p>
+                    <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5">
+                      <MobileField label="Débit">{fmt(r.debit) || '—'}</MobileField>
+                      <MobileField label="Crédit">{fmt(r.credit) || '—'}</MobileField>
+                      <MobileField label="Solde D.">{fmt(r.soldeD) || '—'}</MobileField>
+                      <MobileField label="Solde C.">{fmt(r.soldeC) || '—'}</MobileField>
+                    </dl>
+                  </li>
                 ))}
-                {rows.length === 0 && <tr><td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">Aucun mouvement comptabilisé</td></tr>}
-              </tbody>
-              <tfoot>
-                <tr className="bg-secondary/40 font-semibold border-t border-border/60">
-                  <td colSpan={2} className="px-3 py-2 text-right text-xs text-muted-foreground">Totaux</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{fmt(totals.debit)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{fmt(totals.credit)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{fmt(totals.soldeD)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{fmt(totals.soldeC)}</td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
+                <li className="bg-secondary/40 px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Totaux</p>
+                  <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 font-semibold">
+                    <MobileField label="Débit">{fmt(totals.debit) || '—'}</MobileField>
+                    <MobileField label="Crédit">{fmt(totals.credit) || '—'}</MobileField>
+                    <MobileField label="Solde D.">{fmt(totals.soldeD) || '—'}</MobileField>
+                    <MobileField label="Solde C.">{fmt(totals.soldeC) || '—'}</MobileField>
+                  </dl>
+                </li>
+              </ul>
+
+              <div className="hidden overflow-x-auto md:block">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className={theadRow}>
+                      <th className={th}>Compte</th>
+                      <th className={th}>Libellé</th>
+                      <th className={thRight}>Débit</th>
+                      <th className={thRight}>Crédit</th>
+                      <th className={thRight}>Solde D.</th>
+                      <th className={thRight}>Solde C.</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {rows.map(r => (
+                      <tr key={r.code} className="hover:bg-secondary/40">
+                        <td className={`${td} font-mono font-semibold text-foreground`}>{r.code}</td>
+                        <td className={`${td} max-w-[28rem] truncate text-foreground`}>{r.label}</td>
+                        <td className={`${tdNum} text-foreground`}>{fmt(r.debit)}</td>
+                        <td className={`${tdNum} text-foreground`}>{fmt(r.credit)}</td>
+                        <td className={`${tdNum} text-foreground`}>{fmt(r.soldeD)}</td>
+                        <td className={`${tdNum} text-foreground`}>{fmt(r.soldeC)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className={tfootRow}>
+                      <td colSpan={2} className={`${td} text-right text-xs uppercase tracking-wide text-muted-foreground`}>Totaux</td>
+                      <td className={`${tdNum} text-foreground`}>{fmt(totals.debit)}</td>
+                      <td className={`${tdNum} text-foreground`}>{fmt(totals.credit)}</td>
+                      <td className={`${tdNum} text-foreground`}>{fmt(totals.soldeD)}</td>
+                      <td className={`${tdNum} text-foreground`}>{fmt(totals.soldeC)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>

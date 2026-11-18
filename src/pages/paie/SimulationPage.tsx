@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { Calculator, Loader, Users } from 'lucide-react';
 import { computePayroll, computeAnciennete, type PayrollResult } from '../../utils/payrollCalc';
 import { PayrollSettingsService } from '../../utils/supabasePayrollSettings';
 import { SupabaseEmployeesService } from '../../utils/supabaseEmployees';
@@ -7,6 +6,8 @@ import { DEFAULT_PAYROLL_SETTINGS, type PayrollSettings } from '../../utils/payr
 import type { Employee } from '../../types';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
+import { PageHeader } from '../../components/PageHeader';
+import { field, fieldAuto, fieldLabel, LoadingState, panel, Segmented } from '../../components/backoffice/BackOfficeUi';
 
 function fmt(n: number) { return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n); }
 
@@ -74,16 +75,16 @@ export default function SimulationPage() {
     setForm(f => ({ ...f, base_salary: String(e.base_salary || 0), anciennete_years: String(years), cimr_rate: String(e.cimr_rate || 0), dependents_count: String(e.dependents_count || 0) }));
   };
 
-  if (!isPaie && !isSuperAdmin) return <div className="text-center py-12 text-muted-foreground">Accès réservé au rôle Paie.</div>;
-  if (loading) return <div className="flex items-center justify-center py-24 text-muted-foreground"><Loader className="h-5 w-5 animate-spin mr-2" />Chargement…</div>;
+  if (!isPaie && !isSuperAdmin) return <div className="py-12 text-center text-muted-foreground">Accès réservé au rôle Paie.</div>;
+  if (loading) return <LoadingState />;
 
   const Field = ({ label, k, suffix }: { label: string; k: keyof typeof form; suffix?: string }) => (
     <div>
-      <label className="block text-[11px] text-muted-foreground mb-1">{label}</label>
+      <label className={fieldLabel}>{label}</label>
       <div className="relative">
         <input type="number" value={form[k]} onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))}
-          className="w-full px-2 py-1.5 text-sm rounded-lg bg-secondary border border-border focus:outline-none focus:ring-2 focus:ring-primary/30" />
-        {suffix && <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">{suffix}</span>}
+          className={`${field} tabular-nums ${suffix ? 'pr-10' : ''}`} />
+        {suffix && <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">{suffix}</span>}
       </div>
     </div>
   );
@@ -96,33 +97,28 @@ export default function SimulationPage() {
     ['Primes non soumises (exonérées)', num('primes_non_soumises')],
   ];
 
-  return (
-    <div className="max-w-[110rem] mx-auto py-6 px-3">
-      <div className="flex items-center gap-2 mb-4">
-        <div className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-primary/10"><Calculator className="h-5 w-5 text-primary" /></div>
-        <div>
-          <h1 className="text-lg font-bold text-foreground leading-tight">Simulateur de paie</h1>
-          <p className="text-xs text-muted-foreground">Brut → net, ou net → brut · barème {settings.year || 'par défaut'}</p>
-        </div>
-      </div>
+  const line = 'flex justify-between gap-4 px-4 py-2 sm:px-5';
+  const group = 'px-4 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:px-5';
 
-      <div className="grid md:grid-cols-2 gap-4">
+  return (
+    <div className="mx-auto max-w-[110rem]">
+      <PageHeader title="Simulateur de paie" subtitle={`Brut → net, ou net → brut · barème ${settings.year || 'par défaut'}`} />
+
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         {/* Inputs */}
-        <div className="bg-card border border-border/60 rounded-xl p-4 space-y-3">
-          <div className="flex items-center gap-2">
-            <div className="flex rounded-lg border border-border overflow-hidden">
-              <button onClick={() => setMode('brut')} className={`px-3 py-1.5 text-xs font-medium ${mode === 'brut' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'}`}>Partir du brut</button>
-              <button onClick={() => setMode('net')} className={`px-3 py-1.5 text-xs font-medium ${mode === 'net' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'}`}>Cibler un net</button>
-            </div>
+        <section className={`${panel} space-y-4 p-4 sm:p-5`}>
+          <div className="flex flex-wrap items-center gap-2">
+            <Segmented<'brut' | 'net'> label="Mode de calcul" value={mode} onChange={setMode}
+              options={[{ value: 'brut', label: 'Partir du brut' }, { value: 'net', label: 'Cibler un net' }]} />
             {employees.length > 0 && (
-              <select onChange={e => e.target.value && loadEmployee(e.target.value)} defaultValue=""
-                className="ml-auto text-xs px-2 py-1.5 rounded-lg bg-secondary border border-border">
+              <select onChange={e => e.target.value && loadEmployee(e.target.value)} defaultValue="" aria-label="Charger un employé"
+                className={`${fieldAuto} w-full sm:ml-auto sm:w-auto`}>
                 <option value="">Charger un employé…</option>
                 {employees.map(e => <option key={e.id} value={e.id}>{e.full_name}</option>)}
               </select>
             )}
           </div>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label={mode === 'net' ? 'Net cible (MAD)' : 'Salaire de base (MAD)'} k="base_salary" />
             <Field label="Ancienneté (années)" k="anciennete_years" suffix="ans" />
             <Field label="Primes soumises" k="primes_soumises" />
@@ -132,34 +128,38 @@ export default function SimulationPage() {
             <Field label="Taux CIMR" k="cimr_rate" suffix="%" />
             <Field label="Personnes à charge" k="dependents_count" />
           </div>
-        </div>
+        </section>
 
         {/* Result */}
-        <div className="bg-card border border-border/60 rounded-xl overflow-hidden">
-          <div className="px-4 py-2 bg-secondary/50 border-b border-border/60 text-sm font-semibold text-foreground">Décomposition</div>
-          <div className="p-4 text-sm space-y-1">
-            {rows.filter(r => r[1] !== 0 || r[0].startsWith('Salaire')).map(([l, v]) => (
-              <div key={l} className="flex justify-between py-0.5"><span className="text-muted-foreground">{l}</span><span className="tabular-nums">{fmt(v)}</span></div>
-            ))}
-            <div className="flex justify-between py-1 border-t border-border/60 mt-1 font-semibold"><span>Brut global</span><span className="tabular-nums">{fmt(result.brut_global)}</span></div>
-
-            <div className="pt-2 text-[11px] uppercase tracking-wide text-muted-foreground">Retenues salariales</div>
-            <div className="flex justify-between py-0.5"><span className="text-muted-foreground">CNSS (part salariale)</span><span className="tabular-nums text-red-600 dark:text-red-400">-{fmt(result.cnss_employee)}</span></div>
-            <div className="flex justify-between py-0.5"><span className="text-muted-foreground">AMO</span><span className="tabular-nums text-red-600 dark:text-red-400">-{fmt(result.amo_employee)}</span></div>
-            {result.cimr_employee > 0 && <div className="flex justify-between py-0.5"><span className="text-muted-foreground">CIMR</span><span className="tabular-nums text-red-600 dark:text-red-400">-{fmt(result.cimr_employee)}</span></div>}
-            <div className="flex justify-between py-0.5"><span className="text-muted-foreground">IR (net imposable {fmt(result.net_imposable)})</span><span className="tabular-nums text-red-600 dark:text-red-400">-{fmt(result.ir_amount)}</span></div>
-            {result.autres_retenues > 0 && <div className="flex justify-between py-0.5"><span className="text-muted-foreground">Autres retenues</span><span className="tabular-nums text-red-600 dark:text-red-400">-{fmt(result.autres_retenues)}</span></div>}
-
-            <div className="flex justify-between py-2 border-t-2 border-border mt-1 font-bold text-emerald-600 dark:text-emerald-400 text-base"><span>Net à payer</span><span className="tabular-nums">{fmt(result.net_salary)}</span></div>
-
-            <div className="pt-2 text-[11px] uppercase tracking-wide text-muted-foreground">Charges patronales</div>
-            <div className="flex justify-between py-0.5"><span className="text-muted-foreground">CNSS patronale</span><span className="tabular-nums">{fmt(result.cnss_employer)}</span></div>
-            <div className="flex justify-between py-0.5"><span className="text-muted-foreground">AMO patronale</span><span className="tabular-nums">{fmt(result.amo_employer)}</span></div>
-            <div className="flex justify-between py-0.5"><span className="text-muted-foreground">Allocations familiales</span><span className="tabular-nums">{fmt(result.alloc_familiales)}</span></div>
-            <div className="flex justify-between py-0.5"><span className="text-muted-foreground">Taxe formation pro. (1,6 %)</span><span className="tabular-nums">{fmt(result.tfp_employer)}</span></div>
-            <div className="flex justify-between py-2 border-t border-border/60 mt-1 font-bold"><span>Coût total employeur</span><span className="tabular-nums">{fmt(result.employer_cost)}</span></div>
+        <section className={`${panel} overflow-hidden lg:sticky lg:top-4`}>
+          <div className="border-b border-border px-4 py-3 sm:px-5">
+            <h2 className="font-semibold text-foreground">Décomposition</h2>
           </div>
-        </div>
+          <div className="text-sm">
+            <div className="pt-2">
+              {rows.filter(r => r[1] !== 0 || r[0].startsWith('Salaire')).map(([l, v]) => (
+                <div key={l} className={line}><span className="text-muted-foreground">{l}</span><span className="tabular-nums text-foreground">{fmt(v)}</span></div>
+              ))}
+            </div>
+            <div className={`${line} mt-1 border-t border-border py-2.5 font-semibold text-foreground`}><span>Brut global</span><span className="tabular-nums">{fmt(result.brut_global)}</span></div>
+
+            <div className={group}>Retenues salariales</div>
+            <div className={line}><span className="text-muted-foreground">CNSS (part salariale)</span><span className="tabular-nums text-red-700 dark:text-red-300">-{fmt(result.cnss_employee)}</span></div>
+            <div className={line}><span className="text-muted-foreground">AMO</span><span className="tabular-nums text-red-700 dark:text-red-300">-{fmt(result.amo_employee)}</span></div>
+            {result.cimr_employee > 0 && <div className={line}><span className="text-muted-foreground">CIMR</span><span className="tabular-nums text-red-700 dark:text-red-300">-{fmt(result.cimr_employee)}</span></div>}
+            <div className={line}><span className="text-muted-foreground">IR (net imposable {fmt(result.net_imposable)})</span><span className="tabular-nums text-red-700 dark:text-red-300">-{fmt(result.ir_amount)}</span></div>
+            {result.autres_retenues > 0 && <div className={line}><span className="text-muted-foreground">Autres retenues</span><span className="tabular-nums text-red-700 dark:text-red-300">-{fmt(result.autres_retenues)}</span></div>}
+
+            <div className={`${line} mt-2 bg-emerald-500/10 py-3 text-base font-bold text-emerald-700 dark:text-emerald-300`}><span>Net à payer</span><span className="tabular-nums">{fmt(result.net_salary)}</span></div>
+
+            <div className={group}>Charges patronales</div>
+            <div className={line}><span className="text-muted-foreground">CNSS patronale</span><span className="tabular-nums text-foreground">{fmt(result.cnss_employer)}</span></div>
+            <div className={line}><span className="text-muted-foreground">AMO patronale</span><span className="tabular-nums text-foreground">{fmt(result.amo_employer)}</span></div>
+            <div className={line}><span className="text-muted-foreground">Allocations familiales</span><span className="tabular-nums text-foreground">{fmt(result.alloc_familiales)}</span></div>
+            <div className={line}><span className="text-muted-foreground">Taxe formation pro. (1,6 %)</span><span className="tabular-nums text-foreground">{fmt(result.tfp_employer)}</span></div>
+            <div className={`${line} mt-1 border-t border-border bg-secondary/40 py-3 font-bold text-foreground`}><span>Coût total employeur</span><span className="tabular-nums">{fmt(result.employer_cost)}</span></div>
+          </div>
+        </section>
       </div>
     </div>
   );

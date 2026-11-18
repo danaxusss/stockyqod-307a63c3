@@ -1,11 +1,14 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { Building, Plus, Loader, Trash2, Check, X, Zap } from 'lucide-react';
+import { Building, Plus, Trash2, Check, X, Zap } from 'lucide-react';
 import { AssetsService, type FixedAsset } from '../../utils/supabaseAssets';
 import { AccountingService } from '../../utils/supabaseAccounting';
 import type { FiscalYear, Journal } from '../../types';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
 import { localDay } from '../../utils/documentLines';
+import { PageHeader } from '../../components/PageHeader';
+import { StatusPill } from '../../components/lists/StatusPill';
+import { btnPrimary, btnSecondary, btnSoft, EmptyState, field, fieldLabel, iconBtnDanger, LoadingState, MobileField, panel, td, tdNum, th, theadRow, thRight } from '../../components/backoffice/BackOfficeUi';
 
 function fmt(n: number) { return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(n); }
 
@@ -66,86 +69,117 @@ export default function ImmobilisationsPage() {
     catch (e: any) { showToast({ type: 'error', message: e?.message || 'Échec' }); }
   };
 
-  if (loading) return <div className="flex items-center justify-center py-24 text-muted-foreground"><Loader className="h-5 w-5 animate-spin mr-2" />Chargement…</div>;
+  if (loading) return <LoadingState />;
+
+  const rowsData = assets.map(a => {
+    const annual = AssetsService.dotationForYear(a, year) || AssetsService.annualAmount(a);
+    const cum = AssetsService.cumulative(a);
+    const vnc = Math.max(0, Number(a.amount) - cum);
+    const doneThisYear = (a.depreciations || []).some(d => d.year === year);
+    const fullyAmortized = vnc <= (Number(a.salvage) || 0) + 0.005;
+    return { a, annual, cum, vnc, doneThisYear, fullyAmortized };
+  });
+  const yearState = ({ a, doneThisYear, fullyAmortized }: typeof rowsData[number]) => doneThisYear
+    ? <StatusPill tone="success" icon={<Check className="h-3 w-3" />}>Dotation faite</StatusPill>
+    : fullyAmortized ? <StatusPill tone="neutral">Amorti</StatusPill>
+    : <button onClick={() => dotation(a)} disabled={busy} className={btnSoft}><Zap className="h-3.5 w-3.5" /> Générer</button>;
+  const deleteButton = (a: FixedAsset) => (
+    <button onClick={() => remove(a)} aria-label={`Supprimer ${a.label}`} title="Supprimer" className={iconBtnDanger}><Trash2 className="h-4 w-4" /></button>
+  );
 
   return (
-    <div className="max-w-[110rem] mx-auto py-6 px-3">
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-        <div className="flex items-center gap-2">
-          <div className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-primary/10"><Building className="h-5 w-5 text-primary" /></div>
-          <div>
-            <h1 className="text-lg font-bold text-foreground leading-tight">Immobilisations</h1>
-            <p className="text-xs text-muted-foreground">Amortissement linéaire · exercice {fy?.label}</p>
-          </div>
-        </div>
-        <button onClick={() => setAdding(v => !v)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium"><Plus className="h-4 w-4" /> Immobilisation</button>
-      </div>
+    <div className="mx-auto max-w-[110rem]">
+      <PageHeader
+        title="Immobilisations"
+        subtitle={`Amortissement linéaire · exercice ${fy?.label ?? ''}`}
+        actions={<button onClick={() => setAdding(v => !v)} aria-expanded={adding} className={btnPrimary}><Plus className="h-4 w-4" /> Immobilisation</button>}
+      />
 
       {adding && (
-        <div className="bg-card border border-primary/30 rounded-xl p-3 mb-4 grid grid-cols-2 sm:grid-cols-4 gap-2 items-end">
-          <div className="col-span-2"><label className="block text-[11px] text-muted-foreground mb-1">Libellé</label>
-            <input value={form.label} onChange={e => setForm(f => ({ ...f, label: e.target.value }))} className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border" /></div>
-          <div><label className="block text-[11px] text-muted-foreground mb-1">Montant HT</label>
-            <input type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border" /></div>
-          <div><label className="block text-[11px] text-muted-foreground mb-1">Durée (ans)</label>
-            <input type="number" value={form.duration_years} onChange={e => setForm(f => ({ ...f, duration_years: e.target.value }))} className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border" /></div>
-          <div><label className="block text-[11px] text-muted-foreground mb-1">Acquisition</label>
-            <input type="date" value={form.acquisition_date} onChange={e => setForm(f => ({ ...f, acquisition_date: e.target.value }))} className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border" /></div>
-          <div><label className="block text-[11px] text-muted-foreground mb-1">Cpte immo</label>
-            <input value={form.account_code} onChange={e => setForm(f => ({ ...f, account_code: e.target.value }))} className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border font-mono" /></div>
-          <div><label className="block text-[11px] text-muted-foreground mb-1">Cpte amort.</label>
-            <input value={form.depreciation_account_code} onChange={e => setForm(f => ({ ...f, depreciation_account_code: e.target.value }))} className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border font-mono" /></div>
-          <div className="flex gap-1">
-            <button onClick={save} disabled={busy} className="flex-1 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm disabled:opacity-50">{busy ? '…' : <Check className="h-4 w-4 mx-auto" />}</button>
-            <button onClick={() => setAdding(false)} className="px-2 py-1.5 rounded-lg bg-secondary border border-border"><X className="h-4 w-4" /></button>
+        <div className={`${panel} mb-4 border-primary/40 p-4`}>
+          <h2 className="mb-3 text-sm font-semibold text-foreground">Nouvelle immobilisation</h2>
+          <div className="grid grid-cols-2 items-end gap-3 sm:grid-cols-4 xl:grid-cols-[minmax(0,2fr)_repeat(5,minmax(0,1fr))_auto]">
+            <div className="col-span-2 xl:col-span-1"><label className={fieldLabel} htmlFor="immo-label">Libellé</label>
+              <input id="immo-label" value={form.label} onChange={e => setForm(f => ({ ...f, label: e.target.value }))} className={field} /></div>
+            <div><label className={fieldLabel} htmlFor="immo-amount">Montant HT</label>
+              <input id="immo-amount" type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} className={`${field} tabular-nums`} /></div>
+            <div><label className={fieldLabel} htmlFor="immo-duration">Durée (ans)</label>
+              <input id="immo-duration" type="number" value={form.duration_years} onChange={e => setForm(f => ({ ...f, duration_years: e.target.value }))} className={`${field} tabular-nums`} /></div>
+            <div><label className={fieldLabel} htmlFor="immo-date">Acquisition</label>
+              <input id="immo-date" type="date" value={form.acquisition_date} onChange={e => setForm(f => ({ ...f, acquisition_date: e.target.value }))} className={field} /></div>
+            <div><label className={fieldLabel} htmlFor="immo-account">Cpte immo</label>
+              <input id="immo-account" value={form.account_code} onChange={e => setForm(f => ({ ...f, account_code: e.target.value }))} className={`${field} font-mono`} /></div>
+            <div><label className={fieldLabel} htmlFor="immo-dep-account">Cpte amort.</label>
+              <input id="immo-dep-account" value={form.depreciation_account_code} onChange={e => setForm(f => ({ ...f, depreciation_account_code: e.target.value }))} className={`${field} font-mono`} /></div>
+            <div className="col-span-2 flex gap-2 sm:col-span-1">
+              <button onClick={() => setAdding(false)} aria-label="Annuler" className={`${btnSecondary} flex-1`}><X className="h-4 w-4" /><span className="sm:hidden">Annuler</span></button>
+              <button onClick={save} disabled={busy} aria-label="Enregistrer l'immobilisation" className={`${btnPrimary} flex-1`}>{busy ? '…' : <Check className="h-4 w-4" />}<span className="sm:hidden">Enregistrer</span></button>
+            </div>
           </div>
         </div>
       )}
 
-      <div className="bg-card border border-border/60 rounded-xl overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border/60 bg-secondary/50 text-xs text-muted-foreground">
-                <th className="text-left font-medium px-3 py-2.5">Immobilisation</th>
-                <th className="text-right font-medium px-3 py-2.5">Montant</th>
-                <th className="text-right font-medium px-3 py-2.5">Dotation/an</th>
-                <th className="text-right font-medium px-3 py-2.5">Amort. cumulé</th>
-                <th className="text-right font-medium px-3 py-2.5">VNC</th>
-                <th className="text-right font-medium px-3 py-2.5 w-40">Exercice {year}</th>
-                <th className="w-8"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {assets.map(a => {
-                const annual = AssetsService.dotationForYear(a, year) || AssetsService.annualAmount(a);
-                const cum = AssetsService.cumulative(a);
-                const vnc = Math.max(0, Number(a.amount) - cum);
-                const doneThisYear = (a.depreciations || []).some(d => d.year === year);
-                const fullyAmortized = vnc <= (Number(a.salvage) || 0) + 0.005;
-                return (
-                  <tr key={a.id} className="border-b border-border/40">
-                    <td className="px-3 py-2">
-                      <div className="font-medium text-foreground">{a.label}</div>
-                      <div className="text-[10px] text-muted-foreground font-mono">{a.account_code} · {a.duration_years} ans · dep. {new Date(a.acquisition_date).toLocaleDateString('fr-FR')}</div>
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums">{fmt(Number(a.amount))}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{fmt(annual)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{fmt(cum)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums font-medium">{fmt(vnc)}</td>
-                    <td className="px-3 py-2 text-right">
-                      {doneThisYear ? <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">Dotation faite</span>
-                        : fullyAmortized ? <span className="text-[11px] text-muted-foreground">Amorti</span>
-                        : <button onClick={() => dotation(a)} disabled={busy} className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-md bg-primary/10 text-primary hover:bg-primary/20 disabled:opacity-50"><Zap className="h-3 w-3" /> Générer</button>}
-                    </td>
-                    <td className="px-2 text-center"><button onClick={() => remove(a)} className="p-1 text-muted-foreground hover:bg-secondary rounded"><Trash2 className="h-3.5 w-3.5" /></button></td>
+      <div className={`${panel} overflow-hidden`}>
+        {assets.length === 0 ? (
+          <EmptyState icon={Building} title="Aucune immobilisation" />
+        ) : (
+          <>
+            <ul className="divide-y divide-border md:hidden">
+              {rowsData.map(r => (
+                <li key={r.a.id} className="px-4 py-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-foreground">{r.a.label}</p>
+                      <p className="truncate font-mono text-xs text-muted-foreground">{r.a.account_code} · {r.a.duration_years} ans · dep. {new Date(r.a.acquisition_date).toLocaleDateString('fr-FR')}</p>
+                    </div>
+                    {deleteButton(r.a)}
+                  </div>
+                  <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5">
+                    <MobileField label="Montant">{fmt(Number(r.a.amount))}</MobileField>
+                    <MobileField label="VNC"><span className="font-semibold">{fmt(r.vnc)}</span></MobileField>
+                    <MobileField label="Dotation/an">{fmt(r.annual)}</MobileField>
+                    <MobileField label="Amort. cumulé">{fmt(r.cum)}</MobileField>
+                  </dl>
+                  <div className="mt-2 flex items-center justify-between gap-2">
+                    <span className="text-xs text-muted-foreground">Exercice {year}</span>
+                    {yearState(r)}
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <div className="hidden overflow-x-auto md:block">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className={theadRow}>
+                    <th className={th}>Immobilisation</th>
+                    <th className={thRight}>Montant</th>
+                    <th className={thRight}>Dotation/an</th>
+                    <th className={thRight}>Amort. cumulé</th>
+                    <th className={thRight}>VNC</th>
+                    <th className={`${thRight} w-40`}>Exercice {year}</th>
+                    <th className={`${th} w-12`}><span className="sr-only">Actions</span></th>
                   </tr>
-                );
-              })}
-              {assets.length === 0 && <tr><td colSpan={7} className="px-3 py-10 text-center text-muted-foreground">Aucune immobilisation</td></tr>}
-            </tbody>
-          </table>
-        </div>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {rowsData.map(r => (
+                    <tr key={r.a.id} className="hover:bg-secondary/40">
+                      <td className={td}>
+                        <div className="font-medium text-foreground">{r.a.label}</div>
+                        <div className="font-mono text-xs text-muted-foreground">{r.a.account_code} · {r.a.duration_years} ans · dep. {new Date(r.a.acquisition_date).toLocaleDateString('fr-FR')}</div>
+                      </td>
+                      <td className={`${tdNum} text-foreground`}>{fmt(Number(r.a.amount))}</td>
+                      <td className={`${tdNum} text-muted-foreground`}>{fmt(r.annual)}</td>
+                      <td className={`${tdNum} text-muted-foreground`}>{fmt(r.cum)}</td>
+                      <td className={`${tdNum} font-semibold text-foreground`}>{fmt(r.vnc)}</td>
+                      <td className={`${td} text-right`}>{yearState(r)}</td>
+                      <td className={`${td} py-1.5 text-center`}>{deleteButton(r.a)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Users, Plus, Edit, Trash2, Shield, User, Eye, EyeOff,
-  Save, X, AlertCircle, Search, UserCheck, UserX, MapPin, DollarSign, Building2, Star, Calculator, GitBranch
+  Save, X, AlertCircle, Search, UserCheck, UserX, MapPin, DollarSign, Building2, Star, Calculator, GitBranch, AlertTriangle
 } from 'lucide-react';
 import { AppUser, AppUserRole, CreateAppUserRequest, UpdateAppUserRequest, Company } from '../types';
 import { SupabaseUsersService } from '../utils/supabaseUsers';
@@ -10,6 +10,9 @@ import { SupabaseCompaniesService } from '../utils/supabaseCompanies';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../hooks/useAuth';
 import { useAppContext } from '../context/AppContext';
+import { PageHeader } from '../components/PageHeader';
+import { StatusPill } from '../components/lists/StatusPill';
+import { btnPrimary, btnSecondary, checkbox, EmptyState, field, fieldAuto, iconBtn, iconBtnDanger, LoadingState, panel, td, th, theadRow } from '../components/backoffice/BackOfficeUi';
 
 const ROLE_OPTIONS: { value: AppUserRole; label: string; description: string }[] = [
   { value: 'super_admin',  label: 'Super Admin',       description: 'Contrôle total — toutes sociétés, gestion utilisateurs' },
@@ -316,20 +319,20 @@ export default function UserManagementPage() {
   const getRoleBadge = (user: AppUser) => {
     if (user.tasks_only) {
       return user.tasks_role === 'driver'
-        ? { label: 'Livreur',    icon: User, cls: 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300' }
-        : { label: 'Technicien', icon: User, cls: 'bg-primary/10 dark:bg-primary/15 text-primary dark:text-primary' };
+        ? { label: 'Livreur',    icon: User, cls: 'bg-amber-500/10 text-amber-800 ring-amber-600/20 dark:text-amber-300' }
+        : { label: 'Technicien', icon: User, cls: 'bg-primary/10 text-primary ring-primary/20' };
     }
     const role = user.new_role ||
       (user.is_superadmin ? 'super_admin' : user.is_admin ? 'admin' : user.is_compta ? 'compta' : null);
     switch (role) {
-      case 'super_admin':  return { label: 'Super Admin',    icon: Star,       cls: 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300' };
-      case 'admin':        return { label: 'Admin',           icon: Shield,     cls: 'bg-primary/10 dark:bg-primary/15 text-primary dark:text-primary' };
-      case 'manager':      return { label: 'Manager',         icon: GitBranch,  cls: 'bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300' };
-      case 'facturation':  return { label: 'Facturation',     icon: DollarSign, cls: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300' };
-      case 'compta':       return { label: 'Compta',          icon: Calculator, cls: 'bg-sky-100 dark:bg-sky-900/30 text-sky-800 dark:text-sky-300' };
-      case 'senior_sales': return { label: 'Sr. Commercial',  icon: UserCheck,  cls: 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300' };
-      case 'junior_sales': return { label: 'Jr. Commercial',  icon: User,       cls: 'bg-sky-100 dark:bg-sky-900/30 text-sky-800 dark:text-sky-300' };
-      default:            return { label: 'Commercial', icon: User, cls: 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300' };
+      case 'super_admin':  return { label: 'Super Admin',    icon: Star,       cls: 'bg-amber-500/10 text-amber-800 ring-amber-600/20 dark:text-amber-300' };
+      case 'admin':        return { label: 'Admin',           icon: Shield,     cls: 'bg-primary/10 text-primary ring-primary/20' };
+      case 'manager':      return { label: 'Manager',         icon: GitBranch,  cls: 'bg-orange-500/10 text-orange-800 ring-orange-600/20 dark:text-orange-300' };
+      case 'facturation':  return { label: 'Facturation',     icon: DollarSign, cls: 'bg-emerald-500/10 text-emerald-800 ring-emerald-600/20 dark:text-emerald-300' };
+      case 'compta':       return { label: 'Compta',          icon: Calculator, cls: 'bg-sky-500/10 text-sky-800 ring-sky-600/20 dark:text-sky-300' };
+      case 'senior_sales': return { label: 'Sr. Commercial',  icon: UserCheck,  cls: 'bg-blue-500/10 text-blue-800 ring-blue-600/20 dark:text-blue-300' };
+      case 'junior_sales': return { label: 'Jr. Commercial',  icon: User,       cls: 'bg-sky-500/10 text-sky-800 ring-sky-600/20 dark:text-sky-300' };
+      default:            return { label: 'Commercial', icon: User, cls: 'bg-blue-500/10 text-blue-800 ring-blue-600/20 dark:text-blue-300' };
     }
   };
 
@@ -350,188 +353,209 @@ export default function UserManagementPage() {
 
   if (!isSuperAdmin) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[40vh] text-center">
-        <Shield className="h-12 w-12 text-muted-foreground mb-4" />
-        <h2 className="text-lg font-semibold text-foreground mb-2">Accès restreint</h2>
-        <p className="text-muted-foreground text-sm">La gestion des utilisateurs est réservée au Superadmin.</p>
+      <div className="mx-auto max-w-[110rem]">
+        <div className={panel}>
+          <EmptyState icon={Shield} title={<span className="text-base font-semibold">Accès restreint</span>} hint="La gestion des utilisateurs est réservée au Superadmin." />
+        </div>
       </div>
     );
   }
 
   if (isLoading) {
-    return (
-      <div className="text-center py-12">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary mx-auto" />
-        <p className="text-muted-foreground mt-4 text-sm">Chargement...</p>
-      </div>
-    );
+    return <LoadingState label="Chargement..." />;
   }
 
+  const fieldCls = field;
+  const labelCls = 'mb-1.5 block text-xs font-semibold text-foreground';
+  const hintCls = 'mt-1 text-xs text-muted-foreground';
+  const sectionTitle = 'mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground';
+  const optionRow = 'flex cursor-pointer items-start gap-3 rounded-lg border border-border p-3 hover:bg-secondary/40';
+  const rolePill = (role: { label: string; icon: typeof User; cls: string }) => {
+    const RoleIcon = role.icon;
+    return (
+      <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${role.cls}`}>
+        <RoleIcon className="h-3 w-3" /><span>{role.label}</span>
+      </span>
+    );
+  };
+  const quotePill = (user: AppUser) => user.can_create_quote
+    ? <StatusPill tone="success" icon={<UserCheck className="h-3 w-3" />}>Oui</StatusPill>
+    : <StatusPill tone="danger" icon={<UserX className="h-3 w-3" />}>Non</StatusPill>;
+  const rowActions = (user: AppUser) => (
+    <>
+      <button onClick={() => handleEditUser(user)} className={iconBtn} title="Modifier" aria-label={`Modifier ${user.username}`}><Edit className="h-4 w-4" /></button>
+      <button onClick={() => handleDeleteUser(user)} className={iconBtnDanger} title="Supprimer" aria-label={`Supprimer ${user.username}`}><Trash2 className="h-4 w-4" /></button>
+    </>
+  );
+
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="glass rounded-xl shadow-lg p-4">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center space-x-2.5">
-            <div className="p-2 bg-primary rounded-lg" style={{ boxShadow: 'var(--shadow-glow)' }}>
-              <Users className="h-4 w-4 text-primary-foreground" />
-            </div>
-            <div>
-              <h1 className="text-lg font-bold text-foreground">Gestion Utilisateurs</h1>
-              <p className="text-xs text-muted-foreground">{users.length} utilisateur{users.length !== 1 ? 's' : ''} · Superadmin</p>
-            </div>
-          </div>
-          <button onClick={() => setShowCreateModal(true)} className="flex items-center space-x-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors text-sm">
-            <Plus className="h-3.5 w-3.5" /><span>Nouveau</span>
+    <div className="mx-auto max-w-[110rem]">
+      <PageHeader
+        title="Gestion Utilisateurs"
+        subtitle={`${users.length} utilisateur${users.length !== 1 ? 's' : ''} · Superadmin`}
+        actions={
+          <button onClick={() => setShowCreateModal(true)} className={btnPrimary}>
+            <Plus className="h-4 w-4" /><span>Nouveau</span>
           </button>
-        </div>
-
-        {/* Stats pills */}
-        <div className="flex flex-wrap gap-2 mb-4">
-          {[
-            { label: 'Total', value: users.length, cls: 'bg-secondary' },
-            { label: 'Super Admins', value: users.filter(u => getUserRole(u) === 'super_admin').length, cls: 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300' },
-            { label: 'Admins', value: users.filter(u => getUserRole(u) === 'admin').length, cls: 'bg-primary/10 dark:bg-primary/15 text-primary dark:text-primary' },
-            { label: 'Managers', value: users.filter(u => getUserRole(u) === 'manager').length, cls: 'bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300' },
-            { label: 'Facturation', value: users.filter(u => getUserRole(u) === 'facturation').length, cls: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300' },
-            { label: 'Compta', value: users.filter(u => getUserRole(u) === 'compta').length, cls: 'bg-sky-100 dark:bg-sky-900/30 text-sky-800 dark:text-sky-300' },
-            { label: 'Commerciaux', value: users.filter(u => ['senior_sales','junior_sales'].includes(getUserRole(u))).length, cls: 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300' },
-          ].map(({ label, value, cls }) => (
-            <span key={label} className={`px-2 py-1 rounded-lg text-xs font-medium ${cls}`}>{value} {label}</span>
-          ))}
-        </div>
-
-        {/* Filters */}
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground" placeholder="Rechercher..." />
+        }
+      >
+        <div className="space-y-3">
+          {/* Stats pills */}
+          <div className="flex flex-wrap gap-2">
+            {[
+              { label: 'Total', value: users.length, cls: 'bg-card text-foreground ring-border' },
+              { label: 'Super Admins', value: users.filter(u => getUserRole(u) === 'super_admin').length, cls: 'bg-amber-500/10 text-amber-800 ring-amber-600/20 dark:text-amber-300' },
+              { label: 'Admins', value: users.filter(u => getUserRole(u) === 'admin').length, cls: 'bg-primary/10 text-primary ring-primary/20' },
+              { label: 'Managers', value: users.filter(u => getUserRole(u) === 'manager').length, cls: 'bg-orange-500/10 text-orange-800 ring-orange-600/20 dark:text-orange-300' },
+              { label: 'Facturation', value: users.filter(u => getUserRole(u) === 'facturation').length, cls: 'bg-emerald-500/10 text-emerald-800 ring-emerald-600/20 dark:text-emerald-300' },
+              { label: 'Compta', value: users.filter(u => getUserRole(u) === 'compta').length, cls: 'bg-sky-500/10 text-sky-800 ring-sky-600/20 dark:text-sky-300' },
+              { label: 'Commerciaux', value: users.filter(u => ['senior_sales','junior_sales'].includes(getUserRole(u))).length, cls: 'bg-blue-500/10 text-blue-800 ring-blue-600/20 dark:text-blue-300' },
+            ].map(({ label, value, cls }) => (
+              <span key={label} className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${cls}`}><span className="font-bold tabular-nums">{value}</span> {label}</span>
+            ))}
           </div>
-          <select value={filterRole} onChange={e => setFilterRole(e.target.value as any)}
-            className="px-2.5 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground">
-            <option value="all">Tous les rôles</option>
-            <option value="super_admin">Super Admin</option>
-            <option value="admin">Admin</option>
-            <option value="manager">Manager</option>
-            <option value="facturation">Facturation</option>
-            <option value="compta">Compta</option>
-            <option value="senior_sales">Sr. Commercial</option>
-            <option value="junior_sales">Jr. Commercial</option>
-          </select>
+
+          {/* Filters */}
+          <div className={`${panel} flex flex-col gap-2 p-3 sm:flex-row`}>
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} aria-label="Rechercher un utilisateur"
+                className={`${fieldCls} pl-9`} placeholder="Rechercher..." />
+            </div>
+            <select value={filterRole} onChange={e => setFilterRole(e.target.value as any)} aria-label="Rôle"
+              className={`${fieldAuto} w-full sm:w-auto`}>
+              <option value="all">Tous les rôles</option>
+              <option value="super_admin">Super Admin</option>
+              <option value="admin">Admin</option>
+              <option value="manager">Manager</option>
+              <option value="facturation">Facturation</option>
+              <option value="compta">Compta</option>
+              <option value="senior_sales">Sr. Commercial</option>
+              <option value="junior_sales">Jr. Commercial</option>
+            </select>
+          </div>
         </div>
-      </div>
+      </PageHeader>
 
       {/* Users Table */}
-      <div className="glass rounded-xl shadow-lg overflow-hidden">
+      <div className={`${panel} overflow-hidden`}>
         {filteredUsers.length === 0 ? (
-          <div className="p-8 text-center">
-            <Users className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-            <p className="text-sm text-muted-foreground">{users.length === 0 ? 'Aucun utilisateur' : 'Aucun résultat'}</p>
-          </div>
+          <EmptyState icon={Users} title={users.length === 0 ? 'Aucun utilisateur' : 'Aucun résultat'} />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-secondary">
-                <tr>
-                  {['Utilisateur', 'Rôle', 'Société', 'Devis', 'Prix', 'Actions'].map(h => (
-                    <th key={h} className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {filteredUsers.map(user => {
-                  const role = getRoleBadge(user);
-                  const RoleIcon = role.icon;
-                  const companyName = getCompanyName(user.company_id);
-                  return (
-                    <tr key={user.id} className="hover:bg-accent/50">
-                      <td className="px-3 py-2.5">
-                        <div className="flex items-center space-x-2">
-                          <div className={`p-1 rounded ${role.cls}`}>
-                            <RoleIcon className="h-3 w-3" />
+          <>
+            <ul className="divide-y divide-border md:hidden">
+              {filteredUsers.map(user => {
+                const role = getRoleBadge(user);
+                const RoleIcon = role.icon;
+                const companyName = getCompanyName(user.company_id);
+                return (
+                  <li key={user.id} className="flex items-start gap-3 px-4 py-3">
+                    <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ring-1 ring-inset ${role.cls}`}><RoleIcon className="h-4 w-4" /></span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium text-foreground">{user.username}</p>
+                      {user.custom_seller_name && <p className="truncate text-xs text-muted-foreground">{user.custom_seller_name}</p>}
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        {rolePill(role)}
+                        {quotePill(user)}
+                      </div>
+                      <p className="mt-1 truncate text-xs text-muted-foreground">{companyName || '—'} · {getPriceTypeLabel(user.price_display_type)}</p>
+                    </div>
+                    <div className="-mr-2 flex shrink-0 flex-col">{rowActions(user)}</div>
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="hidden overflow-x-auto md:block">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className={theadRow}>
+                    {['Utilisateur', 'Rôle', 'Société', 'Devis', 'Prix'].map(h => (
+                      <th key={h} className={th}>{h}</th>
+                    ))}
+                    <th className={`${th} w-24`}><span className="sr-only">Actions</span></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {filteredUsers.map(user => {
+                    const role = getRoleBadge(user);
+                    const RoleIcon = role.icon;
+                    const companyName = getCompanyName(user.company_id);
+                    return (
+                      <tr key={user.id} className="hover:bg-secondary/40">
+                        <td className={td}>
+                          <div className="flex items-center gap-3">
+                            <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ring-1 ring-inset ${role.cls}`}>
+                              <RoleIcon className="h-3.5 w-3.5" />
+                            </span>
+                            <div className="min-w-0">
+                              <div className="font-medium text-foreground">{user.username}</div>
+                              {user.custom_seller_name && <div className="text-xs text-muted-foreground">{user.custom_seller_name}</div>}
+                            </div>
                           </div>
-                          <div>
-                            <div className="text-xs font-medium text-foreground">{user.username}</div>
-                            {user.custom_seller_name && <div className="text-[10px] text-muted-foreground">{user.custom_seller_name}</div>}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <span className={`inline-flex items-center space-x-0.5 px-1.5 py-0.5 text-[10px] font-semibold rounded-full ${role.cls}`}>
-                          <RoleIcon className="h-2.5 w-2.5" /><span>{role.label}</span>
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        {companyName ? (
-                          <span className="inline-flex items-center space-x-1 text-[10px] text-muted-foreground">
-                            <Building2 className="h-2.5 w-2.5" /><span>{companyName}</span>
-                          </span>
-                        ) : <span className="text-[10px] text-muted-foreground">—</span>}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        {user.can_create_quote
-                          ? <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-300 rounded-full"><UserCheck className="h-2.5 w-2.5 mr-0.5" />Oui</span>
-                          : <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] bg-red-100 dark:bg-red-900/20 text-red-800 dark:text-red-300 rounded-full"><UserX className="h-2.5 w-2.5 mr-0.5" />Non</span>}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <span className="text-[10px] text-muted-foreground">{getPriceTypeLabel(user.price_display_type)}</span>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <div className="flex items-center space-x-1">
-                          <button onClick={() => handleEditUser(user)} className="p-1 text-primary hover:bg-primary/10 rounded" title="Modifier"><Edit className="h-3.5 w-3.5" /></button>
-                          <button onClick={() => handleDeleteUser(user)} className="p-1 text-destructive hover:bg-destructive/10 rounded" title="Supprimer"><Trash2 className="h-3.5 w-3.5" /></button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                        </td>
+                        <td className={td}>{rolePill(role)}</td>
+                        <td className={td}>
+                          {companyName ? (
+                            <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                              <Building2 className="h-3.5 w-3.5" /><span>{companyName}</span>
+                            </span>
+                          ) : <span className="text-muted-foreground">—</span>}
+                        </td>
+                        <td className={td}>{quotePill(user)}</td>
+                        <td className={`${td} text-muted-foreground`}>{getPriceTypeLabel(user.price_display_type)}</td>
+                        <td className={`${td} py-1.5`}>
+                          <div className="flex items-center justify-end gap-0.5">{rowActions(user)}</div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
 
       {/* Create/Edit Modal */}
       {(showCreateModal || editingUser) && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-card rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-5 border-b border-border">
-              <h2 className="text-base font-semibold text-foreground">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4">
+          <div className="flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl border border-border bg-card shadow-2xl sm:rounded-xl" role="dialog" aria-modal="true" aria-labelledby="user-modal-title">
+            <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
+              <h2 id="user-modal-title" className="text-base font-semibold text-foreground">
                 {editingUser ? `Modifier — ${editingUser.username}` : 'Nouvel Utilisateur'}
               </h2>
-              <button onClick={closeModal} className="p-1 hover:bg-accent rounded-lg"><X className="h-4 w-4" /></button>
+              <button onClick={closeModal} className={iconBtn} aria-label="Fermer"><X className="h-4 w-4" /></button>
             </div>
 
-            <div className="p-5 space-y-5">
+            <div className="flex-1 space-y-6 overflow-y-auto p-5">
               {validationErrors.length > 0 && (
-                <div className="p-3 bg-destructive/10 border border-destructive/30 rounded-lg">
-                  <div className="flex items-center space-x-2 mb-1">
-                    <AlertCircle className="h-3.5 w-3.5 text-destructive" />
-                    <span className="text-xs font-medium text-destructive">Erreurs de validation</span>
+                <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3">
+                  <div className="mb-1 flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4 text-destructive" />
+                    <span className="text-sm font-medium text-destructive">Erreurs de validation</span>
                   </div>
-                  <ul className="text-xs text-destructive space-y-0.5">
-                    {validationErrors.map((e, i) => <li key={i}>• {e}</li>)}
+                  <ul className="list-disc space-y-0.5 pl-6 text-xs text-destructive">
+                    {validationErrors.map((e, i) => <li key={i}>{e}</li>)}
                   </ul>
                 </div>
               )}
 
               {/* Username + PIN */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">Identifiant de connexion *</label>
-                  <input type="text" value={formData.username} onChange={e => handleInputChange('username', e.target.value)}
-                    className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground" placeholder="ex: ahmed_vente" />
+                  <label className={labelCls} htmlFor="um-username">Identifiant de connexion *</label>
+                  <input id="um-username" type="text" value={formData.username} onChange={e => handleInputChange('username', e.target.value)}
+                    className={fieldCls} placeholder="ex: ahmed_vente" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">
+                  <label className={labelCls} htmlFor="um-pin">
                     PIN (6 chiffres){editingUser ? ' — laisser vide pour ne pas changer' : ' *'}
                   </label>
                   <div className="relative">
-                    <input type={showPin ? 'text' : 'password'} value={formData.pin} onChange={e => handleInputChange('pin', e.target.value)}
-                      className="w-full px-3 py-1.5 pr-9 text-sm border border-input rounded-lg bg-secondary text-foreground" placeholder="123456" maxLength={6} />
-                    <button type="button" onClick={() => setShowPin(v => !v)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground">
-                      {showPin ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                    <input id="um-pin" type={showPin ? 'text' : 'password'} value={formData.pin} onChange={e => handleInputChange('pin', e.target.value)}
+                      className={`${fieldCls} pr-10 tracking-widest`} placeholder="123456" maxLength={6} />
+                    <button type="button" onClick={() => setShowPin(v => !v)} aria-label={showPin ? 'Masquer le PIN' : 'Afficher le PIN'} className="absolute right-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:text-foreground">
+                      {showPin ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                   </div>
                 </div>
@@ -539,28 +563,28 @@ export default function UserManagementPage() {
 
               {/* Role */}
               <div>
-                <h3 className="text-xs font-semibold text-foreground uppercase tracking-wider mb-3">Rôle et accès</h3>
+                <h3 className={sectionTitle}>Rôle et accès</h3>
                 <div className="space-y-3">
                   {/* Tasks-only account toggle */}
-                  <label className="flex items-start gap-2 p-2.5 rounded-lg border border-border bg-secondary/40 cursor-pointer">
+                  <label className={`${optionRow} bg-secondary/40`}>
                     <input
                       type="checkbox"
                       checked={formData.tasks_only}
                       onChange={e => handleInputChange('tasks_only', e.target.checked)}
-                      className="mt-0.5 h-4 w-4 accent-primary"
+                      className={`mt-0.5 ${checkbox}`}
                     />
                     <span>
-                      <span className="block text-xs font-medium text-foreground">Compte Tâches uniquement (terrain)</span>
-                      <span className="block text-[10px] text-muted-foreground">Technicien ou livreur — accès limité à l'app Tâches, aucun accès au catalogue/devis/compta.</span>
+                      <span className="block text-sm font-medium text-foreground">Compte Tâches uniquement (terrain)</span>
+                      <span className="block text-xs text-muted-foreground">Technicien ou livreur — accès limité à l'app Tâches, aucun accès au catalogue/devis/compta.</span>
                     </span>
                   </label>
 
                   {formData.tasks_only ? (
                     /* Field-staff type picker */
                     <div>
-                      <label className="block text-xs font-medium text-foreground mb-1">Type de compte terrain</label>
-                      <select value={formData.tasks_role || 'technician'} onChange={e => handleInputChange('tasks_role', e.target.value)}
-                        className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground">
+                      <label className={labelCls} htmlFor="um-tasks-type">Type de compte terrain</label>
+                      <select id="um-tasks-type" value={formData.tasks_role || 'technician'} onChange={e => handleInputChange('tasks_role', e.target.value)}
+                        className={fieldCls}>
                         <option value="technician">Technicien — exécute ses interventions</option>
                         <option value="driver">Livreur — livraisons + partage du suivi GPS</option>
                       </select>
@@ -568,14 +592,14 @@ export default function UserManagementPage() {
                   ) : (
                   /* Role selector */
                   <div>
-                    <label className="block text-xs font-medium text-foreground mb-1">Rôle</label>
-                    <select value={formData.new_role} onChange={e => handleInputChange('new_role', e.target.value as AppUserRole)}
-                      className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground">
+                    <label className={labelCls} htmlFor="um-role">Rôle</label>
+                    <select id="um-role" value={formData.new_role} onChange={e => handleInputChange('new_role', e.target.value as AppUserRole)}
+                      className={fieldCls}>
                       {ROLE_OPTIONS.map(opt => (
                         <option key={opt.value} value={opt.value}>{opt.label}</option>
                       ))}
                     </select>
-                    <p className="text-[10px] text-muted-foreground mt-1">
+                    <p className={hintCls}>
                       {ROLE_OPTIONS.find(o => o.value === formData.new_role)?.description}
                     </p>
                   </div>
@@ -583,40 +607,40 @@ export default function UserManagementPage() {
 
                   {/* cross_branch_read — only for manager */}
                   {formData.new_role === 'manager' && (
-                    <label className="flex items-center space-x-3 cursor-pointer">
+                    <label className={optionRow}>
                       <input type="checkbox" checked={formData.cross_branch_read}
                         onChange={e => handleInputChange('cross_branch_read', e.target.checked)}
-                        className="w-4 h-4 rounded accent-primary" />
+                        className={`mt-0.5 ${checkbox}`} />
                       <div>
-                        <span className="text-sm font-medium text-foreground flex items-center space-x-1">
-                          <GitBranch className="h-3.5 w-3.5 text-orange-500" /><span>Accès multi-société</span>
+                        <span className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+                          <GitBranch className="h-4 w-4 text-orange-500" /><span>Accès multi-société</span>
                         </span>
-                        <p className="text-[10px] text-muted-foreground">Ce manager peut voir les données de toutes les sociétés</p>
+                        <p className="text-xs text-muted-foreground">Ce manager peut voir les données de toutes les sociétés</p>
                       </div>
                     </label>
                   )}
 
                   {/* can_create_quote — hidden for super_admin, compta and field staff */}
                   {!formData.tasks_only && !['super_admin', 'compta'].includes(formData.new_role) && (
-                    <label className="flex items-center space-x-3 cursor-pointer">
+                    <label className={optionRow}>
                       <input type="checkbox" checked={formData.can_create_quote}
-                        onChange={e => handleInputChange('can_create_quote', e.target.checked)} className="w-4 h-4 rounded accent-primary" />
+                        onChange={e => handleInputChange('can_create_quote', e.target.checked)} className={`mt-0.5 ${checkbox}`} />
                       <div>
                         <span className="text-sm font-medium text-foreground">Peut créer des devis</span>
-                        <p className="text-[10px] text-muted-foreground">Accès au panier et à la création de devis</p>
+                        <p className="text-xs text-muted-foreground">Accès au panier et à la création de devis</p>
                       </div>
                     </label>
                   )}
 
                   {!formData.tasks_only && (
-                    <label className={`flex items-center space-x-3 ${ROLES_EDITING_PRODUCTS.includes(formData.new_role) ? 'opacity-70' : 'cursor-pointer'}`}>
+                    <label className={`flex items-start gap-3 rounded-lg border border-border p-3 ${ROLES_EDITING_PRODUCTS.includes(formData.new_role) ? 'opacity-70' : 'cursor-pointer hover:bg-secondary/40'}`}>
                       <input type="checkbox"
                         checked={ROLES_EDITING_PRODUCTS.includes(formData.new_role) || formData.can_edit_products}
                         disabled={ROLES_EDITING_PRODUCTS.includes(formData.new_role)}
-                        onChange={e => handleInputChange('can_edit_products', e.target.checked)} className="w-4 h-4 rounded accent-primary" />
+                        onChange={e => handleInputChange('can_edit_products', e.target.checked)} className={`mt-0.5 ${checkbox}`} />
                       <div>
                         <span className="text-sm font-medium text-foreground">Peut modifier les produits</span>
-                        <p className="text-[10px] text-muted-foreground">
+                        <p className="text-xs text-muted-foreground">
                           {ROLES_EDITING_PRODUCTS.includes(formData.new_role)
                             ? 'Toujours autorisé pour ce rôle'
                             : 'Nom, prix, fournisseur, type kiosque, secteurs et images des produits'}
@@ -628,35 +652,35 @@ export default function UserManagementPage() {
               </div>
 
               {/* Company + Seller name */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 {!formData.tasks_only && (
                   <div>
-                    <label className="block text-xs font-medium text-foreground mb-1">Société</label>
-                    <select value={formData.company_id} onChange={e => handleInputChange('company_id', e.target.value)}
-                      className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground">
+                    <label className={labelCls} htmlFor="um-company">Société</label>
+                    <select id="um-company" value={formData.company_id} onChange={e => handleInputChange('company_id', e.target.value)}
+                      className={fieldCls}>
                       <option value="">— Aucune —</option>
                       {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
                   </div>
                 )}
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">
+                  <label className={labelCls} htmlFor="um-name">
                     {formData.tasks_only ? 'Nom complet' : 'Nom affiché (login + devis)'}
                   </label>
-                  <input type="text" value={formData.custom_seller_name} onChange={e => handleInputChange('custom_seller_name', e.target.value)}
-                    className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground"
+                  <input id="um-name" type="text" value={formData.custom_seller_name} onChange={e => handleInputChange('custom_seller_name', e.target.value)}
+                    className={fieldCls}
                     placeholder={formData.tasks_only ? 'ex: Omar Fassi' : 'ex: Ahmed — Commercial Casablanca'} />
                 </div>
               </div>
 
               {/* Phone */}
               <div>
-                <label className="block text-xs font-medium text-foreground mb-1">
+                <label className={labelCls} htmlFor="um-phone">
                   {formData.tasks_only ? 'Téléphone' : 'Téléphone (WhatsApp)'}
                 </label>
-                <input type="tel" value={formData.phone} onChange={e => handleInputChange('phone', e.target.value)}
-                  className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground" placeholder="ex: 0661234567" />
-                <p className="text-[10px] text-muted-foreground mt-1">
+                <input id="um-phone" type="tel" value={formData.phone} onChange={e => handleInputChange('phone', e.target.value)}
+                  className={fieldCls} placeholder="ex: 0661234567" />
+                <p className={hintCls}>
                   {formData.tasks_only ? 'Numéro de contact du technicien / livreur.' : 'Utilisé pour le partage WhatsApp vers le commercial.'}
                 </p>
               </div>
@@ -665,12 +689,13 @@ export default function UserManagementPage() {
                   Hidden for standalone Tasks-only accounts (the type picker sets it). */}
               {!formData.tasks_only && (
               <div>
-                <label className="block text-xs font-medium text-foreground mb-1">Accès Tâches / Livraison</label>
+                <label className={labelCls} htmlFor="um-tasks-access">Accès Tâches / Livraison</label>
                 <select
+                  id="um-tasks-access"
                   value={formData.is_superadmin ? 'super_admin' : formData.tasks_role}
                   disabled={formData.is_superadmin}
                   onChange={e => handleInputChange('tasks_role', e.target.value)}
-                  className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground disabled:opacity-60"
+                  className={fieldCls}
                 >
                   <option value="">Aucun accès</option>
                   <option value="sales">Commercial — crée et assigne les tâches</option>
@@ -678,39 +703,39 @@ export default function UserManagementPage() {
                   <option value="driver">Livreur — exécute et partage le suivi GPS</option>
                 </select>
                 {formData.is_superadmin
-                  ? <p className="text-[10px] text-muted-foreground mt-1">Le super admin a automatiquement un accès complet (tableau de bord inclus).</p>
-                  : <p className="text-[10px] text-muted-foreground mt-1">« Aucun accès » masque entièrement la section Tâches / Livraison pour cet utilisateur.</p>}
+                  ? <p className={hintCls}>Le super admin a automatiquement un accès complet (tableau de bord inclus).</p>
+                  : <p className={hintCls}>« Aucun accès » masque entièrement la section Tâches / Livraison pour cet utilisateur.</p>}
               </div>
               )}
 
               {/* Price type */}
               {!formData.tasks_only && (
               <div>
-                <label className="block text-xs font-medium text-foreground mb-1">Type de prix affiché</label>
-                <select value={formData.price_display_type} onChange={e => handleInputChange('price_display_type', e.target.value)}
-                  className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-secondary text-foreground">
+                <label className={labelCls} htmlFor="um-price">Type de prix affiché</label>
+                <select id="um-price" value={formData.price_display_type} onChange={e => handleInputChange('price_display_type', e.target.value)}
+                  className={fieldCls}>
                   <option value="normal">Prix Normal — prix de vente catalogue (100%)</option>
                   <option value="reseller">Prix Revendeur{priceRatios ? ` — -${priceRatios.reseller}% du prix normal` : ' — prix remisé partenaire'}</option>
                   <option value="buy">Prix d'Achat{priceRatios ? ` — -${priceRatios.buy}% du prix normal` : ' — coût de revient'}</option>
                   <option value="calculated">Prix Calculé — prix achat + % marge saisie</option>
                 </select>
-                {formData.price_display_type === 'normal' && <p className="text-[10px] text-muted-foreground mt-1">Prix TTC catalogue — utilisé pour les devis client standard.</p>}
-                {formData.price_display_type === 'reseller' && <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">⚠ Prix remisé pour revendeurs{priceRatios ? ` (≈ -${priceRatios.reseller}% vs prix normal)` : ''} — TTC catalogue.</p>}
-                {formData.price_display_type === 'buy' && <p className="text-[10px] text-orange-600 dark:text-orange-400 mt-1">⚠ Prix coûtant{priceRatios ? ` (≈ -${priceRatios.buy}% vs prix normal)` : ''} — usage interne, marge nulle si facturé tel quel.</p>}
-                {formData.price_display_type === 'calculated' && <p className="text-[10px] text-blue-600 dark:text-blue-400 mt-1">Prix d'achat + % marge défini ligne par ligne dans le devis.</p>}
+                {formData.price_display_type === 'normal' && <p className={hintCls}>Prix TTC catalogue — utilisé pour les devis client standard.</p>}
+                {formData.price_display_type === 'reseller' && <p className="mt-1 flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-300"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />Prix remisé pour revendeurs{priceRatios ? ` (≈ -${priceRatios.reseller}% vs prix normal)` : ''} — TTC catalogue.</p>}
+                {formData.price_display_type === 'buy' && <p className="mt-1 flex items-start gap-1.5 text-xs text-orange-700 dark:text-orange-300"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />Prix coûtant{priceRatios ? ` (≈ -${priceRatios.buy}% vs prix normal)` : ''} — usage interne, marge nulle si facturé tel quel.</p>}
+                {formData.price_display_type === 'calculated' && <p className="mt-1 text-xs text-blue-700 dark:text-blue-300">Prix d'achat + % marge défini ligne par ligne dans le devis.</p>}
               </div>
               )}
 
               {/* Brand restrictions */}
               {!formData.tasks_only && availableBrands.length > 0 && (
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">Marques autorisées</label>
-                  <p className="text-[10px] text-muted-foreground mb-2">Vide = toutes les marques</p>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5 max-h-36 overflow-y-auto border border-input rounded-lg p-2.5">
+                  <p className={labelCls}>Marques autorisées</p>
+                  <p className="mb-2 text-xs text-muted-foreground">Vide = toutes les marques</p>
+                  <div className="grid max-h-40 grid-cols-2 gap-1 overflow-y-auto rounded-lg border border-input p-2 md:grid-cols-3">
                     {availableBrands.map(brand => (
-                      <label key={brand} className="flex items-center space-x-1.5 cursor-pointer">
-                        <input type="checkbox" checked={formData.allowed_brands.includes(brand)} onChange={() => handleBrandToggle(brand)} className="w-3.5 h-3.5 rounded accent-primary" />
-                        <span className="text-xs text-foreground">{brand}</span>
+                      <label key={brand} className="flex min-h-8 cursor-pointer items-center gap-2 rounded-md px-1.5 hover:bg-secondary/60">
+                        <input type="checkbox" checked={formData.allowed_brands.includes(brand)} onChange={() => handleBrandToggle(brand)} className={checkbox} />
+                        <span className="truncate text-sm text-foreground">{brand}</span>
                       </label>
                     ))}
                   </div>
@@ -720,29 +745,29 @@ export default function UserManagementPage() {
               {/* Stock location restrictions */}
               {!formData.tasks_only && availableStockLocations.length > 0 && (
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">Emplacements de stock autorisés</label>
-                  <p className="text-[10px] text-muted-foreground mb-2">Vide = tous les emplacements</p>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5 max-h-36 overflow-y-auto border border-input rounded-lg p-2.5">
+                  <p className={labelCls}>Emplacements de stock autorisés</p>
+                  <p className="mb-2 text-xs text-muted-foreground">Vide = tous les emplacements</p>
+                  <div className="grid max-h-40 grid-cols-2 gap-1 overflow-y-auto rounded-lg border border-input p-2 md:grid-cols-3">
                     {availableStockLocations.map(location => (
-                      <label key={location} className="flex items-center space-x-1.5 cursor-pointer">
-                        <input type="checkbox" checked={formData.allowed_stock_locations.includes(location)} onChange={() => handleStockLocationToggle(location)} className="w-3.5 h-3.5 rounded accent-primary" />
-                        <span className="text-xs text-foreground capitalize">{location.replace(/_/g, ' ')}</span>
+                      <label key={location} className="flex min-h-8 cursor-pointer items-center gap-2 rounded-md px-1.5 hover:bg-secondary/60">
+                        <input type="checkbox" checked={formData.allowed_stock_locations.includes(location)} onChange={() => handleStockLocationToggle(location)} className={checkbox} />
+                        <span className="truncate text-sm capitalize text-foreground">{location.replace(/_/g, ' ')}</span>
                       </label>
                     ))}
                   </div>
                 </div>
               )}
+            </div>
 
-              {/* Actions */}
-              <div className="flex space-x-2 pt-2">
-                <button onClick={closeModal} className="flex-1 px-3 py-1.5 text-sm border border-input rounded-lg hover:bg-accent">Annuler</button>
-                <button onClick={editingUser ? handleUpdateUser : handleCreateUser} disabled={isSubmitting}
-                  className="flex-1 flex items-center justify-center space-x-1.5 px-3 py-1.5 text-sm bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg disabled:opacity-50">
-                  {isSubmitting
-                    ? <><div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white" /><span>Enregistrement...</span></>
-                    : <><Save className="h-3.5 w-3.5" /><span>{editingUser ? 'Modifier' : 'Créer'}</span></>}
-                </button>
-              </div>
+            {/* Actions */}
+            <div className="flex gap-2 border-t border-border bg-card px-5 py-3">
+              <button onClick={closeModal} className={`${btnSecondary} flex-1`}>Annuler</button>
+              <button onClick={editingUser ? handleUpdateUser : handleCreateUser} disabled={isSubmitting}
+                className={`${btnPrimary} flex-1`}>
+                {isSubmitting
+                  ? <><div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" /><span>Enregistrement...</span></>
+                  : <><Save className="h-4 w-4" /><span>{editingUser ? 'Modifier' : 'Créer'}</span></>}
+              </button>
             </div>
           </div>
         </div>

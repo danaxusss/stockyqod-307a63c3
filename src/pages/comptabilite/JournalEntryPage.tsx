@@ -4,6 +4,9 @@ import type { Account, FiscalYear, Journal, JournalEntry, JournalEntryLine } fro
 import { AccountingService } from '../../utils/supabaseAccounting';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
+import { PageHeader } from '../../components/PageHeader';
+import { StatusPill } from '../../components/lists/StatusPill';
+import { btnPrimary, btnSecondary, EmptyState, field, fieldAuto, fieldLabel, fieldSm, iconBtn, iconBtnDanger, LoadingState, panel, td, th, theadRow } from '../../components/backoffice/BackOfficeUi';
 import { localDay } from '../../utils/documentLines';
 
 function fmt(n: number) { return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n); }
@@ -134,139 +137,172 @@ export default function JournalEntryPage() {
     catch (err: any) { showToast({ type: 'error', message: err?.message || 'Échec' }); }
   };
 
-  if (loading) return <div className="flex items-center justify-center py-24 text-muted-foreground"><Loader className="h-5 w-5 animate-spin mr-2" />Chargement…</div>;
+  if (loading) return <LoadingState />;
 
   if (journals.length === 0 || accounts.length === 0) {
     return (
-      <div className="max-w-md mx-auto py-20 px-3 text-center">
-        <p className="text-sm text-muted-foreground mb-4">Le plan comptable n'est pas encore initialisé pour cette société.</p>
-        <a href="/comptabilite" className="inline-flex px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium">Aller au tableau de bord</a>
+      <div className="mx-auto max-w-[110rem]">
+        <PageHeader title="Saisie / Journaux" />
+        <div className={panel}>
+          <EmptyState icon={BookOpen} title="Le plan comptable n'est pas encore initialisé pour cette société.">
+            <a href="/comptabilite" className={btnPrimary}>Aller au tableau de bord</a>
+          </EmptyState>
+        </div>
       </div>
     );
   }
 
+  const statusPill = (e: JournalEntry) => e.status === 'posted'
+    ? <StatusPill tone="success" icon={<Lock className="h-3 w-3" />}>Validée</StatusPill>
+    : e.status === 'reversed' ? <StatusPill tone="neutral">Contre-passée</StatusPill>
+    : <StatusPill tone="warning">Brouillon</StatusPill>;
+  const rowActions = (e: JournalEntry) => <>
+    {e.status === 'posted' && <button onClick={() => reverse(e)} title="Contre-passer" aria-label={`Contre-passer l'écriture ${e.entry_number ?? ''}`} className={iconBtn}><RotateCcw className="h-4 w-4" /></button>}
+    {e.status === 'draft' && <button onClick={() => deleteDraft(e)} title="Supprimer" aria-label="Supprimer le brouillon" className={iconBtnDanger}><Trash2 className="h-4 w-4" /></button>}
+  </>;
+  const lineGrid = 'md:grid-cols-[11rem_minmax(0,1fr)_9rem_9rem_2.75rem]';
+
   return (
-    <div className="max-w-[110rem] mx-auto py-6 px-3">
+    <div className="mx-auto max-w-[110rem]">
       <datalist id="acc-list">
         {accounts.map(a => <option key={a.code} value={a.code}>{a.code} — {a.label}</option>)}
       </datalist>
 
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-        <div className="flex items-center gap-2">
-          <div className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-primary/10"><BookOpen className="h-5 w-5 text-primary" /></div>
-          <div>
-            <h1 className="text-lg font-bold text-foreground leading-tight">Saisie / Journaux</h1>
-            <p className="text-xs text-muted-foreground">Exercice {fy?.label}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <select value={journalId} onChange={e => onJournalChange(e.target.value)}
-            className="px-3 py-2 text-sm rounded-lg bg-secondary border border-border focus:outline-none focus:ring-2 focus:ring-primary/30">
+      <PageHeader
+        title="Saisie / Journaux"
+        subtitle={`Exercice ${fy?.label ?? ''} · ${entries.length} écriture${entries.length !== 1 ? 's' : ''}`}
+        actions={<>
+          <select value={journalId} onChange={e => onJournalChange(e.target.value)} aria-label="Journal"
+            className={`${fieldAuto} min-w-0 sm:min-w-[14rem]`}>
             {journals.map(j => <option key={j.id} value={j.id}>{j.code} — {j.label}</option>)}
           </select>
-          {!editing && <button onClick={startNew} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium"><Plus className="h-4 w-4" /> Écriture</button>}
-        </div>
-      </div>
+          {!editing && <button onClick={startNew} className={btnPrimary}><Plus className="h-4 w-4" /> Écriture</button>}
+        </>}
+      />
 
       {editing ? (
-        <div className="bg-card border border-primary/30 rounded-xl p-4 mb-4">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
-            <div><label className="block text-[11px] text-muted-foreground mb-1">Date</label>
-              <input type="date" value={editing.date} onChange={e => setEditing(p => p && { ...p, date: e.target.value })} className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border" /></div>
-            <div><label className="block text-[11px] text-muted-foreground mb-1">Pièce / référence</label>
-              <input value={editing.reference} onChange={e => setEditing(p => p && { ...p, reference: e.target.value })} className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border" /></div>
-            <div><label className="block text-[11px] text-muted-foreground mb-1">Libellé</label>
-              <input value={editing.label} onChange={e => setEditing(p => p && { ...p, label: e.target.value })} className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border" /></div>
+        <section className={`${panel} mb-4 border-primary/40`} aria-label="Écriture en cours">
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border px-4 py-3 sm:px-5">
+            <h2 className="font-semibold text-foreground">{editing.entry ? 'Brouillon' : 'Nouvelle écriture'}</h2>
+            <span className="text-xs text-muted-foreground">{journalById.get(journalId)?.code} — {journalById.get(journalId)?.label}</span>
           </div>
+          <div className="p-4 sm:p-5">
+            <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div><label className={fieldLabel} htmlFor="je-date">Date</label>
+                <input id="je-date" type="date" value={editing.date} onChange={e => setEditing(p => p && { ...p, date: e.target.value })} className={field} /></div>
+              <div><label className={fieldLabel} htmlFor="je-ref">Pièce / référence</label>
+                <input id="je-ref" value={editing.reference} onChange={e => setEditing(p => p && { ...p, reference: e.target.value })} className={field} /></div>
+              <div><label className={fieldLabel} htmlFor="je-label">Libellé</label>
+                <input id="je-label" value={editing.label} onChange={e => setEditing(p => p && { ...p, label: e.target.value })} className={field} /></div>
+            </div>
 
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-xs text-muted-foreground border-b border-border/60">
-                <th className="text-left font-medium px-1 py-1.5 w-40">Compte</th>
-                <th className="text-left font-medium px-1 py-1.5">Libellé</th>
-                <th className="text-right font-medium px-1 py-1.5 w-28">Débit</th>
-                <th className="text-right font-medium px-1 py-1.5 w-28">Crédit</th>
-                <th className="w-8"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {editing.lines.map((l, i) => (
-                <tr key={i} className="border-b border-border/30">
-                  <td className="px-1 py-1">
-                    <input list="acc-list" value={l.account_code} onChange={e => setLine(i, 'account_code', e.target.value.split(' ')[0])}
-                      placeholder="compte" className="w-full px-2 py-1 text-sm rounded bg-secondary border border-border font-mono" />
-                    <div className="text-[10px] text-muted-foreground truncate max-w-[150px]">{accByCode.get(l.account_code)?.label || ''}</div>
-                  </td>
-                  <td className="px-1 py-1"><input value={l.label || ''} onChange={e => setLine(i, 'label', e.target.value)} className="w-full px-2 py-1 text-sm rounded bg-secondary border border-border" /></td>
-                  <td className="px-1 py-1"><input type="number" min={0} step="0.01" value={l.debit || ''} onChange={e => setLine(i, 'debit', Number(e.target.value))} className="w-full px-2 py-1 text-sm text-right rounded bg-secondary border border-border" /></td>
-                  <td className="px-1 py-1"><input type="number" min={0} step="0.01" value={l.credit || ''} onChange={e => setLine(i, 'credit', Number(e.target.value))} className="w-full px-2 py-1 text-sm text-right rounded bg-secondary border border-border" /></td>
-                  <td className="px-1 text-center"><button onClick={() => removeLine(i)} className="p-1 text-muted-foreground hover:bg-secondary rounded"><Trash2 className="h-3.5 w-3.5" /></button></td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr className="text-sm font-semibold">
-                <td colSpan={2} className="px-1 py-2 text-right">
-                  <button onClick={addLine} className="text-xs font-normal text-primary hover:underline">+ Ligne</button>
-                </td>
-                <td className="px-2 py-2 text-right tabular-nums">{fmt(totals.d)}</td>
-                <td className="px-2 py-2 text-right tabular-nums">{fmt(totals.c)}</td>
-                <td></td>
-              </tr>
-            </tfoot>
-          </table>
+            <div className="overflow-hidden rounded-lg border border-border">
+              <div className={`hidden gap-2 border-b border-border bg-secondary/40 px-2 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground md:grid ${lineGrid}`}>
+                <span className="px-1">Compte</span>
+                <span className="px-1">Libellé</span>
+                <span className="px-1 text-right">Débit</span>
+                <span className="px-1 text-right">Crédit</span>
+                <span />
+              </div>
+              <ul className="divide-y divide-border">
+                {editing.lines.map((l, i) => (
+                  <li key={i} className={`grid grid-cols-2 gap-2 px-3 py-3 md:items-start md:px-2 md:py-2 ${lineGrid}`}>
+                    <div className="col-span-2 min-w-0 md:col-span-1">
+                      <input list="acc-list" value={l.account_code} onChange={e => setLine(i, 'account_code', e.target.value.split(' ')[0])}
+                        placeholder="compte" aria-label={`Compte, ligne ${i + 1}`} className={`${fieldSm} font-mono`} />
+                      <div className="mt-0.5 truncate px-1 text-xs text-muted-foreground">{accByCode.get(l.account_code)?.label || ''}</div>
+                    </div>
+                    <input value={l.label || ''} onChange={e => setLine(i, 'label', e.target.value)} placeholder="Libellé" aria-label={`Libellé, ligne ${i + 1}`} className={`${fieldSm} col-span-2 md:col-span-1`} />
+                    <label className="block">
+                      <span className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-muted-foreground md:sr-only">Débit</span>
+                      <input type="number" min={0} step="0.01" value={l.debit || ''} onChange={e => setLine(i, 'debit', Number(e.target.value))} className={`${fieldSm} text-right tabular-nums`} />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-muted-foreground md:sr-only">Crédit</span>
+                      <input type="number" min={0} step="0.01" value={l.credit || ''} onChange={e => setLine(i, 'credit', Number(e.target.value))} className={`${fieldSm} text-right tabular-nums`} />
+                    </label>
+                    <div className="col-span-2 flex justify-end md:col-span-1">
+                      <button onClick={() => removeLine(i)} aria-label={`Supprimer la ligne ${i + 1}`} title="Supprimer la ligne" className={iconBtnDanger}><Trash2 className="h-4 w-4" /></button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              <div className={`grid grid-cols-2 items-center gap-2 border-t border-border bg-secondary/40 px-3 py-2.5 text-sm font-semibold md:px-2 ${lineGrid}`}>
+                <button onClick={addLine} className="col-span-2 inline-flex min-h-9 items-center gap-1 justify-self-start rounded-md px-2 text-sm font-semibold text-primary hover:bg-primary/10 md:col-span-1"><Plus className="h-4 w-4" />Ligne</button>
+                <span className="hidden text-right text-xs uppercase tracking-wide text-muted-foreground md:block">Totaux</span>
+                <span className="px-1 text-right tabular-nums text-foreground"><span className="mr-1 text-xs font-medium text-muted-foreground md:hidden">Débit</span>{fmt(totals.d)}</span>
+                <span className="px-1 text-right tabular-nums text-foreground"><span className="mr-1 text-xs font-medium text-muted-foreground md:hidden">Crédit</span>{fmt(totals.c)}</span>
+                <span className="hidden md:block" />
+              </div>
+            </div>
 
-          <div className="flex items-center justify-between mt-3">
-            <span className={`text-xs font-medium ${balanced ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
-              {balanced ? '✓ Équilibrée' : `Écart : ${fmt(Math.abs(totals.d - totals.c))}`}
-            </span>
-            <div className="flex gap-2">
-              <button onClick={() => setEditing(null)} className="px-3 py-2 rounded-lg bg-secondary border border-border text-sm">Annuler</button>
-              <button onClick={saveDraft} disabled={busy} className="px-3 py-2 rounded-lg bg-secondary border border-border text-sm disabled:opacity-50">Brouillon</button>
-              <button onClick={saveAndPost} disabled={busy || !balanced} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50">
-                {busy ? <Loader className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Valider
-              </button>
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+              <StatusPill tone={balanced ? 'success' : 'warning'} icon={balanced ? <Check className="h-3 w-3" /> : undefined}>
+                {balanced ? 'Équilibrée' : `Écart : ${fmt(Math.abs(totals.d - totals.c))}`}
+              </StatusPill>
+              <div className="flex w-full gap-2 sm:w-auto">
+                <button onClick={() => setEditing(null)} className={`${btnSecondary} flex-1 sm:flex-none`}>Annuler</button>
+                <button onClick={saveDraft} disabled={busy} className={`${btnSecondary} flex-1 sm:flex-none`}>Brouillon</button>
+                <button onClick={saveAndPost} disabled={busy || !balanced} className={`${btnPrimary} flex-1 sm:flex-none`}>
+                  {busy ? <Loader className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Valider
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        </section>
       ) : null}
 
       {/* Entries list */}
-      <div className="bg-card border border-border/60 rounded-xl overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border/60 bg-secondary/50 text-xs text-muted-foreground">
-              <th className="text-left font-medium px-3 py-2.5 w-16">N°</th>
-              <th className="text-left font-medium px-3 py-2.5">Date</th>
-              <th className="text-left font-medium px-3 py-2.5">Pièce</th>
-              <th className="text-left font-medium px-3 py-2.5">Libellé</th>
-              <th className="text-left font-medium px-3 py-2.5">Statut</th>
-              <th className="w-20"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {entries.map(e => (
-              <tr key={e.id} className="border-b border-border/40 hover:bg-secondary/30">
-                <td className="px-3 py-2 font-mono text-muted-foreground">{e.entry_number ?? '—'}</td>
-                <td className="px-3 py-2">{new Date(e.entry_date).toLocaleDateString('fr-FR')}</td>
-                <td className="px-3 py-2 text-muted-foreground">{e.reference || '—'}</td>
-                <td className="px-3 py-2">
-                  <button onClick={() => startEdit(e)} className="text-foreground hover:underline text-left">{e.label || '(sans libellé)'}</button>
-                </td>
-                <td className="px-3 py-2">
-                  {e.status === 'posted' ? <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400"><Lock className="h-3 w-3" />Validée</span>
-                    : e.status === 'reversed' ? <span className="text-[11px] font-semibold text-muted-foreground">Contre-passée</span>
-                    : <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400">Brouillon</span>}
-                </td>
-                <td className="px-3 py-2 text-right">
-                  {e.status === 'posted' && <button onClick={() => reverse(e)} title="Contre-passer" className="p-1 text-muted-foreground hover:bg-secondary rounded"><RotateCcw className="h-3.5 w-3.5" /></button>}
-                  {e.status === 'draft' && <button onClick={() => deleteDraft(e)} title="Supprimer" className="p-1 text-muted-foreground hover:bg-secondary rounded"><Trash2 className="h-3.5 w-3.5" /></button>}
-                </td>
-              </tr>
-            ))}
-            {entries.length === 0 && <tr><td colSpan={6} className="px-3 py-10 text-center text-muted-foreground">Aucune écriture dans ce journal</td></tr>}
-          </tbody>
-        </table>
+      <div className={`${panel} overflow-hidden`}>
+        {entries.length === 0 ? (
+          <EmptyState icon={BookOpen} title="Aucune écriture dans ce journal" />
+        ) : (
+          <>
+            <ul className="divide-y divide-border md:hidden">
+              {entries.map(e => (
+                <li key={e.id} className="flex items-start gap-2 px-4 py-3">
+                  <button onClick={() => startEdit(e)} className="min-w-0 flex-1 text-left">
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="font-mono text-sm font-semibold text-muted-foreground">N° {e.entry_number ?? '—'}</span>
+                      {statusPill(e)}
+                    </span>
+                    <span className="mt-1 block truncate font-medium text-foreground">{e.label || '(sans libellé)'}</span>
+                    <span className="block truncate text-xs text-muted-foreground">{new Date(e.entry_date).toLocaleDateString('fr-FR')} · {e.reference || '—'}</span>
+                  </button>
+                  <div className="flex shrink-0">{rowActions(e)}</div>
+                </li>
+              ))}
+            </ul>
+            <div className="hidden overflow-x-auto md:block">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className={theadRow}>
+                    <th className={`${th} w-20`}>N°</th>
+                    <th className={th}>Date</th>
+                    <th className={th}>Pièce</th>
+                    <th className={th}>Libellé</th>
+                    <th className={th}>Statut</th>
+                    <th className={`${th} w-24`}><span className="sr-only">Actions</span></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {entries.map(e => (
+                    <tr key={e.id} className="hover:bg-secondary/40">
+                      <td className={`${td} font-mono text-muted-foreground`}>{e.entry_number ?? '—'}</td>
+                      <td className={`${td} whitespace-nowrap text-foreground`}>{new Date(e.entry_date).toLocaleDateString('fr-FR')}</td>
+                      <td className={`${td} text-muted-foreground`}>{e.reference || '—'}</td>
+                      <td className={td}>
+                        <button onClick={() => startEdit(e)} className="text-left font-medium text-foreground hover:text-primary hover:underline">{e.label || '(sans libellé)'}</button>
+                      </td>
+                      <td className={td}>{statusPill(e)}</td>
+                      <td className={`${td} py-1.5`}><div className="flex justify-end">{rowActions(e)}</div></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

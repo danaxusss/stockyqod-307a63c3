@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Download, Printer, Plus, Trash2, ChevronDown } from 'lucide-react';
+import { Link, useParams, useNavigate } from 'react-router-dom';
+import { ArrowLeft, Download, Printer, Plus, Trash2, ChevronDown, ChevronRight, Check, Lock } from 'lucide-react';
 import { Payslip, PayslipItem } from '../../types';
 import { SupabasePayslipsService } from '../../utils/supabasePayslips';
 import { CompanySettingsService } from '../../utils/companySettings';
@@ -14,6 +14,9 @@ import { PrintPreviewModal } from '../../components/PrintPreviewModal';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
 import { useKeyboardSave, useAutoSave } from '../../hooks/useShortcuts';
+import { StatusPill } from '../../components/lists/StatusPill';
+import { DocPhoneBar } from '../../components/documents/DocParts';
+import { btnPrimary, btnSecondary, checkbox, fieldLabel, fieldSm, iconBtn, iconBtnDanger, LoadingState, panel, textArea } from '../../components/backoffice/BackOfficeUi';
 
 function fmt(n: number) { return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(n); }
 const r2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
@@ -168,150 +171,203 @@ export default function PayslipDetailPage() {
     } catch (e) { showToast({ type: 'error', title: 'Erreur aperçu', message: (e as any)?.message || String(e) }); }
   };
 
-  if (!isPaie && !isSuperAdmin) return <div className="text-center py-12 text-muted-foreground">Accès réservé au rôle Paie.</div>;
-  if (isLoading) return <div className="flex items-center justify-center min-h-[40vh]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>;
-  if (!payslip) return <div className="text-center py-12 text-muted-foreground">Bulletin introuvable.</div>;
+  if (!isPaie && !isSuperAdmin) return <div className="py-12 text-center text-muted-foreground">Accès réservé au rôle Paie.</div>;
+  if (isLoading) return <LoadingState />;
+  if (!payslip) return <div className="py-12 text-center text-muted-foreground">Bulletin introuvable.</div>;
 
   const emp = payslip.employee;
   const res = computed?.res;
   const gains = lines.map((l, i) => ({ l, i })).filter(x => x.l.type === 'gain');
   const retenues = lines.map((l, i) => ({ l, i })).filter(x => x.l.type === 'retenue');
-  const inputCls = 'text-xs px-2 py-1 border border-input rounded bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary';
+  const inputCls = fieldSm;
 
   const RubSelect = ({ line, idx }: { line: Line; idx: number }) => (
-    <select value={line.rubrique_id || ''} onChange={e => pickRubrique(idx, e.target.value)} className={`${inputCls} max-w-[150px]`} disabled={locked}>
+    <select value={line.rubrique_id || ''} onChange={e => pickRubrique(idx, e.target.value)} className={`${inputCls} sm:max-w-[12rem]`} disabled={locked} aria-label="Rubrique">
       <option value="">Personnalisé…</option>
       {rubriques.filter(r => r.type === line.type).map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
     </select>
   );
 
+  const gainGrid = 'md:grid-cols-[minmax(0,1fr)_5.5rem_4.5rem_9rem_2.75rem]';
+  const retGrid = 'md:grid-cols-[minmax(0,1fr)_9rem_2.75rem]';
+  const headCls = 'hidden gap-2 border-b border-border bg-secondary/40 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:px-5 md:grid';
+  const fixedRow = 'flex items-center justify-between gap-3 bg-secondary/20 px-4 py-2.5 text-sm sm:px-5';
+  const addButton = (type: 'gain' | 'retenue') => (
+    <button onClick={() => addLine(type)} className="inline-flex min-h-9 items-center gap-1 rounded-md px-2 text-sm font-semibold text-primary hover:bg-primary/10"><Plus className="h-4 w-4" /> Ajouter</button>
+  );
+  const removeButton = (i: number) => !locked && (
+    <button onClick={() => removeLine(i)} aria-label="Supprimer la ligne" title="Supprimer la ligne" className={iconBtnDanger}><Trash2 className="h-4 w-4" /></button>
+  );
+  const saveButton = !locked && <button onClick={save} className={btnPrimary}><Check className="h-4 w-4" />Enregistrer</button>;
+
   return (
-    <div className="space-y-4 max-w-[110rem] mx-auto">
-      <div className="flex items-center gap-2 flex-wrap">
-        <button onClick={() => navigate('/paie/bulletins')} className="p-1.5 hover:bg-accent rounded-lg"><ArrowLeft className="h-4 w-4 text-muted-foreground" /></button>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-lg font-bold font-mono text-primary">{payslip.payslip_number}</h1>
-          <p className="text-xs text-muted-foreground">{emp?.full_name} — {MONTHS[payslip.period_month - 1]} {payslip.period_year}{locked ? ' · verrouillé' : ''}</p>
-        </div>
-        {dirty && <span className="text-[10px] text-amber-500 font-medium">Non sauvegardé</span>}
-        <button onClick={handleExportPdf} className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg"><Download className="h-3.5 w-3.5" /><span>PDF</span></button>
-        <button onClick={handlePreview} className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-secondary hover:bg-accent border border-border text-foreground rounded-lg"><Printer className="h-3.5 w-3.5" /><span>Aperçu</span></button>
-      </div>
-
-      {emp && (
-        <div className="glass rounded-lg p-4 grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-          <div><p className="text-[10px] text-muted-foreground mb-0.5">Poste</p><p className="font-medium text-foreground">{emp.position || '—'}</p></div>
-          <div><p className="text-[10px] text-muted-foreground mb-0.5">Contrat</p><p className="font-medium text-foreground">{emp.contract_type}</p></div>
-          <div><p className="text-[10px] text-muted-foreground mb-0.5">N° CNSS</p><p className="font-mono text-foreground">{emp.cnss_number || '—'}</p></div>
-          <div><p className="text-[10px] text-muted-foreground mb-0.5">Heures travaillées</p>
-            <input type="number" min={0} max={300} className={`w-24 ${inputCls}`} value={payslip.hours_worked} disabled={locked}
-              onChange={e => { setPayslip(p => p ? { ...p, hours_worked: Number(e.target.value) } : p); setDirty(true); }} /></div>
-        </div>
-      )}
-
-      {/* Rémunération */}
-      <div className="glass rounded-lg overflow-hidden">
-        <div className="px-4 py-2.5 border-b border-border flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-foreground">Éléments de rémunération</h2>
-          {!locked && <button onClick={() => addLine('gain')} className="flex items-center gap-1 text-xs text-primary hover:underline"><Plus className="h-3.5 w-3.5" /> Ajouter</button>}
-        </div>
-        <table className="w-full text-xs">
-          <thead className="bg-secondary/30"><tr>
-            <th className="px-4 py-2 text-left font-medium text-muted-foreground">Rubrique / libellé</th>
-            <th className="px-3 py-2 text-center font-medium text-muted-foreground" title="Exonéré de CNSS et IR">Exonéré</th>
-            <th className="px-3 py-2 text-center font-medium text-muted-foreground" title="Inclus dans la base ancienneté">Anc.</th>
-            <th className="px-4 py-2 text-right font-medium text-muted-foreground">Montant</th>
-            <th className="px-4 py-2 w-8" />
-          </tr></thead>
-          <tbody className="divide-y divide-border">
-            <tr className="bg-secondary/10"><td className="px-4 py-2 text-foreground font-medium">Salaire de base</td><td className="px-3 py-2 text-center text-muted-foreground">—</td><td className="px-3 py-2 text-center text-muted-foreground">✓</td><td className="px-4 py-2 text-right font-mono font-semibold">{fmt(emp?.base_salary ?? 0)}</td><td /></tr>
-            {computed && computed.anc.amount > 0 && (
-              <tr className="bg-secondary/10"><td className="px-4 py-2 text-foreground">Prime d'ancienneté ({Math.round(computed.anc.rate * 100)}%)</td><td /><td /><td className="px-4 py-2 text-right font-mono">{fmt(computed.anc.amount)}</td><td /></tr>
-            )}
-            {gains.map(({ l, i }) => (
-              <tr key={i} className="hover:bg-accent/10">
-                <td className="px-4 py-1.5">
-                  <div className="flex items-center gap-1.5">
-                    <RubSelect line={l} idx={i} />
-                    <input className={`flex-1 ${inputCls}`} placeholder="Libellé…" value={l.label} onChange={e => updateLine(i, { label: e.target.value })} disabled={locked} />
-                  </div>
-                </td>
-                <td className="px-3 py-1.5 text-center"><input type="checkbox" checked={!l.soumis_cnss && !l.soumis_ir} onChange={e => updateLine(i, { soumis_cnss: !e.target.checked, soumis_ir: !e.target.checked })} className="w-3.5 h-3.5 accent-primary" disabled={locked} /></td>
-                <td className="px-3 py-1.5 text-center"><input type="checkbox" checked={l.inclus_anciennete} onChange={e => updateLine(i, { inclus_anciennete: e.target.checked })} className="w-3.5 h-3.5 accent-primary" disabled={locked} /></td>
-                <td className="px-4 py-1.5"><input type="number" min={0} step={0.01} className={`w-full text-right ${inputCls}`} value={l.amount} onChange={e => updateLine(i, { amount: parseFloat(e.target.value) || 0 })} disabled={locked} /></td>
-                <td className="px-2 py-1.5">{!locked && <button onClick={() => removeLine(i)} className="p-1 rounded hover:bg-destructive/10"><Trash2 className="h-3.5 w-3.5 text-muted-foreground" /></button>}</td>
-              </tr>
-            ))}
-            {res && <tr className="bg-emerald-500/8 border-t-2 border-emerald-500/20"><td className="px-4 py-2 font-bold text-foreground">SALAIRE BRUT</td><td /><td /><td className="px-4 py-2 text-right font-mono font-bold text-sm">{fmt(res.brut_global)}</td><td /></tr>}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Retenues */}
-      <div className="glass rounded-lg overflow-hidden">
-        <div className="px-4 py-2.5 border-b border-border flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-foreground">Retenues et cotisations</h2>
-          {!locked && <button onClick={() => addLine('retenue')} className="flex items-center gap-1 text-xs text-primary hover:underline"><Plus className="h-3.5 w-3.5" /> Ajouter</button>}
-        </div>
-        <table className="w-full text-xs">
-          <thead className="bg-secondary/30"><tr><th className="px-4 py-2 text-left font-medium text-muted-foreground">Libellé</th><th className="px-4 py-2 text-right font-medium text-muted-foreground">Montant</th><th className="px-4 py-2 w-8" /></tr></thead>
-          <tbody className="divide-y divide-border">
-            {res && (<>
-              <tr className="bg-secondary/10"><td className="px-4 py-2 text-muted-foreground">CNSS salarié ({(settings.cnss_rate_emp * 100).toFixed(2)}% plaf.)</td><td className="px-4 py-2 text-right font-mono">{fmt(res.cnss_employee)}</td><td /></tr>
-              <tr className="bg-secondary/10"><td className="px-4 py-2 text-muted-foreground">AMO salarié ({(settings.amo_rate_emp * 100).toFixed(2)}%)</td><td className="px-4 py-2 text-right font-mono">{fmt(res.amo_employee)}</td><td /></tr>
-              {res.cimr_employee > 0 && <tr className="bg-secondary/10"><td className="px-4 py-2 text-muted-foreground">CIMR salarié</td><td className="px-4 py-2 text-right font-mono">{fmt(res.cimr_employee)}</td><td /></tr>}
-              <tr className="bg-secondary/10"><td className="px-4 py-2 text-muted-foreground">Frais professionnels (déductible IR)</td><td className="px-4 py-2 text-right font-mono text-muted-foreground">({fmt(res.frais_pro)})</td><td /></tr>
-              <tr className="bg-secondary/10"><td className="px-4 py-2 text-muted-foreground">Impôt sur le Revenu (net imposable {fmt(res.net_imposable)})</td><td className="px-4 py-2 text-right font-mono">{fmt(res.ir_amount)}</td><td /></tr>
-            </>)}
-            {retenues.map(({ l, i }) => (
-              <tr key={i} className="hover:bg-accent/10">
-                <td className="px-4 py-1.5"><div className="flex items-center gap-1.5"><RubSelect line={l} idx={i} /><input className={`flex-1 ${inputCls}`} placeholder="Libellé…" value={l.label} onChange={e => updateLine(i, { label: e.target.value })} disabled={locked} /></div></td>
-                <td className="px-4 py-1.5"><input type="number" min={0} step={0.01} className={`w-full text-right ${inputCls}`} value={l.amount} onChange={e => updateLine(i, { amount: parseFloat(e.target.value) || 0 })} disabled={locked} /></td>
-                <td className="px-2 py-1.5">{!locked && <button onClick={() => removeLine(i)} className="p-1 rounded hover:bg-destructive/10"><Trash2 className="h-3.5 w-3.5 text-muted-foreground" /></button>}</td>
-              </tr>
-            ))}
-            {res && <tr className="bg-red-500/8 border-t-2 border-red-500/20"><td className="px-4 py-2 font-bold text-foreground">TOTAL RETENUES</td><td className="px-4 py-2 text-right font-mono font-bold text-red-600 dark:text-red-400 text-sm">{fmt(res.total_deductions)}</td><td /></tr>}
-          </tbody>
-        </table>
-      </div>
-
-      {res && (
-        <div className="glass rounded-lg p-4 flex items-center justify-between">
-          <div><p className="text-xs text-muted-foreground">Salaire net à payer</p><p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 font-mono">{fmt(res.net_salary)} MAD</p></div>
-          <div className="text-right text-xs text-muted-foreground space-y-0.5">
-            <p>Brut : <span className="font-semibold text-foreground">{fmt(res.brut_global)} MAD</span></p>
-            <p>Retenues : <span className="font-semibold text-red-600 dark:text-red-400">{fmt(res.total_deductions)} MAD</span></p>
+    <div className="mx-auto max-w-[110rem] pb-28 md:pb-0">
+      {/* Title */}
+      <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <div className="flex min-w-0 flex-1 basis-full items-center gap-2 sm:basis-0">
+          <button onClick={() => navigate('/paie/bulletins')} aria-label="Retour aux bulletins" className={iconBtn}><ArrowLeft className="h-4 w-4" /></button>
+          <div className="min-w-0 flex-1">
+            <nav aria-label="Fil d’Ariane" className="hidden items-center gap-1.5 text-sm text-muted-foreground sm:flex">
+              <Link to="/paie/bulletins" className="hover:text-foreground">Bulletins de paie</Link>
+              <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+              <span className="text-foreground">{payslip.payslip_number}</span>
+            </nav>
+            <h1 className="truncate font-mono text-xl font-bold tracking-tight text-foreground sm:text-2xl">{payslip.payslip_number}</h1>
+            <p className="text-sm text-muted-foreground">{emp?.full_name} — {MONTHS[payslip.period_month - 1]} {payslip.period_year}</p>
           </div>
         </div>
-      )}
-
-      {res && (
-        <div className="glass rounded-lg overflow-hidden">
-          <button onClick={() => setShowEmployerCost(v => !v)} className="w-full px-4 py-2.5 flex items-center justify-between text-sm text-muted-foreground hover:bg-accent/20 transition-colors">
-            <span className="font-medium">Charges patronales · coût employeur {fmt(res.employer_cost)} MAD</span>
-            <ChevronDown className={`h-4 w-4 transition-transform ${showEmployerCost ? 'rotate-180' : ''}`} />
-          </button>
-          {showEmployerCost && (
-            <div className="border-t border-border px-4 py-3">
-              <table className="w-full text-xs"><tbody>
-                <tr><td className="py-1 text-muted-foreground">CNSS patronal</td><td className="py-1 text-right font-mono">{fmt(res.cnss_employer)} MAD</td></tr>
-                <tr><td className="py-1 text-muted-foreground">AMO patronal</td><td className="py-1 text-right font-mono">{fmt(res.amo_employer)} MAD</td></tr>
-                <tr><td className="py-1 text-muted-foreground">Allocations familiales</td><td className="py-1 text-right font-mono">{fmt(res.alloc_familiales)} MAD</td></tr>
-                <tr><td className="py-1 text-muted-foreground">Taxe formation pro. (1,6 %)</td><td className="py-1 text-right font-mono">{fmt(res.tfp_employer)} MAD</td></tr>
-                <tr className="border-t border-border"><td className="pt-1.5 font-semibold text-foreground">Total charges patronales</td><td className="pt-1.5 text-right font-mono font-bold">{fmt(res.charges_patronales)} MAD</td></tr>
-              </tbody></table>
-            </div>
-          )}
+        <div className="flex flex-wrap items-center gap-2">
+          {locked && <StatusPill tone="warning" icon={<Lock className="h-3 w-3" />}>verrouillé</StatusPill>}
+          {dirty && <StatusPill tone="warning">Non sauvegardé</StatusPill>}
+          <button onClick={handlePreview} className={btnSecondary}><Printer className="h-4 w-4" /><span>Aperçu</span></button>
+          <button onClick={handleExportPdf} className={btnSecondary}><Download className="h-4 w-4" /><span>PDF</span></button>
         </div>
-      )}
-
-      <div className="glass rounded-lg p-4">
-        <label className="block text-[11px] text-muted-foreground mb-1">Notes</label>
-        <textarea className="w-full text-xs px-2.5 py-1.5 border border-input rounded-lg bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-none" rows={2} value={payslip.notes || ''} disabled={locked}
-          onChange={e => { setPayslip(p => p ? { ...p, notes: e.target.value } : p); setDirty(true); }} />
       </div>
 
-      {!locked && <div className="flex justify-end"><button onClick={save} className="px-4 py-2 text-sm bg-primary hover:bg-primary/90 text-white rounded-lg">Enregistrer</button></div>}
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="min-w-0 space-y-4">
+          {emp && (
+            <section className={`${panel} grid grid-cols-2 gap-4 p-4 sm:p-5 md:grid-cols-4`} aria-label="Salarié">
+              <div><p className="text-xs text-muted-foreground">Poste</p><p className="mt-0.5 text-sm font-medium text-foreground">{emp.position || '—'}</p></div>
+              <div><p className="text-xs text-muted-foreground">Contrat</p><p className="mt-0.5 text-sm font-medium text-foreground">{emp.contract_type}</p></div>
+              <div><p className="text-xs text-muted-foreground">N° CNSS</p><p className="mt-0.5 font-mono text-sm text-foreground">{emp.cnss_number || '—'}</p></div>
+              <div><label className="text-xs text-muted-foreground" htmlFor="ps-hours">Heures travaillées</label>
+                <input id="ps-hours" type="number" min={0} max={300} className={`mt-0.5 w-28 ${inputCls} tabular-nums`} value={payslip.hours_worked} disabled={locked}
+                  onChange={e => { setPayslip(p => p ? { ...p, hours_worked: Number(e.target.value) } : p); setDirty(true); }} /></div>
+            </section>
+          )}
+
+          {/* Rémunération */}
+          <section className={`${panel} overflow-hidden`}>
+            <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
+              <h2 className="font-semibold text-foreground">Éléments de rémunération</h2>
+              {!locked && addButton('gain')}
+            </div>
+            <div className={`${headCls} ${gainGrid}`}>
+              <span>Rubrique / libellé</span>
+              <span className="text-center" title="Exonéré de CNSS et IR">Exonéré</span>
+              <span className="text-center" title="Inclus dans la base ancienneté">Anc.</span>
+              <span className="text-right">Montant</span>
+              <span />
+            </div>
+            <ul className="divide-y divide-border">
+              <li className={fixedRow}>
+                <span className="font-medium text-foreground">Salaire de base</span>
+                <span className="flex items-center gap-3"><span className="hidden text-xs text-muted-foreground sm:inline">base ancienneté</span><span className="font-semibold tabular-nums text-foreground">{fmt(emp?.base_salary ?? 0)}</span></span>
+              </li>
+              {computed && computed.anc.amount > 0 && (
+                <li className={fixedRow}>
+                  <span className="text-foreground">Prime d'ancienneté ({Math.round(computed.anc.rate * 100)}%)</span>
+                  <span className="tabular-nums text-foreground">{fmt(computed.anc.amount)}</span>
+                </li>
+              )}
+              {gains.map(({ l, i }) => (
+                <li key={i} className={`grid grid-cols-2 items-center gap-2 px-4 py-3 sm:px-5 md:py-2 ${gainGrid}`}>
+                  <div className="col-span-2 flex flex-col gap-2 sm:flex-row md:col-span-1">
+                    <RubSelect line={l} idx={i} />
+                    <input className={`min-w-0 flex-1 ${inputCls}`} placeholder="Libellé…" aria-label="Libellé" value={l.label} onChange={e => updateLine(i, { label: e.target.value })} disabled={locked} />
+                  </div>
+                  <label className="flex items-center gap-2 md:justify-center">
+                    <input type="checkbox" checked={!l.soumis_cnss && !l.soumis_ir} onChange={e => updateLine(i, { soumis_cnss: !e.target.checked, soumis_ir: !e.target.checked })} className={checkbox} disabled={locked} />
+                    <span className="text-xs text-muted-foreground md:sr-only">Exonéré</span>
+                  </label>
+                  <label className="flex items-center gap-2 md:justify-center">
+                    <input type="checkbox" checked={l.inclus_anciennete} onChange={e => updateLine(i, { inclus_anciennete: e.target.checked })} className={checkbox} disabled={locked} />
+                    <span className="text-xs text-muted-foreground md:sr-only">Base ancienneté</span>
+                  </label>
+                  <input type="number" min={0} step={0.01} aria-label="Montant" className={`w-full text-right tabular-nums ${inputCls}`} value={l.amount} onChange={e => updateLine(i, { amount: parseFloat(e.target.value) || 0 })} disabled={locked} />
+                  <div className="flex justify-end">{removeButton(i)}</div>
+                </li>
+              ))}
+              {res && (
+                <li className="flex items-center justify-between gap-3 bg-emerald-500/10 px-4 py-3 sm:px-5">
+                  <span className="text-sm font-bold uppercase tracking-wide text-foreground">Salaire brut</span>
+                  <span className="text-base font-bold tabular-nums text-foreground">{fmt(res.brut_global)}</span>
+                </li>
+              )}
+            </ul>
+          </section>
+
+          {/* Retenues */}
+          <section className={`${panel} overflow-hidden`}>
+            <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
+              <h2 className="font-semibold text-foreground">Retenues et cotisations</h2>
+              {!locked && addButton('retenue')}
+            </div>
+            <div className={`${headCls} ${retGrid}`}><span>Libellé</span><span className="text-right">Montant</span><span /></div>
+            <ul className="divide-y divide-border">
+              {res && (<>
+                <li className={fixedRow}><span className="text-muted-foreground">CNSS salarié ({(settings.cnss_rate_emp * 100).toFixed(2)}% plaf.)</span><span className="tabular-nums text-foreground">{fmt(res.cnss_employee)}</span></li>
+                <li className={fixedRow}><span className="text-muted-foreground">AMO salarié ({(settings.amo_rate_emp * 100).toFixed(2)}%)</span><span className="tabular-nums text-foreground">{fmt(res.amo_employee)}</span></li>
+                {res.cimr_employee > 0 && <li className={fixedRow}><span className="text-muted-foreground">CIMR salarié</span><span className="tabular-nums text-foreground">{fmt(res.cimr_employee)}</span></li>}
+                <li className={fixedRow}><span className="text-muted-foreground">Frais professionnels (déductible IR)</span><span className="tabular-nums text-muted-foreground">({fmt(res.frais_pro)})</span></li>
+                <li className={fixedRow}><span className="text-muted-foreground">Impôt sur le Revenu (net imposable {fmt(res.net_imposable)})</span><span className="tabular-nums text-foreground">{fmt(res.ir_amount)}</span></li>
+              </>)}
+              {retenues.map(({ l, i }) => (
+                <li key={i} className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-4 py-3 sm:px-5 md:py-2 ${retGrid}`}>
+                  <div className="col-span-2 flex flex-col gap-2 sm:flex-row md:col-span-1">
+                    <RubSelect line={l} idx={i} />
+                    <input className={`min-w-0 flex-1 ${inputCls}`} placeholder="Libellé…" aria-label="Libellé" value={l.label} onChange={e => updateLine(i, { label: e.target.value })} disabled={locked} />
+                  </div>
+                  <input type="number" min={0} step={0.01} aria-label="Montant" className={`w-full text-right tabular-nums ${inputCls}`} value={l.amount} onChange={e => updateLine(i, { amount: parseFloat(e.target.value) || 0 })} disabled={locked} />
+                  <div className="flex justify-end">{removeButton(i)}</div>
+                </li>
+              ))}
+              {res && (
+                <li className="flex items-center justify-between gap-3 bg-red-500/10 px-4 py-3 sm:px-5">
+                  <span className="text-sm font-bold uppercase tracking-wide text-foreground">Total retenues</span>
+                  <span className="text-base font-bold tabular-nums text-red-700 dark:text-red-300">{fmt(res.total_deductions)}</span>
+                </li>
+              )}
+            </ul>
+          </section>
+        </div>
+
+        {/* Totals and actions: stays in view while the lines scroll */}
+        <aside className="space-y-4 lg:sticky lg:top-4" aria-label="Net à payer et actions">
+          {res && (
+            <section className={`${panel} p-5`}>
+              <p className="text-sm font-semibold text-foreground">Salaire net à payer</p>
+              <p className="text-2xl font-bold tabular-nums tracking-tight text-emerald-700 dark:text-emerald-300">{fmt(res.net_salary)} MAD</p>
+              <dl className="mt-3 space-y-2 border-t border-border pt-3 text-sm">
+                <div className="flex justify-between gap-2"><dt className="text-muted-foreground">Brut</dt><dd className="font-medium tabular-nums text-foreground">{fmt(res.brut_global)} MAD</dd></div>
+                <div className="flex justify-between gap-2"><dt className="text-muted-foreground">Retenues</dt><dd className="font-medium tabular-nums text-red-700 dark:text-red-300">{fmt(res.total_deductions)} MAD</dd></div>
+              </dl>
+              {!locked && <button onClick={save} className={`${btnPrimary} mt-4 hidden w-full md:flex`}><Check className="h-4 w-4" />Enregistrer</button>}
+            </section>
+          )}
+
+          {res && (
+            <section className={`${panel} overflow-hidden`}>
+              <button onClick={() => setShowEmployerCost(v => !v)} aria-expanded={showEmployerCost} className="flex w-full items-center justify-between gap-2 px-5 py-3 text-left text-sm hover:bg-secondary/40">
+                <span><span className="block font-semibold text-foreground">Charges patronales</span><span className="block text-xs text-muted-foreground">coût employeur {fmt(res.employer_cost)} MAD</span></span>
+                <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${showEmployerCost ? 'rotate-180' : ''}`} />
+              </button>
+              {showEmployerCost && (
+                <dl className="space-y-1.5 border-t border-border px-5 py-3 text-sm">
+                  <div className="flex justify-between gap-2"><dt className="text-muted-foreground">CNSS patronal</dt><dd className="tabular-nums text-foreground">{fmt(res.cnss_employer)} MAD</dd></div>
+                  <div className="flex justify-between gap-2"><dt className="text-muted-foreground">AMO patronal</dt><dd className="tabular-nums text-foreground">{fmt(res.amo_employer)} MAD</dd></div>
+                  <div className="flex justify-between gap-2"><dt className="text-muted-foreground">Allocations familiales</dt><dd className="tabular-nums text-foreground">{fmt(res.alloc_familiales)} MAD</dd></div>
+                  <div className="flex justify-between gap-2"><dt className="text-muted-foreground">Taxe formation pro. (1,6 %)</dt><dd className="tabular-nums text-foreground">{fmt(res.tfp_employer)} MAD</dd></div>
+                  <div className="flex justify-between gap-2 border-t border-border pt-1.5 font-semibold"><dt className="text-foreground">Total charges patronales</dt><dd className="tabular-nums text-foreground">{fmt(res.charges_patronales)} MAD</dd></div>
+                </dl>
+              )}
+            </section>
+          )}
+
+          <section className={`${panel} p-5`}>
+            <label className={fieldLabel} htmlFor="ps-notes">Notes</label>
+            <textarea id="ps-notes" className={`${textArea} resize-none`} rows={3} value={payslip.notes || ''} disabled={locked}
+              onChange={e => { setPayslip(p => p ? { ...p, notes: e.target.value } : p); setDirty(true); }} />
+          </section>
+        </aside>
+      </div>
+
+      {res && (
+        <DocPhoneBar label="Net à payer" value={`${fmt(res.net_salary)} MAD`}>
+          {saveButton || <button onClick={handleExportPdf} className={btnPrimary}><Download className="h-4 w-4" />PDF</button>}
+        </DocPhoneBar>
+      )}
 
       {showPrintPreview && previewBlob && (
         <PrintPreviewModal blob={previewBlob} filename={previewFilename} onClose={() => { setShowPrintPreview(false); setPreviewBlob(null); }} />
