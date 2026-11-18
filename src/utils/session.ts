@@ -1,5 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import type { AppUser } from '../types';
+import { setLastAuthError } from './authError';
 
 /**
  * Session storage for the PIN-based login.
@@ -178,6 +179,22 @@ async function hasAuthSessionFor(userId: string | undefined): Promise<boolean> {
   } catch { return false; }
 }
 
+/** Shown when the PIN was right but the database session could not be opened. */
+export const SECURE_SESSION_UNAVAILABLE = 'Connexion sécurisée indisponible, réessayez.';
+
+/**
+ * The database only answers signed-in requests (secure login step 2), so a
+ * Stocky session without its Supabase session would be a half-working app.
+ * Returns true when this device holds one for the user; otherwise closes the
+ * Stocky session and leaves the reason for the login screen.
+ */
+export async function requireAuthSession(userId: string | undefined): Promise<boolean> {
+  if (await hasAuthSessionFor(userId)) return true;
+  clearSession({ keepRememberedUsername: true });
+  setLastAuthError(SECURE_SESSION_UNAVAILABLE);
+  return false;
+}
+
 /** Refresh the idle clock — called on user activity. */
 export function touchSession(): void {
   const s = readSession();
@@ -222,8 +239,8 @@ export async function validateSession(): Promise<AppUser | null> {
   if (!s) return null;
   if (!hasLocallyValidSession()) return null;
   // Legacy session with no token: nothing to verify server-side. Local expiry
-  // and the idle timeout still apply.
-  if (!s.token) return s.user;
+  // and the idle timeout still apply; it still needs its Supabase session.
+  if (!s.token) return (await requireAuthSession(s.user?.id)) ? s.user : null;
 
   try {
     // Users signed in before Supabase sessions existed get one without
@@ -237,6 +254,9 @@ export async function validateSession(): Promise<AppUser | null> {
     if (wantAuthSession && data.auth_session) await adoptAuthSession(data.auth_session);
 
     const fresh = data.user as AppUser;
+    // Still no Supabase session (it could not be opened): sign in again
+    // rather than use an app whose every request is refused.
+    if (wantAuthSession && !(await requireAuthSession(fresh?.id ?? s.user?.id))) return null;
     const store = s.remembered ? localStorage : sessionStorage;
     try { store.setItem(USER_KEY, JSON.stringify(fresh)); } catch { /* */ }
     return fresh;

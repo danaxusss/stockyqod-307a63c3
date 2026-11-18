@@ -11,3 +11,11 @@ verify_jwt = false
 
 [functions.task-reminders]
 verify_jwt = false
+
+# Public pages (no login): share links and delivery tracking. Both check the
+# link token themselves and return only what the page shows.
+[functions.public-share]
+verify_jwt = false
+
+[functions.public-tracking]
+verify_jwt = false

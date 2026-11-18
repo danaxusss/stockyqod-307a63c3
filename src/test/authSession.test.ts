@@ -6,6 +6,7 @@ const auth = vi.hoisted(() => ({
   calls: [] as string[],
   invokes: [] as Array<Record<string, unknown>>,
   reply: {} as Record<string, unknown>,
+  offline: false,
 }));
 
 vi.mock('../integrations/supabase/client', () => ({
@@ -22,18 +23,20 @@ vi.mock('../integrations/supabase/client', () => ({
     functions: {
       invoke: async (_fn: string, { body }: { body: Record<string, unknown> }) => {
         auth.invokes.push(body);
+        if (auth.offline) return { data: null, error: new Error('Failed to fetch') };
         return { data: auth.reply, error: null };
       },
     },
   },
 }));
 
-import { adoptAuthSession, clearSession, readSession, saveSession, validateSession } from '../utils/session';
+import { adoptAuthSession, clearSession, readSession, requireAuthSession, saveSession, validateSession } from '../utils/session';
+import { takeLastAuthError } from '../utils/authError';
 
 const user = { id: 'u1', username: 'ali' } as never;
 const flush = () => new Promise(resolve => setTimeout(resolve, 0));
 
-beforeEach(() => { auth.session = null; auth.calls = []; auth.invokes = []; auth.reply = {}; localStorage.clear(); sessionStorage.clear(); });
+beforeEach(() => { auth.session = null; auth.calls = []; auth.invokes = []; auth.reply = {}; auth.offline = false; takeLastAuthError(); localStorage.clear(); sessionStorage.clear(); });
 afterEach(() => vi.unstubAllEnvs());
 
 describe('Supabase session at PIN login', () => {
@@ -80,6 +83,45 @@ describe('Supabase session at PIN login', () => {
     await validateSession();
     expect(auth.invokes[0]).toMatchObject({ want_auth_session: true });
     expect(auth.calls).toEqual(['set:u1:x']);
+  });
+});
+
+describe('no half-working app without a Supabase session', () => {
+  it('a login whose Supabase session could not be opened is refused with a clear message', async () => {
+    saveSession('signed', user, Math.floor(Date.now() / 1000) + 3600, false);
+    await adoptAuthSession(null);
+    expect(await requireAuthSession('u1')).toBe(false);
+    expect(readSession()).toBeNull();
+    expect(takeLastAuthError()).toBe('Connexion sécurisée indisponible, réessayez.');
+  });
+
+  it('a login with its session goes on', async () => {
+    saveSession('signed', user, Math.floor(Date.now() / 1000) + 3600, false);
+    await adoptAuthSession({ access_token: 'u1:access', refresh_token: 'r' });
+    expect(await requireAuthSession('u1')).toBe(true);
+    expect(readSession()?.user).toMatchObject({ id: 'u1' });
+  });
+
+  it('a stored session that cannot get its Supabase session signs out with the message', async () => {
+    saveSession('signed', user, Math.floor(Date.now() / 1000) + 3600, false);
+    auth.reply = { valid: true, user: { id: 'u1', username: 'ali' }, auth_session: null };
+    expect(await validateSession()).toBeNull();
+    expect(readSession()).toBeNull();
+    expect(takeLastAuthError()).toBe('Connexion sécurisée indisponible, réessayez.');
+  });
+
+  it('an old session without a signed token needs its Supabase session too', async () => {
+    saveSession(null, user, Math.floor(Date.now() / 1000) + 3600, false);
+    expect(await validateSession()).toBeNull();
+    saveSession(null, user, Math.floor(Date.now() / 1000) + 3600, false);
+    auth.session = { user: { id: 'u1' } };
+    expect(await validateSession()).toMatchObject({ id: 'u1' });
+  });
+
+  it('offline: the cached user is kept (nothing can be checked)', async () => {
+    saveSession('signed', user, Math.floor(Date.now() / 1000) + 3600, false);
+    auth.offline = true;
+    expect(await validateSession()).toMatchObject({ id: 'u1' });
   });
 });
 

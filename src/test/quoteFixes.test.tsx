@@ -64,10 +64,12 @@ describe('sheets joined to a quote', () => {
   });
 
   it('shows the photos on the public share page', async () => {
-    state.db.tables.sheet_share_links.push({
-      id: 'l1', token: 'tok-1', title: 'Devis QT-1', sheet_ids: [], expires_at: null, view_count: 0,
-      product_images: [{ barcode: 'B', name: 'Batteur 7L', brand: 'KitchenAid', url: 'https://cdn.test/b.jpg' }],
-    });
+    // Read through the public-share function: visitors have no login.
+    state.invoke.mockImplementation(async (fn: string, { body }: { body: Record<string, unknown> }) => (
+      fn === 'public-share' && body.action === 'get' && body.token === 'tok-1'
+        ? { data: { status: 'ok', link: { title: 'Devis QT-1', expires_at: null, product_images: [{ barcode: 'B', name: 'Batteur 7L', brand: 'KitchenAid', url: 'https://cdn.test/b.jpg' }] }, sheets: [], company: null }, error: null }
+        : { data: null, error: new Error('unexpected') }
+    ));
     render(<MemoryRouter initialEntries={['/share/tok-1']}><Routes><Route path="/share/:token" element={<PublicSharePage />} /></Routes></MemoryRouter>);
     expect(await screen.findByText('Photos des produits')).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'Batteur 7L' })).toHaveAttribute('src', 'https://cdn.test/b.jpg');

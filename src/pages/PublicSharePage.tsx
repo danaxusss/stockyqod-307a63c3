@@ -2,14 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { FileText, Download, Eye, Calendar, AlertCircle, X, Image as ImageIcon, Loader2, Files } from 'lucide-react';
 import { buildSheetBundle, bundleFileName, companyFromSettings, downloadBundle, sectionsForShare } from '../utils/sheetBundle';
-import { CompanySettingsService } from '../utils/companySettings';
-import { supabase } from '@/integrations/supabase/client';
-import { TechnicalSheet, SheetShareLink, SharedProductImage } from '../types';
+import { countSheetDownloads, loadShare, type PublicCompany, type PublicSheet, type SharePayload } from '../utils/publicPages';
+import { SharedProductImage } from '../types';
 
 export function PublicSharePage() {
   const { token } = useParams<{ token: string }>();
-  const [shareLink, setShareLink] = useState<SheetShareLink | null>(null);
-  const [sheets, setSheets] = useState<TechnicalSheet[]>([]);
+  // Read through the public-share function: visitors have no login.
+  const [shareLink, setShareLink] = useState<SharePayload['link'] | null>(null);
+  const [company, setCompany] = useState<PublicCompany | null>(null);
+  const [sheets, setSheets] = useState<PublicSheet[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pdfViewerUrl, setPdfViewerUrl] = useState<string | null>(null);
@@ -25,32 +26,13 @@ export function PublicSharePage() {
     const load = async () => {
       if (!token) { setError('Lien invalide'); setLoading(false); return; }
       try {
-        const { data: linkData, error: linkError } = await supabase
-          .from('sheet_share_links')
-          .select('*')
-          .eq('token', token)
-          .single();
-
-        if (linkError || !linkData) { setError('Lien de partage introuvable'); setLoading(false); return; }
-
-        const link = linkData as unknown as SheetShareLink;
-
-        if (link.expires_at && new Date(link.expires_at) < new Date()) {
-          setError('Ce lien de partage a expiré');
-          setLoading(false);
-          return;
-        }
-
-        setShareLink(link);
-        await supabase.from('sheet_share_links').update({ view_count: (link.view_count || 0) + 1 }).eq('id', link.id);
-
-        if (link.sheet_ids.length > 0) {
-          const { data: sheetsData } = await supabase
-            .from('technical_sheets')
-            .select('*')
-            .in('id', link.sheet_ids);
-          setSheets((sheetsData || []) as unknown as TechnicalSheet[]);
-        }
+        // Counts one view, like opening the link always did.
+        const share = await loadShare(token);
+        if (share.status === 'expired') { setError('Ce lien de partage a expiré'); return; }
+        if (share.status !== 'ok' || !share.link) { setError('Lien de partage introuvable'); return; }
+        setShareLink(share.link);
+        setCompany(share.company ?? null);
+        setSheets(share.sheets || []);
       } catch (err) {
         console.error('Error loading share:', err);
         setError('Erreur lors du chargement');
@@ -67,8 +49,8 @@ export function PublicSharePage() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  const handleDownload = async (sheet: TechnicalSheet) => {
-    await supabase.from('technical_sheets').update({ download_count: (sheet.download_count || 0) + 1 }).eq('id', sheet.id);
+  const handleDownload = async (sheet: PublicSheet) => {
+    if (token) await countSheetDownloads(token, [sheet.id]);
     try {
       const response = await fetch(sheet.file_url);
       const blob = await response.blob();
@@ -113,16 +95,16 @@ export function PublicSharePage() {
           title: 'Fiches techniques',
           subtitle: shareLink?.title || 'Documents partagés',
           details: ['Fiches techniques et photos des produits'],
-          // The link's company (older links: the default company).
-          company: companyFromSettings(await CompanySettingsService.getSettings((shareLink as { company_id?: string | null } | null)?.company_id || undefined).catch(() => null)),
+          // The link's company (older links: the default company), from the server.
+          company: companyFromSettings(company),
           sections: sectionsForShare(sheets, images),
         },
         { onProgress: (done, total) => setBundleProgress({ done, total }) },
       );
       downloadBundle(result.bytes, bundleFileName('Documents', shareLink?.title || 'partages'));
       const skipped = new Set(result.skipped);
-      await Promise.all(sheets.filter(sheet => !skipped.has(sheet.title)).map(sheet =>
-        supabase.from('technical_sheets').update({ download_count: (sheet.download_count || 0) + 1 }).eq('id', sheet.id).then(() => undefined, () => undefined)));
+      const included = sheets.filter(sheet => !skipped.has(sheet.title)).map(sheet => sheet.id);
+      if (token && included.length) await countSheetDownloads(token, included);
       if (result.skipped.length) setBundleNote(`${result.skipped.length} document(s) n’ont pas pu être inclus : ${result.skipped.join(', ')}. Vous pouvez les télécharger un par un ci-dessous.`);
     } catch {
       setBundleNote('Le fichier unique n’a pas pu être créé. Vous pouvez télécharger les documents un par un ci-dessous.');
