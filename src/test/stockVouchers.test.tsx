@@ -5,12 +5,12 @@ import StockVoucherPage from '../pages/inventaire/StockVoucherPage';
 import StockVouchersPage from '../pages/inventaire/StockVouchersPage';
 import { StockService } from '../utils/supabaseStock';
 import {
-  costUpdatesAverage, draftProblems, isNegativeStockRefusal, reasonLabel, StockVouchersService, voucherErrorMessage,
+  costUpdatesAverage, draftProblems, isNegativeStockRefusal, reasonLabel, reasonsFor, StockVouchersService, voucherErrorMessage,
   type StockVoucher,
 } from '../utils/stockVouchers';
 import { buildStockVoucherPdf } from '../utils/stockVoucherPdf';
 
-const locations = vi.hoisted(() => [{ id: 'loc-1', name: 'Dépôt', abbreviation: 'DEP' }]);
+const locations = vi.hoisted(() => [{ id: 'loc-1', name: 'Dépôt', abbreviation: 'DEP' }, { id: 'loc-2', name: 'Showroom', abbreviation: 'SHOW' }]);
 const auth = vi.hoisted(() => ({ isAdmin: false }));
 
 vi.mock('../utils/stockVouchers', async importOriginal => {
@@ -68,6 +68,9 @@ describe('voucher rules', () => {
     expect(voucherErrorMessage({ message: 'ERROR: P0001: Stock insuffisant pour Four' })).toBe('Stock insuffisant pour Four');
     expect(isNegativeStockRefusal(new Error('Stock insuffisant pour Four (1 disponible)'))).toBe(true);
     expect(isNegativeStockRefusal(new Error('Bon introuvable'))).toBe(false);
+    expect(reasonsFor('sortie', true).map(r => r.value)).toEqual(['livraison_client']);
+    expect(reasonsFor('sortie', false).map(r => r.value)).not.toContain('livraison_client');
+    expect(reasonLabel('sortie', 'livraison_client')).toBe('Livraison client');
   });
 
   it('prints a voucher with its number, lines and totals', () => {
@@ -141,6 +144,24 @@ describe('voucher pages', () => {
     expect(screen.getByRole('button', { name: /PDF/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Annuler le bon/ }));
     await waitFor(() => expect(service.cancel).toHaveBeenCalledWith('v1', 'erreur de saisie'));
+  });
+
+  it('shows the delivery note a Bon de sortie comes from, and where each line leaves from', async () => {
+    products.mockResolvedValue([product('P1', 'Four mixte', 5)]);
+    service.get.mockResolvedValue(voucher({
+      status: 'draft', number: null, reason: 'livraison_client', source_document_id: 'bl-1', source_document_number: 'BL-0042',
+      lines: [
+        { barcode: 'P1', product_name: 'Four mixte', quantity: 2, unit_cost: null, location_id: 'loc-1' },
+        { barcode: 'P1', product_name: 'Four mixte', quantity: 1, unit_cost: null, location_id: 'loc-2' },
+      ],
+    }));
+    service.saveDraft.mockResolvedValue('v1');
+    renderAt('/inventaire/bons/v1');
+    expect(await screen.findByRole('link', { name: 'Livraison BL-0042' })).toHaveAttribute('href', '/compta/bls/bl-1');
+    expect(screen.getByText('Showroom', { selector: 'span' })).toBeInTheDocument();
+    expect(within(screen.getByRole('combobox', { name: 'Motif' })).getAllByRole('option').map(o => o.textContent)).toEqual(['Livraison client']);
+    fireEvent.click(screen.getAllByRole('button', { name: /Enregistrer le brouillon/ })[0]);
+    await waitFor(() => expect(service.saveDraft).toHaveBeenCalledWith(expect.objectContaining({ source_document_id: 'bl-1', source_document_number: 'BL-0042' })));
   });
 
   it('lists vouchers with their number, type, reason and status, and filters them', async () => {

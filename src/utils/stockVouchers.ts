@@ -19,6 +19,8 @@ export interface StockVoucherLine {
   product_name: string;
   quantity: number;
   unit_cost: number | null;
+  /** Where this line leaves from / arrives, when it differs from the voucher's location. */
+  location_id?: string | null;
 }
 
 export interface StockVoucher {
@@ -38,6 +40,9 @@ export interface StockVoucher {
   cancelled_by: string | null;
   cancelled_at: string | null;
   cancel_reason: string | null;
+  /** The delivery note this Bon de sortie takes out of stock. */
+  source_document_id?: string | null;
+  source_document_number?: string | null;
   created_at: string;
   lines?: StockVoucherLine[];
 }
@@ -53,6 +58,7 @@ export const VOUCHER_REASONS: Record<VoucherKind, Array<{ value: string; label: 
   ],
   sortie: [
     { value: 'casse_perte', label: 'Casse / perte' },
+    { value: 'livraison_client', label: 'Livraison client' },
     { value: 'usage_interne', label: 'Usage interne' },
     { value: 'echantillon_demo', label: 'Échantillon / démo' },
     { value: 'don', label: 'Don' },
@@ -70,6 +76,11 @@ export const VOUCHER_STATUS: Record<VoucherStatus, { label: string; tone: Status
 
 export const KIND_LABEL: Record<VoucherKind, string> = { entree: "Bon d'entrée", sortie: 'Bon de sortie' };
 export const KIND_SHORT: Record<VoucherKind, string> = { entree: 'BE', sortie: 'BS' };
+
+/** Reasons offered in the editor: "Livraison client" only for a voucher made from a delivery note. */
+export function reasonsFor(kind: VoucherKind, fromDocument: boolean) {
+  return VOUCHER_REASONS[kind].filter(r => fromDocument ? r.value === 'livraison_client' : r.value !== 'livraison_client');
+}
 
 export function reasonLabel(kind: VoucherKind, reason: string): string {
   return VOUCHER_REASONS[kind].find(r => r.value === reason)?.label || reason;
@@ -123,6 +134,7 @@ export class StockVouchersService {
   static async saveDraft(draft: {
     id?: string | null; kind: VoucherKind; voucher_date: string; location_id: string | null;
     reason: string; note: string; created_by?: string | null; lines: StockVoucherLine[];
+    source_document_id?: string | null; source_document_number?: string | null;
   }): Promise<string> {
     const header = {
       kind: draft.kind, voucher_date: draft.voucher_date, location_id: draft.location_id,
@@ -137,7 +149,10 @@ export class StockVouchersService {
     } else {
       const { companyId } = getCompanyContext();
       const { data, error } = await db().from('stock_vouchers')
-        .insert({ ...header, company_id: companyId || null, created_by: draft.created_by || null })
+        .insert({
+          ...header, company_id: companyId || null, created_by: draft.created_by || null,
+          ...(draft.source_document_id ? { source_document_id: draft.source_document_id, source_document_number: draft.source_document_number || null } : {}),
+        })
         .select('id').single();
       if (error) throw new Error(voucherErrorMessage(error));
       id = data.id as string;
@@ -146,10 +161,19 @@ export class StockVouchersService {
       const { error } = await db().from('stock_voucher_lines').insert(draft.lines.map((l, i) => ({
         voucher_id: id, position: i, barcode: l.barcode, product_name: l.product_name,
         quantity: Number(l.quantity), unit_cost: draft.kind === 'entree' && l.unit_cost != null && String(l.unit_cost) !== '' ? Number(l.unit_cost) : null,
+        ...(l.location_id ? { location_id: l.location_id } : {}),
       })));
       if (error) throw new Error(voucherErrorMessage(error));
     }
     return id as string;
+  }
+
+  /** The active (draft or validated) Bon de sortie of a delivery note, if any. */
+  static async findForDocument(documentId: string): Promise<StockVoucher | null> {
+    const { data, error } = await db().from('stock_vouchers').select('id, number, status, kind')
+      .eq('source_document_id', documentId).neq('status', 'cancelled').limit(1);
+    if (error) throw new Error(error.message);
+    return data?.[0] || null;
   }
 
   static async deleteDraft(id: string): Promise<void> {
