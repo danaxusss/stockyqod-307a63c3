@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { Search, Package, ArrowRight, Home, AlertCircle, SortAsc, SortDesc, Filter, ScanLine, Plus, X, Paperclip, Images } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useSearchState } from '../hooks/useSearchState';
 import { useAppContext } from '../context/AppContext';
 import { BarcodeScanner } from '../components/BarcodeScanner';
@@ -40,6 +40,13 @@ export function SearchPage() {
     sortBy, setSortBy, sortOrder, setSortOrder,
     restoreScrollPosition, saveScrollPosition, clearSearchState
   } = useSearchState();
+
+  // Opened from Ctrl K "Voir tous les produits": start with that search.
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    const q = searchParams.get('q');
+    if (q) { setQuery(q); setSearchParams({}, { replace: true }); }
+  }, [searchParams, setQuery, setSearchParams]);
 
   const uniqueBrands = React.useMemo(() => {
     const brands = new Set<string>();

@@ -1,5 +1,6 @@
 // @ts-nocheck
 import React, { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Users, Search, Plus, Edit, Trash2, X, Check, Loader, Phone, Mail, MapPin, Building, SortAsc, SortDesc, ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import { SupabaseClientsService, Client, CreateClientRequest } from '../utils/supabaseClients';
 import { exportToCSV } from '../utils/csvExport';
@@ -32,7 +33,10 @@ export default function ClientsPage() {
   const { isAdmin } = useAuth();
   const [clients, setClients] = useState<Client[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
+  // Opened from Ctrl K on a client: the list starts filtered on that client.
+  const [searchParams] = useSearchParams();
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get('q') || '');
+  useEffect(() => { const q = searchParams.get('q'); if (q) setSearchQuery(q); }, [searchParams]);
   const [currentPage, setCurrentPage] = useState(1);
   const [sortField, setSortField] = useState<SortField>('created_at');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
