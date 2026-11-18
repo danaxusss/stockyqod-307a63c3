@@ -29,9 +29,10 @@ export default function ClientFinancialPage() {
     const key = row.clientId || row.clientName;
     setExportingPdf(key);
     try {
-      const invoices = await SupabaseDocumentsService.getInvoicesForClient(row.phoneNumber, row.clientName);
+      // Invoices and credit notes, matched exactly like the balance on this row.
+      const documents = await SupabaseDocumentsService.getStatementDocuments(row.phoneNumber, row.nameMatch ?? null);
       const settings = await CompanySettingsService.getSettings(companyId || undefined).catch(() => null);
-      await PdfExportService.exportClientFinancialPdf(row.clientName, invoices, settings?.tva_rate ?? 20, settings || undefined);
+      await PdfExportService.exportClientFinancialPdf(row.clientName, documents, settings?.tva_rate ?? 20, settings || undefined);
     } catch (e: any) {
       showToast({ type: 'error', message: e.message || 'Erreur export PDF' });
     } finally {

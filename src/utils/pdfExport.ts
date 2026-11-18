@@ -1579,12 +1579,13 @@ export class PdfExportService {
     return { blob, filename };
   }
 
-  static async exportClientFinancialPdf(
+  /** The client statement as a PDF document (not saved). */
+  static async buildClientFinancialPdf(
     clientName: string,
-    invoices: Quote[],
+    documents: Quote[],
     tvaRate = 20,
     settings?: CompanySettings | null,
-  ): Promise<void> {
+  ): Promise<jsPDF> {
     const style: QuoteStyle = settings?.quote_style || { accentColor: '#3B82F6', fontFamily: 'helvetica' };
     const ACCENT = hexToRgb(style.accentColor);
     const font = style.fontFamily || 'helvetica';
@@ -1613,32 +1614,38 @@ export class PdfExportService {
       return 'En attente';
     };
 
-    const headers = [['N° Facture', 'Date', 'HT', 'TVA', 'TTC', 'Payé', 'Reste', 'Statut']];
-    const body = invoices.map(inv => {
-      const ttc = inv.totalAmount;
+    // Invoices, and credit notes as negative lines: the total is what the
+    // client owes, the same as the client balances page.
+    const isAvoir = (d: Quote) => d.document_type === 'avoir';
+    const headers = [['N° Document', 'Date', 'HT', 'TVA', 'TTC', 'Payé', 'Reste', 'Statut']];
+    const body = documents.map(d => {
+      const ttc = isAvoir(d) ? -Math.abs(d.totalAmount) : d.totalAmount;
       const ht = ttc / tvaDivisor;
       const tva = ttc - ht;
-      const { paid, reste } = invoicePayment(inv);
-      const dateStr = inv.quote_date ? inv.quote_date : inv.createdAt.toLocaleDateString('fr-FR');
+      const { paid, reste } = isAvoir(d) ? { paid: 0, reste: ttc } : invoicePayment(d);
+      const dateStr = d.quote_date ? d.quote_date : d.createdAt.toLocaleDateString('fr-FR');
       return [
-        inv.quoteNumber || '-',
+        d.quoteNumber || '-',
         dateStr,
         this.formatCurrency(ht),
         this.formatCurrency(tva),
         this.formatCurrency(ttc),
-        this.formatCurrency(paid),
+        isAvoir(d) ? '—' : this.formatCurrency(paid),
         this.formatCurrency(reste),
-        getStatus(inv),
+        isAvoir(d) ? 'Avoir' : getStatus(d),
       ];
     });
 
-    const totalTTC = invoices.reduce((s, i) => s + i.totalAmount, 0);
-    const totalPaid = invoices.reduce((s, i) => s + invoicePayment(i).paid, 0);
-    const totalReste = Math.max(0, totalTTC - totalPaid);
+    const invoicesTTC = documents.filter(d => !isAvoir(d)).reduce((s, i) => s + i.totalAmount, 0);
+    const avoirsTTC = documents.filter(isAvoir).reduce((s, a) => s + Math.abs(a.totalAmount), 0);
+    const totalTTC = invoicesTTC - avoirsTTC;
+    const totalPaid = documents.filter(d => !isAvoir(d)).reduce((s, i) => s + invoicePayment(i).paid, 0);
+    const totalReste = totalTTC - totalPaid;
     const totalHT = totalTTC / tvaDivisor;
     const totalTVA = totalTTC - totalHT;
 
-    body.push(['TOTAL', '', this.formatCurrency(totalHT), this.formatCurrency(totalTVA), this.formatCurrency(totalTTC), this.formatCurrency(totalPaid), this.formatCurrency(totalReste), ''] as string[]);
+    // A negative rest means the client is in credit.
+    body.push(['TOTAL', '', this.formatCurrency(totalHT), this.formatCurrency(totalTVA), this.formatCurrency(totalTTC), this.formatCurrency(totalPaid), this.formatCurrency(totalReste), totalReste < 0 ? 'Crédit' : ''] as string[]);
 
     autoTable(doc, {
       startY: y,
@@ -1665,6 +1672,16 @@ export class PdfExportService {
       margin: { left: margin, right: margin },
     });
 
+    return doc;
+  }
+
+  static async exportClientFinancialPdf(
+    clientName: string,
+    documents: Quote[],
+    tvaRate = 20,
+    settings?: CompanySettings | null,
+  ): Promise<void> {
+    const doc = await this.buildClientFinancialPdf(clientName, documents, tvaRate, settings);
     const safeClientName = clientName.replace(/[^a-zA-Z0-9_\-]/g, '_').slice(0, 40);
     doc.save(`Situation_${safeClientName}.pdf`);
   }
