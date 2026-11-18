@@ -12,6 +12,7 @@ vi.mock('../utils/kioskService', () => ({
   KioskService: {
     loadPublic: vi.fn(),
     listPublicProducts: vi.fn(),
+    listPublicBrands: vi.fn(),
     submit: vi.fn(),
     imageUrl: vi.fn(() => null),
   },
@@ -51,6 +52,8 @@ function mockKiosk(overrides: Record<string, unknown> = {}, featured: typeof FEA
       : { products: [DRILL], total: 1, page: 0, page_size: 48 }
   ));
   service.submit.mockResolvedValue({ request_id: 'request-1', request_number: 'KSK-TEST-001' });
+  // An older kiosk function without filtered brands: the kiosk falls back to every brand.
+  service.listPublicBrands.mockRejectedValue(new Error('Invalid action'));
 }
 
 function renderKiosk() {
@@ -162,7 +165,8 @@ describe('KioskPage', () => {
     expect(screen.queryByRole('group', { name: 'Marques' })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Marques' }));
-    fireEvent.click(within(screen.getByRole('group', { name: 'Marques' })).getByRole('button', { name: 'OLIS' }));
+    // A brand with series shows them on its chip.
+    fireEvent.click(within(screen.getByRole('group', { name: 'Marques' })).getByRole('button', { name: 'OLIS 700 · 900' }));
     await waitFor(() => expect(service.listPublicProducts).toHaveBeenLastCalledWith(TOKEN, expect.objectContaining({ brand: 'OLIS' })));
 
     // The same row now shows the brand and its series; no duplicate pills while it is open.
@@ -179,6 +183,24 @@ describe('KioskPage', () => {
     fireEvent.click(within(screen.getByRole('group', { name: 'Marques' })).getByRole('button', { name: 'Stocky' }));
     await waitFor(() => expect(service.listPublicProducts).toHaveBeenLastCalledWith(TOKEN, expect.objectContaining({ brand: 'Stocky', series: null })));
     expect(screen.queryByRole('group', { name: 'Série' })).not.toBeInTheDocument();
+  });
+
+  it('offers only the brands that have products for the chosen filters', async () => {
+    mockKiosk({}, [], [], { OLIS: ['700'], Stocky: [], ATA: ['600'] });
+    service.listPublicBrands.mockImplementation(async (_token, options = {}) => (
+      options.category === 'decoration'
+        ? { brands: ['Stocky'], brand_series: {} }
+        : { brands: ['ATA', 'OLIS', 'Stocky'], brand_series: { ATA: ['600'], OLIS: ['700'] } }
+    ));
+    renderKiosk();
+    fireEvent.click(await screen.findByRole('button', { name: /Commencer/i }));
+    expect(await screen.findByText('Perceuse de test')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Marques' }));
+    await waitFor(() => expect(within(screen.getByRole('group', { name: 'Marques' })).getAllByRole('button').map(b => b.textContent)).toEqual(['ATA600', 'OLIS700', 'Stocky']));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Décoration' }));
+    await waitFor(() => expect(service.listPublicBrands).toHaveBeenLastCalledWith(TOKEN, expect.objectContaining({ category: 'decoration' })));
+    await waitFor(() => expect(within(screen.getByRole('group', { name: 'Marques' })).getAllByRole('button').map(b => b.textContent)).toEqual(['Stocky']));
   });
 
   it('filters the full Stocky product list by kiosk type, brand, and availability', async () => {

@@ -236,6 +236,22 @@ export class KioskService {
     return invoke({ action: 'public_profile', token });
   }
 
+  /** Brands (and their series) that still have products for these filters. */
+  static async listPublicBrands(token: string, options: {
+    search?: string;
+    category?: KioskCategory | null;
+    onlyAvailable?: boolean;
+    featuredOnly?: boolean;
+    sector?: string | null;
+  } = {}): Promise<{ brands: string[]; brand_series: Record<string, string[]> }> {
+    return invoke({
+      action: 'public_brands', token,
+      search: options.search || '', category: options.category || null,
+      only_available: options.onlyAvailable === true, featured_only: options.featuredOnly === true,
+      sector: options.sector || null,
+    });
+  }
+
   static async listPublicProducts(token: string, options: {
     search?: string;
     category?: KioskCategory | null;
