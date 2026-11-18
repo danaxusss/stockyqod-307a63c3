@@ -1,9 +1,12 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { Landmark, Loader, FileCheck } from 'lucide-react';
+import { Landmark, Loader, FileCheck, AlertTriangle, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
 import type { FiscalYear, Journal, JournalEntryLine } from '../../types';
 import { AccountingService } from '../../utils/supabaseAccounting';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
+import { PageHeader, Panel } from '../../components/PageHeader';
+import { StatusPill } from '../../components/lists/StatusPill';
+import { btnPrimary, field, fieldLabel, KpiTile, LoadingState, panel, PhoneActionBar } from '../../components/backoffice/BackOfficeUi';
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const day = (y: number, m: number, d: number) => `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
@@ -116,87 +119,94 @@ export default function TvaPage() {
     } finally { setBusy(false); }
   };
 
-  if (loading) return <div className="flex items-center justify-center py-24 text-muted-foreground"><Loader className="h-5 w-5 animate-spin mr-2" />Chargement…</div>;
+  if (loading) return <LoadingState />;
 
   const kpis = [
-    { label: 'TVA facturée', value: fmtMad(calc.facturee), tone: 'text-blue-600 dark:text-blue-400' },
-    { label: 'TVA récupérable', value: fmtMad(calc.recup), tone: 'text-emerald-600 dark:text-emerald-400' },
+    { label: 'TVA facturée', value: fmtMad(calc.facturee), tone: 'text-blue-600 dark:text-blue-400 bg-blue-500/10', icon: ArrowUpRight },
+    { label: 'TVA récupérable', value: fmtMad(calc.recup), tone: 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10', icon: ArrowDownLeft },
     calc.due > 0
-      ? { label: 'TVA due', value: fmtMad(calc.due), tone: 'text-amber-600 dark:text-amber-400' }
-      : { label: 'Crédit de TVA', value: fmtMad(calc.credit), tone: 'text-primary' },
+      ? { label: 'TVA due', value: fmtMad(calc.due), tone: 'text-amber-600 dark:text-amber-400 bg-amber-500/10', icon: Landmark }
+      : { label: 'Crédit de TVA', value: fmtMad(calc.credit), tone: 'text-primary bg-primary/10', icon: Landmark },
   ];
 
+  const generateButton = (
+    <button onClick={generate} disabled={busy} className={btnPrimary}>
+      {busy ? <Loader className="h-4 w-4 animate-spin" /> : <FileCheck className="h-4 w-4" />}
+      {existing ? 'Régénérer la déclaration' : 'Générer la déclaration & l\'écriture'}
+    </button>
+  );
+  const detailRow = 'flex items-baseline justify-between gap-4 px-4 py-2.5 sm:px-5';
+
   return (
-    <div className="max-w-[110rem] mx-auto py-6 px-3">
-      <div className="flex items-center gap-2 mb-4">
-        <div className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-primary/10"><Landmark className="h-5 w-5 text-primary" /></div>
-        <div>
-          <h1 className="text-lg font-bold text-foreground leading-tight">Déclaration de TVA</h1>
-          <p className="text-xs text-muted-foreground">Exercice {fy?.label} · base comptable</p>
+    <div className="mx-auto max-w-[110rem]">
+      <PageHeader
+        title="Déclaration de TVA"
+        subtitle={`Exercice ${fy?.label ?? ''} · base comptable`}
+        actions={<span className="hidden md:inline-flex">{generateButton}</span>}
+      >
+        <div className={`${panel} grid grid-cols-2 items-end gap-3 p-3 sm:flex sm:flex-wrap`}>
+          <div className="sm:w-44">
+            <label className={fieldLabel} htmlFor="tva-periodicite">Périodicité</label>
+            <select id="tva-periodicite" value={periodType} onChange={e => setPeriodType(e.target.value as 'M' | 'T')} className={field}>
+              <option value="M">Mensuelle</option>
+              <option value="T">Trimestrielle</option>
+            </select>
+          </div>
+          {periodType === 'M' ? (
+            <div className="sm:w-44"><label className={fieldLabel} htmlFor="tva-mois">Mois</label>
+              <select id="tva-mois" value={month} onChange={e => setMonth(Number(e.target.value))} className={field}>
+                {MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
+              </select></div>
+          ) : (
+            <div className="sm:w-44"><label className={fieldLabel} htmlFor="tva-trimestre">Trimestre</label>
+              <select id="tva-trimestre" value={quarter} onChange={e => setQuarter(Number(e.target.value))} className={field}>
+                {[0, 1, 2, 3].map(q => <option key={q} value={q}>T{q + 1}</option>)}
+              </select></div>
+          )}
+          <div className="sm:w-44"><label className={fieldLabel} htmlFor="tva-regime">Régime</label>
+            <select id="tva-regime" value={regime} onChange={e => setRegime(e.target.value as any)} className={field}>
+              <option value="encaissement">Encaissement</option>
+              <option value="debit">Débit</option>
+            </select>
+          </div>
+          <div className="flex min-h-10 items-center gap-2 text-sm text-muted-foreground sm:ml-auto">
+            <span className="font-medium text-foreground">{range.human}</span>
+            {existing && <StatusPill tone="info">déjà déclarée</StatusPill>}
+          </div>
         </div>
-      </div>
+      </PageHeader>
 
-      <div className="bg-card border border-border/60 rounded-xl p-4 mb-4 flex flex-wrap items-end gap-3">
-        <div>
-          <label className="block text-[11px] text-muted-foreground mb-1">Périodicité</label>
-          <select value={periodType} onChange={e => setPeriodType(e.target.value as 'M' | 'T')} className="px-3 py-2 text-sm rounded-lg bg-secondary border border-border">
-            <option value="M">Mensuelle</option>
-            <option value="T">Trimestrielle</option>
-          </select>
-        </div>
-        {periodType === 'M' ? (
-          <div><label className="block text-[11px] text-muted-foreground mb-1">Mois</label>
-            <select value={month} onChange={e => setMonth(Number(e.target.value))} className="px-3 py-2 text-sm rounded-lg bg-secondary border border-border">
-              {MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
-            </select></div>
-        ) : (
-          <div><label className="block text-[11px] text-muted-foreground mb-1">Trimestre</label>
-            <select value={quarter} onChange={e => setQuarter(Number(e.target.value))} className="px-3 py-2 text-sm rounded-lg bg-secondary border border-border">
-              {[0, 1, 2, 3].map(q => <option key={q} value={q}>T{q + 1}</option>)}
-            </select></div>
-        )}
-        <div><label className="block text-[11px] text-muted-foreground mb-1">Régime</label>
-          <select value={regime} onChange={e => setRegime(e.target.value as any)} className="px-3 py-2 text-sm rounded-lg bg-secondary border border-border">
-            <option value="encaissement">Encaissement</option>
-            <option value="debit">Débit</option>
-          </select>
-        </div>
-        <div className="ml-auto text-xs text-muted-foreground self-center">{range.human}{existing ? ' · déjà déclarée' : ''}</div>
-      </div>
-
-      <div className="grid grid-cols-3 gap-3 mb-4">
+      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-3">
         {kpis.map((k, i) => (
-          <div key={i} className="bg-card border border-border/60 rounded-xl p-3">
-            <div className={`text-base font-bold tabular-nums ${k.tone}`}>{k.value}</div>
-            <div className="text-[11px] text-muted-foreground">{k.label}</div>
+          <div key={k.label} className={i === 2 ? 'col-span-2 lg:col-span-1' : ''}>
+            <KpiTile icon={k.icon} tone={k.tone} label={k.label} value={k.value} />
           </div>
         ))}
       </div>
 
-      <div className="bg-card border border-border/60 rounded-xl p-4 mb-4 text-sm">
-        <div className="flex justify-between py-1"><span className="text-muted-foreground">TVA facturée (comptes 4455…)</span><span className="tabular-nums">{fmtMad(calc.facturee)}</span></div>
-        <div className="flex justify-between py-1"><span className="text-muted-foreground">TVA récupérable / immobilisations (34551)</span><span className="tabular-nums">{fmtMad(calc.recupBiens)}</span></div>
-        <div className="flex justify-between py-1"><span className="text-muted-foreground">TVA récupérable / charges (34552…)</span><span className="tabular-nums">{fmtMad(calc.recupCharges)}</span></div>
-        {calc.carried > 0 && (
-          <div className="flex justify-between py-1"><span className="text-muted-foreground">Crédit de TVA des périodes précédentes (4456)</span><span className="tabular-nums">− {fmtMad(calc.carried)}</span></div>
-        )}
-        <div className="flex justify-between py-2 border-t border-border/60 mt-1 font-semibold">
-          <span>{calc.due > 0 ? 'TVA à payer' : 'Crédit de TVA reportable'}</span>
-          <span className="tabular-nums">{fmtMad(calc.due > 0 ? calc.due : calc.credit)}</span>
+      <Panel title={`Détail · ${range.human}`} className="mb-4">
+        <div className="divide-y divide-border text-sm">
+          <div className={detailRow}><span className="text-muted-foreground">TVA facturée (comptes 4455…)</span><span className="whitespace-nowrap tabular-nums text-foreground">{fmtMad(calc.facturee)}</span></div>
+          <div className={detailRow}><span className="text-muted-foreground">TVA récupérable / immobilisations (34551)</span><span className="whitespace-nowrap tabular-nums text-foreground">{fmtMad(calc.recupBiens)}</span></div>
+          <div className={detailRow}><span className="text-muted-foreground">TVA récupérable / charges (34552…)</span><span className="whitespace-nowrap tabular-nums text-foreground">{fmtMad(calc.recupCharges)}</span></div>
+          {calc.carried > 0 && (
+            <div className={detailRow}><span className="text-muted-foreground">Crédit de TVA des périodes précédentes (4456)</span><span className="whitespace-nowrap tabular-nums text-foreground">− {fmtMad(calc.carried)}</span></div>
+          )}
+          <div className={`${detailRow} bg-secondary/40 py-3 font-semibold text-foreground`}>
+            <span>{calc.due > 0 ? 'TVA à payer' : 'Crédit de TVA reportable'}</span>
+            <span className="whitespace-nowrap text-base tabular-nums">{fmtMad(calc.due > 0 ? calc.due : calc.credit)}</span>
+          </div>
         </div>
-      </div>
+      </Panel>
 
       {regime === 'encaissement' && (
-        <p className="text-[11px] text-muted-foreground mb-3">
-          ⚠ Calcul sur base comptable (timing débit). En régime encaissement, la TVA facturée est exigible à l'encaissement — ajustez manuellement les factures non encaissées si nécessaire.
+        <p className="mb-3 flex gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-800 dark:text-amber-200">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          <span>Calcul sur base comptable (timing débit). En régime encaissement, la TVA facturée est exigible à l'encaissement — ajustez manuellement les factures non encaissées si nécessaire.</span>
         </p>
       )}
 
-      <button onClick={generate} disabled={busy}
-        className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50">
-        {busy ? <Loader className="h-4 w-4 animate-spin" /> : <FileCheck className="h-4 w-4" />}
-        {existing ? 'Régénérer la déclaration' : 'Générer la déclaration & l\'écriture'}
-      </button>
+      <PhoneActionBar>{generateButton}</PhoneActionBar>
     </div>
   );
 }

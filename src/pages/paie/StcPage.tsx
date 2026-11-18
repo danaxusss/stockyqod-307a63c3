@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { FileMinus, Loader, Printer } from 'lucide-react';
+import { FileMinus, Printer } from 'lucide-react';
 import { SupabaseEmployeesService } from '../../utils/supabaseEmployees';
 import { LeaveService } from '../../utils/supabasePayrollHr';
 import { PayrollSettingsService } from '../../utils/supabasePayrollSettings';
@@ -9,6 +9,8 @@ import type { PayrollSettings } from '../../utils/payrollDefaults';
 import { localDay } from '../../utils/documentLines';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
+import { PageHeader } from '../../components/PageHeader';
+import { btnSecondary, EmptyState, field, fieldLabel, LoadingState, panel } from '../../components/backoffice/BackOfficeUi';
 
 function fmt(n: number) { return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(n); }
 
@@ -98,45 +100,49 @@ export default function StcPage() {
     return { monthly, daily: Math.round(daily * 100) / 100, indemnite, preavis, conges, brut, retenues, total };
   }, [emp, motif, years, preavisMonths, congesNonPris, settings]);
 
-  if (!isPaie && !isSuperAdmin) return <div className="text-center py-12 text-muted-foreground">Accès réservé au rôle Paie.</div>;
-  if (loading) return <div className="flex items-center justify-center py-24 text-muted-foreground"><Loader className="h-5 w-5 animate-spin mr-2" />Chargement…</div>;
+  if (!isPaie && !isSuperAdmin) return <div className="py-12 text-center text-muted-foreground">Accès réservé au rôle Paie.</div>;
+  if (loading) return <LoadingState />;
 
   return (
-    <div className="max-w-[110rem] mx-auto py-6 px-3">
-      <div className="flex items-center justify-between mb-4 print:hidden">
-        <div className="flex items-center gap-2">
-          <div className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-primary/10"><FileMinus className="h-5 w-5 text-primary" /></div>
-          <div><h1 className="text-lg font-bold text-foreground leading-tight">Solde de tout compte</h1><p className="text-xs text-muted-foreground">Indemnités de fin de contrat</p></div>
-        </div>
-        {calc && <button onClick={() => window.print()} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-secondary border border-border text-sm"><Printer className="h-3.5 w-3.5" /> Imprimer</button>}
+    <div className="mx-auto max-w-[110rem]">
+      <div className="print:hidden">
+        <PageHeader
+          title="Solde de tout compte"
+          subtitle="Indemnités de fin de contrat"
+          actions={calc && <button onClick={() => window.print()} className={btnSecondary}><Printer className="h-4 w-4" /> Imprimer</button>}
+        />
       </div>
 
-      <div className="bg-card border border-border/60 rounded-xl p-4 mb-4 grid grid-cols-2 sm:grid-cols-4 gap-2 items-end print:hidden">
-        <div className="col-span-2 sm:col-span-1"><label className="block text-[11px] text-muted-foreground mb-1">Employé</label>
-          <select value={employeeId} onChange={e => setEmployeeId(e.target.value)} className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border"><option value="">—</option>{employees.map(e => <option key={e.id} value={e.id}>{e.full_name}</option>)}</select></div>
-        <div><label className="block text-[11px] text-muted-foreground mb-1">Motif</label>
-          <select value={motif} onChange={e => setMotif(e.target.value)} className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border"><option value="licenciement">Licenciement</option><option value="demission">Démission</option><option value="fin_cdd">Fin de CDD</option></select></div>
-        <div><label className="block text-[11px] text-muted-foreground mb-1">Date de sortie</label><input type="date" value={sortieDate} onChange={e => setSortieDate(e.target.value)} className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border" /></div>
-        <div><label className="block text-[11px] text-muted-foreground mb-1">Préavis (mois)</label><input type="number" value={preavisMonths} onChange={e => setPreavisMonths(e.target.value)} className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border" /></div>
-        <div><label className="block text-[11px] text-muted-foreground mb-1">Congés non pris (jours)</label><input type="number" value={congesNonPris} onChange={e => setCongesNonPris(e.target.value)} className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border" /></div>
+      <div className={`${panel} mb-4 grid grid-cols-2 items-end gap-3 p-4 sm:grid-cols-3 lg:grid-cols-5 print:hidden`}>
+        <div className="col-span-2 sm:col-span-1"><label className={fieldLabel} htmlFor="stc-employee">Employé</label>
+          <select id="stc-employee" value={employeeId} onChange={e => setEmployeeId(e.target.value)} className={field}><option value="">—</option>{employees.map(e => <option key={e.id} value={e.id}>{e.full_name}</option>)}</select></div>
+        <div className="col-span-2 sm:col-span-1"><label className={fieldLabel} htmlFor="stc-motif">Motif</label>
+          <select id="stc-motif" value={motif} onChange={e => setMotif(e.target.value)} className={field}><option value="licenciement">Licenciement</option><option value="demission">Démission</option><option value="fin_cdd">Fin de CDD</option></select></div>
+        <div className="col-span-2 sm:col-span-1"><label className={fieldLabel} htmlFor="stc-sortie">Date de sortie</label><input id="stc-sortie" type="date" value={sortieDate} onChange={e => setSortieDate(e.target.value)} className={field} /></div>
+        <div><label className={fieldLabel} htmlFor="stc-preavis">Préavis (mois)</label><input id="stc-preavis" type="number" value={preavisMonths} onChange={e => setPreavisMonths(e.target.value)} className={`${field} tabular-nums`} /></div>
+        <div><label className={fieldLabel} htmlFor="stc-conges">Congés non pris (jours)</label><input id="stc-conges" type="number" value={congesNonPris} onChange={e => setCongesNonPris(e.target.value)} className={`${field} tabular-nums`} /></div>
       </div>
 
-      {calc && emp && (
-        <div id="print-area" className="bg-card border border-border/60 rounded-xl p-5">
-          <div className="text-center mb-4">
-            <h2 className="text-base font-bold text-foreground">Reçu pour solde de tout compte</h2>
-            <p className="text-sm text-muted-foreground">{emp.full_name} · ancienneté {years.toFixed(2)} ans · sortie {new Date(sortieDate).toLocaleDateString('fr-FR')}</p>
+      {calc && emp ? (
+        <div id="print-area" className={`${panel} mx-auto max-w-2xl p-5 sm:p-8`}>
+          <div className="mb-5 text-center">
+            <h2 className="text-lg font-bold text-foreground">Reçu pour solde de tout compte</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{emp.full_name} · ancienneté {years.toFixed(2)} ans · sortie {new Date(sortieDate).toLocaleDateString('fr-FR')}</p>
           </div>
-          <div className="text-sm max-w-md mx-auto">
+          <div className="divide-y divide-border text-sm">
             <Row label="Salaire mensuel de référence" value={calc.monthly} />
             {motif === 'licenciement' && <Row label={`Indemnité de licenciement (${years.toFixed(1)} ans)`} value={calc.indemnite} />}
             {calc.preavis > 0 && <Row label={`Indemnité compensatrice de préavis (${preavisMonths} mois)`} value={calc.preavis} />}
             <Row label={`Congés payés non pris (${congesNonPris} j)`} value={calc.conges} />
-            <div className="flex justify-between py-1 border-t border-border mt-1 font-semibold"><span>Total brut</span><span className="tabular-nums">{fmt(calc.brut)}</span></div>
+            <div className="flex justify-between gap-4 py-2.5 font-semibold text-foreground"><span>Total brut</span><span className="tabular-nums">{fmt(calc.brut)}</span></div>
             {calc.retenues > 0 && <Row label="Retenues CNSS, AMO, IR (estimation)" value={-calc.retenues} />}
-            <div className="flex justify-between py-2 border-t-2 border-border mt-1 font-bold text-base"><span>Net à percevoir</span><span className="tabular-nums">{fmt(calc.total)} MAD</span></div>
+            <div className="-mx-5 mt-1 flex justify-between gap-4 bg-secondary/40 px-5 py-3 text-base font-bold text-foreground sm:-mx-8 sm:px-8"><span>Net à percevoir</span><span className="tabular-nums">{fmt(calc.total)} MAD</span></div>
           </div>
-          <p className="text-[11px] text-muted-foreground mt-4 text-center print:mt-16">Barème indicatif (art. 52-53 Code du travail) — à faire valider par votre conseil.</p>
+          <p className="mt-4 text-center text-xs text-muted-foreground print:mt-16">Barème indicatif (art. 52-53 Code du travail) — à faire valider par votre conseil.</p>
+        </div>
+      ) : (
+        <div className={`${panel} print:hidden`}>
+          <EmptyState icon={FileMinus} title="Choisissez un employé pour calculer son solde de tout compte." />
         </div>
       )}
     </div>
@@ -144,5 +150,5 @@ export default function StcPage() {
 }
 
 function Row({ label, value }: { label: string; value: number }) {
-  return <div className="flex justify-between py-1"><span className="text-muted-foreground">{label}</span><span className="tabular-nums">{fmt(value)}</span></div>;
+  return <div className="flex justify-between gap-4 py-2.5"><span className="text-muted-foreground">{label}</span><span className="whitespace-nowrap tabular-nums text-foreground">{fmt(value)}</span></div>;
 }

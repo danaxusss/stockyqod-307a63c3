@@ -1,11 +1,13 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { FileCheck2, Loader, Printer } from 'lucide-react';
+import { FileCheck2, Printer } from 'lucide-react';
 import { SupabaseEmployeesService } from '../../utils/supabaseEmployees';
 import { CompanySettingsService, type CompanySettings } from '../../utils/companySettings';
 import { getCompanyContext } from '../../utils/supabaseCompanyFilter';
 import type { Employee } from '../../types';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
+import { PageHeader } from '../../components/PageHeader';
+import { btnPrimary, EmptyState, field, fieldLabel, LoadingState, panel } from '../../components/backoffice/BackOfficeUi';
 
 function fmt(n: number) { return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(n); }
 const today = () => new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -43,30 +45,36 @@ export default function AttestationsPage() {
   const genre = emp?.gender === 'F' ? 'Madame' : 'Monsieur';
   const hire = emp?.hire_date ? new Date(emp.hire_date).toLocaleDateString('fr-FR') : '…';
 
-  if (!isPaie && !isSuperAdmin) return <div className="text-center py-12 text-muted-foreground">Accès réservé au rôle Paie.</div>;
-  if (loading) return <div className="flex items-center justify-center py-24 text-muted-foreground"><Loader className="h-5 w-5 animate-spin mr-2" />Chargement…</div>;
+  if (!isPaie && !isSuperAdmin) return <div className="py-12 text-center text-muted-foreground">Accès réservé au rôle Paie.</div>;
+  if (loading) return <LoadingState />;
 
   const title = docType === 'salaire' ? 'ATTESTATION DE SALAIRE' : docType === 'travail' ? 'ATTESTATION DE TRAVAIL' : 'CERTIFICAT DE TRAVAIL';
 
   return (
-    <div className="max-w-[110rem] mx-auto py-6 px-3">
-      <div className="flex items-center justify-between mb-4 print:hidden">
-        <div className="flex items-center gap-2">
-          <div className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-primary/10"><FileCheck2 className="h-5 w-5 text-primary" /></div>
-          <div><h1 className="text-lg font-bold text-foreground leading-tight">Attestations</h1><p className="text-xs text-muted-foreground">Documents RH imprimables</p></div>
-        </div>
-        {emp && <button onClick={() => window.print()} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-secondary border border-border text-sm"><Printer className="h-3.5 w-3.5" /> Imprimer</button>}
+    <div className="mx-auto max-w-[110rem]">
+      <div className="print:hidden">
+        <PageHeader
+          title="Attestations"
+          subtitle="Documents RH imprimables"
+          actions={emp && <button onClick={() => window.print()} className={btnPrimary}><Printer className="h-4 w-4" /> Imprimer</button>}
+        />
       </div>
 
-      <div className="bg-card border border-border/60 rounded-xl p-4 mb-4 flex items-end gap-2 flex-wrap print:hidden">
-        <div className="flex-1 min-w-[180px]"><label className="block text-[11px] text-muted-foreground mb-1">Employé</label>
-          <select value={employeeId} onChange={e => setEmployeeId(e.target.value)} className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border"><option value="">—</option>{employees.map(e => <option key={e.id} value={e.id}>{e.full_name}</option>)}</select></div>
-        <div><label className="block text-[11px] text-muted-foreground mb-1">Type</label>
-          <select value={docType} onChange={e => setDocType(e.target.value as DocType)} className="px-2 py-1.5 text-sm rounded bg-secondary border border-border"><option value="travail">Attestation de travail</option><option value="salaire">Attestation de salaire</option><option value="certificat">Certificat de travail</option></select></div>
+      <div className={`${panel} mb-4 grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] print:hidden`}>
+        <div><label className={fieldLabel} htmlFor="att-employee">Employé</label>
+          <select id="att-employee" value={employeeId} onChange={e => setEmployeeId(e.target.value)} className={field}><option value="">—</option>{employees.map(e => <option key={e.id} value={e.id}>{e.full_name}</option>)}</select></div>
+        <div><label className={fieldLabel} htmlFor="att-type">Type</label>
+          <select id="att-type" value={docType} onChange={e => setDocType(e.target.value as DocType)} className={field}><option value="travail">Attestation de travail</option><option value="salaire">Attestation de salaire</option><option value="certificat">Certificat de travail</option></select></div>
       </div>
+
+      {!emp && (
+        <div className={`${panel} print:hidden`}>
+          <EmptyState icon={FileCheck2} title="Choisissez un employé pour préparer le document." />
+        </div>
+      )}
 
       {emp && (
-        <div id="print-area" className="bg-white text-black rounded-xl p-8 shadow print:shadow-none print:p-0 leading-relaxed" style={{ minHeight: 400 }}>
+        <div id="print-area" className="mx-auto max-w-3xl rounded-xl border border-border bg-white p-6 leading-relaxed text-black shadow-sm sm:p-10 print:max-w-none print:border-0 print:p-0 print:shadow-none" style={{ minHeight: 400 }}>
           <div className="flex justify-between items-start mb-8">
             <div>
               <div className="font-bold text-lg">{company}</div>

@@ -1,8 +1,11 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { FileText, Plus, Loader, Sparkles, Trash2, Check, X } from 'lucide-react';
+import { FileText, Plus, Sparkles, Trash2, Check, X } from 'lucide-react';
 import { RubriquesService, type Rubrique } from '../../utils/supabaseRubriques';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
+import { PageHeader } from '../../components/PageHeader';
+import { StatusPill } from '../../components/lists/StatusPill';
+import { btnPrimary, btnSecondary, checkbox, EmptyState, field, fieldLabel, iconBtnDanger, LoadingState, panel, td, th, theadRow } from '../../components/backoffice/BackOfficeUi';
 
 const BASE_LABELS: Record<string, string> = { fixe: 'Fixe', pourcentage_base: '% du base', heures: 'Heures', formule: 'Formule' };
 
@@ -41,70 +44,95 @@ export default function RubriquesPage() {
     finally { setBusy(false); }
   };
 
-  if (!isPaie && !isSuperAdmin) return <div className="text-center py-12 text-muted-foreground">Accès réservé au rôle Paie.</div>;
+  if (!isPaie && !isSuperAdmin) return <div className="py-12 text-center text-muted-foreground">Accès réservé au rôle Paie.</div>;
+
+  const typePill = (r: Rubrique) => r.type === 'gain' ? <StatusPill tone="success">Gain</StatusPill> : <StatusPill tone="danger">Retenue</StatusPill>;
+  const subjects = (r: Rubrique) => [r.soumis_cnss && 'CNSS', r.soumis_ir && 'IR', r.soumis_cimr && 'CIMR', r.inclus_anciennete && 'Anc.'].filter(Boolean).join(' · ') || '—';
+  const deleteButton = (r: Rubrique) => (
+    <button onClick={() => RubriquesService.remove(r.id).then(load)} aria-label={`Supprimer ${r.label}`} title="Supprimer" className={iconBtnDanger}><Trash2 className="h-4 w-4" /></button>
+  );
+  const check = 'flex min-h-9 items-center gap-2 text-sm text-foreground';
 
   return (
-    <div className="max-w-[110rem] mx-auto py-6 px-3">
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-        <div className="flex items-center gap-2">
-          <div className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-primary/10"><FileText className="h-5 w-5 text-primary" /></div>
-          <div>
-            <h1 className="text-lg font-bold text-foreground leading-tight">Rubriques de paie</h1>
-            <p className="text-xs text-muted-foreground">{rubriques.length} rubrique(s)</p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          {rubriques.length === 0 && <button onClick={initDefaults} disabled={busy} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-secondary border border-border text-sm"><Sparkles className="h-4 w-4" /> Rubriques par défaut</button>}
-          <button onClick={() => setAdding(v => !v)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium"><Plus className="h-4 w-4" /> Rubrique</button>
-        </div>
-      </div>
+    <div className="mx-auto max-w-[110rem]">
+      <PageHeader
+        title="Rubriques de paie"
+        subtitle={`${rubriques.length} rubrique(s)`}
+        actions={<>
+          {rubriques.length === 0 && <button onClick={initDefaults} disabled={busy} className={btnSecondary}><Sparkles className="h-4 w-4" /> Rubriques par défaut</button>}
+          <button onClick={() => setAdding(v => !v)} aria-expanded={adding} className={btnPrimary}><Plus className="h-4 w-4" /> Rubrique</button>
+        </>}
+      />
 
       {adding && (
-        <div className="bg-card border border-primary/30 rounded-xl p-3 mb-4 space-y-2">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <div><label className="block text-[11px] text-muted-foreground mb-1">Code</label><input value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value }))} className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border" /></div>
-            <div className="col-span-2"><label className="block text-[11px] text-muted-foreground mb-1">Libellé</label><input value={form.label} onChange={e => setForm(f => ({ ...f, label: e.target.value }))} className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border" /></div>
-            <div><label className="block text-[11px] text-muted-foreground mb-1">Type</label>
-              <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))} className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border"><option value="gain">Gain</option><option value="retenue">Retenue</option></select></div>
+        <section className={`${panel} mb-4 space-y-3 border-primary/40 p-4`}>
+          <h2 className="text-sm font-semibold text-foreground">Nouvelle rubrique</h2>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-[8rem_minmax(0,1fr)_10rem]">
+            <div><label className={fieldLabel} htmlFor="rub-code">Code</label><input id="rub-code" value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value }))} className={`${field} font-mono`} /></div>
+            <div className="col-span-2 row-start-2 sm:col-span-1 sm:row-start-auto"><label className={fieldLabel} htmlFor="rub-label">Libellé</label><input id="rub-label" value={form.label} onChange={e => setForm(f => ({ ...f, label: e.target.value }))} className={field} /></div>
+            <div><label className={fieldLabel} htmlFor="rub-type">Type</label>
+              <select id="rub-type" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))} className={field}><option value="gain">Gain</option><option value="retenue">Retenue</option></select></div>
           </div>
-          <div className="flex flex-wrap gap-3 items-center text-xs">
-            <label className="flex items-center gap-1"><input type="checkbox" checked={form.soumis_cnss} onChange={e => setForm(f => ({ ...f, soumis_cnss: e.target.checked }))} /> Soumis CNSS/AMO</label>
-            <label className="flex items-center gap-1"><input type="checkbox" checked={form.soumis_ir} onChange={e => setForm(f => ({ ...f, soumis_ir: e.target.checked }))} /> Soumis IR</label>
-            <label className="flex items-center gap-1"><input type="checkbox" checked={form.soumis_cimr} onChange={e => setForm(f => ({ ...f, soumis_cimr: e.target.checked }))} /> Soumis CIMR</label>
-            <label className="flex items-center gap-1"><input type="checkbox" checked={form.inclus_anciennete} onChange={e => setForm(f => ({ ...f, inclus_anciennete: e.target.checked }))} /> Inclus ancienneté</label>
-            <div className="ml-auto flex gap-1">
-              <button onClick={save} disabled={busy} className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm disabled:opacity-50">{busy ? '…' : <Check className="h-4 w-4" />}</button>
-              <button onClick={() => setAdding(false)} className="px-2 py-1.5 rounded-lg bg-secondary border border-border"><X className="h-4 w-4" /></button>
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
+            <label className={check}><input type="checkbox" checked={form.soumis_cnss} onChange={e => setForm(f => ({ ...f, soumis_cnss: e.target.checked }))} className={checkbox} /> Soumis CNSS/AMO</label>
+            <label className={check}><input type="checkbox" checked={form.soumis_ir} onChange={e => setForm(f => ({ ...f, soumis_ir: e.target.checked }))} className={checkbox} /> Soumis IR</label>
+            <label className={check}><input type="checkbox" checked={form.soumis_cimr} onChange={e => setForm(f => ({ ...f, soumis_cimr: e.target.checked }))} className={checkbox} /> Soumis CIMR</label>
+            <label className={check}><input type="checkbox" checked={form.inclus_anciennete} onChange={e => setForm(f => ({ ...f, inclus_anciennete: e.target.checked }))} className={checkbox} /> Inclus ancienneté</label>
+            <div className="flex w-full gap-2 sm:ml-auto sm:w-auto">
+              <button onClick={() => setAdding(false)} aria-label="Annuler" className={`${btnSecondary} flex-1`}><X className="h-4 w-4" /><span className="sm:hidden">Annuler</span></button>
+              <button onClick={save} disabled={busy} aria-label="Enregistrer la rubrique" className={`${btnPrimary} flex-1`}>{busy ? '…' : <Check className="h-4 w-4" />}<span className="sm:hidden">Enregistrer</span></button>
             </div>
           </div>
-        </div>
+        </section>
       )}
 
       {loading ? (
-        <div className="flex items-center justify-center py-16 text-muted-foreground"><Loader className="h-5 w-5 animate-spin mr-2" />Chargement…</div>
+        <LoadingState />
       ) : (
-        <div className="bg-card border border-border/60 rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
-            <thead><tr className="bg-secondary/50 text-xs text-muted-foreground border-b border-border/60">
-              <th className="text-left font-medium px-3 py-2">Code</th>
-              <th className="text-left font-medium px-3 py-2">Libellé</th>
-              <th className="text-left font-medium px-3 py-2">Type</th>
-              <th className="text-left font-medium px-3 py-2">Soumis à</th>
-              <th className="w-8"></th>
-            </tr></thead>
-            <tbody>
-              {rubriques.map(r => (
-                <tr key={r.id} className="border-b border-border/40">
-                  <td className="px-3 py-2 font-mono">{r.code}</td>
-                  <td className="px-3 py-2">{r.label}</td>
-                  <td className="px-3 py-2"><span className={`text-[11px] px-1.5 py-0.5 rounded ${r.type === 'gain' ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' : 'bg-red-500/15 text-red-600 dark:text-red-400'}`}>{r.type === 'gain' ? 'Gain' : 'Retenue'}</span></td>
-                  <td className="px-3 py-2 text-[11px] text-muted-foreground">{[r.soumis_cnss && 'CNSS', r.soumis_ir && 'IR', r.soumis_cimr && 'CIMR', r.inclus_anciennete && 'Anc.'].filter(Boolean).join(' · ') || '—'}</td>
-                  <td className="px-2 text-center"><button onClick={() => RubriquesService.remove(r.id).then(load)} className="p-1 text-muted-foreground hover:bg-secondary rounded"><Trash2 className="h-3.5 w-3.5" /></button></td>
-                </tr>
-              ))}
-              {rubriques.length === 0 && <tr><td colSpan={5} className="px-3 py-10 text-center text-muted-foreground">Aucune rubrique — cliquez « Rubriques par défaut »</td></tr>}
-            </tbody>
-          </table>
+        <div className={`${panel} overflow-hidden`}>
+          {rubriques.length === 0 ? (
+            <EmptyState icon={FileText} title="Aucune rubrique — cliquez « Rubriques par défaut »" />
+          ) : (
+            <>
+              <ul className="divide-y divide-border md:hidden">
+                {rubriques.map(r => (
+                  <li key={r.id} className="flex items-start gap-3 px-4 py-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-sm font-semibold text-muted-foreground">{r.code}</span>
+                        {typePill(r)}
+                      </div>
+                      <p className="mt-0.5 truncate font-medium text-foreground">{r.label}</p>
+                      <p className="text-xs text-muted-foreground">Soumis à : {subjects(r)}</p>
+                    </div>
+                    {deleteButton(r)}
+                  </li>
+                ))}
+              </ul>
+              <div className="hidden overflow-x-auto md:block">
+                <table className="w-full text-sm">
+                  <thead><tr className={theadRow}>
+                    <th className={th}>Code</th>
+                    <th className={th}>Libellé</th>
+                    <th className={th}>Type</th>
+                    <th className={th}>Soumis à</th>
+                    <th className={`${th} w-12`}><span className="sr-only">Actions</span></th>
+                  </tr></thead>
+                  <tbody className="divide-y divide-border">
+                    {rubriques.map(r => (
+                      <tr key={r.id} className="hover:bg-secondary/40">
+                        <td className={`${td} font-mono font-semibold text-foreground`}>{r.code}</td>
+                        <td className={`${td} text-foreground`}>{r.label}</td>
+                        <td className={td}>{typePill(r)}</td>
+                        <td className={`${td} text-xs text-muted-foreground`}>{subjects(r)}</td>
+                        <td className={`${td} py-1.5 text-center`}>{deleteButton(r)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { CalendarDays, Plus, Loader, Check, X, Trash2 } from 'lucide-react';
+import { CalendarDays, Plus, Check, X, Trash2 } from 'lucide-react';
 import { LeaveService, type LeaveRequest } from '../../utils/supabasePayrollHr';
 import { SupabaseEmployeesService } from '../../utils/supabaseEmployees';
 import { PayrollSettingsService } from '../../utils/supabasePayrollSettings';
@@ -7,6 +7,9 @@ import { leaveWorkingDays } from '../../utils/payrollCalc';
 import type { Employee } from '../../types';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
+import { PageHeader, Panel } from '../../components/PageHeader';
+import { StatusPill } from '../../components/lists/StatusPill';
+import { btnPrimary, EmptyState, field, fieldLabel, iconBtnDanger, LoadingState, panel } from '../../components/backoffice/BackOfficeUi';
 
 const TYPE_LABELS: Record<string, string> = { paye: 'Congé payé', maladie: 'Maladie', sans_solde: 'Sans solde', exceptionnel: 'Exceptionnel', autre: 'Autre' };
 
@@ -58,71 +61,77 @@ export default function CongesPage() {
     catch (e: any) { showToast({ type: 'error', message: e?.message || 'Échec' }); }
   };
 
-  if (!isPaie && !isSuperAdmin) return <div className="text-center py-12 text-muted-foreground">Accès réservé au rôle Paie.</div>;
-  if (loading) return <div className="flex items-center justify-center py-24 text-muted-foreground"><Loader className="h-5 w-5 animate-spin mr-2" />Chargement…</div>;
+  if (!isPaie && !isSuperAdmin) return <div className="py-12 text-center text-muted-foreground">Accès réservé au rôle Paie.</div>;
+  if (loading) return <LoadingState />;
 
   return (
-    <div className="max-w-[110rem] mx-auto py-6 px-3">
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-        <div className="flex items-center gap-2">
-          <div className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-primary/10"><CalendarDays className="h-5 w-5 text-primary" /></div>
-          <div><h1 className="text-lg font-bold text-foreground leading-tight">Congés</h1><p className="text-xs text-muted-foreground">{daysPerMonth} j acquis / mois</p></div>
-        </div>
-        <button onClick={() => setAdding(v => !v)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium"><Plus className="h-4 w-4" /> Demande</button>
-      </div>
+    <div className="mx-auto max-w-[110rem]">
+      <PageHeader
+        title="Congés"
+        subtitle={`${daysPerMonth} j acquis / mois`}
+        actions={<button onClick={() => setAdding(v => !v)} aria-expanded={adding} className={btnPrimary}><Plus className="h-4 w-4" /> Demande</button>}
+      />
 
       {adding && (
-        <div className="bg-card border border-primary/30 rounded-xl p-3 mb-4 grid grid-cols-2 sm:grid-cols-5 gap-2 items-end">
-          <div className="col-span-2 sm:col-span-1"><label className="block text-[11px] text-muted-foreground mb-1">Employé</label>
-            <select value={form.employee_id} onChange={e => setForm(f => ({ ...f, employee_id: e.target.value }))} className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border"><option value="">—</option>{employees.map(e => <option key={e.id} value={e.id}>{e.full_name}</option>)}</select></div>
-          <div><label className="block text-[11px] text-muted-foreground mb-1">Type</label>
-            <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))} className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border">{Object.entries(TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></div>
-          <div><label className="block text-[11px] text-muted-foreground mb-1">Du</label><input type="date" value={form.start_date} onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))} className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border" /></div>
-          <div><label className="block text-[11px] text-muted-foreground mb-1">Au</label><input type="date" value={form.end_date} onChange={e => setForm(f => ({ ...f, end_date: e.target.value }))} className="w-full px-2 py-1.5 text-sm rounded bg-secondary border border-border" /></div>
-          <button onClick={submit} className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm"><Check className="h-4 w-4 mx-auto" /></button>
-        </div>
+        <section className={`${panel} mb-4 border-primary/40 p-4`}>
+          <h2 className="mb-3 text-sm font-semibold text-foreground">Nouvelle demande</h2>
+          <div className="grid grid-cols-2 items-end gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
+            <div className="col-span-2 sm:col-span-1"><label className={fieldLabel} htmlFor="lv-employee">Employé</label>
+              <select id="lv-employee" value={form.employee_id} onChange={e => setForm(f => ({ ...f, employee_id: e.target.value }))} className={field}><option value="">—</option>{employees.map(e => <option key={e.id} value={e.id}>{e.full_name}</option>)}</select></div>
+            <div className="col-span-2 sm:col-span-1"><label className={fieldLabel} htmlFor="lv-type">Type</label>
+              <select id="lv-type" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))} className={field}>{Object.entries(TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></div>
+            <div><label className={fieldLabel} htmlFor="lv-start">Du</label><input id="lv-start" type="date" value={form.start_date} onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))} className={field} /></div>
+            <div><label className={fieldLabel} htmlFor="lv-end">Au</label><input id="lv-end" type="date" value={form.end_date} onChange={e => setForm(f => ({ ...f, end_date: e.target.value }))} className={field} /></div>
+            <button onClick={submit} aria-label="Enregistrer la demande" className={`${btnPrimary} col-span-2 sm:col-span-1`}><Check className="h-4 w-4" /><span className="sm:hidden">Enregistrer</span></button>
+          </div>
+        </section>
       )}
 
-      {/* Soldes */}
-      <div className="bg-card border border-border/60 rounded-xl overflow-hidden mb-4">
-        <div className="px-3 py-2 bg-secondary/50 border-b border-border/60 text-sm font-semibold">Soldes congés payés {new Date().getFullYear()}</div>
-        <table className="w-full text-sm">
-          <tbody>
-            {soldes.map(s => (
-              <tr key={s.employee.id} className="border-b border-border/40 last:border-0">
-                <td className="px-3 py-2">{s.employee.full_name}</td>
-                <td className="px-3 py-2 text-right text-xs text-muted-foreground">Acquis {s.acquired} j · Pris {s.taken} j</td>
-                <td className="px-3 py-2 text-right font-semibold tabular-nums w-24">{s.solde} j</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+        {/* Soldes */}
+        <Panel title={`Soldes congés payés ${new Date().getFullYear()}`}>
+          {soldes.length === 0 ? <EmptyState title="Aucun employé actif" /> : (
+            <ul className="divide-y divide-border">
+              {soldes.map(s => (
+                <li key={s.employee.id} className="flex items-center gap-3 px-4 py-3 sm:px-5">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-foreground">{s.employee.full_name}</span>
+                    <span className="block text-xs text-muted-foreground">Acquis {s.acquired} j · Pris {s.taken} j</span>
+                  </span>
+                  <span className="shrink-0 rounded-lg bg-secondary px-2.5 py-1 text-sm font-semibold tabular-nums text-foreground">{s.solde} j</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
 
-      {/* Requests */}
-      <div className="bg-card border border-border/60 rounded-xl overflow-hidden">
-        <div className="px-3 py-2 bg-secondary/50 border-b border-border/60 text-sm font-semibold">Demandes</div>
-        <table className="w-full text-sm">
-          <tbody>
-            {requests.map(r => (
-              <tr key={r.id} className="border-b border-border/40 last:border-0">
-                <td className="px-3 py-2">{(r.employee as any)?.full_name || '—'}</td>
-                <td className="px-3 py-2 text-xs">{TYPE_LABELS[r.type]}</td>
-                <td className="px-3 py-2 text-xs text-muted-foreground">{new Date(r.start_date).toLocaleDateString('fr-FR')} → {new Date(r.end_date).toLocaleDateString('fr-FR')} · {r.days} j</td>
-                <td className="px-3 py-2 text-right">
-                  {r.status === 'pending' ? (
-                    <div className="flex gap-1 justify-end">
-                      <button onClick={() => setStatus(r.id, 'approved')} className="p-1 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"><Check className="h-3.5 w-3.5" /></button>
-                      <button onClick={() => setStatus(r.id, 'rejected')} className="p-1 rounded bg-red-500/15 text-red-600 dark:text-red-400"><X className="h-3.5 w-3.5" /></button>
-                    </div>
-                  ) : <span className={`text-[11px] font-semibold ${r.status === 'approved' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>{r.status === 'approved' ? 'Approuvé' : 'Refusé'}</span>}
-                </td>
-                <td className="px-2 text-center"><button onClick={() => LeaveService.remove(r.id).then(load)} className="p-1 text-muted-foreground hover:bg-secondary rounded"><Trash2 className="h-3.5 w-3.5" /></button></td>
-              </tr>
-            ))}
-            {requests.length === 0 && <tr><td colSpan={5} className="px-3 py-8 text-center text-muted-foreground">Aucune demande</td></tr>}
-          </tbody>
-        </table>
+        {/* Requests */}
+        <Panel title="Demandes">
+          {requests.length === 0 ? <EmptyState icon={CalendarDays} title="Aucune demande" /> : (
+            <ul className="divide-y divide-border">
+              {requests.map(r => (
+                <li key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 sm:flex-nowrap sm:px-5">
+                  <span className="min-w-0 flex-1 basis-full sm:basis-auto">
+                    <span className="flex items-center gap-2">
+                      <span className="truncate text-sm font-medium text-foreground">{(r.employee as any)?.full_name || '—'}</span>
+                      <StatusPill tone="neutral">{TYPE_LABELS[r.type]}</StatusPill>
+                    </span>
+                    <span className="block text-xs tabular-nums text-muted-foreground">{new Date(r.start_date).toLocaleDateString('fr-FR')} → {new Date(r.end_date).toLocaleDateString('fr-FR')} · {r.days} j</span>
+                  </span>
+                  <span className="flex flex-1 items-center justify-end gap-1 sm:flex-none">
+                    {r.status === 'pending' ? (
+                      <>
+                        <button onClick={() => setStatus(r.id, 'approved')} aria-label="Approuver" title="Approuver" className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300"><Check className="h-4 w-4" /></button>
+                        <button onClick={() => setStatus(r.id, 'rejected')} aria-label="Refuser" title="Refuser" className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-red-500/10 text-red-700 hover:bg-red-500/20 dark:text-red-300"><X className="h-4 w-4" /></button>
+                      </>
+                    ) : r.status === 'approved' ? <StatusPill tone="success">Approuvé</StatusPill> : <StatusPill tone="danger">Refusé</StatusPill>}
+                    <button onClick={() => LeaveService.remove(r.id).then(load)} aria-label="Supprimer la demande" title="Supprimer" className={iconBtnDanger}><Trash2 className="h-4 w-4" /></button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
       </div>
     </div>
   );

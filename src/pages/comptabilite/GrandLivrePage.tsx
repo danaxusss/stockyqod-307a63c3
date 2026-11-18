@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { FileText, Loader, Search } from 'lucide-react';
+import { FileText, Search } from 'lucide-react';
 import type { Account, FiscalYear } from '../../types';
 import { AccountingService } from '../../utils/supabaseAccounting';
 import { useToast } from '../../context/ToastContext';
+import { PageHeader } from '../../components/PageHeader';
+import { EmptyState, field, LoadingState, MobileField, panel, td, tdNum, th, theadRow, thRight } from '../../components/backoffice/BackOfficeUi';
 
 function fmt(n: number) { return n === 0 ? '' : new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n); }
 
@@ -50,65 +52,85 @@ export default function GrandLivrePage() {
     });
   }, [accountLines]);
 
+  const soldeFmt = (n: number) => new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(n);
+
   return (
-    <div className="max-w-[110rem] mx-auto py-6 px-3">
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-        <div className="flex items-center gap-2">
-          <div className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-primary/10"><FileText className="h-5 w-5 text-primary" /></div>
-          <div>
-            <h1 className="text-lg font-bold text-foreground leading-tight">Grand livre</h1>
-            <p className="text-xs text-muted-foreground">Exercice {fy?.label}</p>
+    <div className="mx-auto max-w-[110rem]">
+      <PageHeader title="Grand livre" subtitle={`Exercice ${fy?.label ?? ''} · ${movedCodes.length} comptes mouvementés`}>
+        <div className={`${panel} p-3`}>
+          <div className="relative sm:max-w-md">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+            <input list="gl-accounts" value={selected} onChange={e => setSelected(e.target.value.split(' ')[0])} placeholder="Choisir un compte…" aria-label="Compte"
+              className={`${field} pl-9 font-mono`} />
+            <datalist id="gl-accounts">
+              {movedCodes.map(c => <option key={c} value={c}>{c} — {accByCode.get(c)?.label || ''}</option>)}
+            </datalist>
           </div>
         </div>
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <input list="gl-accounts" value={selected} onChange={e => setSelected(e.target.value.split(' ')[0])} placeholder="Choisir un compte…"
-            className="pl-8 pr-3 py-2 text-sm rounded-lg bg-secondary border border-border w-72 font-mono focus:outline-none focus:ring-2 focus:ring-primary/30" />
-          <datalist id="gl-accounts">
-            {movedCodes.map(c => <option key={c} value={c}>{c} — {accByCode.get(c)?.label || ''}</option>)}
-          </datalist>
-        </div>
-      </div>
+      </PageHeader>
 
       {loading ? (
-        <div className="flex items-center justify-center py-16 text-muted-foreground"><Loader className="h-5 w-5 animate-spin mr-2" />Chargement…</div>
+        <LoadingState />
       ) : !selected ? (
-        <div className="bg-card border border-border/60 rounded-xl p-8 text-center text-sm text-muted-foreground">
-          Sélectionnez un compte pour afficher son grand livre. {movedCodes.length} comptes mouvementés.
+        <div className={panel}>
+          <EmptyState icon={FileText} title="Sélectionnez un compte pour afficher son grand livre." hint={`${movedCodes.length} comptes mouvementés.`} />
         </div>
       ) : (
-        <div className="bg-card border border-border/60 rounded-xl overflow-hidden">
-          <div className="px-3 py-2 bg-secondary/50 border-b border-border/60 text-sm font-semibold text-foreground">
-            {selected} — {accByCode.get(selected)?.label || ''}
+        <section className={`${panel} overflow-hidden`}>
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 border-b border-border px-4 py-3 sm:px-5">
+            <h2 className="font-mono font-semibold text-foreground">{selected}</h2>
+            <span className="text-sm text-muted-foreground">{accByCode.get(selected)?.label || ''}</span>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border/60 text-xs text-muted-foreground">
-                  <th className="text-left font-medium px-3 py-2">Date</th>
-                  <th className="text-left font-medium px-3 py-2">Pièce</th>
-                  <th className="text-left font-medium px-3 py-2">Libellé</th>
-                  <th className="text-right font-medium px-3 py-2">Débit</th>
-                  <th className="text-right font-medium px-3 py-2">Crédit</th>
-                  <th className="text-right font-medium px-3 py-2">Solde</th>
-                </tr>
-              </thead>
-              <tbody>
+          {rows.length === 0 ? (
+            <EmptyState title="Aucun mouvement" />
+          ) : (
+            <>
+              <ul className="divide-y divide-border md:hidden">
                 {rows.map((l, i) => (
-                  <tr key={l.id || i} className="border-b border-border/40">
-                    <td className="px-3 py-1.5 whitespace-nowrap text-muted-foreground">{new Date(l.entry_date).toLocaleDateString('fr-FR')}</td>
-                    <td className="px-3 py-1.5 text-xs text-muted-foreground">{l.reference || '—'}</td>
-                    <td className="px-3 py-1.5">{l.label || l.entry_label || ''}</td>
-                    <td className="px-3 py-1.5 text-right tabular-nums">{fmt(Number(l.debit))}</td>
-                    <td className="px-3 py-1.5 text-right tabular-nums">{fmt(Number(l.credit))}</td>
-                    <td className={`px-3 py-1.5 text-right tabular-nums font-medium ${l.solde < 0 ? 'text-red-600 dark:text-red-400' : 'text-foreground'}`}>{new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(l.solde)}</td>
-                  </tr>
+                  <li key={l.id || i} className="px-4 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-foreground">{l.label || l.entry_label || ''}</p>
+                        <p className="truncate text-xs text-muted-foreground">{new Date(l.entry_date).toLocaleDateString('fr-FR')} · {l.reference || '—'}</p>
+                      </div>
+                      <p className={`shrink-0 text-sm font-semibold tabular-nums ${l.solde < 0 ? 'text-red-600 dark:text-red-400' : 'text-foreground'}`}>{soldeFmt(l.solde)}</p>
+                    </div>
+                    <dl className="mt-1.5 grid grid-cols-2 gap-x-4">
+                      <MobileField label="Débit">{fmt(Number(l.debit)) || '—'}</MobileField>
+                      <MobileField label="Crédit">{fmt(Number(l.credit)) || '—'}</MobileField>
+                    </dl>
+                  </li>
                 ))}
-                {rows.length === 0 && <tr><td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">Aucun mouvement</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        </div>
+              </ul>
+              <div className="hidden overflow-x-auto md:block">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className={theadRow}>
+                      <th className={th}>Date</th>
+                      <th className={th}>Pièce</th>
+                      <th className={th}>Libellé</th>
+                      <th className={thRight}>Débit</th>
+                      <th className={thRight}>Crédit</th>
+                      <th className={thRight}>Solde</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {rows.map((l, i) => (
+                      <tr key={l.id || i} className="hover:bg-secondary/40">
+                        <td className={`${td} whitespace-nowrap text-muted-foreground`}>{new Date(l.entry_date).toLocaleDateString('fr-FR')}</td>
+                        <td className={`${td} font-mono text-xs text-muted-foreground`}>{l.reference || '—'}</td>
+                        <td className={`${td} text-foreground`}>{l.label || l.entry_label || ''}</td>
+                        <td className={`${tdNum} text-foreground`}>{fmt(Number(l.debit))}</td>
+                        <td className={`${tdNum} text-foreground`}>{fmt(Number(l.credit))}</td>
+                        <td className={`${tdNum} font-semibold ${l.solde < 0 ? 'text-red-600 dark:text-red-400' : 'text-foreground'}`}>{soldeFmt(l.solde)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </section>
       )}
     </div>
   );
