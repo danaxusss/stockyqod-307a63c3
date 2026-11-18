@@ -542,12 +542,7 @@ END $$;
 
 -- The catalogue editor's "new product" function read the whole products row,
 -- which signed-in users can no longer do: same function, explicit columns.
-DO $$
-BEGIN
-  IF to_regprocedure('public.create_catalogue_product_master(uuid,text,uuid,text,numeric,numeric,text,boolean,integer)') IS NULL THEN
-    RETURN;
-  END IF;
-  EXECUTE $fn$
+-- (Written without nested $-quotes: the Supabase SQL editor rejects them.)
 CREATE OR REPLACE FUNCTION public.create_catalogue_product_master(
   p_company_id uuid,
   p_ref text,
@@ -600,8 +595,6 @@ BEGIN
   RETURN v_catalog;
 END;
 $body$;
-$fn$;
-END $$;
 
 -- The policy helpers are only for this migration (stocky_is_step3_policy is
 -- kept: the undo script uses it).
