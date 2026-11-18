@@ -70,6 +70,7 @@ export async function createAttachmentsLink(
   quoteNumber: string,
   a: QuoteAttachments,
   expiryDays: number | null,
+  companyId?: string | null,
 ): Promise<{ url: string; expiryLabel: string; label: string; imagesDropped: boolean }> {
   const token = crypto.randomUUID();
   const row: Record<string, unknown> = {
@@ -78,6 +79,13 @@ export async function createAttachmentsLink(
     title: `Devis ${quoteNumber}`,
     expires_at: expiryDays === null ? null : new Date(Date.now() + expiryDays * 86400000).toISOString(),
   };
+  // The company lets the share page show its logo and contacts on the
+  // one-file download; before its migration the link is saved without it.
+  if (companyId) {
+    type Probe = { select: (columns: string) => { limit: (n: number) => PromiseLike<{ error: unknown }> } };
+    const probe = await (supabase.from('sheet_share_links') as unknown as Probe).select('company_id').limit(1);
+    if (!probe.error) row.company_id = companyId;
+  }
   let imagesDropped = false;
   let { error } = await (supabase.from('sheet_share_links') as any).insert({ ...row, product_images: a.images });
   if (error && /product_images/.test(error.message || '')) {

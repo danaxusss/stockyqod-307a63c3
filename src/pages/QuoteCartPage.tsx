@@ -35,7 +35,7 @@ import { PdfExportService } from '../utils/pdfExport';
 import { CompanySettingsService, CompanySettings, DEFAULT_SHARE_TEMPLATES } from '../utils/companySettings';
 import { quoteCompanyId, SupabaseQuotesService } from '../utils/supabaseQuotes';
 import { attachmentsSummary, createAttachmentsLink, findQuoteAttachments, NO_ATTACHMENTS, quoteBundleSections, type QuoteAttachments } from '../utils/quoteAttachments';
-import { buildSheetBundle, bundleFileName, downloadBundle } from '../utils/sheetBundle';
+import { buildSheetBundle, bundleFileName, companyFromSettings, downloadBundle } from '../utils/sheetBundle';
 import { ActivityLogger } from '../utils/activityLogger';
 import { useAppContext } from '../context/AppContext';
 import { SupabaseUsersService } from '../utils/supabaseUsers';
@@ -119,6 +119,15 @@ export function QuoteCartPage() {
   // Client card: a summary once filled, the form while editing.
   const [clientEditing, setClientEditing] = useState(true);
   const [editingLineId, setEditingLineId] = useState<string | null>(null);
+  // Prices shown while editing: HT or TTC (purchase price included). Display
+  // only; quote lines keep storing TTC unit prices as before.
+  const [priceMode, setPriceMode] = useState<'ht' | 'ttc'>(() => {
+    try { return localStorage.getItem('stocky.quote.priceMode') === 'ttc' ? 'ttc' : 'ht'; } catch { return 'ht'; }
+  });
+  const choosePriceMode = (mode: 'ht' | 'ttc') => {
+    setPriceMode(mode);
+    try { localStorage.setItem('stocky.quote.priceMode', mode); } catch { /* not remembered */ }
+  };
   const [searchResults, setSearchResults] = useState<Product[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showProductSearch, setShowProductSearch] = useState(false);
@@ -157,9 +166,13 @@ export function QuoteCartPage() {
     try {
       const sections = await quoteBundleSections(items, attachments);
       const result = await buildSheetBundle({
-        title: `Fiches techniques - Devis ${quoteNumber}`,
-        subtitle: customer.fullName ? `Client : ${customer.fullName}` : undefined,
-        company: companySettings?.company_name || undefined,
+        title: 'Fiches techniques',
+        subtitle: `Devis ${quoteNumber}`,
+        details: [
+          customer.fullName ? `Client : ${customer.fullName}` : '',
+          `Date : ${new Date(quoteDate || Date.now()).toLocaleDateString('fr-FR')}`,
+        ].filter(Boolean),
+        company: companyFromSettings(companySettings),
         sections,
       }, { onProgress: (done, total) => setBundleProgress({ done, total }) });
       downloadBundle(result.bytes, bundleFileName('Fiches', quoteNumber));
@@ -296,7 +309,7 @@ export function QuoteCartPage() {
   /** Share link for the joined sheets and photos, when the option is on. */
   const attachmentsLink = async () => {
     if (!attachTechSheets || !hasAttachments) return null;
-    const link = await createAttachmentsLink(quoteNumber, attachments, techSheetsExpiry === 'never' ? null : parseInt(techSheetsExpiry, 10));
+    const link = await createAttachmentsLink(quoteNumber, attachments, techSheetsExpiry === 'never' ? null : parseInt(techSheetsExpiry, 10), quoteCompanyId(quote) || companyId || null);
     if (link.imagesDropped) {
       showToast({ type: 'warning', title: 'Photos non jointes', message: 'Exécutez la migration 20261109120000_share_link_product_images.sql pour partager aussi les photos.' });
     }
@@ -1240,17 +1253,15 @@ export function QuoteCartPage() {
                 <button type="button" onClick={() => setClientEditing(true)} className="shrink-0 rounded-lg border border-border px-3 py-1.5 text-sm font-semibold text-foreground hover:bg-secondary">Modifier</button>
               </div>
             )}
-            <div className="mt-4 grid grid-cols-2 gap-3 border-t border-border pt-4 sm:max-w-md">
-              <div>
-                <label htmlFor="quote-number" className="block text-xs text-muted-foreground">N° devis</label>
+            <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-1 border-t border-border pt-3">
+              <label htmlFor="quote-number" className="flex items-center gap-2 text-xs text-muted-foreground">N° devis
                 <input id="quote-number" type="text" value={quoteNumber} onChange={e => setQuoteNumber(e.target.value)}
-                  className="mt-0.5 w-full rounded-md border border-transparent bg-transparent px-1 py-1 -ml-1 text-sm font-medium tabular-nums text-foreground hover:border-input focus:border-input focus:ring-2 focus:ring-ring" />
-              </div>
-              <div>
-                <label htmlFor="quote-date" className="block text-xs text-muted-foreground">Date du devis</label>
+                  className="w-56 rounded-md border border-transparent bg-transparent px-1 py-0.5 text-sm font-medium tabular-nums text-foreground hover:border-input focus:border-input focus:ring-2 focus:ring-ring" />
+              </label>
+              <label htmlFor="quote-date" className="flex items-center gap-2 text-xs text-muted-foreground">Date
                 <input id="quote-date" type="date" value={quoteDate} onChange={e => setQuoteDate(e.target.value)}
-                  className="mt-0.5 w-full rounded-md border border-transparent bg-transparent px-1 py-1 -ml-1 text-sm font-medium text-foreground hover:border-input focus:border-input focus:ring-2 focus:ring-ring" />
-              </div>
+                  className="rounded-md border border-transparent bg-transparent px-1 py-0.5 text-sm font-medium text-foreground hover:border-input focus:border-input focus:ring-2 focus:ring-ring" />
+              </label>
             </div>
           </section>
 
@@ -1260,6 +1271,14 @@ export function QuoteCartPage() {
               <h2 id="quote-lines-title" className="font-semibold text-foreground">Articles</h2>
               <span className="text-sm text-muted-foreground">{items.length} ligne{items.length !== 1 ? 's' : ''} · {totalItems} unité{totalItems !== 1 ? 's' : ''}</span>
               <span className="flex-1" />
+              <div role="group" aria-label="Afficher les prix" className="flex rounded-lg border border-input p-0.5 text-xs font-semibold">
+                {(['ht', 'ttc'] as const).map(mode => (
+                  <button key={mode} type="button" onClick={() => choosePriceMode(mode)} aria-pressed={priceMode === mode}
+                    className={`rounded-md px-2.5 py-1 ${priceMode === mode ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+                    {mode.toUpperCase()}
+                  </button>
+                ))}
+              </div>
               <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
                 Marge
                 <select value={globalMargin} onChange={(e) => applyGlobalMargin(parseInt(e.target.value))} className="rounded-md border border-input bg-background px-2 py-1 text-sm font-semibold text-foreground">
@@ -1287,15 +1306,15 @@ export function QuoteCartPage() {
               </div>
             ) : (
               <>
-                <div className="hidden grid-cols-[3rem_minmax(0,1fr)_7.5rem_9rem_8rem_2.5rem] gap-x-4 border-b border-border bg-secondary/40 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground md:grid">
-                  <span /><span>Produit</span><span className="text-center">Quantité</span><span className="text-right">Prix HT</span><span className="text-right">Total HT</span><span />
+                <div className="hidden grid-cols-[3rem_minmax(0,1fr)_7rem_10.5rem_8.5rem_2.5rem] gap-x-3 border-b border-border bg-secondary/40 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground md:grid">
+                  <span /><span>Produit</span><span className="text-center">Quantité</span><span className="text-right">Prix {priceMode.toUpperCase()}</span><span className="text-right">Total {priceMode.toUpperCase()}</span><span />
                 </div>
                 <ul className="divide-y divide-border">
                   {currentItems.map((item) => {
                     const img = resolveProductImageUrl(item.product?.image);
                     const editingText = editingLineId === item.id;
                     return (
-                      <li key={item.id} className="grid grid-cols-[3rem_minmax(0,1fr)_2.5rem] gap-x-3 gap-y-3 px-4 py-3 sm:px-5 md:grid-cols-[3rem_minmax(0,1fr)_7.5rem_9rem_8rem_2.5rem] md:items-center md:gap-x-4">
+                      <li key={item.id} className="grid grid-cols-[3rem_minmax(0,1fr)_2.5rem] gap-x-3 gap-y-3 px-4 py-2.5 sm:px-5 md:grid-cols-[3rem_minmax(0,1fr)_7rem_10.5rem_8.5rem_2.5rem] md:items-center md:gap-x-3">
                         <span className="row-span-2 flex h-[3.75rem] w-12 items-center justify-center overflow-hidden rounded-md border border-border bg-white md:row-span-1">
                           {img ? <img src={img} alt="" className="h-full w-full object-contain" loading="lazy" /> : <Package className="h-5 w-5 text-muted-foreground" aria-hidden="true" />}
                         </span>
@@ -1318,11 +1337,11 @@ export function QuoteCartPage() {
                               <p className="truncate text-sm text-muted-foreground">{[getQuoteItemBrand(item), getQuoteItemBarcode(item)].filter(Boolean).join(' · ')}</p>
                               <p className="mt-0.5 flex flex-wrap items-center gap-x-1 text-xs text-muted-foreground">
                                 <label className="flex items-center gap-1">Marge
-                                  <select value={item.marginPercentage} onChange={(e) => updateItemMargin(item.id, parseInt(e.target.value))} className="w-[4.75rem] rounded border border-transparent bg-transparent py-0 pl-0.5 pr-5 text-xs font-semibold text-emerald-700 hover:border-input dark:text-emerald-300">
+                                  <select value={item.marginPercentage} onChange={(e) => updateItemMargin(item.id, parseInt(e.target.value))} className="w-[5.75rem] rounded border border-transparent bg-transparent py-0 pl-0.5 pr-5 text-xs font-semibold text-emerald-700 hover:border-input dark:text-emerald-300">
                                     {marginOptions.map(p => <option key={p} value={p}>+{p} %</option>)}
                                   </select>
                                 </label>
-                                {Number(item.product?.buyprice) > 0 && <span>· achat {formatMoney(item.product.buyprice)}</span>}
+                                {Number(item.product?.buyprice) > 0 && <span>· achat {priceMode.toUpperCase()} {formatMoney(priceMode === 'ttc' ? Number(item.product.buyprice) : Number(item.product.buyprice) / (1 + tvaRate / 100))}</span>}
                               </p>
                             </>
                           )}
@@ -1342,12 +1361,12 @@ export function QuoteCartPage() {
                           </div>
                           <div className="text-right">
                             <label className="flex items-center justify-end gap-1">
-                              <span className="sr-only">Prix unitaire HT</span>
+                              <span className="sr-only">Prix unitaire {priceMode.toUpperCase()}</span>
                               <input type="number" step="0.01" min="0"
-                                value={parseFloat((item.unitPrice / (1 + tvaRate / 100)).toFixed(2))}
-                                onChange={(e) => updateItemUnitPrice(item.id, (parseFloat(e.target.value) || 0) * (1 + tvaRate / 100))}
+                                value={parseFloat((priceMode === 'ttc' ? item.unitPrice : item.unitPrice / (1 + tvaRate / 100)).toFixed(2))}
+                                onChange={(e) => updateItemUnitPrice(item.id, priceMode === 'ttc' ? (parseFloat(e.target.value) || 0) : (parseFloat(e.target.value) || 0) * (1 + tvaRate / 100))}
                                 onFocus={(e) => e.target.select()}
-                                className="w-24 rounded-md border border-transparent bg-transparent px-1 py-0.5 text-right text-sm font-medium tabular-nums text-foreground underline decoration-dotted decoration-muted-foreground/40 underline-offset-4 hover:border-input focus:border-input focus:no-underline focus:ring-2 focus:ring-ring" />
+                                className="w-28 rounded-md border border-transparent bg-transparent px-1 py-0.5 text-right text-sm font-medium tabular-nums text-foreground underline decoration-dotted decoration-muted-foreground/40 underline-offset-4 hover:border-input focus:border-input focus:no-underline focus:ring-2 focus:ring-ring" />
                               <span className="text-sm text-muted-foreground">Dh</span>
                             </label>
                             <label className="mt-0.5 flex items-center justify-end gap-1 text-xs text-muted-foreground">
@@ -1357,7 +1376,7 @@ export function QuoteCartPage() {
                               %
                             </label>
                           </div>
-                          <p className="text-right font-semibold tabular-nums text-foreground">{formatMoney(lineHT(item))}</p>
+                          <p className="text-right font-semibold tabular-nums text-foreground">{formatMoney(priceMode === 'ttc' ? item.subtotal : lineHT(item))}</p>
                         </div>
                       </li>
                     );
