@@ -64,6 +64,8 @@ const StockCountPage = React.lazy(() => import('./pages/inventaire/StockCountPag
 const StockReportsPage = React.lazy(() => import('./pages/inventaire/StockReportsPage'));
 const PurchaseOrdersPage = React.lazy(() => import('./pages/inventaire/PurchaseOrdersPage'));
 const PurchaseOrderDetailPage = React.lazy(() => import('./pages/inventaire/PurchaseOrderDetailPage'));
+const StockVouchersPage = React.lazy(() => import('./pages/inventaire/StockVouchersPage'));
+const StockVoucherPage = React.lazy(() => import('./pages/inventaire/StockVoucherPage'));
 const EmployeesPage = React.lazy(() => import('./pages/paie/EmployeesPage'));
 const PayslipsPage = React.lazy(() => import('./pages/paie/PayslipsPage'));
 const PayslipDetailPage = React.lazy(() => import('./pages/paie/PayslipDetailPage'));
@@ -249,6 +251,8 @@ function AppContent() {
                 <Route path="/inventaire/rapports" element={<StockReportsPage />} />
                 <Route path="/inventaire/commandes" element={<PurchaseOrdersPage />} />
                 <Route path="/inventaire/commandes/:id" element={<PurchaseOrderDetailPage />} />
+                <Route path="/inventaire/bons" element={<StockVouchersPage />} />
+                <Route path="/inventaire/bons/:id" element={<StockVoucherPage />} />
               </>
             )}
             {access.payroll && (

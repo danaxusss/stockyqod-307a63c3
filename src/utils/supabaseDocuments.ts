@@ -473,7 +473,7 @@ export class SupabaseDocumentsService {
   static async deleteDocument(id: string): Promise<void> {
     const { companyId, bypassFilter } = getCompanyContext();
     const { data: doc } = await (supabase.from('quotes') as any)
-      .select('document_type, parent_document_id, source_bl_ids, items')
+      .select('document_type, parent_document_id, source_bl_ids, items, quote_number')
       .eq('id', id)
       .maybeSingle();
     // A credit note cancels part of its invoice: without the invoice it would
@@ -489,6 +489,15 @@ export class SupabaseDocumentsService {
     const { error } = await q;
     if (error) throw new Error(`Erreur suppression: ${error.message}`);
     if (!doc) return;
+
+    // A delivery note took stock out, a credit note put it back: deleting the
+    // document undoes that, once (reverse_document_stock is idempotent).
+    if (doc.document_type === 'bl' || doc.document_type === 'avoir') {
+      const { error: stockError } = await (supabase.rpc as any)('reverse_document_stock', { p_document_id: id, p_reference: doc.quote_number || null });
+      if (stockError && !/function .*reverse_document_stock|schema cache/i.test(stockError.message)) {
+        throw new Error(`Document supprimé, mais le stock n'a pas pu être remis : ${stockError.message}`);
+      }
+    }
 
     // What the document had consumed becomes available again.
     if (doc.document_type === 'invoice' && doc.parent_document_id) {

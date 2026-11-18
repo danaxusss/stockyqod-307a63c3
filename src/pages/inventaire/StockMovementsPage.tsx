@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { Loader, Search } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Loader, PackageMinus, PackagePlus, Search } from 'lucide-react';
 import type { Product, StockLocation, StockMovement, StockMovementType } from '../../types';
 import { StockService } from '../../utils/supabaseStock';
 import { StockLocationsService } from '../../utils/supabaseStockLocations';
@@ -19,6 +20,7 @@ const MOVEMENT_LABELS: Record<string, string> = {
 const SOURCE_LABELS: Record<string, string> = {
   manual: 'Manuel', bl: 'Bon de livraison', invoice: 'Facture', receipt: 'Réception',
   transfer: 'Transfert', count: 'Inventaire', return: 'Retour',
+  voucher: 'Bon d’entrée / sortie', reversal: 'Annulation',
 };
 // Colour of each movement type: stock coming in, going out, or corrected.
 const MOVEMENT_TONES: Record<string, StatusTone> = {
@@ -26,6 +28,17 @@ const MOVEMENT_TONES: Record<string, StatusTone> = {
   adjustment: 'warning', count: 'warning',
 };
 
+/** The movement's source, linked to the voucher when it came from one. */
+function SourceLabel({ m }: { m: StockMovement }) {
+  const label = SOURCE_LABELS[m.source_type] || m.source_type;
+  if (m.source_type === 'voucher' && m.source_id) {
+    return <Link to={`/inventaire/bons/${m.source_id}`} onClick={e => e.stopPropagation()} className="text-primary hover:underline">{label}</Link>;
+  }
+  return <>{label}</>;
+}
+
+const headerBtn = 'flex h-10 items-center gap-2 rounded-lg border border-border bg-card px-3 text-sm font-semibold text-foreground shadow-sm hover:bg-secondary';
+const headerPrimaryBtn = 'flex h-10 items-center gap-2 rounded-lg bg-primary px-3 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90';
 const field = 'h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring';
 
 const TYPE_OPTIONS: { value: StockMovementType | ''; label: string }[] = [
@@ -100,6 +113,12 @@ export default function StockMovementsPage() {
       <PageHeader
         title="Mouvements de stock"
         subtitle={loading ? 'Journal des entrées, sorties et ajustements' : `${filtered.length} mouvement${filtered.length !== 1 ? 's' : ''} · entrées, sorties et ajustements`}
+        actions={(
+          <>
+            <Link to="/inventaire/bons/nouveau?type=sortie" className={headerBtn}><PackageMinus className="h-4 w-4" aria-hidden="true" />Bon de sortie</Link>
+            <Link to="/inventaire/bons/nouveau?type=entree" className={headerPrimaryBtn}><PackagePlus className="h-4 w-4" aria-hidden="true" />Bon d'entrée</Link>
+          </>
+        )}
       >
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-3 shadow-sm">
           <div className="relative min-w-0 flex-1 basis-56">
@@ -144,7 +163,7 @@ export default function StockMovementsPage() {
                     <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                       <StatusPill tone={MOVEMENT_TONES[m.type] || 'neutral'}>{MOVEMENT_LABELS[m.type] || m.type}</StatusPill>
                       <span>{resolve(m.location_key)}</span>
-                      <span>· {SOURCE_LABELS[m.source_type] || m.source_type}</span>
+                      <span>· <SourceLabel m={m} /></span>
                     </div>
                     {m.reason && <p className="mt-1 text-xs text-muted-foreground">{m.reason}</p>}
                     <p className="mt-1 text-xs text-muted-foreground">{new Date(m.created_at).toLocaleString('fr-FR')}{m.created_by ? ` · ${m.created_by}` : ''}</p>
@@ -187,7 +206,7 @@ export default function StockMovementsPage() {
                           {m.quantity >= 0 ? '+' : ''}{fmt(m.quantity)}
                         </td>
                         <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{m.balance_after != null ? fmt(m.balance_after) : '—'}</td>
-                        <td className="px-4 py-2.5 text-muted-foreground">{SOURCE_LABELS[m.source_type] || m.source_type}</td>
+                        <td className="px-4 py-2.5 text-muted-foreground"><SourceLabel m={m} /></td>
                         <td className="px-4 py-2.5 text-muted-foreground">{m.created_by || '—'}</td>
                       </tr>
                     );

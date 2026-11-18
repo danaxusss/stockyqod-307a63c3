@@ -119,6 +119,7 @@ export function buildModules(a: Access): NavModule[] {
         { to: '/inventaire', label: 'Tableau de bord' },
         { to: '/inventaire/niveaux', label: 'Niveaux de stock' },
         { to: '/inventaire/mouvements', label: 'Mouvements' },
+        { to: '/inventaire/bons', label: 'Bons d’entrée / sortie' },
         { to: '/inventaire/reception', label: 'Réception' },
         { to: '/inventaire/transfert', label: 'Transfert' },
         { to: '/inventaire/inventaire', label: 'Inventaire physique' },

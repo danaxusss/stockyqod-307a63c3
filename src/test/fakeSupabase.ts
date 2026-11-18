@@ -162,7 +162,8 @@ export function fakeClient(db: FakeDb) {
     rpc: async (fn: string, args: unknown) => {
       const impl = db.rpc[fn];
       if (!impl) return { data: null, error: { message: `rpc ${fn} missing` } };
-      return { data: impl(args), error: null };
+      // A function that throws answers like a database error.
+      try { return { data: impl(args), error: null }; } catch (e) { return { data: null, error: { message: e instanceof Error ? e.message : String(e) } }; }
     },
   };
 }

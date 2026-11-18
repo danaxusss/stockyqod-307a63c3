@@ -110,3 +110,22 @@ describe('deleting an invoice', () => {
     expect(state.db.tables.quotes.map(d => d.id)).toEqual(['f1', 'a1']);
   });
 });
+
+describe('deleting a delivery note or a credit note', () => {
+  it('asks the database to give back the stock it moved', async () => {
+    const calls: unknown[] = [];
+    state.db.rpc.reverse_document_stock = (args: unknown) => { calls.push(args); return 2; };
+    state.db.tables.quotes = [doc('b1', 'bl', { quote_number: 'BL-0001' }), doc('a2', 'avoir', { quote_number: 'AV-0002' }), doc('q1', 'quote')];
+    await SupabaseDocumentsService.deleteDocument('b1');
+    await SupabaseDocumentsService.deleteDocument('a2');
+    await SupabaseDocumentsService.deleteDocument('q1');
+    expect(calls).toEqual([{ p_document_id: 'b1', p_reference: 'BL-0001' }, { p_document_id: 'a2', p_reference: 'AV-0002' }]);
+    expect(state.db.tables.quotes).toEqual([]);
+  });
+
+  it('says so when the document is gone but its stock could not be given back', async () => {
+    state.db.rpc.reverse_document_stock = () => { throw new Error('Accès refusé.'); };
+    state.db.tables.quotes = [doc('b2', 'bl', { quote_number: 'BL-0002' })];
+    await expect(SupabaseDocumentsService.deleteDocument('b2')).rejects.toThrow(/stock n'a pas pu être remis/);
+  });
+});
