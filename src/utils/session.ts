@@ -64,7 +64,8 @@ function stores(): Storage[] {
  */
 export function saveSession(token: string | null, user: AppUser, expiresAt: number | null | undefined, rememberMe: boolean): void {
   sharedCheck = null;
-  clearSession({ keepRememberedUsername: true });
+  // The Supabase session is replaced right after by adoptAuthSession().
+  clearSession({ keepRememberedUsername: true, keepAuthSession: true });
   const store = rememberMe ? localStorage : sessionStorage;
   const exp = expiresAt && Number(expiresAt) > 0
     ? Number(expiresAt)
@@ -115,8 +116,11 @@ export function forgetRememberedUsername(): void {
   try { localStorage.removeItem(REMEMBERED_USER_KEY); } catch { /* */ }
 }
 
-export function clearSession(opts: { keepRememberedUsername?: boolean } = {}): void {
+export function clearSession(opts: { keepRememberedUsername?: boolean; keepAuthSession?: boolean } = {}): void {
   sharedCheck = null;
+  // Close the Supabase session first: its storage still finds it once the
+  // keys below are gone (see integrations/supabase/client.ts).
+  if (!opts.keepAuthSession) void endAuthSession();
   for (const store of stores()) {
     try {
       [TOKEN_KEY, USER_KEY, EXPIRY_KEY, LAST_SEEN_KEY, ...LEGACY_KEYS].forEach(k => store.removeItem(k));
@@ -129,6 +133,49 @@ export function clearSession(opts: { keepRememberedUsername?: boolean } = {}): v
     localStorage.removeItem('inventory_user_permissions');
   } catch { /* */ }
   if (!opts.keepRememberedUsername) forgetRememberedUsername();
+}
+
+/** Supabase session issued by verify-pin with the PIN login. */
+export interface AuthSessionTokens {
+  access_token: string;
+  refresh_token: string;
+}
+
+const isAuthSession = (value: unknown): value is AuthSessionTokens =>
+  !!value && typeof (value as AuthSessionTokens).access_token === 'string' && typeof (value as AuthSessionTokens).refresh_token === 'string';
+
+/**
+ * Use the Supabase session that came with a login (database requests then
+ * carry the user's identity). Without one, any earlier session on this device
+ * is closed so requests never run as the previous user.
+ */
+export async function adoptAuthSession(auth: unknown): Promise<void> {
+  try {
+    if (isAuthSession(auth)) {
+      const { error } = await supabase.auth.setSession({ access_token: auth.access_token, refresh_token: auth.refresh_token });
+      if (error) console.warn('[auth] Supabase session not stored:', error.message);
+      return;
+    }
+    await endAuthSession();
+  } catch (error) {
+    console.warn('[auth] Supabase session not stored:', error);
+  }
+}
+
+/** Close the Supabase session of this device (also revokes it server-side). */
+export async function endAuthSession(): Promise<void> {
+  try {
+    const { data } = await supabase.auth.getSession();
+    if (data.session) await supabase.auth.signOut({ scope: 'local' });
+  } catch { /* offline: the stored session is removed anyway */ }
+}
+
+/** True when this device holds a Supabase session for that Stocky user. */
+async function hasAuthSessionFor(userId: string | undefined): Promise<boolean> {
+  try {
+    const { data } = await supabase.auth.getSession();
+    return !!data.session && !!userId && data.session.user?.id === userId;
+  } catch { return false; }
 }
 
 /** Refresh the idle clock — called on user activity. */
@@ -179,11 +226,15 @@ export async function validateSession(): Promise<AppUser | null> {
   if (!s.token) return s.user;
 
   try {
+    // Users signed in before Supabase sessions existed get one without
+    // typing their PIN again.
+    const wantAuthSession = !(await hasAuthSessionFor(s.user?.id));
     const { data, error } = await supabase.functions.invoke('verify-pin', {
-      body: { action: 'validate-session', session_token: s.token },
+      body: { action: 'validate-session', session_token: s.token, want_auth_session: wantAuthSession },
     });
     if (error) return s.user;               // offline / rate limited — keep cache
     if (!data?.valid) { clearSession({ keepRememberedUsername: true }); return null; }
+    if (wantAuthSession && data.auth_session) await adoptAuthSession(data.auth_session);
 
     const fresh = data.user as AppUser;
     const store = s.remembered ? localStorage : sessionStorage;

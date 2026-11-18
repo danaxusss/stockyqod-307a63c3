@@ -5,7 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useUserAuth } from './useUserAuth';
 import { setCompanyContext } from '../utils/supabaseCompanyFilter';
 import { setLastAuthError, rateLimitMessage } from '../utils/authError';
-import { saveSession } from '../utils/session';
+import { adoptAuthSession, saveSession } from '../utils/session';
 import { SupabaseCompaniesService } from '../utils/supabaseCompanies';
 import { deriveRoleFlags } from '../lib/permissions';
 
@@ -291,6 +291,7 @@ export function useAuth() {
           );
         }
         saveSession(data.session_token ?? null, user, data.expires_at, rememberMe);
+        await adoptAuthSession(data.auth_session);
         await loadUserData(user);
         authStateManager.notify();
         return true;
@@ -320,6 +321,7 @@ export function useAuth() {
           );
         }
         saveSession(data.session_token ?? null, user, data.expires_at, rememberMe);
+        await adoptAuthSession(data.auth_session);
         await loadUserData(user);
         authStateManager.notify();
         return true;

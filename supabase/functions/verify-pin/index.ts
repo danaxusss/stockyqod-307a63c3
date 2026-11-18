@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders, json, clientIp, guard, timingSafeEqual } from "../_shared/security.ts";
 import { issueSession, verifySessionLive } from "../_shared/session.ts";
+import { issueAuthSession } from "../_shared/authSession.ts";
 
 // PBKDF2-based hashing using Web Crypto API (no Worker needed)
 const ITERATIONS = 100000;
@@ -67,20 +68,23 @@ async function verifyPin(pin: string, stored: string): Promise<boolean> {
 }
 
 /** Shape returned to the client on success — never includes the PIN. */
-async function successPayload(req: Request, user: any, rememberMe: boolean) {
+async function successPayload(req: Request, admin: any, user: any, rememberMe: boolean) {
   const { pin: _drop, ...safeUser } = user;
   const { token, expires_at } = await issueSession(user, rememberMe);
+  // A real Supabase session for database requests (null if it couldn't be
+  // opened: the PIN login still succeeds).
+  const auth_session = await issueAuthSession(admin, user);
   // session_token is signed server-side: the browser can read these claims but
   // cannot alter them, so privileged endpoints can trust it (unlike the old
   // localStorage user object).
-  return json(req, { success: true, user: safeUser, session_token: token, expires_at });
+  return json(req, { success: true, user: safeUser, session_token: token, expires_at, auth_session });
 }
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders(req) });
 
   try {
-    const { action, username, pin, userId, newPin, remember_me, session_token } = await req.json();
+    const { action, username, pin, userId, newPin, remember_me, session_token, want_auth_session } = await req.json();
     const rememberMe = remember_me === true;
     const ip = clientIp(req);
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -125,7 +129,7 @@ serve(async (req) => {
       }
 
       if (isValid) {
-        return await successPayload(req, user, rememberMe);
+        return await successPayload(req, supabase, user, rememberMe);
       }
 
       console.warn(`[verify-pin] failed login user=${username} ip=${ip}`);
@@ -178,7 +182,7 @@ serve(async (req) => {
             const hashed = await hashPin(pin);
             await supabase.from("app_users").update({ pin: hashed }).eq("id", user.id);
           }
-          return await successPayload(req, user, rememberMe);
+          return await successPayload(req, supabase, user, rememberMe);
         }
       }
 
@@ -197,7 +201,16 @@ serve(async (req) => {
 
       const live = await verifySessionLive(supabase, session_token);
       if (!live) return json(req, { valid: false });
-      return json(req, { valid: true, user: live.user, expires_at: live.claims.exp });
+      // A user signed in before Supabase sessions existed (or whose session was
+      // lost) gets one here, without typing the PIN again.
+      let auth_session = null;
+      if (want_auth_session === true) {
+        const limited = await guard(req, [
+          { bucket: "verify-pin:auth-upgrade", id: ip, max: 30, window: 15 * 60 },
+        ]);
+        if (!limited) auth_session = await issueAuthSession(supabase, live.user);
+      }
+      return json(req, { valid: true, user: live.user, expires_at: live.claims.exp, auth_session });
     }
 
     return json(req, { error: "Invalid action" }, 400);
