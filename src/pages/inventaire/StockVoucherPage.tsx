@@ -13,7 +13,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
 import { toDateInputValue, formatMoney } from '../../utils/format';
 import {
-  costUpdatesAverage, draftProblems, isNegativeStockRefusal, KIND_LABEL, reasonLabel, StockVouchersService,
+  costUpdatesAverage, draftProblems, isNegativeStockRefusal, KIND_LABEL, reasonLabel, reasonsFor, StockVouchersService,
   VOUCHER_REASONS, VOUCHER_STATUS, voucherErrorMessage, type StockVoucher, type StockVoucherLine, type VoucherKind,
 } from '../../utils/stockVouchers';
 
@@ -28,7 +28,7 @@ export default function StockVoucherPage() {
   const navigate = useNavigate();
   const { currentUser, isAdmin } = useAuth();
   const { showToast } = useToast();
-  const { accessibleLocations } = useAccessibleLocations();
+  const { accessibleLocations, locations: allLocations } = useAccessibleLocations();
 
   const isNew = !id || id === 'nouveau';
   const [voucher, setVoucher] = useState<StockVoucher | null>(null);
@@ -71,11 +71,20 @@ export default function StockVoucherPage() {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => { if (!locationId && accessibleLocations.length > 0 && editable) setLocationId(accessibleLocations[0].id); }, [accessibleLocations, locationId, editable]);
-  useEffect(() => { if (!reason) setReason(VOUCHER_REASONS[kind][0].value); }, [kind, reason]);
+  const fromDocument = !!voucher?.source_document_id;
+  useEffect(() => { if (!reason) setReason(reasonsFor(kind, fromDocument)[0].value); }, [kind, reason, fromDocument]);
 
   const location = accessibleLocations.find(l => l.id === locationId);
   const candidates = useMemo(() => locationCandidates(location), [location]);
   const available = useCallback((barcode: string) => levelAt(byBarcode.get(barcode), candidates), [byBarcode, candidates]);
+  // A line may leave from its own location (a delivery note shipped from two depots).
+  const lineLocation = useCallback((l: StockVoucherLine) => (l.location_id && l.location_id !== locationId
+    ? (allLocations.find(x => x.id === l.location_id) || accessibleLocations.find(x => x.id === l.location_id) || null)
+    : null), [locationId, allLocations, accessibleLocations]);
+  const lineAvailable = useCallback((l: StockVoucherLine) => {
+    const own = lineLocation(l);
+    return own ? levelAt(byBarcode.get(l.barcode), locationCandidates(own)) : available(l.barcode);
+  }, [lineLocation, byBarcode, available]);
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -92,7 +101,7 @@ export default function StockVoucherPage() {
   const updateLine = (i: number, patch: Partial<StockVoucherLine>) => setLines(prev => prev.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
   const removeLine = (i: number) => setLines(prev => prev.filter((_, idx) => idx !== i));
 
-  const shortages = kind === 'sortie' ? lines.filter(l => Number(l.quantity) > available(l.barcode)) : [];
+  const shortages = kind === 'sortie' ? lines.filter(l => Number(l.quantity) > lineAvailable(l)) : [];
   const units = lines.reduce((s, l) => s + (Number(l.quantity) || 0), 0);
   const problems = draftProblems({ location_id: locationId || null, reason, lines });
 
@@ -101,6 +110,7 @@ export default function StockVoucherPage() {
     const savedId = await StockVouchersService.saveDraft({
       id: voucher?.id, kind, voucher_date: date, location_id: locationId || null, reason, note,
       created_by: currentUser?.username || null, lines,
+      source_document_id: voucher?.source_document_id || null, source_document_number: voucher?.source_document_number || null,
     });
     return savedId;
   };
@@ -186,6 +196,11 @@ export default function StockVoucherPage() {
       <nav className="mb-2 flex items-center gap-1 text-sm text-muted-foreground" aria-label="Fil d’Ariane">
         <Link to="/inventaire/bons" className="hover:text-foreground hover:underline">Bons d'entrée et de sortie</Link>
         <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" /><span className="text-foreground">{voucher?.number || 'Brouillon'}</span>
+        {voucher?.source_document_id && (
+          <Link to={`/compta/bls/${voucher.source_document_id}`} className="ml-auto rounded-full bg-secondary px-2.5 py-0.5 text-xs font-semibold text-foreground hover:underline">
+            Livraison {voucher.source_document_number || ''}
+          </Link>
+        )}
       </nav>
       <PageHeader
         title={<span className="inline-flex items-center gap-2">{title}{voucher && <StatusPill tone={VOUCHER_STATUS[voucher.status].tone}>{VOUCHER_STATUS[voucher.status].label}</StatusPill>}</span>}
@@ -207,7 +222,7 @@ export default function StockVoucherPage() {
           <section className={`${opsPanel} grid gap-3 p-4 sm:grid-cols-2 sm:p-5 xl:grid-cols-4`}>
             <div>
               <label htmlFor="voucher-kind" className={opsLabel}>Type</label>
-              <select id="voucher-kind" value={kind} disabled={!isNew} onChange={e => { const k = e.target.value as VoucherKind; setKind(k); setReason(VOUCHER_REASONS[k][0].value); }} className={opsField}>
+              <select id="voucher-kind" value={kind} disabled={!isNew || fromDocument} onChange={e => { const k = e.target.value as VoucherKind; setKind(k); setReason(reasonsFor(k, false)[0].value); }} className={opsField}>
                 <option value="entree">Bon d'entrée</option>
                 <option value="sortie">Bon de sortie</option>
               </select>
@@ -226,7 +241,7 @@ export default function StockVoucherPage() {
             <div>
               <label htmlFor="voucher-reason" className={opsLabel}>Motif</label>
               <select id="voucher-reason" value={reason} disabled={!editable} onChange={e => setReason(e.target.value)} className={opsField}>
-                {VOUCHER_REASONS[kind].map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                {(editable ? reasonsFor(kind, fromDocument) : VOUCHER_REASONS[kind]).map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
               </select>
             </div>
             <div className="sm:col-span-2 xl:col-span-4">
@@ -261,13 +276,14 @@ export default function StockVoucherPage() {
                 </div>
                 <ul className="divide-y divide-border">
                   {lines.map((l, i) => {
-                    const short = kind === 'sortie' && Number(l.quantity) > available(l.barcode);
+                    const own = lineLocation(l);
+                    const short = kind === 'sortie' && Number(l.quantity) > lineAvailable(l);
                     return (
-                      <li key={l.barcode} className={`grid grid-cols-[3rem_minmax(0,1fr)_2.5rem] items-center gap-x-3 gap-y-3 px-4 py-3 sm:px-5 md:gap-x-4 ${kind === 'entree' ? 'md:grid-cols-[3rem_minmax(0,1fr)_6rem_8.5rem_9rem_2.5rem]' : 'md:grid-cols-[3rem_minmax(0,1fr)_6rem_8.5rem_2.5rem]'}`}>
+                      <li key={`${l.barcode}-${l.location_id || ''}-${i}`} className={`grid grid-cols-[3rem_minmax(0,1fr)_2.5rem] items-center gap-x-3 gap-y-3 px-4 py-3 sm:px-5 md:gap-x-4 ${kind === 'entree' ? 'md:grid-cols-[3rem_minmax(0,1fr)_6rem_8.5rem_9rem_2.5rem]' : 'md:grid-cols-[3rem_minmax(0,1fr)_6rem_8.5rem_2.5rem]'}`}>
                         <ProductThumb image={byBarcode.get(l.barcode)?.image} />
                         <div className="min-w-0">
                           <p className="font-semibold leading-snug text-foreground">{l.product_name}</p>
-                          <p className="truncate font-mono text-xs text-muted-foreground">{l.barcode}</p>
+                          <p className="truncate font-mono text-xs text-muted-foreground">{l.barcode}{own && <span className="ml-2 rounded bg-secondary px-1.5 py-0.5 font-sans font-medium text-foreground">{own.name}</span>}</p>
                         </div>
                         {editable ? (
                           <button onClick={() => removeLine(i)} aria-label={`Retirer ${l.product_name}`}
@@ -276,7 +292,7 @@ export default function StockVoucherPage() {
                           </button>
                         ) : <span className="md:order-last" />}
                         <div className="col-span-3 flex flex-wrap items-center justify-between gap-3 md:contents">
-                          <p className="text-sm tabular-nums text-muted-foreground md:text-right"><span className="md:hidden">Stock </span>{available(l.barcode)}</p>
+                          <p className="text-sm tabular-nums text-muted-foreground md:text-right"><span className="md:hidden">Stock </span>{lineAvailable(l)}</p>
                           {editable ? (
                             <div className={`rounded-lg md:justify-self-center ${short ? 'ring-2 ring-destructive/60' : ''}`}>
                               <QtyStepper label="la quantité" onMinus={() => updateLine(i, { quantity: Math.max(1, Number(l.quantity) - 1) })} onPlus={() => updateLine(i, { quantity: Number(l.quantity) + 1 })} minusDisabled={Number(l.quantity) <= 1}

@@ -1,6 +1,7 @@
 import { supabase } from '../../utils/supabaseClient';
 import { StockService, type BatchMovement } from '../../utils/supabaseStock';
-import type { Quote, QuoteItem, Product } from '../../types';
+import type { Quote, QuoteItem, Product, StockLocation } from '../../types';
+import type { StockVoucherLine } from '../../utils/stockVouchers';
 
 /** Has this document already posted stock movements? (idempotency guard) */
 export async function isDocumentStockPosted(sourceId: string): Promise<boolean> {
@@ -48,6 +49,32 @@ function documentTargets(doc: Quote, byBarcode: Map<string, Product>, fallback: 
     lines.push({ barcode, targets });
   }
   return { lines, skippedItems };
+}
+
+/**
+ * The lines of the Bon de sortie that takes a delivery note out of stock: one
+ * per product and location it ships from (the BL's dispatch, else the only
+ * location holding the product). Lines whose location cannot be found are
+ * reported, like "Décompter le stock" did.
+ */
+export function deliveryExitLines(doc: Quote, products: Product[], locations: Pick<StockLocation, 'id' | 'name' | 'abbreviation'>[]): { lines: StockVoucherLine[]; skippedItems: string[] } {
+  const byBarcode = new Map(products.map(p => [p.barcode, p]));
+  const { lines, skippedItems } = documentTargets(doc, byBarcode, 'single');
+  const norm = (v: string) => v.trim().toLowerCase().replace(/[\s_]+/g, '_');
+  const locationOf = (t: Target) => t.locId && locations.some(l => l.id === t.locId)
+    ? t.locId
+    : locations.find(l => t.candidates.some(c => [l.abbreviation, l.name].some(k => k && norm(k) === norm(c))))?.id || null;
+  const out: StockVoucherLine[] = [];
+  for (const line of lines) {
+    for (const t of line.targets) {
+      const location_id = locationOf(t);
+      if (!location_id) { skippedItems.push(byBarcode.get(line.barcode)?.name || line.barcode); continue; }
+      const same = out.find(l => l.barcode === line.barcode && l.location_id === location_id);
+      if (same) same.quantity += t.qty;
+      else out.push({ barcode: line.barcode, product_name: byBarcode.get(line.barcode)?.name || line.barcode, quantity: t.qty, unit_cost: null, location_id });
+    }
+  }
+  return { lines: out, skippedItems };
 }
 
 /**

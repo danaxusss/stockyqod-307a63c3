@@ -8,6 +8,8 @@ import { PdfExportService } from '../../utils/pdfExport';
 import { CompanySettingsService, CompanySettings } from '../../utils/companySettings';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../hooks/useAuth';
+import { useAccess } from '../../hooks/useAccess';
+import { StockVouchersService, type StockVoucher } from '../../utils/stockVouchers';
 import { useKeyboardSave, useAutoSave, useEscapeKey } from '../../hooks/useShortcuts';
 import { ClientDropdown } from '../../components/ClientDropdown';
 import { ClientFormModal } from '../../components/ClientFormModal';
@@ -23,7 +25,11 @@ export default function BLDetailPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { isSuperAdmin, isCompta, currentUser } = useAuth();
+  // Counted out the old way ("Décompter le stock"), before Bons de sortie.
   const [stockPosted, setStockPosted] = useState<boolean | null>(null);
+  // The Bon de sortie that takes this delivery note out of stock.
+  const [exitVoucher, setExitVoucher] = useState<Pick<StockVoucher, 'id' | 'number' | 'status'> | null>(null);
+  const { access } = useAccess();
   const [stockBusy, setStockBusy] = useState(false);
   const { showToast } = useToast();
 
@@ -74,6 +80,7 @@ export default function BLDetailPage() {
           .then(m => m.isDocumentStockPosted(doc.id))
           .then(setStockPosted)
           .catch(() => setStockPosted(false));
+        StockVouchersService.findForDocument(doc.id).then(setExitVoucher).catch(() => setExitVoucher(null));
       }
       if (doc?.company_id) {
         setTargetCompanyId(doc.company_id);
@@ -160,33 +167,51 @@ export default function BLDetailPage() {
     }
   };
 
-  const handlePostStock = async () => {
+  // Prepares the Bon de sortie of this delivery note; validating it (stock
+  // staff) is what takes the goods out of stock.
+  const handleCreateExit = async () => {
     if (!bl) return;
     setStockBusy(true);
     try {
-      const { postDocumentStockOut } = await import('../../inventory/lib/stockPosting');
-      const res = await postDocumentStockOut(bl, { createdBy: currentUser?.username || null });
-      const skippedNames = res.skippedItems.slice(0, 5).join(', ') + (res.skippedItems.length > 5 ? '…' : '');
-      if (res.alreadyPosted) {
-        showToast({ type: 'info', title: 'Déjà décompté', message: 'Le stock de ce BL a déjà été décompté.' });
-        setStockPosted(true);
-      } else if (res.posted === 0) {
-        // Nothing could be posted: leave the button available once fixed.
-        showToast({ type: 'warning', title: 'Rien à décompter', message: res.skipped > 0 ? `Emplacement ou code produit manquant pour : ${skippedNames}` : 'Aucun article à décompter.' });
-      } else {
-        const skipMsg = res.skipped > 0 ? ` · non décomptés (emplacement/code manquant) : ${skippedNames}` : '';
-        showToast({ type: 'success', title: 'Stock décompté', message: `${res.posted} mouvement(s) de sortie${skipMsg}` });
-        if (res.negatives && res.negatives > 0) {
-          showToast({ type: 'warning', title: 'Stock négatif', message: `${res.negatives} article(s) passent en stock négatif — vérifiez les réceptions.` });
-        }
-        setStockPosted(true);
+      const [{ deliveryExitLines }, { StockService }, { StockLocationsService }] = await Promise.all([
+        import('../../inventory/lib/stockPosting'), import('../../utils/supabaseStock'), import('../../utils/supabaseStockLocations'),
+      ]);
+      const [products, locations] = await Promise.all([StockService.getProducts(), StockLocationsService.getStockLocations()]);
+      const { lines, skippedItems } = deliveryExitLines(bl, products, locations);
+      if (lines.length === 0) {
+        showToast({ type: 'warning', title: 'Rien à sortir', message: skippedItems.length ? `Emplacement ou code produit manquant pour : ${skippedItems.slice(0, 5).join(', ')}` : 'Aucun article à sortir du stock.' });
+        return;
       }
+      // The voucher's own location: the one most lines leave from.
+      const counts = new Map<string, number>();
+      lines.forEach(l => counts.set(l.location_id as string, (counts.get(l.location_id as string) || 0) + 1));
+      const mainLocation = [...counts.entries()].sort((x, y) => y[1] - x[1])[0][0];
+      const voucherId = await StockVouchersService.saveDraft({
+        kind: 'sortie', reason: 'livraison_client', voucher_date: new Date().toISOString().slice(0, 10),
+        location_id: mainLocation, note: [`BL ${bl.quoteNumber}`, bl.customer?.fullName].filter(Boolean).join(' — '),
+        created_by: currentUser?.username || null, lines,
+        source_document_id: bl.id, source_document_number: bl.quoteNumber,
+      });
+      setExitVoucher({ id: voucherId, number: null, status: 'draft' });
+      if (skippedItems.length) {
+        showToast({ type: 'warning', title: 'Lignes non reprises', message: `Emplacement ou code produit manquant pour : ${skippedItems.slice(0, 5).join(', ')}` });
+      }
+      if (access.stock) navigate(`/inventaire/bons/${voucherId}`);
+      else showToast({ type: 'success', title: 'Bon de sortie préparé', message: 'Le magasin le validera pour sortir la marchandise du stock.' });
     } catch (e) {
-      showToast({ type: 'error', title: 'Erreur stock', message: String((e as any)?.message || e) });
+      showToast({ type: 'error', title: 'Erreur stock', message: String((e as Error)?.message || e) });
     } finally {
       setStockBusy(false);
     }
   };
+
+  const exitLabel = stockPosted
+    ? 'Décompté'
+    : exitVoucher?.status === 'validated' ? `Sorti · ${exitVoucher.number}`
+    : exitVoucher ? 'Bon de sortie à valider'
+    : stockPosted === null ? '…' : 'Non sorti';
+  const exitDone = !!stockPosted || exitVoucher?.status === 'validated';
+  const canCreateExit = stockPosted === false && !exitVoucher;
 
   useKeyboardSave(() => handleSave(false), isEditing);
   useAutoSave(() => handleSave(true), isEditing);
@@ -332,9 +357,9 @@ export default function BLDetailPage() {
             <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${isFinal ? 'bg-blue-500/10 text-blue-700 ring-blue-600/20 dark:text-blue-300' : 'bg-secondary text-muted-foreground ring-border'}`}>
               {isFinal ? 'Finalisé' : 'Brouillon'}
             </span>
-            {stockPosted && (
+            {exitDone && (
               <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-600/20 dark:text-emerald-300">
-                <Boxes className="h-3.5 w-3.5" aria-hidden="true" />Stock décompté
+                <Boxes className="h-3.5 w-3.5" aria-hidden="true" />{stockPosted ? 'Stock décompté' : `Sorti par ${exitVoucher?.number}`}
               </span>
             )}
           </div>
@@ -488,7 +513,9 @@ export default function BLDetailPage() {
               <div className="flex justify-between"><dt className="text-muted-foreground">Valeur TTC</dt><dd className="font-medium tabular-nums text-foreground">{formatMoney(isEditing ? documentTotal(draftItems) : bl.totalAmount)}</dd></div>
               <div className="flex justify-between gap-2">
                 <dt className="text-muted-foreground">Stock</dt>
-                <dd className={`font-medium ${stockPosted ? 'text-emerald-700 dark:text-emerald-300' : 'text-foreground'}`}>{stockPosted ? 'Décompté' : stockPosted === null ? '…' : 'Non décompté'}</dd>
+                <dd className={`font-medium ${exitDone ? 'text-emerald-700 dark:text-emerald-300' : exitVoucher ? 'text-amber-700 dark:text-amber-300' : 'text-foreground'}`}>
+                  {exitVoucher ? <Link to={`/inventaire/bons/${exitVoucher.id}`} className="hover:underline">{exitLabel}</Link> : exitLabel}
+                </dd>
               </div>
             </dl>
             {!isEditing && (
@@ -504,12 +531,18 @@ export default function BLDetailPage() {
                     <FileText className="h-4 w-4" />Créer un proforma
                   </button>
                 ) : null}
-                {!stockPosted && (
-                  <button type="button" onClick={handlePostStock} disabled={stockBusy || stockPosted === null}
-                    title="Décompter les quantités livrées du stock"
+                {canCreateExit && (
+                  <button type="button" onClick={handleCreateExit} disabled={stockBusy}
+                    title="Préparer le bon de sortie qui sortira ces articles du stock"
                     className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-border py-2.5 text-sm font-semibold text-foreground hover:bg-secondary disabled:opacity-60">
-                    {stockBusy ? <Loader className="h-4 w-4 animate-spin" /> : <Boxes className="h-4 w-4 text-primary" />}Décompter le stock
+                    {stockBusy ? <Loader className="h-4 w-4 animate-spin" /> : <Boxes className="h-4 w-4 text-primary" />}Créer le bon de sortie
                   </button>
+                )}
+                {exitVoucher && exitVoucher.status === 'draft' && access.stock && (
+                  <Link to={`/inventaire/bons/${exitVoucher.id}`}
+                    className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-border py-2.5 text-sm font-semibold text-foreground hover:bg-secondary">
+                    <Boxes className="h-4 w-4 text-primary" />Valider le bon de sortie
+                  </Link>
                 )}
               </>
             )}
@@ -557,10 +590,10 @@ export default function BLDetailPage() {
                 className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground">
                 <FileText className="h-4 w-4" />Proforma
               </button>
-            ) : !stockPosted ? (
-              <button type="button" onClick={handlePostStock} disabled={stockBusy || stockPosted === null}
+            ) : canCreateExit ? (
+              <button type="button" onClick={handleCreateExit} disabled={stockBusy}
                 className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-60">
-                {stockBusy ? <Loader className="h-4 w-4 animate-spin" /> : <Boxes className="h-4 w-4" />}Décompter
+                {stockBusy ? <Loader className="h-4 w-4 animate-spin" /> : <Boxes className="h-4 w-4" />}Bon de sortie
               </button>
             ) : null}
           </>
