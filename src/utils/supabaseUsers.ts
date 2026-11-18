@@ -2,6 +2,7 @@ import { supabase } from './supabaseClient';
 import { readAll } from './readAll';
 import { getToken } from './session';
 import { describeEdgeError } from './edgeError';
+import { SupabaseCompaniesService } from './supabaseCompanies';
 import { AppUser, AppUserRole, CreateAppUserRequest, UpdateAppUserRequest } from '../types';
 
 type SafeAppUserRow = {
@@ -41,6 +42,45 @@ async function adminUsers<T>(action: string, body: Record<string, unknown>): Pro
   }
   if (data?.error) throw new Error(data.error);
   return data as T;
+}
+
+/** A name on the login screen's picker. */
+export interface LoginProfile {
+  id: string;
+  username: string;
+  custom_seller_name: string;
+  company_id: string | null;
+  company_name: string | null;
+}
+
+/**
+ * Names for the login screen, read before anyone is signed in. Since secure
+ * login step 2 the public key cannot read users or companies, so verify-pin
+ * returns just these fields. Until verify-pin is redeployed with the
+ * "login-options" action, the previous direct read is used.
+ */
+export async function getLoginProfiles(): Promise<LoginProfile[]> {
+  let users: { id: string; username: string; custom_seller_name?: string | null; company_id?: string | null }[];
+  let companies: { id: string; name: string }[];
+  const { data, error } = await supabase.functions.invoke('verify-pin', { body: { action: 'login-options' } });
+  if (!error && Array.isArray(data?.users)) {
+    users = data.users;
+    companies = Array.isArray(data.companies) ? data.companies : [];
+  } else {
+    const failure = error ? await describeEdgeError(error, 'verify-pin') : null;
+    if (failure?.status === 429) throw new Error(failure.message);
+    [users, companies] = await Promise.all([SupabaseUsersService.getAllUsers(), SupabaseCompaniesService.getAllCompanies()]);
+  }
+  const names = new Map(companies.map(c => [c.id, c.name]));
+  return users
+    .filter(u => u && typeof u.username === 'string')
+    .map(u => ({
+      id: u.id,
+      username: u.username,
+      custom_seller_name: u.custom_seller_name || '',
+      company_id: u.company_id || null,
+      company_name: (u.company_id && names.get(u.company_id)) || null,
+    }));
 }
 
 export class SupabaseUsersService {

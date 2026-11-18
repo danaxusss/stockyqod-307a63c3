@@ -2,9 +2,7 @@ import React, { useState } from 'react';
 import { X, Shield, User, Eye, EyeOff, Package } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useUserAuth } from '../hooks/useUserAuth';
-import { SupabaseUsersService } from '../utils/supabaseUsers';
-import { SupabaseCompaniesService } from '../utils/supabaseCompanies';
-import { AppUser, Company } from '../types';
+import { getLoginProfiles, type LoginProfile } from '../utils/supabaseUsers';
 import { useToast } from '../context/ToastContext';
 import { takeLastAuthError } from '../utils/authError';
 import { getRememberedUsername, forgetRememberedUsername } from '../utils/session';
@@ -22,8 +20,7 @@ export function LoginModal({ roleType, isInitialGate = false, onClose, onLoginSu
   const [username, setUsername] = useState(() => getRememberedUsername() ?? '');
   const [selectedUsername, setSelectedUsername] = useState(() => getRememberedUsername() ?? '');
   const [rememberMe, setRememberMe] = useState(() => !!getRememberedUsername());
-  const [availableUsers, setAvailableUsers] = useState<AppUser[]>([]);
-  const [companiesMap, setCompaniesMap] = useState<Record<string, string>>({});
+  const [availableUsers, setAvailableUsers] = useState<LoginProfile[]>([]);
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -32,18 +29,18 @@ export function LoginModal({ roleType, isInitialGate = false, onClose, onLoginSu
   const { loginWithPin: userLoginWithPin, loginWithCredentials: userLoginWithCredentials } = useUserAuth();
   const { showToast } = useToast();
 
+  // A session that could not be secured ends with a reason (see session.ts).
+  React.useEffect(() => {
+    const reason = takeLastAuthError();
+    if (reason) setError(reason);
+  }, []);
+
   React.useEffect(() => {
     if (roleType === 'user') {
       const fetchUsers = async () => {
         setIsLoadingUsers(true);
         try {
-          const [users, companies] = await Promise.all([
-            SupabaseUsersService.getAllUsers(),
-            SupabaseCompaniesService.getAllCompanies(),
-          ]);
-          const map: Record<string, string> = {};
-          companies.forEach((c: Company) => { map[c.id] = c.name; });
-          setCompaniesMap(map);
+          const users = await getLoginProfiles();
           setAvailableUsers(users.sort((a, b) => {
             const nameA = a.custom_seller_name || a.username;
             const nameB = b.custom_seller_name || b.username;
@@ -200,7 +197,7 @@ export function LoginModal({ roleType, isInitialGate = false, onClose, onLoginSu
                 >
                   <option value="">Sélectionner votre profil</option>
                   {availableUsers.map((user) => {
-                    const companyName = user.company_id ? companiesMap[user.company_id] : null;
+                    const companyName = user.company_name;
                     const label = user.custom_seller_name
                       ? `${user.custom_seller_name}${companyName ? ` (${companyName})` : ''}`
                       : user.username;

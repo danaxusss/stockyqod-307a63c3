@@ -190,6 +190,24 @@ serve(async (req) => {
       return json(req, { success: false });
     }
 
+    // The login screen's list of names, shown before anyone is signed in.
+    // Since secure login step 2 the public key cannot read users or companies,
+    // so the list comes from here, with only what the picker shows (no roles,
+    // phones or rights).
+    if (action === "login-options") {
+      const blocked = await guard(req, [
+        { bucket: "verify-pin:login-options", id: ip, max: 120, window: 15 * 60, message: TOO_MANY_MSG },
+      ]);
+      if (blocked) return blocked;
+      const [{ data: users, error: usersError }, { data: companies, error: companiesError }] = await Promise.all([
+        supabase.from("app_users").select("id, username, custom_seller_name, company_id").order("created_at", { ascending: false }),
+        supabase.from("companies").select("id, name").order("name"),
+      ]);
+      if (usersError) throw usersError;
+      if (companiesError) throw companiesError;
+      return json(req, { users: users || [], companies: companies || [] });
+    }
+
     // Called on app start / periodically: confirms the stored token is genuine
     // and still valid, and returns fresh user data so revoked rights apply at
     // once instead of lingering until the token expires.
