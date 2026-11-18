@@ -41,7 +41,7 @@ describe('single-file bundle of technical sheets', () => {
     }, { fetcher: fakeFetch(files), onProgress: done => progress.push(done) });
 
     const merged = await PDFDocument.load(result.bytes);
-    expect(merged.getPageCount()).toBe(1 + 2 + 1 + 1); // cover + 2 sheet pages + photo + 1 sheet page
+    expect(merged.getPageCount()).toBe(1 + 1 + 2 + 1 + 1); // cover + contents + 2 sheet pages + photo + 1 sheet page
     expect(result.included).toBe(3);
     expect(result.skipped).toEqual(['Fiche disparue', 'Fichier illisible']);
     expect(progress).toEqual([1, 2, 3, 4, 5]);

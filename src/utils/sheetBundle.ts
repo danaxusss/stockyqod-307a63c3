@@ -27,6 +27,8 @@ export interface BundleCompany {
   email?: string;
   website?: string;
   ice?: string;
+  /** Brand colour (#rrggbb) for the cover. */
+  accent?: string;
 }
 
 export interface BundleInput {
@@ -42,6 +44,7 @@ export interface BundleInput {
 export function companyFromSettings(settings?: {
   company_name?: string; logo_url?: string | null; address?: string; phone?: string; phone2?: string;
   phone_gsm?: string; phone_dir?: string; email?: string; website?: string; ice?: string;
+  quote_style?: { accentColor?: string } | null;
 } | null): BundleCompany | undefined {
   if (!settings?.company_name) return undefined;
   const phones = [settings.phone, settings.phone2, settings.phone_gsm, settings.phone_dir].map(v => (v || '').trim()).filter(Boolean);
@@ -53,6 +56,7 @@ export function companyFromSettings(settings?: {
     email: settings.email || '',
     website: settings.website || '',
     ice: settings.ice || '',
+    accent: settings.quote_style?.accentColor || undefined,
   };
 }
 
@@ -126,9 +130,21 @@ function wrap(text: string, font: PDFFont, size: number, width: number): string[
   return lines;
 }
 
+/** #rrggbb → 0..1 channels; a dark blue when missing or invalid. */
+function hexColor(hex?: string): [number, number, number] {
+  const m = /^#?([0-9a-f]{6})$/i.exec((hex || '').trim());
+  if (!m) return [0.12, 0.23, 0.54];
+  const n = parseInt(m[1], 16);
+  return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
+}
+
+/** Contents rows that fit on one "Sommaire" page. */
+const CONTENTS_PER_PAGE = 16;
+
 /** Builds the bundle. Never throws for a single bad file: it is skipped and reported. */
 export async function buildSheetBundle(input: BundleInput, options: BundleOptions = {}): Promise<BundleResult> {
   const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib');
+  type Img = Awaited<ReturnType<PDFDocumentType['embedPng']>>;
   const fetcher = options.fetcher || ((url: string) => fetch(url));
   const toJpeg = options.toJpeg || browserToJpeg;
 
@@ -138,30 +154,48 @@ export async function buildSheetBundle(input: BundleInput, options: BundleOption
   out.setTitle(pdfSafe(input.title));
   out.setProducer('Stocky');
 
-  // Pages are added after the cover, which is written last (it lists skipped files).
+  const company: BundleCompany | undefined = typeof input.company === 'string' ? { name: input.company } : input.company;
+  const [ar, ag, ab] = hexColor(company?.accent);
+  const accent = rgb(ar, ag, ab);
+  const accentDark = rgb(ar * 0.72, ag * 0.72, ab * 0.72);
+  const dark = rgb(0.07, 0.09, 0.15);
+  const grey = rgb(0.42, 0.45, 0.5);
+  const line = rgb(0.86, 0.88, 0.9);
+  const white = rgb(1, 1, 1);
+  const [width, height] = A4;
+
+  // The cover is page 1; the contents ("Sommaire") pages are inserted after it
+  // once the sections are known, so section page numbers account for them.
+  const contentsPages = Math.max(1, Math.ceil(input.sections.length / CONTENTS_PER_PAGE));
   const cover = out.addPage(A4);
   const total = input.sections.reduce((sum, section) => sum + section.files.length, 0);
   let done = 0;
   let included = 0;
   const skipped: string[] = [];
-  const sectionStatus: Array<{ section: BundleSection; ok: number; failed: string[] }> = [];
+  const sectionStatus: Array<{ section: BundleSection; ok: number; failed: string[]; firstPage: number | null }> = [];
+  // Product photos for the cover mosaic (the first photo of each product).
+  const mosaic: Array<{ image: Img; caption: string }> = [];
 
-  const addImagePage = async (bytes: Uint8Array, kind: 'png' | 'jpg', section: BundleSection) => {
-    const image = kind === 'png' ? await out.embedPng(bytes) : await out.embedJpg(bytes);
+  const embedImage = async (bytes: Uint8Array, kind: 'png' | 'jpg'): Promise<Img> =>
+    kind === 'png' ? out.embedPng(bytes) : out.embedJpg(bytes);
+
+  const addImagePage = async (image: Img, section: BundleSection) => {
     const page: PDFPage = out.addPage(A4);
-    const [width, height] = A4;
-    // Caption above the photo: the product it belongs to.
-    page.drawText(pdfSafe(section.heading).slice(0, 110), { x: MARGIN, y: height - MARGIN, size: 12, font: bold, color: rgb(0.07, 0.09, 0.15) });
-    if (section.subheading) page.drawText(pdfSafe(section.subheading).slice(0, 120), { x: MARGIN, y: height - MARGIN - 15, size: 9, font, color: rgb(0.42, 0.45, 0.5) });
-    const top = height - MARGIN - 30;
-    const scale = Math.min((width - 2 * MARGIN) / image.width, (top - MARGIN) / image.height, 1.5);
+    // Caption band above the photo: the product it belongs to.
+    page.drawRectangle({ x: 0, y: height - 74, width, height: 74, color: rgb(0.97, 0.97, 0.98) });
+    page.drawRectangle({ x: 0, y: height - 74, width: 6, height: 74, color: accent });
+    page.drawText(pdfSafe(section.heading).slice(0, 80), { x: MARGIN, y: height - 38, size: 13, font: bold, color: dark });
+    if (section.subheading) page.drawText(pdfSafe(section.subheading).slice(0, 110), { x: MARGIN, y: height - 56, size: 9.5, font, color: grey });
+    const top = height - 74 - 24;
+    const bottom = MARGIN + 20;
+    const scale = Math.min((width - 2 * MARGIN) / image.width, (top - bottom) / image.height, 1.6);
     const w = image.width * scale;
     const h = image.height * scale;
-    page.drawImage(image, { x: (width - w) / 2, y: MARGIN + (top - MARGIN - h) / 2, width: w, height: h });
+    page.drawImage(image, { x: (width - w) / 2, y: bottom + (top - bottom - h) / 2, width: w, height: h });
   };
 
   for (const section of input.sections) {
-    const status = { section, ok: 0, failed: [] as string[] };
+    const status = { section, ok: 0, failed: [] as string[], firstPage: null as number | null };
     for (const file of section.files) {
       try {
         const response = await fetcher(file.url);
@@ -170,14 +204,19 @@ export async function buildSheetBundle(input: BundleInput, options: BundleOption
         let bytes = new Uint8Array(await blob.arrayBuffer());
         let kind = sniff(bytes);
         if (!kind) throw new Error('format');
+        const before = out.getPageCount();
         if (kind === 'pdf') {
           const source = await PDFDocument.load(bytes, { ignoreEncryption: true });
           const pages = await out.copyPages(source, source.getPageIndices());
           pages.forEach(page => out.addPage(page));
         } else {
           if (kind === 'other-image') { bytes = await toJpeg(blob); kind = 'jpg'; }
-          await addImagePage(bytes, kind, section);
+          const image = await embedImage(bytes, kind);
+          await addImagePage(image, section);
+          if (!mosaic.some(tile => tile.caption === section.heading) && mosaic.length < 6) mosaic.push({ image, caption: section.heading });
         }
+        // Page number in the final file: cover + contents pages come first.
+        if (status.firstPage === null) status.firstPage = before + contentsPages + 1;
         status.ok += 1;
         included += 1;
       } catch {
@@ -190,109 +229,154 @@ export async function buildSheetBundle(input: BundleInput, options: BundleOption
     sectionStatus.push(status);
   }
 
-  // Cover: the business (logo, contact details), the title, then the contents
-  // with what could not be included.
-  const [width, height] = A4;
-  const company: BundleCompany | undefined = typeof input.company === 'string' ? { name: input.company } : input.company;
-  const accent = rgb(0.12, 0.23, 0.54);
-  const grey = rgb(0.42, 0.45, 0.5);
-  const dark = rgb(0.07, 0.09, 0.15);
-  const top = height - MARGIN;
-  let headerBottom = top;
-  if (company) {
-    // Logo on the left, at most 170 × 70 pt.
-    let logoBottom = top;
-    if (company.logoUrl) {
-      try {
-        const response = await fetcher(company.logoUrl);
-        if (!response.ok) throw new Error('logo');
-        const blob = await response.blob();
-        let bytes = new Uint8Array(await blob.arrayBuffer());
-        let kind = sniff(bytes);
-        if (kind === 'other-image') { bytes = await toJpeg(blob); kind = 'jpg'; }
-        if (kind === 'png' || kind === 'jpg') {
-          const logo = kind === 'png' ? await out.embedPng(bytes) : await out.embedJpg(bytes);
-          const scale = Math.min(170 / logo.width, 70 / logo.height);
-          cover.drawImage(logo, { x: MARGIN, y: top - logo.height * scale, width: logo.width * scale, height: logo.height * scale });
-          logoBottom = top - logo.height * scale;
-        }
-      } catch { /* no logo: the name stands alone */ }
-    }
-    // Contact details on the right.
-    const right = width - MARGIN;
-    const blockWidth = 230;
-    let cy = top - 10;
-    const drawRight = (text: string, size: number, f: PDFFont, color = grey) => {
-      for (const line of wrap(text, f, size, blockWidth)) {
-        cover.drawText(line, { x: right - f.widthOfTextAtSize(line, size), y: cy, size, font: f, color });
-        cy -= size + 3.5;
-      }
-    };
-    drawRight(company.name, 13, bold, dark);
-    cy -= 2;
-    if (company.address) drawRight(company.address, 9, font);
-    if (company.phones?.length) drawRight(`Tél : ${company.phones.join(' / ')}`, 9, font);
-    if (company.email) drawRight(company.email, 9, font);
-    if (company.website) drawRight(company.website, 9, font, accent);
-    if (company.ice) drawRight(`ICE : ${company.ice}`, 9, font);
-    headerBottom = Math.min(logoBottom, cy + 6) - 16;
-    cover.drawRectangle({ x: MARGIN, y: headerBottom, width: width - 2 * MARGIN, height: 2.5, color: accent });
-    // Contact line at the foot of the cover.
-    const foot = pdfSafe([company.name, company.phones?.[0], company.email, company.website].filter(Boolean).join('  ·  '));
-    cover.drawLine({ start: { x: MARGIN, y: 38 }, end: { x: width - MARGIN, y: 38 }, thickness: 0.5, color: rgb(0.82, 0.84, 0.86) });
-    cover.drawText(foot.slice(0, 130), { x: (width - font.widthOfTextAtSize(foot.slice(0, 130), 8)) / 2, y: 26, size: 8, font, color: grey });
+  // ── Cover ────────────────────────────────────────────────────────────────
+  const bandHeight = 330;
+  const bandBottom = height - bandHeight;
+  cover.drawRectangle({ x: 0, y: bandBottom, width, height: bandHeight, color: accent });
+  // A darker wedge for depth.
+  cover.drawRectangle({ x: 0, y: bandBottom, width, height: 10, color: accentDark });
+  cover.drawRectangle({ x: width - 150, y: bandBottom + 10, width: 150, height: bandHeight - 10, color: accentDark, opacity: 0.35 });
+
+  // Logo on a white card, top left.
+  let logo: Img | null = null;
+  if (company?.logoUrl) {
+    try {
+      const response = await fetcher(company.logoUrl);
+      if (!response.ok) throw new Error('logo');
+      const blob = await response.blob();
+      let bytes = new Uint8Array(await blob.arrayBuffer());
+      let kind = sniff(bytes);
+      if (kind === 'other-image') { bytes = await toJpeg(blob); kind = 'jpg'; }
+      if (kind === 'png' || kind === 'jpg') logo = await embedImage(bytes, kind);
+    } catch { /* no logo: the name stands alone */ }
   }
-  let y = headerBottom - 48;
-  for (const line of wrap(input.title, bold, 24, width - 2 * MARGIN)) {
-    cover.drawText(line, { x: MARGIN, y, size: 24, font: bold, color: dark });
-    y -= 29;
+  const cardTop = height - 36;
+  if (logo) {
+    const scale = Math.min(150 / logo.width, 54 / logo.height);
+    const w = logo.width * scale;
+    const h = logo.height * scale;
+    cover.drawRectangle({ x: MARGIN - 12, y: cardTop - h - 24, width: w + 24, height: h + 24, color: white });
+    cover.drawImage(logo, { x: MARGIN, y: cardTop - h - 12, width: w, height: h });
+  } else if (company?.name) {
+    cover.drawText(pdfSafe(company.name).slice(0, 40), { x: MARGIN, y: cardTop - 30, size: 18, font: bold, color: white });
+  }
+  if (company?.name && logo) {
+    const name = pdfSafe(company.name).slice(0, 40);
+    cover.drawText(name, { x: width - MARGIN - bold.widthOfTextAtSize(name, 11), y: cardTop - 18, size: 11, font: bold, color: white });
+    if (company.website) {
+      const site = pdfSafe(company.website.split('/')[0].trim()).slice(0, 50);
+      cover.drawText(site, { x: width - MARGIN - font.widthOfTextAtSize(site, 9), y: cardTop - 33, size: 9, font, color: rgb(0.88, 0.91, 0.97) });
+    }
+  }
+
+  // Title block.
+  let ty = bandBottom + 150;
+  const kicker = 'CATALOGUE PRODUITS';
+  cover.drawText(kicker, { x: MARGIN, y: ty + 58, size: 10, font: bold, color: rgb(0.85, 0.89, 0.97), characterSpacing: 2.5 } as never);
+  cover.drawRectangle({ x: MARGIN, y: ty + 48, width: 46, height: 3, color: white });
+  for (const titleLine of wrap(input.title, bold, 36, width - 2 * MARGIN - 120).slice(0, 2)) {
+    cover.drawText(titleLine, { x: MARGIN, y: ty, size: 36, font: bold, color: white });
+    ty -= 40;
   }
   if (input.subtitle) {
-    for (const line of wrap(input.subtitle, font, 11.5, width - 2 * MARGIN)) {
-      cover.drawText(line, { x: MARGIN, y, size: 11.5, font, color: rgb(0.29, 0.33, 0.39) });
-      y -= 16;
-    }
+    cover.drawText(pdfSafe(input.subtitle).slice(0, 70), { x: MARGIN, y: ty + 6, size: 14, font: bold, color: rgb(0.92, 0.94, 0.99) });
+    ty -= 22;
   }
-  for (const detail of input.details || []) {
-    cover.drawText(pdfSafe(detail).slice(0, 110), { x: MARGIN, y, size: 10.5, font, color: rgb(0.29, 0.33, 0.39) });
-    y -= 15;
-  }
-  y -= 14;
-  cover.drawText('Contenu', { x: MARGIN, y, size: 13, font: bold, color: rgb(0.07, 0.09, 0.15) });
-  y -= 8;
-  cover.drawLine({ start: { x: MARGIN, y }, end: { x: width - MARGIN, y }, thickness: 0.6, color: rgb(0.82, 0.84, 0.86) });
-  y -= 18;
-  let coverPage = cover;
-  for (const { section, ok, failed } of sectionStatus) {
-    if (y < MARGIN + 50) {
-      // Long quotes: the contents continue on a second page, kept right after the cover.
-      coverPage = out.insertPage(out.getPages().indexOf(coverPage) + 1, A4);
-      y = height - MARGIN - 10;
-    }
-    const note = failed.length === 0
-      ? `${ok} document${ok > 1 ? 's' : ''}`
-      : `${ok} inclus, ${failed.length} non inclus`;
-    const headingLines = wrap(section.heading, bold, 10.5, width - 2 * MARGIN - 130);
-    headingLines.forEach((line, index) => {
-      coverPage.drawText(line, { x: MARGIN, y: y - index * 13, size: 10.5, font: bold, color: rgb(0.07, 0.09, 0.15) });
+  const detailText = (input.details || []).map(pdfSafe).filter(Boolean).join('   |   ');
+  if (detailText) cover.drawText(detailText.slice(0, 100), { x: MARGIN, y: ty + 4, size: 10.5, font, color: rgb(0.85, 0.89, 0.97) });
+  const summary = `${input.sections.length} produit${input.sections.length > 1 ? 's' : ''}  -  ${included} document${included > 1 ? 's' : ''}`;
+  cover.drawText(summary, { x: MARGIN, y: bandBottom + 28, size: 10, font: bold, color: white });
+
+  // Photo mosaic.
+  const footerHeight = 112;
+  const gridTop = bandBottom - 28;
+  const gridBottom = footerHeight + 26;
+  if (mosaic.length) {
+    const cols = mosaic.length <= 2 ? mosaic.length : 3;
+    const rows = Math.ceil(mosaic.length / cols);
+    const gap = 14;
+    const tileW = (width - 2 * MARGIN - gap * (cols - 1)) / cols;
+    const tileH = (gridTop - gridBottom - gap * (rows - 1)) / rows;
+    mosaic.forEach((tile, index) => {
+      const col = index % cols;
+      const row = Math.floor(index / cols);
+      const x = MARGIN + col * (tileW + gap);
+      const yTop = gridTop - row * (tileH + gap);
+      cover.drawRectangle({ x, y: yTop - tileH, width: tileW, height: tileH, color: white, borderColor: line, borderWidth: 0.8 });
+      const captionH = 22;
+      const pad = 8;
+      const areaH = tileH - captionH - pad * 2;
+      const scale = Math.min((tileW - pad * 2) / tile.image.width, areaH / tile.image.height);
+      const w = tile.image.width * scale;
+      const h = tile.image.height * scale;
+      cover.drawImage(tile.image, { x: x + (tileW - w) / 2, y: yTop - pad - areaH + (areaH - h) / 2, width: w, height: h });
+      cover.drawRectangle({ x, y: yTop - tileH, width: tileW, height: captionH, color: rgb(0.97, 0.97, 0.98) });
+      let caption = pdfSafe(tile.caption);
+      while (caption.length > 3 && bold.widthOfTextAtSize(caption, 7.5) > tileW - 12) caption = caption.slice(0, -2);
+      if (caption !== pdfSafe(tile.caption)) caption = `${caption.trimEnd()}...`;
+      cover.drawText(caption, { x: x + 6, y: yTop - tileH + 8, size: 7.5, font: bold, color: dark });
     });
-    coverPage.drawText(pdfSafe(note), {
-      x: width - MARGIN - font.widthOfTextAtSize(pdfSafe(note), 9), y, size: 9, font,
-      color: failed.length ? rgb(0.72, 0.11, 0.11) : rgb(0.42, 0.45, 0.5),
-    });
-    y -= headingLines.length * 13;
-    if (section.subheading) {
-      coverPage.drawText(pdfSafe(section.subheading).slice(0, 110), { x: MARGIN, y, size: 9, font, color: rgb(0.42, 0.45, 0.5) });
-      y -= 12;
-    }
-    for (const label of failed) {
-      coverPage.drawText(pdfSafe(`Non incluse : ${label}`).slice(0, 110), { x: MARGIN + 10, y, size: 8.5, font, color: rgb(0.72, 0.11, 0.11) });
-      y -= 11;
-    }
-    y -= 8;
+  } else {
+    const note = 'Fiches techniques des produits du devis';
+    cover.drawText(note, { x: (width - font.widthOfTextAtSize(note, 14)) / 2, y: (gridTop + gridBottom) / 2, size: 14, font, color: grey });
   }
+
+  // Contact strip.
+  cover.drawRectangle({ x: 0, y: 0, width, height: footerHeight, color: rgb(0.96, 0.97, 0.98) });
+  cover.drawRectangle({ x: 0, y: footerHeight - 3, width, height: 3, color: accent });
+  if (company) {
+    const columns: Array<[string, string[]]> = [
+      ['ADRESSE', company.address ? wrap(company.address, font, 8.5, 160).slice(0, 3) : []],
+      ['CONTACT', [company.phones?.length ? `Tel : ${company.phones.slice(0, 2).join(' / ')}` : '', company.email || ''].filter(Boolean).map(pdfSafe)],
+      ['WEB', [company.website || '', company.ice ? `ICE : ${company.ice}` : ''].filter(Boolean).flatMap(value => wrap(value, font, 8.5, 150)).slice(0, 3)],
+    ];
+    const colW = (width - 2 * MARGIN) / 3;
+    columns.forEach(([label, lines], index) => {
+      const x = MARGIN + index * colW;
+      cover.drawText(label, { x, y: footerHeight - 30, size: 7.5, font: bold, color: accent, characterSpacing: 1.5 } as never);
+      lines.forEach((text, i) => cover.drawText(text.slice(0, 60), { x, y: footerHeight - 46 - i * 12, size: 8.5, font, color: dark }));
+    });
+  }
+
+  // ── Contents ("Sommaire") ────────────────────────────────────────────────
+  for (let pageIndex = 0; pageIndex < contentsPages; pageIndex++) {
+    const page = out.insertPage(1 + pageIndex, A4);
+    page.drawRectangle({ x: 0, y: height - 8, width, height: 8, color: accent });
+    page.drawText(pageIndex === 0 ? 'Sommaire' : 'Sommaire (suite)', { x: MARGIN, y: height - 70, size: 26, font: bold, color: dark });
+    if (company?.name) {
+      const name = pdfSafe(company.name).slice(0, 40);
+      page.drawText(name, { x: width - MARGIN - bold.widthOfTextAtSize(name, 9), y: height - 66, size: 9, font: bold, color: grey });
+    }
+    page.drawRectangle({ x: MARGIN, y: height - 84, width: 46, height: 3, color: accent });
+    let y = height - 124;
+    const rows = sectionStatus.slice(pageIndex * CONTENTS_PER_PAGE, (pageIndex + 1) * CONTENTS_PER_PAGE);
+    rows.forEach(({ section, ok, failed, firstPage }, i) => {
+      const number = String(pageIndex * CONTENTS_PER_PAGE + i + 1).padStart(2, '0');
+      page.drawText(number, { x: MARGIN, y, size: 16, font: bold, color: accent });
+      const title = wrap(section.heading, bold, 11, width - 2 * MARGIN - 130)[0] || '';
+      page.drawText(title, { x: MARGIN + 36, y: y + 2, size: 11, font: bold, color: dark });
+      const sub = [section.subheading ? pdfSafe(section.subheading) : '', `${ok} document${ok > 1 ? 's' : ''}`].filter(Boolean).join('  -  ');
+      page.drawText(sub.slice(0, 90), { x: MARGIN + 36, y: y - 12, size: 8.5, font, color: grey });
+      const pageLabel = firstPage ? `p. ${firstPage}` : 'non incluse';
+      const labelFont = firstPage ? bold : font;
+      page.drawText(pageLabel, {
+        x: width - MARGIN - labelFont.widthOfTextAtSize(pageLabel, 10), y: y + 2, size: 10, font: labelFont,
+        color: firstPage ? dark : rgb(0.72, 0.11, 0.11),
+      });
+      let extra = 0;
+      for (const label of failed.slice(0, 2)) {
+        extra += 11;
+        page.drawText(pdfSafe(`Non incluse : ${label}`).slice(0, 100), { x: MARGIN + 36, y: y - 12 - extra, size: 8, font, color: rgb(0.72, 0.11, 0.11) });
+      }
+      page.drawLine({ start: { x: MARGIN, y: y - 22 - extra }, end: { x: width - MARGIN, y: y - 22 - extra }, thickness: 0.5, color: line });
+      y -= 40 + extra;
+    });
+  }
+
+  // Page numbers (not on the cover).
   const pageCount = out.getPageCount();
   out.getPages().forEach((page, index) => {
+    if (index === 0) return;
     const label = `${index + 1} / ${pageCount}`;
     page.drawText(label, { x: page.getWidth() - MARGIN - font.widthOfTextAtSize(label, 8), y: 18, size: 8, font, color: rgb(0.55, 0.58, 0.62) });
   });
