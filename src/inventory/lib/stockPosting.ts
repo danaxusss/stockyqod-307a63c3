@@ -121,31 +121,13 @@ export async function postDocumentStockReturn(
 }
 
 /**
- * Reverse a document's stock movements (e.g. avoir / annulation): posts the
- * opposite of every movement recorded under sourceId, tagged as a return.
+ * Reverse a document's stock movements (e.g. a deleted delivery note or credit
+ * note): the database posts the opposite of every movement recorded for it, in
+ * one transaction and only once. Returns the number of movements posted.
  */
-export async function reverseDocumentStock(
-  sourceId: string,
-  reference: string,
-  opts: { createdBy?: string | null } = {}
-): Promise<number> {
-  const moves = await StockService.getMovements({ limit: 1000 });
-  const original = moves.filter(m => m.source_id === sourceId && (m.type === 'out' || m.type === 'in'));
-  let count = 0;
-  for (const m of original) {
-    await StockService.applyMovement({
-      barcode: m.barcode,
-      locationKey: m.location_key,
-      // reverse: an 'out' (negative qty) comes back as a positive 'return'
-      type: m.quantity < 0 ? 'return' : 'adjustment',
-      quantity: Math.abs(m.quantity) * (m.quantity < 0 ? 1 : -1),
-      reason: `Annulation ${reference}`,
-      sourceType: 'return',
-      sourceId: `reversal:${sourceId}`,
-      createdBy: opts.createdBy ?? null,
-      locationId: m.location_id,
-    });
-    count++;
-  }
-  return count;
+export async function reverseDocumentStock(documentId: string, reference: string): Promise<number> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase.rpc as any)('reverse_document_stock', { p_document_id: documentId, p_reference: reference });
+  if (error) throw new Error(error.message);
+  return Number(data) || 0;
 }

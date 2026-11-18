@@ -380,7 +380,7 @@ export type StockMovementType =
   | 'in' | 'out' | 'adjustment' | 'count' | 'transfer_in' | 'transfer_out' | 'return';
 
 export type StockSourceType =
-  | 'manual' | 'bl' | 'invoice' | 'receipt' | 'transfer' | 'count' | 'return';
+  | 'manual' | 'bl' | 'invoice' | 'receipt' | 'transfer' | 'count' | 'return' | 'voucher' | 'reversal';
 
 export interface StockMovement {
   id: string;
