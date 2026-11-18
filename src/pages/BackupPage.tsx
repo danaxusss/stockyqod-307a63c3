@@ -4,6 +4,8 @@ import { BackupService, BackupData, BackupProgress } from '../utils/backupServic
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../context/ToastContext';
 import { getCompanyContext } from '../utils/supabaseCompanyFilter';
+import { PageHeader } from '../components/PageHeader';
+import { btnDanger, btnPrimary, btnSecondary, field, fieldAuto } from '../components/backoffice/BackOfficeUi';
 
 const LAST_BACKUP_KEY = 'stocky_last_backup';
 const RESET_PHRASE = 'RÉINITIALISER TOUTES LES DONNÉES';
@@ -67,7 +69,7 @@ export default function BackupPage() {
   }, [isSuperAdmin]);
 
   if (!isSuperAdmin) {
-    return <div className="text-center py-12 text-muted-foreground">Accès réservé au Super Admin.</div>;
+    return <div className="py-12 text-center text-muted-foreground">Accès réservé au Super Admin.</div>;
   }
 
   const handleExport = async () => {
@@ -194,30 +196,28 @@ export default function BackupPage() {
     }
   };
 
-  return (
-    <div className="space-y-5 max-w-[110rem] mx-auto">
-      {/* Header */}
-      <div className="flex items-center space-x-3">
-        <div className="p-2 bg-primary/10 rounded-lg">
-          <Database className="h-5 w-5 text-primary" />
-        </div>
-        <div>
-          <h1 className="text-lg font-bold text-foreground">Sauvegarde & Restauration</h1>
-          <p className="text-xs text-muted-foreground">
-            {lastBackup
-              ? `Dernière sauvegarde : ${new Date(lastBackup).toLocaleString('fr-FR')}`
-              : 'Aucune sauvegarde effectuée depuis ce navigateur'}
-          </p>
-        </div>
-      </div>
+  const sectionHead = (Icon: typeof Download, tone: string, title: string, danger = false) => (
+    <div className="flex items-center gap-3">
+      <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${tone}`}><Icon className="h-4 w-4" aria-hidden="true" /></span>
+      <h2 className={`font-semibold ${danger ? 'text-destructive' : 'text-foreground'}`}>{title}</h2>
+    </div>
+  );
 
+  return (
+    <div className="mx-auto max-w-[110rem] space-y-4">
+      <PageHeader
+        title="Sauvegarde & Restauration"
+        subtitle={lastBackup
+          ? `Dernière sauvegarde : ${new Date(lastBackup).toLocaleString('fr-FR')}`
+          : 'Aucune sauvegarde effectuée depuis ce navigateur'}
+      />
+
+      <div className="grid items-start gap-4 lg:grid-cols-2">
+      <div className="space-y-4">
       {/* Export card */}
-      <div className="glass rounded-xl shadow-lg p-5 space-y-4">
-        <div className="flex items-center space-x-2">
-          <Download className="h-4 w-4 text-emerald-500" />
-          <h2 className="text-sm font-semibold text-foreground">Créer une sauvegarde</h2>
-        </div>
-        <p className="text-xs text-muted-foreground">
+      <section className="rounded-xl border border-border bg-card p-5 shadow-sm space-y-4">
+        {sectionHead(Download, 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400', 'Créer une sauvegarde')}
+        <p className="text-sm text-muted-foreground">
           Exporte toutes les tables de la base de données dans un fichier JSON.
           Ce fichier peut être utilisé pour restaurer les données en cas d'urgence.
         </p>
@@ -240,20 +240,17 @@ export default function BackupPage() {
         <button
           onClick={handleExport}
           disabled={isExporting}
-          className="flex items-center space-x-2 px-4 py-2 text-sm bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg transition-colors font-medium"
+          className={`${btnPrimary} w-full sm:w-auto`}
         >
           {isExporting ? <Loader className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
           <span>{isExporting ? 'Export en cours…' : 'Télécharger la sauvegarde'}</span>
         </button>
-      </div>
+      </section>
 
       {/* Restore card */}
-      <div className="glass rounded-xl shadow-lg p-5 space-y-4">
-        <div className="flex items-center space-x-2">
-          <RotateCcw className="h-4 w-4 text-amber-500" />
-          <h2 className="text-sm font-semibold text-foreground">Restaurer une sauvegarde</h2>
-        </div>
-        <p className="text-xs text-muted-foreground">
+      <section className="rounded-xl border border-border bg-card p-5 shadow-sm space-y-4">
+        {sectionHead(RotateCcw, 'bg-amber-500/10 text-amber-600 dark:text-amber-400', 'Restaurer une sauvegarde')}
+        <p className="text-sm text-muted-foreground">
           Importez un fichier de sauvegarde. Les enregistrements existants seront mis à jour,
           les nouveaux seront ajoutés. Rien n'est supprimé.
         </p>
@@ -263,7 +260,7 @@ export default function BackupPage() {
         {!pendingFile ? (
           <button
             onClick={() => fileRef.current?.click()}
-            className="flex items-center space-x-2 px-4 py-2 text-sm border border-dashed border-amber-500/40 hover:border-amber-500 text-amber-500 hover:bg-amber-500/10 rounded-lg transition-colors"
+            className="flex min-h-10 w-full items-center justify-center gap-2 rounded-lg border border-dashed border-amber-500/50 px-4 text-sm font-medium text-amber-700 transition-colors hover:border-amber-500 hover:bg-amber-500/10 dark:text-amber-300 sm:w-auto"
           >
             <Upload className="h-4 w-4" />
             <span>Choisir un fichier de sauvegarde…</span>
@@ -271,16 +268,16 @@ export default function BackupPage() {
         ) : (
           <div className="space-y-3">
             {/* File info */}
-            <div className="flex items-start space-x-3 p-3 bg-amber-500/5 border border-amber-500/20 rounded-lg">
+            <div className="flex items-start gap-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
               <FileJson className="h-5 w-5 text-amber-500 mt-0.5 shrink-0" />
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-foreground truncate">{pendingFileName}</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">
+                <p className="truncate text-sm font-medium text-foreground">{pendingFileName}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
                   Sauvegarde du {new Date(pendingFile.created_at).toLocaleString('fr-FR')} · v{pendingFile.version}
                 </p>
                 <button
                   onClick={() => setShowSummary(v => !v)}
-                  className="flex items-center space-x-1 text-[10px] text-primary hover:underline mt-1"
+                  className="mt-1 flex items-center gap-1 text-xs font-medium text-primary hover:underline"
                 >
                   {showSummary ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                   <span>{showSummary ? 'Masquer' : 'Voir'} le contenu</span>
@@ -288,7 +285,7 @@ export default function BackupPage() {
                 {showSummary && (
                   <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-0.5">
                     {BackupService.summary(pendingFile).map(({ table, rows }) => (
-                      <div key={table} className="flex justify-between text-[10px] text-muted-foreground">
+                      <div key={table} className="flex justify-between gap-2 text-xs text-muted-foreground">
                         <span>{fmtTable(table)}</span>
                         <span className="font-mono font-semibold text-foreground">{rows.toLocaleString('fr-FR')}</span>
                       </div>
@@ -313,42 +310,39 @@ export default function BackupPage() {
               </div>
             )}
 
-            <div className="flex space-x-2">
+            <div className="flex gap-2">
               <button
                 onClick={() => { setPendingFile(null); setPendingFileName(''); }}
                 disabled={isRestoring}
-                className="px-3 py-1.5 text-sm border border-input rounded-lg hover:bg-accent disabled:opacity-50 text-foreground"
+                className={`${btnSecondary} flex-1 sm:flex-none`}
               >
                 Annuler
               </button>
               <button
                 onClick={handleRestore}
                 disabled={isRestoring}
-                className="flex items-center space-x-2 px-4 py-1.5 text-sm bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-lg transition-colors font-medium"
+                className="inline-flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-amber-600 px-3.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-amber-700 disabled:opacity-50 sm:flex-none"
               >
-                {isRestoring ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                {isRestoring ? <Loader className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
                 <span>{isRestoring ? 'Restauration…' : 'Restaurer maintenant'}</span>
               </button>
             </div>
           </div>
         )}
-      </div>
+      </section>
 
       {/* Restore results */}
       {restoreResults && (
-        <div className="glass rounded-xl shadow-lg p-5 space-y-3">
-          <div className="flex items-center space-x-2">
-            <CheckCircle className="h-4 w-4 text-emerald-500" />
-            <h2 className="text-sm font-semibold text-foreground">Résultat de la restauration</h2>
-          </div>
+        <section className="rounded-xl border border-border bg-card p-5 shadow-sm space-y-4">
+          {sectionHead(CheckCircle, 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400', 'Résultat de la restauration')}
           <div className="divide-y divide-border">
             {Object.entries(restoreResults).map(([table, { upserted, errors }]) => (
-              <div key={table} className="flex items-center justify-between py-1.5">
-                <span className="text-xs text-foreground">{fmtTable(table)}</span>
-                <div className="flex items-center space-x-3">
-                  <span className="text-[10px] text-emerald-500">{upserted} restauré{upserted !== 1 ? 's' : ''}</span>
+              <div key={table} className="flex items-center justify-between gap-3 py-2">
+                <span className="text-sm text-foreground">{fmtTable(table)}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-emerald-700 dark:text-emerald-300">{upserted} restauré{upserted !== 1 ? 's' : ''}</span>
                   {errors > 0 && (
-                    <span className="flex items-center space-x-1 text-[10px] text-destructive">
+                    <span className="flex items-center gap-1 text-xs font-medium text-destructive">
                       <AlertCircle className="h-3 w-3" />
                       <span>{errors} erreur{errors !== 1 ? 's' : ''}</span>
                     </span>
@@ -357,33 +351,33 @@ export default function BackupPage() {
               </div>
             ))}
           </div>
-        </div>
+        </section>
       )}
+      </div>
 
+      <div className="space-y-4">
       {/* Archive by year */}
-      <div className="glass rounded-xl shadow-lg p-5 space-y-4">
-        <div className="flex items-center space-x-2">
-          <Archive className="h-4 w-4 text-blue-500" />
-          <h2 className="text-sm font-semibold text-foreground">Archiver par année</h2>
-        </div>
-        <p className="text-xs text-muted-foreground">
+      <section className="rounded-xl border border-border bg-card p-5 shadow-sm space-y-4">
+        {sectionHead(Archive, 'bg-blue-500/10 text-blue-600 dark:text-blue-400', 'Archiver par année')}
+        <p className="text-sm text-muted-foreground">
           Exporte tous les documents d'une année dans un fichier JSON, puis les retire de la base active.
           Ce fichier peut être ré-importé à tout moment via le bouton "Restaurer" en cas de besoin.
         </p>
 
         {availableYears.length === 0 ? (
-          <div className="flex items-start gap-2 p-3 bg-secondary rounded-lg text-xs text-muted-foreground">
+          <div className="flex items-start gap-2 rounded-lg bg-secondary p-3 text-sm text-muted-foreground">
             <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-amber-500" />
             <span>Aucun document trouvé dans la base. Créez des devis, BLs ou factures — les années disponibles apparaîtront ici automatiquement.</span>
           </div>
         ) : (
           <div className="space-y-3">
             <div className="flex items-center gap-3">
-              <label className="text-xs font-medium text-foreground whitespace-nowrap">Année à archiver :</label>
+              <label className="whitespace-nowrap text-sm font-medium text-foreground" htmlFor="archive-year">Année à archiver :</label>
               <select
+                id="archive-year"
                 value={selectedYear ?? ''}
                 onChange={e => { setSelectedYear(Number(e.target.value)); setArchiveDownloaded(false); }}
-                className="px-3 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring"
+                className={fieldAuto}
               >
                 {availableYears.map(y => (
                   <option key={y} value={y}>{y}</option>
@@ -401,7 +395,7 @@ export default function BackupPage() {
               <button
                 onClick={handleArchiveExport}
                 disabled={isArchiving || !selectedYear}
-                className="flex items-center space-x-2 px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg transition-colors font-medium"
+                className={btnSecondary}
               >
                 {isArchiving && !archiveDownloaded ? <Loader className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                 <span>Exporter {selectedYear}</span>
@@ -411,7 +405,7 @@ export default function BackupPage() {
                 <button
                   onClick={handleArchiveDelete}
                   disabled={isArchiving}
-                  className="flex items-center space-x-2 px-4 py-2 text-sm bg-destructive hover:bg-destructive/90 disabled:opacity-50 text-white rounded-lg transition-colors font-medium"
+                  className={btnDanger}
                 >
                   {isArchiving ? <Loader className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                   <span>Supprimer {selectedYear} de la base</span>
@@ -420,37 +414,49 @@ export default function BackupPage() {
             </div>
 
             {archiveDownloaded && (
-              <div className="flex items-start gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg text-xs text-amber-700 dark:text-amber-400">
+              <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-200">
                 <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
                 <span>Archive téléchargée. Conservez ce fichier en lieu sûr — il est la seule copie des données {selectedYear} après suppression.</span>
               </div>
             )}
           </div>
         )}
+      </section>
+
+      {/* Info box */}
+      <div className="space-y-2 rounded-xl border border-border bg-secondary/40 p-4 text-xs text-muted-foreground">
+        <p className="text-xs font-semibold uppercase tracking-wide text-foreground">À savoir</p>
+        <ul className="space-y-1 list-disc list-inside">
+          <li>La sauvegarde inclut toutes les données : documents, retours, produits, stock, clients, comptabilité, paie, tâches, WhatsApp, paramètres. Les utilisateurs et leurs PIN n’y sont pas (ils restent sur le serveur).</li>
+          <li>Les fichiers uploadés (logos, tampons, fiches) sont dans le stockage Supabase et ne sont pas inclus dans ce fichier.</li>
+          <li>La restauration ne supprime rien — elle ajoute ou met à jour les enregistrements existants.</li>
+          <li>Pour une sauvegarde automatique quotidienne, configurez le cron sur votre VPS (voir ci-dessous).</li>
+        </ul>
+      </div>
+
+      </div>
       </div>
 
       {/* Reset all data */}
-      <div className="glass rounded-xl shadow-lg p-5 space-y-4 border border-destructive/20">
-        <div className="flex items-center space-x-2">
-          <Trash2 className="h-4 w-4 text-destructive" />
-          <h2 className="text-sm font-semibold text-destructive">Réinitialisation complète</h2>
-        </div>
-        <p className="text-xs text-muted-foreground">
+      <section className="space-y-4 rounded-xl border border-destructive/30 bg-card p-5 shadow-sm">
+        {sectionHead(Trash2, 'bg-destructive/10 text-destructive', 'Réinitialisation complète', true)}
+        <p className="text-sm text-muted-foreground">
           Supprime <strong>définitivement</strong> tous les devis, BLs, proformas, factures, avoirs, retours et clients.
           Les produits, paramètres, modèles et utilisateurs ne sont <strong>pas</strong> affectés.
           Cette action est irréversible — effectuez une sauvegarde avant de continuer.
         </p>
 
         <div className="space-y-2">
-          <label className="block text-xs font-medium text-foreground">
+          <label className="block text-sm font-medium text-foreground" htmlFor="reset-phrase">
             Pour confirmer, tapez exactement : <span className="font-mono text-destructive select-all">{RESET_PHRASE}</span>
           </label>
           <input
+            id="reset-phrase"
             type="text"
             value={resetPhrase}
             onChange={e => setResetPhrase(e.target.value)}
             placeholder="Tapez la phrase de confirmation…"
-            className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring font-mono"
+            className={`${field} font-mono sm:max-w-xl`}
             disabled={isResetting}
             autoComplete="off"
           />
@@ -465,42 +471,29 @@ export default function BackupPage() {
         <button
           onClick={handleReset}
           disabled={isResetting || resetPhrase !== RESET_PHRASE}
-          className="flex items-center space-x-2 px-4 py-2 text-sm bg-destructive hover:bg-destructive/90 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-medium"
+          className={`${btnDanger} w-full disabled:cursor-not-allowed sm:w-auto`}
         >
           {isResetting ? <Loader className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
           <span>{isResetting ? 'Réinitialisation en cours…' : 'Réinitialiser maintenant'}</span>
         </button>
-      </div>
+      </section>
 
-      {/* Info box */}
-      <div className="rounded-lg border border-border p-4 space-y-2 text-xs text-muted-foreground">
-        <p className="font-semibold text-foreground text-[11px] uppercase tracking-wide">À savoir</p>
-        <ul className="space-y-1 list-disc list-inside">
-          <li>La sauvegarde inclut toutes les données : documents, retours, produits, stock, clients, comptabilité, paie, tâches, WhatsApp, paramètres. Les utilisateurs et leurs PIN n’y sont pas (ils restent sur le serveur).</li>
-          <li>Les fichiers uploadés (logos, tampons, fiches) sont dans le stockage Supabase et ne sont pas inclus dans ce fichier.</li>
-          <li>La restauration ne supprime rien — elle ajoute ou met à jour les enregistrements existants.</li>
-          <li>Pour une sauvegarde automatique quotidienne, configurez le cron sur votre VPS (voir ci-dessous).</li>
-        </ul>
-      </div>
 
       {/* VPS cron info */}
-      <div className="glass rounded-xl shadow-lg p-5 space-y-3">
-        <div className="flex items-center space-x-2">
-          <Database className="h-4 w-4 text-primary" />
-          <h2 className="text-sm font-semibold text-foreground">Sauvegarde automatique VPS</h2>
-        </div>
-        <p className="text-xs text-muted-foreground">
+      <section className="rounded-xl border border-border bg-card p-5 shadow-sm space-y-4">
+        {sectionHead(Database, 'bg-primary/10 text-primary', 'Sauvegarde automatique VPS')}
+        <p className="text-sm text-muted-foreground">
           Exécutez ces commandes une seule fois sur votre VPS pour activer les sauvegardes SQL quotidiennes automatiques.
           Ces sauvegardes sont complètes (y compris les fichiers stockés) et peuvent restaurer l'état exact de la base.
         </p>
         <div className="space-y-2">
-          <p className="text-[10px] font-semibold text-muted-foreground uppercase">1 — Créer le dossier de sauvegardes</p>
-          <pre className="bg-secondary rounded-lg p-3 text-[11px] font-mono text-foreground overflow-x-auto whitespace-pre-wrap">
+          <p className="pt-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">1 — Créer le dossier de sauvegardes</p>
+          <pre className="overflow-x-auto whitespace-pre-wrap rounded-lg border border-border bg-secondary/60 p-3 font-mono text-xs text-foreground">
 {`mkdir -p /var/backups/stocky
 chmod 700 /var/backups/stocky`}
           </pre>
-          <p className="text-[10px] font-semibold text-muted-foreground uppercase">2 — Créer le script de sauvegarde</p>
-          <pre className="bg-secondary rounded-lg p-3 text-[11px] font-mono text-foreground overflow-x-auto whitespace-pre-wrap">
+          <p className="pt-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">2 — Créer le script de sauvegarde</p>
+          <pre className="overflow-x-auto whitespace-pre-wrap rounded-lg border border-border bg-secondary/60 p-3 font-mono text-xs text-foreground">
 {`cat > /var/backups/stocky/backup.sh << 'EOF'
 #!/bin/bash
 FILE="/var/backups/stocky/stocky_$(date +%Y%m%d_%H%M).dump"
@@ -511,16 +504,16 @@ echo "Sauvegarde OK : $FILE"
 EOF
 chmod +x /var/backups/stocky/backup.sh`}
           </pre>
-          <p className="text-[10px] font-semibold text-muted-foreground uppercase">3 — Planifier à 3h du matin chaque jour</p>
-          <pre className="bg-secondary rounded-lg p-3 text-[11px] font-mono text-foreground overflow-x-auto whitespace-pre-wrap">
+          <p className="pt-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">3 — Planifier à 3h du matin chaque jour</p>
+          <pre className="overflow-x-auto whitespace-pre-wrap rounded-lg border border-border bg-secondary/60 p-3 font-mono text-xs text-foreground">
 {`(crontab -l 2>/dev/null; echo "0 3 * * * /var/backups/stocky/backup.sh >> /var/log/stocky-backup.log 2>&1") | crontab -`}
           </pre>
-          <p className="text-[10px] font-semibold text-muted-foreground uppercase">Pour restaurer depuis un fichier .dump</p>
-          <pre className="bg-secondary rounded-lg p-3 text-[11px] font-mono text-foreground overflow-x-auto whitespace-pre-wrap">
+          <p className="pt-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pour restaurer depuis un fichier .dump</p>
+          <pre className="overflow-x-auto whitespace-pre-wrap rounded-lg border border-border bg-secondary/60 p-3 font-mono text-xs text-foreground">
 {`pg_restore -U postgres -d postgres --clean /var/backups/stocky/stocky_20260419_0300.dump`}
           </pre>
         </div>
-      </div>
+      </section>
     </div>
   );
 }

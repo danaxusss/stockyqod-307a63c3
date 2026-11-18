@@ -100,10 +100,10 @@ export default function AdminToolsPage() {
 
       {debug && (
         <Panel title="Analyse de la base" className="mt-5">
-          <dl className="grid grid-cols-3 gap-4 p-5 text-sm">
-            <div><dt className="text-muted-foreground">Produits sur le serveur</dt><dd className="text-lg font-semibold tabular-nums">{debug.totalCount}</dd></div>
-            <div><dt className="text-muted-foreground">Invalides</dt><dd className="text-lg font-semibold tabular-nums">{debug.invalidProducts.length}</dd></div>
-            <div><dt className="text-muted-foreground">Codes-barres en double</dt><dd className="text-lg font-semibold tabular-nums">{debug.duplicateBarcodes.length}</dd></div>
+          <dl className="grid grid-cols-1 gap-4 p-5 text-sm sm:grid-cols-3">
+            <div><dt className="text-muted-foreground">Produits sur le serveur</dt><dd className="text-lg font-semibold tabular-nums text-foreground">{debug.totalCount}</dd></div>
+            <div><dt className="text-muted-foreground">Invalides</dt><dd className="text-lg font-semibold tabular-nums text-foreground">{debug.invalidProducts.length}</dd></div>
+            <div><dt className="text-muted-foreground">Codes-barres en double</dt><dd className="text-lg font-semibold tabular-nums text-foreground">{debug.duplicateBarcodes.length}</dd></div>
           </dl>
         </Panel>
       )}
@@ -111,16 +111,29 @@ export default function AdminToolsPage() {
       {logs && (
         <Panel title="Activité récente" className="mt-5">
           {logs.length === 0 ? <p className="p-5 text-sm text-muted-foreground">Aucune activité enregistrée.</p> : (
-            <div className="overflow-x-auto">
+            <>
+            <ul className="divide-y divide-border md:hidden">
+              {logs.map(log => (
+                <li key={log.id} className="px-4 py-3">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="truncate text-sm font-medium text-foreground">{log.username}</span>
+                    <span className="shrink-0 text-xs text-muted-foreground">{new Date(log.created_at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                  </div>
+                  <p className="text-sm text-foreground">{log.action}</p>
+                  <p className="truncate text-xs text-muted-foreground">{log.details || '—'}</p>
+                </li>
+              ))}
+            </ul>
+            <div className="hidden overflow-x-auto md:block">
               <table className="w-full text-sm">
-                <thead className="bg-secondary/60 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <thead className="border-b border-border bg-secondary/40 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   <tr><th className="px-5 py-2.5">Utilisateur</th><th className="px-5 py-2.5">Action</th><th className="px-5 py-2.5">Détails</th><th className="px-5 py-2.5">Date</th></tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {logs.map(log => (
-                    <tr key={log.id}>
-                      <td className="px-5 py-2.5 font-medium">{log.username}</td>
-                      <td className="px-5 py-2.5">{log.action}</td>
+                    <tr key={log.id} className="hover:bg-secondary/40">
+                      <td className="px-5 py-2.5 font-medium text-foreground">{log.username}</td>
+                      <td className="px-5 py-2.5 text-foreground">{log.action}</td>
                       <td className="max-w-xs truncate px-5 py-2.5 text-muted-foreground">{log.details || '—'}</td>
                       <td className="whitespace-nowrap px-5 py-2.5 text-muted-foreground">{new Date(log.created_at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
                     </tr>
@@ -128,6 +141,7 @@ export default function AdminToolsPage() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </Panel>
       )}

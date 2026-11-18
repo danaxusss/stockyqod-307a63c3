@@ -9,7 +9,6 @@ import { Loader, type LucideIcon } from 'lucide-react';
 export const btnPrimary = 'inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg bg-primary px-3.5 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-50';
 export const btnSecondary = 'inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3.5 text-sm font-medium text-foreground hover:bg-secondary disabled:opacity-50';
 export const btnDanger = 'inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg bg-destructive px-3.5 text-sm font-semibold text-destructive-foreground shadow-sm hover:bg-destructive/90 disabled:opacity-50';
-export const btnDangerOutline = 'inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-destructive/30 bg-card px-3.5 text-sm font-medium text-destructive hover:bg-destructive/10 disabled:opacity-50';
 /** Small action inside a row ("Générer", "Lettrer"…). */
 export const btnSoft = 'inline-flex min-h-8 items-center justify-center gap-1 rounded-md bg-primary/10 px-2.5 text-xs font-semibold text-primary hover:bg-primary/20 disabled:opacity-50';
 export const iconBtn = 'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground disabled:opacity-40';
