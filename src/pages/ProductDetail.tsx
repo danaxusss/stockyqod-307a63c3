@@ -496,10 +496,11 @@ export function ProductDetail() {
                   <span className="text-muted-foreground">achat {formatMoney(product.buyprice)} + {marginPercentage} % =</span>
                   <span className="font-semibold tabular-nums text-foreground">{formatMoney(finalPrice)}</span>
                 </div>
-                <div className="mt-3 hidden items-center gap-2 lg:flex">
+                {/* From tablet width up; phones have the bar at the bottom. */}
+                <div className="mt-3 hidden items-center gap-2 md:flex">
                   {quantityStepper('md')}
                   <button type="button" onClick={handleAddToCart}
-                    className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90">
+                    className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 touch:h-11">
                     <ShoppingCart className="h-4 w-4" aria-hidden="true" />Ajouter au devis
                   </button>
                   <button type="button" onClick={handleCopy} title="Copier la ligne (marque, code, désignation, prix)"
@@ -507,7 +508,7 @@ export function ProductDetail() {
                     <Copy className="h-4 w-4" aria-hidden="true" />Copier
                   </button>
                 </div>
-                <button type="button" onClick={handleCopy} className="mt-3 flex items-center gap-1.5 text-sm font-semibold text-primary-text lg:hidden">
+                <button type="button" onClick={handleCopy} className="mt-3 flex items-center gap-1.5 text-sm font-semibold text-primary-text md:hidden">
                   <Copy className="h-4 w-4" aria-hidden="true" />Copier la ligne
                 </button>
               </div>

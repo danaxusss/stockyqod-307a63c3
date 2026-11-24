@@ -118,5 +118,16 @@ export default {
       },
     },
   },
-  plugins: [require("tailwindcss-animate")],
+  plugins: [
+    require("tailwindcss-animate"),
+    // touch: finger-driven screens (iPad, phones): bigger targets, and what
+    // a mouse reveals on hover is shown from the start.
+    ({ addVariant }: { addVariant: (name: string, definition: string) => void }) => {
+      addVariant("touch", "@media (hover: none) and (pointer: coarse)");
+      // cq-table: inside a box marked [container-type:inline-size] that is at
+      // least 62rem wide. Lists switch to table columns by their own width,
+      // not the screen's (an iPad or a side panel leaves much less room).
+      addVariant("cq-table", "@container (min-width: 62rem)");
+    },
+  ],
 } satisfies Config;

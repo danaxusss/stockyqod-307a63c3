@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  Package, RefreshCw, LogOut, ChevronLeft, ChevronRight, ChevronDown, X, Sun, Moon, Home, Search, EllipsisVertical,
+  Package, RefreshCw, LogOut, ChevronLeft, ChevronRight, ChevronDown, X, Sun, Moon, Home, Search, EllipsisVertical, Bot, Menu,
 } from 'lucide-react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useTheme } from '../hooks/useTheme';
@@ -12,6 +12,7 @@ import { useAppContext } from '../context/AppContext';
 import { useToast } from '../context/ToastContext';
 import { moduleForPath, activeItem, type NavModule } from '../lib/navigation';
 import { openSearch } from '../utils/searchEvents';
+import { useIsTouch, useMediaQuery } from '../hooks/useMediaQuery';
 
 const SIDEBAR_KEY = 'stocky_sidebar_collapsed';
 
@@ -20,6 +21,9 @@ const ROLE_LABELS: Record<string, string> = {
   compta: 'Comptabilité', senior_sales: 'Commercial senior', junior_sales: 'Commercial',
 };
 const TASK_ROLE_LABELS: Record<string, string> = { technician: 'Technicien', driver: 'Chauffeur', sales: 'Commercial' };
+
+/** Rail labels must fit 56 px. */
+const RAIL_SHORT: Record<string, string> = { comptabilite: 'Compta', admin: 'Admin' };
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || '');
 
@@ -35,9 +39,12 @@ function Badge({ count, strong = false }: { count?: number; strong?: boolean }) 
 interface SidebarProps {
   mobileOpen?: boolean;
   onMobileClose?: () => void;
+  /** Open the full menu over the page (tablet rail). */
+  onRequestOpen?: () => void;
+  onOpenAssistant?: () => void;
 }
 
-export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps = {}) {
+export function Sidebar({ mobileOpen = false, onMobileClose, onRequestOpen, onOpenAssistant }: SidebarProps = {}) {
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem(SIDEBAR_KEY) === 'true'; } catch { return false; }
   });
@@ -102,7 +109,20 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps = {}
   const roleLabel = (access.tasksOnly && taskRoleLabel) || (newRole && ROLE_LABELS[newRole])
     || (isSuperAdmin ? ROLE_LABELS.super_admin : isAdmin ? ROLE_LABELS.admin : taskRoleLabel || 'Utilisateur');
   const isOnline = syncInfo.isOnline;
-  const showExpanded = mobileOpen || !collapsed;
+  // From 1024 px the menu sits beside the page, open or folded as the user
+  // left it. On a tablet below that (iPad portrait) it is an icon rail and
+  // opens over the page; on a phone it is a drawer.
+  const isWide = useMediaQuery('(min-width: 1024px)');
+  const isTabletUp = useMediaQuery('(min-width: 768px)');
+  const isTabletRail = isTabletUp && !isWide;
+  const isTouch = useIsTouch();
+  // The assistant panel opens from 768 px; its floating tab is only shown on
+  // wide mouse-driven screens, so elsewhere it is offered here.
+  const assistantInMenu = !!onOpenAssistant && isTabletUp && (!isWide || isTouch);
+  const showExpanded = mobileOpen || (isWide && !collapsed);
+  // A tablet has no hover tooltips: the rail names each icon.
+  const railLabels = isTabletRail && !mobileOpen;
+  const railRow = railLabels ? 'flex-col !gap-1 !px-0 py-2' : '';
 
   // Work waiting for the user, shown next to the pages that hold it.
   const itemBadges: Record<string, number | undefined> = {
@@ -116,6 +136,12 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps = {}
   };
 
   const toggleModule = (m: NavModule) => {
+    if (!showExpanded && isTabletRail && onRequestOpen) {
+      // Rail: open the menu over the page on that module, so its pages are one tap away.
+      setOpenIds(ids => new Set(ids).add(m.id));
+      onRequestOpen();
+      return;
+    }
     if (!showExpanded) { navigate(m.items[0].to); onMobileClose?.(); return; }
     setOpenIds(ids => {
       const next = new Set(ids);
@@ -124,16 +150,28 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps = {}
     });
   };
 
-  const rowBase = 'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors';
+  // Turning a tablet to landscape puts the menu back beside the page.
+  useEffect(() => { if (isWide && mobileOpen) onMobileClose?.(); }, [isWide]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Escape closes the menu opened over the page.
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onMobileClose?.(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [mobileOpen, onMobileClose]);
+
+  // Taller rows on touch screens: a finger needs about 44 px.
+  const rowBase = 'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors touch:min-h-11';
 
   return (
     <aside className={`
       flex h-full flex-col overflow-hidden border-r border-border bg-card
-      fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw]
-      md:relative md:z-auto md:max-w-none md:shrink-0
-      transition-transform md:transition-[width] duration-200 ease-in-out
-      ${mobileOpen ? 'translate-x-0 shadow-[4px_0_24px_rgba(0,0,0,0.12)]' : '-translate-x-full md:translate-x-0'}
-      ${collapsed ? 'md:w-16' : 'md:w-60'}
+      fixed inset-y-0 left-0 z-50 max-w-[85vw]
+      lg:relative lg:z-auto lg:max-w-none lg:shrink-0 lg:translate-x-0 lg:shadow-none
+      transition-[transform,width] duration-200 ease-in-out
+      ${mobileOpen ? 'w-72 translate-x-0 shadow-[4px_0_24px_rgba(0,0,0,0.12)]' : 'w-72 -translate-x-full md:w-20 md:translate-x-0'}
+      ${collapsed ? 'lg:w-16' : 'lg:w-60'}
     `}>
       {/* Brand + collapse */}
       <div className={`flex shrink-0 items-center gap-2 px-3 pt-3 ${!showExpanded ? 'flex-col' : ''}`}>
@@ -151,12 +189,19 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps = {}
             </span>
           )}
         </Link>
-        <button onClick={toggleCollapsed} className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground md:flex" aria-label={collapsed ? 'Déplier le menu' : 'Replier le menu'}>
+        <button onClick={toggleCollapsed} className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground lg:flex" aria-label={collapsed ? 'Déplier le menu' : 'Replier le menu'}>
           {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
         </button>
-        <button onClick={onMobileClose} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary md:hidden" aria-label="Fermer le menu">
-          <X className="h-5 w-5" />
-        </button>
+        {mobileOpen && (
+          <button onClick={onMobileClose} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary lg:hidden" aria-label="Fermer le menu">
+            <X className="h-5 w-5" />
+          </button>
+        )}
+        {isTabletRail && !mobileOpen && (
+          <button onClick={onRequestOpen} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground" aria-label="Ouvrir le menu">
+            <Menu className="h-5 w-5" />
+          </button>
+        )}
       </div>
 
       {/* Company + search */}
@@ -171,23 +216,25 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps = {}
           <button
             type="button"
             onClick={() => { onMobileClose?.(); openSearch(); }}
-            className={`flex w-full items-center gap-2 rounded-lg bg-secondary px-3 py-2 text-left text-sm text-muted-foreground hover:text-foreground ${!showExpanded ? 'justify-center px-0' : ''}`}
+            className={`flex w-full items-center gap-2 rounded-lg bg-secondary px-3 py-2 text-left text-sm text-muted-foreground hover:text-foreground touch:min-h-11 ${!showExpanded ? 'justify-center px-0' : ''} ${railRow}`}
             aria-label="Rechercher"
             title={!showExpanded ? `Rechercher (${isMac ? '⌘' : 'Ctrl'} K)` : undefined}
           >
             <Search className="h-4 w-4 shrink-0" aria-hidden="true" />
+            {railLabels && <span className="text-[10px] font-semibold leading-none">Chercher</span>}
             {showExpanded && <><span className="flex-1">Rechercher…</span><kbd className="hidden rounded border border-border bg-card px-1.5 text-[11px] font-semibold md:inline">{isMac ? '⌘' : 'Ctrl'} K</kbd></>}
           </button>
         )}
       </div>
 
       {/* Modules */}
-      <nav aria-label="Menu principal" className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-3 pb-3">
+      <nav aria-label="Menu principal" className={`min-h-0 flex-1 space-y-0.5 overflow-y-auto pb-3 ${railLabels ? 'px-2' : 'px-3'}`}>
         {!access.tasksOnly && (
           <NavLink to="/" end onClick={onMobileClose} title={!showExpanded ? 'Accueil' : undefined}
-            className={({ isActive }) => `${rowBase} ${isActive ? 'bg-primary/10 text-primary' : 'text-foreground/80 hover:bg-secondary hover:text-foreground'} ${!showExpanded ? 'justify-center px-0' : ''}`}>
+            className={({ isActive }) => `${rowBase} ${isActive ? 'bg-primary/10 text-primary' : 'text-foreground/80 hover:bg-secondary hover:text-foreground'} ${!showExpanded ? 'justify-center px-0' : ''} ${railRow}`}>
             <Home className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />
             {showExpanded && 'Accueil'}
+            {railLabels && <span className="text-[10px] font-semibold leading-none">Accueil</span>}
           </NavLink>
         )}
         {modules.map(m => {
@@ -202,9 +249,10 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps = {}
                 aria-expanded={showExpanded ? isOpen : undefined}
                 aria-controls={showExpanded ? panelId : undefined}
                 title={!showExpanded ? m.label : undefined}
-                className={`${rowBase} ${isCurrent && !isOpen ? 'bg-primary/10 text-primary' : isCurrent ? 'text-foreground' : 'text-foreground/80 hover:bg-secondary hover:text-foreground'} ${!showExpanded ? 'relative justify-center px-0' : ''}`}
+                className={`${rowBase} ${isCurrent && !isOpen ? 'bg-primary/10 text-primary' : isCurrent ? 'text-foreground' : 'text-foreground/80 hover:bg-secondary hover:text-foreground'} ${!showExpanded ? 'relative justify-center px-0' : ''} ${railRow}`}
               >
                 <m.icon className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />
+                {railLabels && <span className="max-w-full truncate text-[10px] font-semibold leading-none">{RAIL_SHORT[m.id] || m.label}</span>}
                 {showExpanded ? (
                   <>
                     <span className="flex-1 text-left">{m.label}</span>
@@ -223,7 +271,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps = {}
                         to={item.to}
                         onClick={onMobileClose}
                         aria-current={isActive ? 'page' : undefined}
-                        className={`flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm ${isActive ? 'bg-primary/10 font-semibold text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}
+                        className={`flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm touch:min-h-11 ${isActive ? 'bg-primary/10 font-semibold text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}
                       >
                         <span className="min-w-0 flex-1 truncate">{item.label}</span>
                         <Badge count={itemBadges[item.to]} />
@@ -242,16 +290,22 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps = {}
         {menuOpen && (
           <div role="menu" className={`absolute bottom-full z-10 mb-1 overflow-hidden rounded-xl border border-border bg-popover py-1 text-sm shadow-xl ${showExpanded ? 'left-3 right-3' : 'left-2 w-56'}`}>
             {isOnline && (
-              <button role="menuitem" onClick={() => { setMenuOpen(false); handleSync(); }} disabled={isSyncing} className="flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-secondary disabled:opacity-50">
+              <button role="menuitem" onClick={() => { setMenuOpen(false); handleSync(); }} disabled={isSyncing} className="flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-secondary disabled:opacity-50 touch:min-h-11">
                 <RefreshCw className={`h-4 w-4 text-muted-foreground ${isSyncing ? 'animate-spin' : ''}`} aria-hidden="true" />Synchroniser les données
               </button>
             )}
-            <button role="menuitem" onClick={() => { toggleTheme(); setMenuOpen(false); }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-secondary">
+            {assistantInMenu && onOpenAssistant && (
+              // The floating "IA" tab is kept for wide screens; on a tablet it covered pages.
+              <button role="menuitem" onClick={() => { setMenuOpen(false); onMobileClose?.(); onOpenAssistant(); }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-secondary touch:min-h-11">
+                <Bot className="h-4 w-4 text-muted-foreground" aria-hidden="true" />Assistant IA
+              </button>
+            )}
+            <button role="menuitem" onClick={() => { toggleTheme(); setMenuOpen(false); }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-secondary touch:min-h-11">
               {theme === 'dark' ? <Sun className="h-4 w-4 text-muted-foreground" aria-hidden="true" /> : <Moon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />}
               {theme === 'dark' ? 'Mode clair' : 'Mode sombre'}
             </button>
             {(isAdmin || isUserAuthenticated) && (
-              <button role="menuitem" onClick={handleLogout} className="flex w-full items-center gap-2.5 border-t border-border px-3 py-2 text-left text-destructive hover:bg-destructive/10">
+              <button role="menuitem" onClick={handleLogout} className="flex w-full items-center gap-2.5 border-t border-border px-3 py-2 text-left text-destructive hover:bg-destructive/10 touch:min-h-11">
                 <LogOut className="h-4 w-4" aria-hidden="true" />Se déconnecter
               </button>
             )}

@@ -8,6 +8,7 @@ import { AIChatWidget } from './AIChatWidget';
 import { CommandPalette } from './CommandPalette';
 import { MobileHeader, MobileTabBar } from './MobileNav';
 import { cartHiddenOn, documentTitle } from '../utils/pageTitles';
+import { useIsTouch } from '../hooks/useMediaQuery';
 
 interface LayoutProps {
   children: ReactNode;
@@ -59,21 +60,34 @@ export function Layout({ children }: LayoutProps) {
   }, [isUserAuthenticated, isPulling, pullDistance, syncData]);
 
   const [chatOpen, setChatOpen] = useState(false);
+  const isTouch = useIsTouch();
 
   return (
-    <div className="h-screen bg-background flex overflow-hidden">
+    // h-dvh, not h-screen: in iPad and iPhone Safari 100vh is taller than
+    // the visible area, which hid the bottom of the menu and of every page.
+    // Installed on the home screen, the status bar sits over the page: the
+    // top inset keeps the menu and titles below it.
+    <div className="h-dvh bg-background flex overflow-hidden pt-[env(safe-area-inset-top)]">
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[300] focus:rounded-lg focus:bg-primary focus:px-4 focus:py-2.5 focus:text-sm focus:font-semibold focus:text-primary-foreground focus:shadow-lg">
         Aller au contenu
       </a>
-      {/* Mobile sidebar backdrop */}
+      {/* Menu opened over the page (phones, and tablets below 1024 px) */}
       {mobileSidebarOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
           onClick={() => setMobileSidebarOpen(false)}
         />
       )}
 
-      <Sidebar mobileOpen={mobileSidebarOpen} onMobileClose={() => setMobileSidebarOpen(false)} />
+      <Sidebar
+        mobileOpen={mobileSidebarOpen}
+        onMobileClose={() => setMobileSidebarOpen(false)}
+        onRequestOpen={() => setMobileSidebarOpen(true)}
+        onOpenAssistant={() => setChatOpen(true)}
+      />
+      {/* Tablets (iPad portrait): the menu is a slim icon rail that opens over
+          the page, so pages get the width. The rail floats; this keeps its place. */}
+      <div className="hidden w-20 shrink-0 md:block lg:hidden" aria-hidden="true" />
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Phone: page name and back arrow (the menu is in the bottom bar) */}
@@ -129,18 +143,20 @@ export function Layout({ children }: LayoutProps) {
       <MobileTabBar onMenu={() => setMobileSidebarOpen(true)} />
       <CommandPalette />
 
-      {/* AI Chat side panel — desktop only */}
-      <div className={`hidden md:flex flex-col border-l border-border/40 bg-card shrink-0 overflow-hidden transition-[width] duration-200 ease-in-out ${chatOpen ? 'w-80' : 'w-0'}`}>
+      {/* AI Chat side panel — tablets and up; over the page below 1024 px */}
+      {chatOpen && <div className="fixed inset-0 z-40 hidden bg-black/40 md:block lg:hidden" onClick={() => setChatOpen(false)} aria-hidden="true" />}
+      <div className={`hidden md:flex flex-col border-l border-border/40 bg-card shrink-0 overflow-hidden transition-[width] duration-200 ease-in-out md:fixed md:inset-y-0 md:right-0 md:z-50 md:max-w-[90vw] lg:static lg:z-auto lg:max-w-none ${chatOpen ? 'w-80 md:w-96 md:shadow-2xl lg:w-80 lg:shadow-none' : 'w-0'}`}>
         {chatOpen && <AIChatWidget embedded onClose={() => setChatOpen(false)} />}
       </div>
 
-      {/* AI Chat tab button — desktop only */}
-      {!chatOpen && (
+      {/* AI Chat tab button — wide mouse-driven screens only: on a tablet it
+          covered the page's right edge (the assistant is in the account menu there). */}
+      {!chatOpen && !isTouch && (
         <button
           onClick={() => setChatOpen(true)}
           title="Assistant IA"
           aria-label="Assistant IA"
-          className="hidden md:flex fixed right-0 top-1/2 -translate-y-1/2 z-30 flex-col items-center gap-1 py-3 px-1.5 bg-primary text-primary-foreground rounded-l-lg shadow-lg hover:bg-primary/90 transition-colors"
+          className="hidden lg:flex fixed right-0 top-1/2 -translate-y-1/2 z-30 flex-col items-center gap-1 py-3 px-1.5 bg-primary text-primary-foreground rounded-l-lg shadow-lg hover:bg-primary/90 transition-colors"
         >
           <Bot className="h-4 w-4" />
           <span className="text-[10px] font-semibold tracking-wide [writing-mode:vertical-lr] rotate-180">IA</span>

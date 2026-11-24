@@ -13,6 +13,7 @@ import { resolveProductImageUrl } from '../utils/productImages';
 import { searchProducts, searchPages, ilikePattern, documentNumberPattern, accentLoosePattern, nameMatches, normalize } from '../utils/commandSearch';
 import type { NavModule } from '../lib/navigation';
 import { onOpenSearch } from '../utils/searchEvents';
+import { useIsTouch } from '../hooks/useMediaQuery';
 import { formatMoney } from '../utils/format';
 import { DOC_LABEL, docPath, looseDb, type DocType } from '../utils/homeData';
 import type { Product } from '../types';
@@ -42,6 +43,7 @@ const DOC_TONE: Record<DocType, string> = {
  */
 export function CommandPalette() {
   const navigate = useNavigate();
+  const isTouch = useIsTouch();
   const { state } = useAppContext();
   const { canAccessBrand, canAccessStockLocation, getDisplayPrice, getPriceDisplayType, currentUser } = useAuth();
   const { access, modules } = useAccess();
@@ -218,7 +220,7 @@ export function CommandPalette() {
                 <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${stock > 0 ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'bg-secondary text-muted-foreground'}`}>{stock > 0 ? `${stock} en stock` : 'Sur commande'}</span>
                 {access.quotes && (
                   <button type="button" tabIndex={-1} onClick={e => { e.stopPropagation(); addProduct(p); }}
-                    className={`hidden shrink-0 items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs font-semibold text-foreground hover:bg-secondary sm:flex ${isActive ? '' : 'opacity-0 group-hover:opacity-100'}`}>
+                    className={`hidden shrink-0 items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs font-semibold text-foreground hover:bg-secondary sm:flex touch:min-h-10 touch:px-3 ${isActive ? '' : 'opacity-0 group-hover:opacity-100 touch:opacity-100'}`}>
                     <Plus className="h-3.5 w-3.5" aria-hidden="true" />Devis
                   </button>
                 )}
@@ -363,7 +365,8 @@ export function CommandPalette() {
             <p className="px-3 py-8 text-center text-muted-foreground">Aucun résultat pour « {query.trim()} »</p>
           )}
         </div>
-        <div className="hidden items-center gap-4 border-t border-border bg-secondary/50 px-4 py-2 text-xs text-muted-foreground sm:flex">
+        {/* Keyboard hints: not on a touch screen without a keyboard. */}
+        <div className={`hidden items-center gap-4 border-t border-border bg-secondary/50 px-4 py-2 text-xs text-muted-foreground ${isTouch ? '' : 'sm:flex'}`}>
           <span><kbd className="font-semibold">↑ ↓</kbd> naviguer</span>
           <span className="flex items-center gap-1"><CornerDownLeft className="h-3 w-3" aria-hidden="true" /> ouvrir</span>
           {access.quotes && <span><kbd className="font-semibold">Ctrl Entrée</kbd> ajouter au devis</span>}

@@ -39,11 +39,11 @@ const PHONE_RE = /^\+?[0-9\s().-]{7,24}$/;
 const PAGE_SIZE = 48;
 // Products per row on a landscape tablet (lg and up), scaled down on smaller
 // screens. 0 keeps the automatic layout that grows with the screen width.
-// Automatic: as many 160 px (or wider) columns as the screen holds, with
-// 4:5 cards (4 on a portrait tablet, 6 on a vertical 1080 px display, 7 on a
-// landscape tablet).
+// Automatic: as many 176 px (or wider) columns as the screen holds, with
+// 4:5 cards: 4 on an iPad in portrait, 5 in landscape (product names stay
+// readable on two lines), 6 on a 1280 px tablet.
 const GRID_CLASSES: Record<number, string> = {
-  0: 'grid-cols-[repeat(auto-fill,minmax(10rem,1fr))]',
+  0: 'grid-cols-[repeat(auto-fill,minmax(11rem,1fr))]',
   2: 'grid-cols-1 sm:grid-cols-2',
   3: 'grid-cols-2 lg:grid-cols-3',
   4: 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4',
@@ -545,7 +545,7 @@ export default function KioskPage() {
   const sectorName = (id: string) => { const item = sectors.find(s => s.id === id); return item ? sectorLabel(item, language) : ''; };
 
   return (
-    <div dir={dir} className="min-h-screen bg-slate-50 text-slate-900 select-none" style={{ '--kiosk-accent': accent, '--kiosk-on-accent': onAccent } as CSSProperties}>
+    <div dir={dir} className="min-h-dvh bg-slate-50 text-slate-900 select-none" style={{ '--kiosk-accent': accent, '--kiosk-on-accent': onAccent } as CSSProperties}>
       {!online && (
         <div className="fixed inset-x-0 top-0 z-[70] flex items-center justify-center gap-2 bg-amber-500 px-4 py-2 text-sm font-semibold text-white">
           <WifiOff className="h-4 w-4" /> {t.offline}
@@ -562,13 +562,13 @@ export default function KioskPage() {
       )}
 
       {stage === 'welcome' && !(showcase && showcaseAllowed) && (
-        <main className="relative min-h-screen flex flex-col items-center justify-center px-6 py-16 text-center bg-gradient-to-br from-white via-slate-50 to-slate-100">
+        <main className="relative min-h-dvh flex flex-col items-center justify-center px-6 py-16 text-center bg-gradient-to-br from-white via-slate-50 to-slate-100">
           {/* Staff control, kept out of the customer's way. */}
-          <button onClick={requestFullscreen} className="absolute top-5 end-5 h-12 w-12 rounded-2xl flex items-center justify-center text-slate-300 active:bg-slate-100" aria-label="Fullscreen">
+          <button onClick={requestFullscreen} className="absolute top-[calc(1.25rem+env(safe-area-inset-top))] end-5 h-12 w-12 rounded-2xl flex items-center justify-center text-slate-300 active:bg-slate-100" aria-label="Fullscreen">
             <Expand className="h-5 w-5" />
           </button>
           {customerLanguages.length > 1 && (
-            <div role="group" aria-label={t.language} className="absolute top-5 start-5 flex items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
+            <div role="group" aria-label={t.language} className="absolute top-[calc(1.25rem+env(safe-area-inset-top))] start-5 flex items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
               <Languages className="mx-2 h-5 w-5 text-slate-400" />
               {customerLanguages.map(code => <button key={code} lang={code} onClick={() => setChosenLanguage(code)} aria-pressed={language === code} className={`min-h-11 rounded-xl px-3 text-base font-bold ${language === code ? 'bg-slate-900 text-white' : 'text-slate-600'}`}>{LANGUAGE_NAMES[code]}</button>)}
             </div>
@@ -597,10 +597,10 @@ export default function KioskPage() {
       )}
 
       {stage === 'catalog' && (
-        <div className="min-h-screen pb-[calc(6.5rem+env(safe-area-inset-bottom))]">
+        <div className="min-h-dvh pb-[calc(6.5rem+env(safe-area-inset-bottom))]">
           {/* Compact sticky header: search and product type stay at hand,
               the other filters live in a panel so products fill the screen. */}
-          <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
+          <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 pt-[env(safe-area-inset-top)] backdrop-blur">
             <div className="mx-auto flex max-w-[1800px] items-center gap-2 px-3 pt-3 sm:gap-3">
               <button onClick={() => setStage('welcome')} aria-label={t.home} className="h-14 w-14 shrink-0 rounded-2xl border-2 border-slate-200 bg-white flex items-center justify-center"><ArrowLeft className="h-6 w-6 rtl:rotate-180" /></button>
               {profile.logo_url && <img src={profile.logo_url} alt="" className="hidden md:block h-10 w-24 object-contain" />}
@@ -612,21 +612,25 @@ export default function KioskPage() {
               <FiltersButton count={activeFilterCount} label={t.filters} onClick={() => setFiltersOpen(true)} />
               <div className="hidden xl:block ps-2"><Steps current={0} t={t} accent={accent} onAccent={onAccent} /></div>
             </div>
-            <div className="mx-auto max-w-[1800px] overflow-x-auto px-3 py-2.5">
-              <div role="group" aria-label={t.categories} className="flex min-w-max gap-2">
-                <Chip active={!category && !featuredOnly} label={t.all} onClick={() => selectCategory(null)} />
-                {featured.length > 0 && <Chip active={featuredOnly} label={`★ ${t.featured}`} onClick={() => selectCategory(null, true)} />}
-                {KIOSK_CATEGORY_VALUES.map(value => <Chip key={value} active={category === value} label={t[value]} onClick={() => selectCategory(value)} />)}
-                {shownBrands.length > 0 && (
-                  <>
-                    <span aria-hidden="true" className="mx-1 w-px self-stretch bg-slate-200" />
-                    {/* Shows the chosen brand and series, so the row can stay closed. */}
-                    <Chip active={brandsOpen || !!brand}
-                      label={<span className="inline-flex items-center gap-1.5">{brand ? `${brand}${series ? ` · ${series}` : ''}` : t.brands}<ChevronDown aria-hidden="true" className={`h-4 w-4 transition-transform ${brandsOpen ? 'rotate-180' : ''}`} /></span>}
-                      onClick={() => setBrandsOpen(open => !open)} />
-                  </>
-                )}
+            {/* The product types scroll sideways; the brands button stays pinned
+                at the end, so it is never pushed off a portrait screen. */}
+            <div className="mx-auto flex max-w-[1800px] items-center gap-2 px-3 py-2.5">
+              <div className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <div role="group" aria-label={t.categories} className="flex min-w-max gap-2">
+                  <Chip active={!category && !featuredOnly} label={t.all} onClick={() => selectCategory(null)} />
+                  {featured.length > 0 && <Chip active={featuredOnly} label={`★ ${t.featured}`} onClick={() => selectCategory(null, true)} />}
+                  {KIOSK_CATEGORY_VALUES.map(value => <Chip key={value} active={category === value} label={t[value]} onClick={() => selectCategory(value)} />)}
+                </div>
               </div>
+              {shownBrands.length > 0 && (
+                <div className="flex max-w-[45%] shrink-0 items-center gap-2">
+                  <span aria-hidden="true" className="w-px self-stretch bg-slate-200" />
+                  {/* Shows the chosen brand and series, so the row can stay closed. */}
+                  <Chip active={brandsOpen || !!brand}
+                    label={<span className="inline-flex max-w-full items-center gap-1.5"><span className="truncate">{brand ? `${brand}${series ? ` · ${series}` : ''}` : t.brands}</span><ChevronDown aria-hidden="true" className={`h-4 w-4 shrink-0 transition-transform ${brandsOpen ? 'rotate-180' : ''}`} /></span>}
+                    onClick={() => setBrandsOpen(open => !open)} />
+                </div>
+              )}
             </div>
             {/* One row: the brands, then once a brand is chosen, that brand and its series. */}
             {brandsOpen && shownBrands.length > 0 && (
@@ -731,8 +735,8 @@ export default function KioskPage() {
       )}
 
       {stage === 'review' && (
-        <div className="min-h-screen">
-          <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
+        <div className="min-h-dvh">
+          <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 pt-[env(safe-area-inset-top)] backdrop-blur">
             <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-3 px-4 py-3">
               <button onClick={() => setStage('catalog')} className="min-h-14 inline-flex items-center gap-2 rounded-2xl border-2 border-slate-200 bg-white px-4 text-base font-bold"><ArrowLeft className="h-5 w-5 rtl:rotate-180" /> {t.back}</button>
               <div className="hidden sm:block"><Steps current={1} t={t} accent={accent} onAccent={onAccent} /></div>
@@ -750,7 +754,7 @@ export default function KioskPage() {
               {!cartLines.length && <div className="mt-5 rounded-2xl bg-white p-12 text-center text-lg text-slate-500">{t.empty}</div>}
             </section>
 
-            <aside className={wideReview ? 'sticky top-24 flex max-h-[calc(100vh-7.5rem)] flex-col gap-4' : 'mt-6 space-y-4'}>
+            <aside className={wideReview ? 'sticky top-24 flex max-h-[calc(100dvh-7.5rem)] flex-col gap-4' : 'mt-6 space-y-4'}>
               <section className={`rounded-3xl border border-slate-200 bg-white p-5 ${wideReview ? 'min-h-0 overflow-y-auto' : ''}`}>
                 <div className="flex items-center gap-3"><div className="h-11 w-11 shrink-0 rounded-2xl bg-slate-900 text-white flex items-center justify-center"><UserRound className="h-5 w-5" /></div><h2 className="text-xl font-black">{t.details}</h2></div>
                 <p className="mt-2 text-sm leading-relaxed text-slate-500">{t.contactPrompt}</p>
@@ -797,7 +801,7 @@ export default function KioskPage() {
       )}
 
       {stage === 'submitted' && (
-        <main className="min-h-screen flex items-center justify-center p-6 text-center">
+        <main className="min-h-dvh flex items-center justify-center p-6 text-center">
           {/* Landscape: the review QR gets its own column, so the card fits a
               short screen (1280×720 at 150 % scaling) without scrolling. */}
           <section className={`w-full rounded-3xl bg-white p-8 shadow-xl border border-slate-200 ${reviewUrl && landscape ? 'grid max-w-5xl grid-cols-[minmax(0,1fr)_minmax(0,360px)] items-stretch gap-8' : 'max-w-2xl md:p-12'}`}>
@@ -844,7 +848,7 @@ function ActivePill({ label, onRemove, removeLabel }: { label: string; onRemove:
 }
 
 function KioskCentered({ children }: { children: ReactNode }) {
-  return <main className="min-h-screen flex flex-col items-center justify-center gap-4 bg-slate-50 p-6 text-center text-slate-600">{children}</main>;
+  return <main className="min-h-dvh flex flex-col items-center justify-center gap-4 bg-slate-50 p-6 text-center text-slate-600">{children}</main>;
 }
 
 /** A brand chip; brands with series show them, so customers know there is a next step. */

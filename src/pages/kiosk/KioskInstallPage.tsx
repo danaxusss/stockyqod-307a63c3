@@ -76,7 +76,7 @@ export default function KioskInstallPage() {
   const onAccent = readableTextOn(accent);
 
   return (
-    <main className="min-h-screen bg-slate-950 px-5 py-10 text-white">
+    <main className="min-h-dvh bg-slate-950 px-5 py-10 text-white">
       <div className="mx-auto max-w-xl">
         <div className="flex items-center gap-4">
           <img src="/kiosk-icon-192.png" alt="" className="h-20 w-20 rounded-3xl shadow-xl" />
@@ -148,9 +148,9 @@ export function KioskAppLauncher() {
   const navigate = useNavigate();
   const token = rememberedKioskToken();
   useEffect(() => { if (token) navigate(`/kiosk/${token}`, { replace: true }); }, [navigate, token]);
-  if (token) return <main className="flex min-h-screen items-center justify-center bg-slate-950"><Loader2 className="h-8 w-8 animate-spin text-white/50" /></main>;
+  if (token) return <main className="flex min-h-dvh items-center justify-center bg-slate-950"><Loader2 className="h-8 w-8 animate-spin text-white/50" /></main>;
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-950 p-6 text-center text-white">
+    <main className="flex min-h-dvh items-center justify-center bg-slate-950 p-6 text-center text-white">
       <div className="max-w-md">
         <img src="/kiosk-icon-192.png" alt="" className="mx-auto h-20 w-20 rounded-3xl" />
         <h1 className="mt-6 text-2xl font-black">Kiosque à configurer</h1>

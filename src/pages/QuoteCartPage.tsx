@@ -1161,7 +1161,10 @@ export function QuoteCartPage() {
         </span>
       </div>
 
-      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_20rem] 2xl:grid-cols-[minmax(0,1fr)_22rem]">
+      {/* The summary sits beside the editor from 1280 px; below (iPad, small
+          laptops) the editor gets the full width and a bar keeps the total
+          and the save button at hand. */}
+      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_20rem] 2xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="min-w-0 space-y-4">
           {/* Client */}
           <section className={`${panel} p-4 sm:p-5`} aria-labelledby="quote-client-title">
@@ -1269,7 +1272,7 @@ export function QuoteCartPage() {
           </section>
 
           {/* Lines */}
-          <section className={panel} aria-labelledby="quote-lines-title">
+          <section className={`${panel} [container-type:inline-size]`} aria-labelledby="quote-lines-title">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-3 sm:px-5">
               <h2 id="quote-lines-title" className="font-semibold text-foreground">Articles</h2>
               <span className="text-sm text-muted-foreground">{items.length} ligne{items.length !== 1 ? 's' : ''} · {totalItems} unité{totalItems !== 1 ? 's' : ''}</span>
@@ -1309,7 +1312,7 @@ export function QuoteCartPage() {
               </div>
             ) : (
               <>
-                <div className="hidden grid-cols-[3.5rem_minmax(0,1fr)_8rem_9.5rem_6rem_9rem_2.5rem] gap-x-4 border-b border-border bg-secondary/40 px-6 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground md:grid">
+                <div className="hidden grid-cols-[3.5rem_minmax(0,1fr)_8rem_9.5rem_6rem_9rem_2.5rem] gap-x-4 border-b border-border bg-secondary/40 px-5 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground cq-table:grid">
                   <span /><span>Produit</span><span className="text-center">Quantité</span><span className="text-right">Prix {priceMode.toUpperCase()}</span><span className="text-center">Remise</span><span className="text-right">Total {priceMode.toUpperCase()}</span><span />
                 </div>
                 <ul className="divide-y divide-border">
@@ -1317,8 +1320,8 @@ export function QuoteCartPage() {
                     const img = resolveProductImageUrl(item.product?.image);
                     const editingText = editingLineId === item.id;
                     return (
-                      <li key={item.id} className="grid grid-cols-[3rem_minmax(0,1fr)_2.5rem] gap-x-3 gap-y-3 px-4 py-3 sm:px-5 md:grid-cols-[3.5rem_minmax(0,1fr)_8rem_9.5rem_6rem_9rem_2.5rem] md:items-center md:gap-x-4 md:px-6">
-                        <span className="row-span-2 flex h-[3.75rem] w-12 items-center justify-center overflow-hidden rounded-md border border-border bg-white md:row-span-1">
+                      <li key={item.id} className="grid grid-cols-[3rem_minmax(0,1fr)_2.5rem] gap-x-3 gap-y-3 px-4 py-3 sm:px-5 cq-table:grid-cols-[3.5rem_minmax(0,1fr)_8rem_9.5rem_6rem_9rem_2.5rem] cq-table:items-center cq-table:gap-x-4">
+                        <span className="flex h-[3.75rem] w-12 items-center justify-center overflow-hidden rounded-md border border-border bg-white">
                           {img ? <img src={img} alt="" className="h-full w-full object-contain" loading="lazy" /> : <Package className="h-5 w-5 text-muted-foreground" aria-hidden="true" />}
                         </span>
                         <div className="min-w-0">
@@ -1335,7 +1338,7 @@ export function QuoteCartPage() {
                             <>
                               <button type="button" onClick={() => setEditingLineId(item.id)} className="group flex max-w-full items-start gap-1.5 text-left" title="Modifier le libellé sur le devis">
                                 <span className="font-semibold leading-snug text-foreground">{getQuoteItemName(item)}</span>
-                                <Edit3 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100" aria-hidden="true" />
+                                <Edit3 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100 touch:opacity-100" aria-hidden="true" />
                               </button>
                               <p className="truncate text-sm text-muted-foreground">{[getQuoteItemBrand(item), getQuoteItemBarcode(item)].filter(Boolean).join(' · ')}</p>
                               <p className="mt-0.5 flex flex-wrap items-center gap-x-1 text-xs text-muted-foreground">
@@ -1350,17 +1353,19 @@ export function QuoteCartPage() {
                           )}
                         </div>
                         <button type="button" onClick={() => removeItem(item.id)} aria-label={`Retirer ${getQuoteItemName(item)}`}
-                          className="flex h-10 w-10 items-center justify-center self-start rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive md:order-last md:self-center">
+                          className="flex h-10 w-10 items-center justify-center self-start rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive touch:h-11 touch:w-11 cq-table:order-last cq-table:self-center">
                           <Trash2 className="h-4 w-4" />
                         </button>
-                        <div className="col-span-3 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 md:contents">
-                          <div className="flex items-center rounded-lg border border-input md:justify-self-center">
+                        {/* Narrow (phone, iPad, beside the summary): quantity, price, discount
+                            and total on one wrapping row under the name. Wide: table columns. */}
+                        <div className="col-span-3 flex flex-wrap items-center gap-x-4 gap-y-2 cq-table:contents">
+                          <div className="flex items-center rounded-lg border border-input cq-table:justify-self-center">
                             <button type="button" onClick={() => updateItemQuantity(item.id, item.quantity - 1)} disabled={item.quantity <= 1} aria-label="Diminuer la quantité"
-                              className="flex h-9 w-9 items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-40"><Minus className="h-3.5 w-3.5" /></button>
+                              className="flex h-9 w-9 items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-40 touch:h-11 touch:w-11"><Minus className="h-3.5 w-3.5" /></button>
                             <input type="number" value={item.quantity} onChange={(e) => updateItemQuantity(item.id, parseInt(e.target.value) || 1)} onFocus={(e) => e.target.select()} min="1"
-                              aria-label="Quantité" className="h-9 w-10 border-0 bg-transparent p-0 text-center text-sm font-semibold tabular-nums text-foreground [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none" />
+                              aria-label="Quantité" className="h-9 w-10 touch:h-11 touch:w-12 border-0 bg-transparent p-0 text-center text-sm font-semibold tabular-nums text-foreground [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none" />
                             <button type="button" onClick={() => updateItemQuantity(item.id, item.quantity + 1)} aria-label="Augmenter la quantité"
-                              className="flex h-9 w-9 items-center justify-center text-muted-foreground hover:text-foreground"><Plus className="h-3.5 w-3.5" /></button>
+                              className="flex h-9 w-9 items-center justify-center text-muted-foreground hover:text-foreground touch:h-11 touch:w-11"><Plus className="h-3.5 w-3.5" /></button>
                           </div>
                           <div className="text-right">
                             <label className="flex items-center justify-end gap-1">
@@ -1369,21 +1374,20 @@ export function QuoteCartPage() {
                                 value={parseFloat((priceMode === 'ttc' ? item.unitPrice : item.unitPrice / (1 + tvaRate / 100)).toFixed(2))}
                                 onChange={(e) => updateItemUnitPrice(item.id, priceMode === 'ttc' ? (parseFloat(e.target.value) || 0) : (parseFloat(e.target.value) || 0) * (1 + tvaRate / 100))}
                                 onFocus={(e) => e.target.select()}
-                                className="w-28 rounded-md border border-transparent bg-transparent px-1 py-0.5 text-right text-sm font-medium tabular-nums text-foreground underline decoration-dotted decoration-muted-foreground/40 underline-offset-4 hover:border-input focus:border-input focus:no-underline focus:ring-2 focus:ring-ring" />
+                                className="w-28 rounded-md border border-transparent bg-transparent px-1 py-0.5 touch:border-input touch:py-2 text-right text-sm font-medium tabular-nums text-foreground underline decoration-dotted decoration-muted-foreground/40 underline-offset-4 hover:border-input focus:border-input focus:no-underline focus:ring-2 focus:ring-ring" />
                               <span className="text-sm text-muted-foreground">Dh</span>
                             </label>
                           </div>
-                          {/* Discount: its own column on wide screens, its own row on phones. */}
-                          <label className="flex items-center justify-end gap-1.5 text-sm text-muted-foreground max-md:order-last max-md:col-span-3 md:justify-center">
-                            <span className="text-xs md:sr-only">Remise</span>
+                          <label className="flex items-center gap-1.5 text-sm text-muted-foreground cq-table:justify-center">
+                            <span className="text-xs cq-table:sr-only">Remise</span>
                             <span className={`flex items-center rounded-md border px-1.5 ${(item.discount ?? 0) > 0 ? 'border-amber-500/50 bg-amber-500/10' : 'border-input'}`}>
                               <input type="number" step="1" min="0" max="100" value={item.discount ?? 0} onChange={(e) => updateItemDiscount(item.id, parseFloat(e.target.value) || 0)} onFocus={(e) => e.target.select()}
                                 aria-label="Remise (%)"
-                                className={`h-8 w-9 border-0 bg-transparent p-0 text-right text-sm tabular-nums [appearance:textfield] focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none ${(item.discount ?? 0) > 0 ? 'font-semibold text-amber-700 dark:text-amber-300' : 'text-foreground'}`} />
+                                className={`h-8 w-9 touch:h-10 border-0 bg-transparent p-0 text-right text-sm tabular-nums [appearance:textfield] focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none ${(item.discount ?? 0) > 0 ? 'font-semibold text-amber-700 dark:text-amber-300' : 'text-foreground'}`} />
                               <span className="ps-0.5 text-xs">%</span>
                             </span>
                           </label>
-                          <p className="text-right font-semibold tabular-nums text-foreground">{formatMoney(priceMode === 'ttc' ? item.subtotal : lineHT(item))}</p>
+                          <p className="ms-auto text-right font-semibold tabular-nums text-foreground cq-table:ms-0">{formatMoney(priceMode === 'ttc' ? item.subtotal : lineHT(item))}</p>
                         </div>
                       </li>
                     );
@@ -1407,8 +1411,11 @@ export function QuoteCartPage() {
               <div className="flex items-center gap-2 rounded-lg border border-dashed border-primary/40 bg-primary/5 px-3 focus-within:border-solid focus-within:border-primary">
                 <Search className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
                 <input ref={productSearchRef} type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+                  // On a tablet the keyboard covers the lower half: bring the
+                  // field to the top so its results show above the keyboard.
+                  onFocus={(e) => { if (window.matchMedia?.('(pointer: coarse)').matches) { const el = e.currentTarget; setTimeout(() => el.scrollIntoView({ block: 'start', behavior: 'smooth' }), 250); } }}
                   aria-label="Ajouter un produit : nom, marque ou code-barres"
-                  className="h-11 min-w-0 flex-1 border-0 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground focus:ring-0"
+                  className="h-11 min-w-0 flex-1 scroll-mt-8 border-0 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground focus:ring-0"
                   placeholder="Ajouter un produit — nom, marque ou code-barres" />
                 <button type="button" onClick={openCustomProductForm} aria-expanded={showCustomProductForm}
                   className="hidden shrink-0 items-center gap-1 text-sm font-semibold text-primary hover:underline sm:flex">
@@ -1522,7 +1529,7 @@ export function QuoteCartPage() {
         </div>
 
         {/* Summary and actions: stays in view while the lines scroll */}
-        <aside className="space-y-4 lg:sticky lg:top-4" aria-label="Récapitulatif et actions">
+        <aside className="space-y-4 md:grid md:grid-cols-2 md:items-start md:gap-4 md:space-y-0 xl:sticky xl:top-4 xl:block xl:space-y-4" aria-label="Récapitulatif et actions">
           <section className={`${panel} p-5`}>
             <h2 className="font-semibold text-foreground">Récapitulatif</h2>
             <dl className="mt-3 space-y-2 text-sm">
@@ -1614,6 +1621,30 @@ export function QuoteCartPage() {
           </button>
           <button type="button" onClick={() => handleSave(false)} disabled={isSaving}
             className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+            {isSaving ? <Loader className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Enregistrer
+          </button>
+        </div>
+      </div>
+
+      {/* Tablet and small laptop (summary below the editor): the total and the
+          main actions stay at the bottom of the screen. */}
+      <div className="sticky bottom-0 z-20 -mx-4 mt-4 hidden border-t border-border bg-card/95 px-4 py-3 shadow-[0_-4px_16px_rgba(17,24,39,0.08)] backdrop-blur md:block xl:hidden">
+        <div className="flex items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs text-muted-foreground">Total TTC{items.length > 0 ? ` · ${items.length} ligne${items.length !== 1 ? 's' : ''}` : ''}</p>
+            <p className="whitespace-nowrap text-xl font-bold tabular-nums leading-tight text-foreground">{formatMoney(totalAmount)}</p>
+          </div>
+          {isDirty && items.length > 0 && <span className="hidden text-xs text-amber-700 dark:text-amber-300 lg:inline">Modifications non enregistrées</span>}
+          <button type="button" onClick={handleExport} disabled={isExporting || items.length === 0}
+            className="flex h-11 shrink-0 items-center gap-2 rounded-lg border border-border px-3 text-sm font-semibold text-foreground hover:bg-secondary disabled:opacity-50">
+            {isExporting ? <Loader className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4 text-primary" />}PDF
+          </button>
+          <button type="button" onClick={handleWhatsAppShare} disabled={isExporting || isPreparingWaPdf || items.length === 0}
+            className="flex h-11 shrink-0 items-center gap-2 rounded-lg border border-border px-3 text-sm font-semibold text-foreground hover:bg-secondary disabled:opacity-50">
+            {isPreparingWaPdf ? <Loader className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4 text-emerald-600" />}WhatsApp
+          </button>
+          <button type="button" onClick={() => handleSave(false)} disabled={isSaving}
+            className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-primary px-5 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-60">
             {isSaving ? <Loader className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Enregistrer
           </button>
         </div>

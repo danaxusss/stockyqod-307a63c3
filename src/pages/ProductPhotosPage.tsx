@@ -494,7 +494,8 @@ export default function ProductPhotosPage() {
                 {/* Select checkbox */}
                 <button
                   onClick={e => { e.stopPropagation(); toggleSelect(photo.id); }}
-                  className={`absolute top-1 left-1 transition-opacity ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                  aria-label={isSelected ? 'Désélectionner' : 'Sélectionner'}
+                  className={`absolute left-0 top-0 p-1 transition-opacity touch:p-2 ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 touch:opacity-100'}`}
                 >
                   {isSelected
                     ? <CheckSquare className="h-4 w-4 text-primary drop-shadow" />
