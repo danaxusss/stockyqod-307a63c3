@@ -18,8 +18,8 @@ import { PrintPreviewModal } from '../components/PrintPreviewModal';
 import { PageHeader } from '../components/PageHeader';
 import { RowMenu } from '../components/lists/RowMenu';
 import { StatusPill } from '../components/lists/StatusPill';
-import { DocumentCard } from '../components/lists/DocumentCard';
-import { useIsMobile } from '../hooks/use-mobile';
+import { DocumentCard, documentCardList } from '../components/lists/DocumentCard';
+import { useCompactList, useIsMobile } from '../hooks/use-mobile';
 import { formatMoney } from '../utils/format';
 
 /** Quote status, the same words and colours as in the quote editor. */
@@ -58,6 +58,7 @@ export function QuotesHistoryPage() {
   const [isCreatingBL, setIsCreatingBL] = useState<string | null>(null);
   // Phones get cards instead of the wide table.
   const isMobile = useIsMobile();
+  const compactList = useCompactList();
   const [showFilters, setShowFilters] = useState(false);
   const [pageSize, setPageSize] = useState(20);
   const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null);
@@ -319,8 +320,8 @@ export function QuotesHistoryPage() {
           </div>
         )}
         <div className="rounded-xl border border-border bg-card p-3 shadow-sm">
-          <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4">
-            <div className="col-span-2 flex gap-2 md:col-span-1">
+          <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3 lg:grid-cols-4">
+            <div className="col-span-2 flex gap-2 md:col-span-3 lg:col-span-1">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} aria-label="Rechercher un devis"
@@ -367,8 +368,8 @@ export function QuotesHistoryPage() {
           </div>
         ) : (
           <>
-            {isMobile ? (
-              <ul className="divide-y divide-border">
+            {compactList ? (
+              <ul className={documentCardList}>
                 {currentQuotes.map(quote => (
                   <DocumentCard key={quote.id} to={`/quote-cart/${quote.id}`}
                     number={quote.quoteNumber}

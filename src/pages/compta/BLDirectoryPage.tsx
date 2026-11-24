@@ -11,11 +11,11 @@ import { exportToCSV } from '../../utils/csvExport';
 import { getCompanyContext } from '../../utils/supabaseCompanyFilter';
 import { documentDay, formatDay } from '../../utils/documentLines';
 import { formatMoney } from '../../utils/format';
-import { useIsMobile } from '../../hooks/use-mobile';
+import { useCompactList } from '../../hooks/use-mobile';
 import { PageHeader } from '../../components/PageHeader';
 import { RowMenu } from '../../components/lists/RowMenu';
 import { StatusPill } from '../../components/lists/StatusPill';
-import { DocumentCard } from '../../components/lists/DocumentCard';
+import { DocumentCard, documentCardList } from '../../components/lists/DocumentCard';
 
 /** Delivery note status, as shown in the list. */
 function BLStatus({ bl }: { bl: Quote }) {
@@ -43,7 +43,7 @@ export default function BLDirectoryPage() {
   const [pageSize, setPageSize] = useState(20);
   const [page, setPage] = useState(1);
   // Phones get cards instead of the wide table.
-  const isMobile = useIsMobile();
+  const compactList = useCompactList();
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -247,8 +247,8 @@ export default function BLDirectoryPage() {
           </div>
         ) : (
           <>
-          {isMobile ? (
-            <ul className="divide-y divide-border">
+          {compactList ? (
+            <ul className={documentCardList}>
               {paginated.map(bl => (
                 <DocumentCard key={bl.id} to={`/compta/bls/${bl.id}`}
                   leading={selectBox(bl, 'h-5 w-5')}

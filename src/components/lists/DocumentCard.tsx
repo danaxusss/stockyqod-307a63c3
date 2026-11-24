@@ -1,8 +1,11 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
+/** The list holding DocumentCards: one column on phones, two on a tablet. */
+export const documentCardList = 'max-md:divide-y max-md:divide-border md:grid md:grid-cols-2 md:[&>li]:border-b md:[&>li]:border-border md:[&>li:nth-child(odd)]:border-r';
+
 /**
- * A document in a phone list: number and status, client, then date and
+ * A document in a phone or tablet list: number and status, client, then date and
  * amount. The whole card opens the document; `menu` sits beside it.
  */
 export function DocumentCard({ to, number, status, title, subtitle, date, amount, note, menu, leading }: {

@@ -14,3 +14,7 @@ export function useMediaQuery(query: string): boolean {
   }, [query]);
   return matches;
 }
+
+/** A finger-driven screen (iPad, phone) rather than a mouse. */
+export const TOUCH_QUERY = '(hover: none) and (pointer: coarse)';
+export const useIsTouch = () => useMediaQuery(TOUCH_QUERY);

@@ -17,3 +17,21 @@ export function useIsMobile() {
 
   return !!isMobile;
 }
+
+/**
+ * True below 1024 px (phones and iPad in portrait): document lists show cards
+ * there, since their tables only fit a wider screen.
+ */
+export function useCompactList() {
+  const query = '(max-width: 1023px)';
+  const [compact, setCompact] = React.useState(() => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(query).matches);
+  React.useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const mql = window.matchMedia(query);
+    const onChange = () => setCompact(mql.matches);
+    onChange();
+    mql.addEventListener('change', onChange);
+    return () => mql.removeEventListener('change', onChange);
+  }, []);
+  return compact;
+}

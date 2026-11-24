@@ -16,11 +16,11 @@ import { getCompanyContext } from '../../utils/supabaseCompanyFilter';
 import { exportToCSV } from '../../utils/csvExport';
 import { documentDay, formatDay, invoicePayment, matchesPaymentFilter } from '../../utils/documentLines';
 import { formatMoney } from '../../utils/format';
-import { useIsMobile } from '../../hooks/use-mobile';
+import { useCompactList, useIsMobile } from '../../hooks/use-mobile';
 import { PageHeader } from '../../components/PageHeader';
 import { RowMenu } from '../../components/lists/RowMenu';
 import { StatusPill } from '../../components/lists/StatusPill';
-import { DocumentCard } from '../../components/lists/DocumentCard';
+import { DocumentCard, documentCardList } from '../../components/lists/DocumentCard';
 
 function fmt(n: number) {
   return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(n);
@@ -68,6 +68,7 @@ export default function InvoiceDirectoryPage() {
 
   // Phones get cards instead of the wide table.
   const isMobile = useIsMobile();
+  const compactList = useCompactList();
   const [showFilters, setShowFilters] = useState(false);
 
 
@@ -393,7 +394,7 @@ export default function InvoiceDirectoryPage() {
               </button>
             )}
           </div>
-          {(!isMobile || showFilters) && <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
+          {(!isMobile || showFilters) && <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
             <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className={field} title="Date de début" aria-label="Date de début" />
             <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className={field} title="Date de fin" aria-label="Date de fin" />
             <select value={filterPayment} onChange={e => setFilterPayment(e.target.value)} className={field} aria-label="Mode de paiement">
@@ -422,8 +423,8 @@ export default function InvoiceDirectoryPage() {
           <div className="p-8 text-center text-sm text-muted-foreground">Aucune facture trouvée</div>
         ) : (
           <>
-          {isMobile ? (
-            <ul className="divide-y divide-border">
+          {compactList ? (
+            <ul className={documentCardList}>
               {paginated.map(inv => {
                 const { reste } = computePayment(inv);
                 return (

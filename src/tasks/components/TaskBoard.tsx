@@ -63,7 +63,7 @@ export function TaskCard({ task, assignee, showAssignee = true, showStatus = fal
           {onOpen ? (
             <button type="button" onClick={onOpen} className="group flex max-w-full items-center gap-1.5 text-start">
               {title}
-              <Pencil className="h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100" aria-hidden="true" />
+              <Pencil className="h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100 touch:opacity-100" aria-hidden="true" />
             </button>
           ) : title}
           {task.address && (

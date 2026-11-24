@@ -46,7 +46,7 @@ export function FloatingQuoteCart() {
   return (
     <>
       {/* Trigger button */}
-      <div className={`fixed right-4 z-40 md:right-5 ${cartRaisedOn(pathname) ? 'bottom-[calc(8.75rem+env(safe-area-inset-bottom))] md:bottom-5' : 'bottom-20 md:bottom-5'}`}>
+      <div className={`fixed right-4 z-40 md:right-5 ${cartRaisedOn(pathname) ? 'bottom-[calc(8.75rem+env(safe-area-inset-bottom))] md:bottom-5' : 'bottom-[calc(5rem+env(safe-area-inset-bottom))] md:bottom-5'}`}>
         <button
           onClick={() => setIsOpen(v => !v)}
           className="relative flex items-center justify-center w-11 h-11 text-primary-foreground rounded-full transition-all duration-200 hover:scale-105 active:scale-95"

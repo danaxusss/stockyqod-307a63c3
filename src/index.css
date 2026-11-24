@@ -2,6 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Touch screens (iPad, phones): a quick second tap on a button (quantity
+   + / −) must not zoom the page. */
+@layer base {
+  a, button, input, select, textarea, label, summary, [role="button"] {
+    touch-action: manipulation;
+  }
+}
+
 @layer base {
   :root {
     /* ═══════════════════════════════════════════════════════════

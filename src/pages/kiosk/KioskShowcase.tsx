@@ -86,7 +86,7 @@ export function KioskShowcase({ profile, language, languages, accent, onAccent, 
         {/* Next slide's video, buffering out of sight. */}
         {next.video && next.id !== current.id && <video key={`preload-${next.id}`} src={next.video} preload="auto" muted playsInline className="hidden" aria-hidden />}
 
-        <header className="absolute inset-x-0 top-0 z-20 flex items-start gap-4 bg-gradient-to-b from-black/60 to-transparent px-6 pb-10 pt-5 md:px-10">
+        <header className="absolute inset-x-0 top-0 z-20 flex items-start gap-4 bg-gradient-to-b from-black/60 to-transparent px-6 pb-10 pt-[calc(1.25rem+env(safe-area-inset-top))] md:px-10">
           {/* The intro slide shows the logo large already. */}
           <div className={`shrink-0 transition-opacity duration-700 ${current.kind === 'intro' ? 'opacity-0' : 'opacity-100'}`}>
             {logo
