@@ -11,6 +11,8 @@ import { StatusPill } from '../../components/lists/StatusPill';
 import { btnSecondary, checkbox, EmptyState, fieldAuto, LoadingState, panel, Segmented, td, tdNum, tfootRow, th, theadRow, thRight } from '../../components/backoffice/BackOfficeUi';
 import { FULL_MONTH_CNSS_DAYS } from '../../utils/payrollDefaults';
 import { Notice } from './payrollUi';
+import { Dts9421Tab } from './declarations/Dts9421Tab';
+import { CnssEbdsTab } from './declarations/CnssEbdsTab';
 
 function fmt(n: number) { return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(n); }
 const MONTHS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
@@ -23,7 +25,9 @@ function downloadCsv(name: string, header: string[], rows: (string | number)[][]
   const a = document.createElement('a'); a.href = url; a.download = name; a.click(); URL.revokeObjectURL(url);
 }
 
-type Tab = 'cnss' | 'ir' | 'cimr' | 'virements';
+type Tab = 'cnss' | 'ebds' | 'ir' | 'dts' | 'cimr' | 'virements';
+// The two official files have their own screens; the other tabs are CSV exports.
+const FILE_TABS: Tab[] = ['dts', 'ebds'];
 
 export default function DeclarationsPage() {
   const { isPaie, isSuperAdmin } = useAuth();
@@ -94,11 +98,14 @@ export default function DeclarationsPage() {
     ir: () => downloadCsv(`IR_${period}.csv`, ['Employé', 'Brut imposable', 'Net imposable', 'IR retenu'], rows.map(r => [r.name, r.taxableGross.toFixed(2), r.netTaxable.toFixed(2), r.ir.toFixed(2)])),
     cimr: () => downloadCsv(`CIMR_${period}.csv`, ['Employé', 'N° CIMR', 'CIMR salariale', 'CIMR patronale'], rows.map(r => [r.name, r.cimr_no, r.cimr.toFixed(2), r.cimr_er.toFixed(2)])),
     virements: () => downloadCsv(`Virements_${period}.csv`, ['Employé', 'RIB', 'Net à payer'], rows.map(r => [r.name, r.rib, r.net.toFixed(2)])),
+    dts: () => undefined,
+    ebds: () => undefined,
   };
 
   if (!isPaie && !isSuperAdmin) return <div className="text-center py-12 text-muted-foreground">Accès réservé au rôle Paie.</div>;
 
-  const TABS: [Tab, string][] = [['cnss', 'CNSS / BDS'], ['ir', 'IR'], ['cimr', 'CIMR'], ['virements', 'Ordre de virement']];
+  const TABS: [Tab, string][] = [['cnss', 'CNSS / BDS'], ['ebds', 'Fichier Damancom (e-BDS)'], ['ir', 'IR'], ['dts', 'Déclaration annuelle (9421)'], ['cimr', 'CIMR'], ['virements', 'Ordre de virement']];
+  const fileTab = FILE_TABS.includes(tab);
 
   const nameCell = `${td} font-medium text-foreground`;
   const footLabel = `${td} text-right text-xs uppercase tracking-wide text-muted-foreground`;
@@ -107,23 +114,26 @@ export default function DeclarationsPage() {
     <div className="mx-auto max-w-[110rem]">
       <PageHeader
         title="Déclarations & virements"
-        subtitle={`${rows.length} bulletin(s) · ${MONTHS[month - 1]} ${year}`}
+        subtitle={tab === 'dts' ? `Année ${year}` : `${rows.length} bulletin(s) · ${MONTHS[month - 1]} ${year}`}
         actions={<div className="flex gap-2">
-          <select value={month} onChange={e => setMonth(Number(e.target.value))} aria-label="Mois" className={fieldAuto}>{MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}</select>
+          {tab !== 'dts' && <select value={month} onChange={e => setMonth(Number(e.target.value))} aria-label="Mois" className={fieldAuto}>{MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}</select>}
           <select value={year} onChange={e => setYear(Number(e.target.value))} aria-label="Année" className={fieldAuto}>{YEARS.map(y => <option key={y} value={y}>{y}</option>)}</select>
         </div>}
       />
 
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <Segmented<Tab> label="Déclaration" value={tab} onChange={setTab} options={TABS.map(([t, l]) => ({ value: t, label: l }))} />
-        <div className="flex flex-wrap items-center gap-3">
+        {!fileTab && <div className="flex flex-wrap items-center gap-3">
           <label className="flex min-h-9 items-center gap-2 text-sm text-foreground">
             <input type="checkbox" checked={includeDrafts} onChange={e => setIncludeDrafts(e.target.checked)} className={checkbox} />
             Inclure les brouillons (provisoire){drafts > 0 && ` · ${drafts}`}
           </label>
           <button onClick={exports[tab]} disabled={rows.length === 0} className={btnSecondary}><Download className="h-4 w-4" /> Export CSV</button>
-        </div>
+        </div>}
       </div>
+      {tab === 'dts' && <Dts9421Tab key={year} year={year} />}
+      {tab === 'ebds' && <CnssEbdsTab key={`${year}-${month}`} month={month} year={year} />}
+      {!fileTab && (<>
       {includeDrafts && drafts > 0 && <Notice className="mb-3">Déclaration provisoire : elle inclut {drafts} bulletin(s) non validé(s), qui peuvent encore changer.</Notice>}
       {!includeDrafts && drafts > 0 && <Notice tone="info" className="mb-3">{drafts} bulletin(s) non validé(s) ne sont pas inclus.</Notice>}
       {anyEstimated && <Notice tone="info" className="mb-3">Bulletins enregistrés avant le détail des bases : base CNSS et montants imposables reconstitués.</Notice>}
@@ -160,6 +170,7 @@ export default function DeclarationsPage() {
           )}
         </div>
       )}
+      </>)}
     </div>
   );
 }

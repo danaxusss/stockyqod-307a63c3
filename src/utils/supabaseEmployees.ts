@@ -1,4 +1,5 @@
-import { payrollDb, writeWithFallback } from './payrollDb';
+import { payrollDb } from './payrollDb';
+import { writeEmployeeWithFallback } from './employeeDeclarationFields';
 import { getCompanyContext } from './supabaseCompanyFilter';
 import type { Employee } from '../types';
 
@@ -35,7 +36,7 @@ export class SupabaseEmployeesService {
   }
 
   static async create(input: Omit<Employee, 'id' | 'created_at' | 'updated_at'>): Promise<Employee> {
-    const { data, error } = await writeWithFallback(
+    const { data, error } = await writeEmployeeWithFallback(
       p => payrollDb().from('employees').insert(p).select().single(),
       input as unknown as Record<string, unknown>, NEW_EMPLOYEE_COLUMNS, employerRateLost,
     );
@@ -44,7 +45,7 @@ export class SupabaseEmployeesService {
   }
 
   static async update(id: string, updates: Partial<Omit<Employee, 'id' | 'created_at'>>): Promise<Employee> {
-    const { data, error } = await writeWithFallback(
+    const { data, error } = await writeEmployeeWithFallback(
       p => payrollDb().from('employees').update(p).eq('id', id).select().single(),
       { ...updates, updated_at: new Date().toISOString() } as Record<string, unknown>, NEW_EMPLOYEE_COLUMNS, employerRateLost,
     );
