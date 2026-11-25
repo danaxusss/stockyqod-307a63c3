@@ -326,9 +326,10 @@ export default function SupplierInvoiceDetailPage() {
             <datalist id="si-accounts">{natureAccounts.map(a => <option key={a.code} value={a.code}>{a.label}</option>)}</datalist>
             <ul className="divide-y divide-border">
               {lines.map((l, i) => (
-                <li key={i} className="grid gap-2 px-4 py-3 sm:px-5 md:grid-cols-[minmax(0,1.6fr)_8rem_5rem_6rem_8rem_6rem_6.5rem_2.5rem] md:items-end">
-                  <Cell label="Libellé"><input aria-label={`Libellé ligne ${i + 1}`} value={l.label} disabled={ro} onChange={e => setLine(i, { label: e.target.value })} className={fieldSm} /></Cell>
-                  <Cell label="Article"><input aria-label={`Article ligne ${i + 1}`} list="si-products" value={l.barcode || ''} disabled={ro} onChange={e => setLine(i, { barcode: e.target.value || null })} className={`${fieldSm} font-mono`} placeholder={isGoodsAccount(l.account_code) ? 'Code' : '—'} /></Cell>
+                <li key={i} className="grid gap-2 px-4 py-3 sm:grid-cols-6 sm:items-start sm:px-5">
+                  {/* Two rows: the label needs the width (8 columns on one row left it a few characters). */}
+                  <div className="sm:col-span-4"><Cell label="Libellé"><input aria-label={`Libellé ligne ${i + 1}`} value={l.label} disabled={ro} onChange={e => setLine(i, { label: e.target.value })} className={fieldSm} /></Cell></div>
+                  <div className="sm:col-span-2"><Cell label="Article"><input aria-label={`Article ligne ${i + 1}`} list="si-products" value={l.barcode || ''} disabled={ro} onChange={e => setLine(i, { barcode: e.target.value || null })} className={`${fieldSm} font-mono`} placeholder={isGoodsAccount(l.account_code) ? 'Code' : '—'} /></Cell></div>
                   <Cell label="Qté"><input aria-label={`Quantité ligne ${i + 1}`} type="number" min={0} step="any" value={l.quantity ?? ''} disabled={ro} onChange={e => setLine(i, { quantity: e.target.value === '' ? null : Number(e.target.value) })} className={`${fieldSm} text-right`} /></Cell>
                   <Cell label="Compte"><input aria-label={`Compte ligne ${i + 1}`} list="si-accounts" value={l.account_code} disabled={ro} onChange={e => setLine(i, { account_code: e.target.value.trim() })} className={`${fieldSm} font-mono`} /></Cell>
                   <Cell label="Montant HT"><input aria-label={`Montant HT ligne ${i + 1}`} type="number" step="0.01" value={l.amount_ht} disabled={ro} onChange={e => setLine(i, { amount_ht: Number(e.target.value) })} className={`${fieldSm} text-right`} /></Cell>
@@ -343,7 +344,7 @@ export default function SupplierInvoiceDetailPage() {
                       <input type="checkbox" className={checkbox} disabled={ro} checked={l.vat_nondeductible} onChange={e => setLine(i, { vat_nondeductible: e.target.checked })} />non déductible
                     </label>
                   </Cell>
-                  <div className="flex md:justify-end">{!ro && <button type="button" aria-label={`Retirer la ligne ${i + 1}`} onClick={() => setLines(prev => prev.filter((_, idx) => idx !== i))} className={iconBtnDanger}><Trash2 className="h-4 w-4" /></button>}</div>
+                  <div className="flex sm:justify-end sm:pt-5">{!ro && <button type="button" aria-label={`Retirer la ligne ${i + 1}`} onClick={() => setLines(prev => prev.filter((_, idx) => idx !== i))} className={iconBtnDanger}><Trash2 className="h-4 w-4" /></button>}</div>
                 </li>
               ))}
               {lines.length === 0 && <li className="px-5 py-8 text-center text-sm text-muted-foreground">Aucune ligne.</li>}
