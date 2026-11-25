@@ -7,6 +7,22 @@ import { DEFAULT_PAYMENT_DAYS } from './documentLines';
 // Settings columns added by 20261125120000_billing_compliance.sql: saving
 // still works on a database that does not have them yet.
 const NEW_SETTINGS_COLUMNS = ['payment_terms_days', 'vat_exemption_text'];
+// Added by 20261126130000_customer_payments.sql. Dropped first and on their
+// own, so a database with the billing columns but not these still saves those.
+const PAYMENT_SETTINGS_COLUMNS = ['tax_attestation_date', 'cash_stamp_duty'];
+
+/** Save with both column sets tolerated, the most recent one dropped first. */
+const saveTolerant = (payload: Record<string, unknown>, run: (p: Record<string, unknown>) => PromiseLike<{ data: unknown; error: { message?: string; code?: string } | null }>) =>
+  writeTolerant(payload, PAYMENT_SETTINGS_COLUMNS, p => writeTolerant(p, NEW_SETTINGS_COLUMNS, run));
+
+const dayOrEmpty = (v: unknown) => (v ? String(v).slice(0, 10) : '');
+
+/** The two payment settings of a settings row, and whether the row has them at all. */
+const paymentSettingsOf = (row: Record<string, unknown>) => ({
+  tax_attestation_date: dayOrEmpty(row.tax_attestation_date),
+  cash_stamp_duty: row.cash_stamp_duty === true,
+  payment_settings_available: 'cash_stamp_duty' in row,
+});
 
 export interface PrintColumns {
   showImage: boolean;
@@ -146,6 +162,16 @@ export interface CompanySettings {
   tva_rate: number;
   /** Printed after "Exonéré de TVA" on documents at 0 % (e.g. the CGI article). */
   vat_exemption_text: string;
+  /**
+   * Issue date (YYYY-MM-DD, '' when unknown) of the company's attestation de
+   * régularité fiscale: under 6 months old, its VAT-registered clients do not
+   * withhold the VAT of its invoices (CGI art. 117-IV).
+   */
+  tax_attestation_date: string;
+  /** Collect the 0.25 % stamp duty on cash settlements (CGI art. 252-I-B). Off by default. */
+  cash_stamp_duty: boolean;
+  /** Whether the database has the two settings above (migration 20261126130000 run). */
+  payment_settings_available: boolean;
   quote_validity_days: number;
   updated_at: string;
 }
@@ -203,6 +229,7 @@ export class CompanySettingsService {
       phone_gsm: (data as any).phone_gsm || '',
       payment_terms_days: (data as any).payment_terms_days ?? DEFAULT_PAYMENT_DAYS,
       vat_exemption_text: (data as any).vat_exemption_text || '',
+      ...paymentSettingsOf(data as Record<string, unknown>),
       quote_visible_fields: {
         ...DEFAULT_VISIBLE_FIELDS,
         ...(data.quote_visible_fields as Record<string, unknown>),
@@ -257,6 +284,7 @@ export class CompanySettingsService {
       payment_terms: data.payment_terms || '',
       payment_terms_days: data.payment_terms_days ?? DEFAULT_PAYMENT_DAYS,
       vat_exemption_text: data.vat_exemption_text || '',
+      ...paymentSettingsOf(data),
       updated_at: data.updated_at || '',
       quote_visible_fields: {
         ...DEFAULT_VISIBLE_FIELDS,
@@ -321,6 +349,8 @@ export class CompanySettingsService {
       payment_terms: settings.payment_terms,
       payment_terms_days: settings.payment_terms_days,
       vat_exemption_text: settings.vat_exemption_text,
+      tax_attestation_date: settings.tax_attestation_date === undefined ? undefined : (settings.tax_attestation_date || null),
+      cash_stamp_duty: settings.cash_stamp_duty,
       updated_at: new Date().toISOString(),
     };
     if (settings.quote_visible_fields) updateData.quote_visible_fields = settings.quote_visible_fields;
@@ -332,7 +362,7 @@ export class CompanySettingsService {
     if (settings.share_templates) updateData.share_templates = settings.share_templates;
     // Remove undefined keys
     Object.keys(updateData).forEach(k => updateData[k] === undefined && delete updateData[k]);
-    const { error } = await writeTolerant(updateData, NEW_SETTINGS_COLUMNS,
+    const { error } = await saveTolerant(updateData,
       payload => supabase.from('companies').update(payload as never).eq('id', companyId));
     invalidateCompaniesCache();
     if (error) throw error;
@@ -357,8 +387,11 @@ export class CompanySettingsService {
       updateData.quote_style = mergedStyle;
       delete updateData.share_templates;
     }
+    // Read-only flag, not a column.
+    delete updateData.payment_settings_available;
+    if (updateData.tax_attestation_date === '') updateData.tax_attestation_date = null;
 
-    const { error } = await writeTolerant(updateData, NEW_SETTINGS_COLUMNS,
+    const { error } = await saveTolerant(updateData,
       payload => supabase.from('company_settings').update(payload as never).eq('id', current.id));
 
     if (error) throw error;

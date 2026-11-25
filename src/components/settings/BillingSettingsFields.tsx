@@ -1,6 +1,6 @@
 import React from 'react';
 import { AlertTriangle } from 'lucide-react';
-import { LEGAL_TVA_RATES, isLegalTvaRate, paymentDaysError, DEFAULT_PAYMENT_DAYS, MAX_PAYMENT_DAYS } from '../../utils/documentLines';
+import { LEGAL_TVA_RATES, isLegalTvaRate, paymentDaysError, DEFAULT_PAYMENT_DAYS, MAX_PAYMENT_DAYS, localDay, taxAttestationStatus } from '../../utils/documentLines';
 import { iceError, missingCompanyIds, type BillingIds } from '../../utils/legalIds';
 
 // Billing settings shared by the company settings page and the companies
@@ -51,6 +51,42 @@ export function VatExemptionField({ value, onChange, className }: { value: strin
       <input type="text" value={value || ''} onChange={e => onChange(e.target.value)} className={className}
         placeholder="Ex. : article 91 du CGI" />
       <p className="mt-1 text-[11px] text-muted-foreground">Imprimée après « Exonéré de TVA » sur les documents à 0 %.</p>
+    </div>
+  );
+}
+
+const MIGRATION_HINT = 'Réglage non enregistré tant que la mise à jour 20261126130000 de la base n’est pas exécutée.';
+
+/**
+ * Date of the attestation de régularité fiscale. Under 6 months old, the
+ * company's VAT-registered clients pay its invoices VAT included; otherwise
+ * they withhold the VAT (CGI art. 117-IV).
+ */
+export function TaxAttestationField({ value, onChange, className, available = true }: { value: string | undefined; onChange: (day: string) => void; className: string; available?: boolean }) {
+  const status = taxAttestationStatus(value);
+  const tone = status.state === 'valid' ? 'text-muted-foreground' : status.state === 'expiring' ? 'text-amber-700 dark:text-amber-300' : 'text-destructive';
+  return (
+    <div>
+      <label htmlFor="tax-attestation-date" className="block text-xs font-medium text-foreground mb-1">Attestation de régularité fiscale (date)</label>
+      <input id="tax-attestation-date" type="date" value={value || ''} max={localDay()} onChange={e => onChange(e.target.value)} className={className} />
+      <p className={`mt-1 text-[11px] ${tone}`}>{status.message}</p>
+      {!available && <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">{MIGRATION_HINT}</p>}
+    </div>
+  );
+}
+
+/** Opt-in: 0.25 % stamp duty collected on top of cash settlements (CGI art. 252-I-B). */
+export function CashStampDutyField({ value, onChange, available = true }: { value: boolean | undefined; onChange: (on: boolean) => void; available?: boolean }) {
+  return (
+    <div>
+      <label className="flex items-start gap-2 text-xs font-medium text-foreground">
+        <input type="checkbox" checked={!!value} onChange={e => onChange(e.target.checked)} className="mt-0.5 h-4 w-4 rounded accent-primary" />
+        <span>Appliquer le droit de timbre sur les règlements en espèces</span>
+      </label>
+      <p className="mt-1 text-[11px] text-muted-foreground">
+        0,25 % du montant réglé en espèces, encaissé en plus du règlement et reversé à l’État avant la fin du mois suivant (art. 252 et 254 CGI). Le total des factures ne change pas.
+      </p>
+      {!available && <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">{MIGRATION_HINT}</p>}
     </div>
   );
 }

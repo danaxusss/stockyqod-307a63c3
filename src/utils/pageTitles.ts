@@ -28,6 +28,7 @@ const TITLES: [string, string][] = [
   ['/compta/avoirs/', 'Avoir'],
   ['/compta/returns', 'Retours'],
   ['/compta/clients', 'Clients (financier)'],
+  ['/compta/releves-fiscaux', 'Retenue de TVA et timbre'],
   ['/comptabilite', 'Comptabilité'],
   ['/comptabilite/plan', 'Plan comptable'],
   ['/comptabilite/a-comptabiliser', 'À comptabiliser'],

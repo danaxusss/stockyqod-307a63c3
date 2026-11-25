@@ -17,7 +17,20 @@ import { SupabaseUsersService } from '../../utils/supabaseUsers';
 import { ProductSearchModal } from '../../components/ProductSearchModal';
 import { PrintPreviewModal } from '../../components/PrintPreviewModal';
 import { formatMoney } from '../../utils/format';
-import { addDays, daysBetween, discountRate, documentDay, documentTvaRate, dueDateError, formatDay, invoiceDueDay, invoiceOverdue, invoicePayment, localDay, recomputeLine, toHT, toTTC, unitPriceHTInput, documentTotal, MAX_PAYMENT_DAYS } from '../../utils/documentLines';
+import {
+  addDays, cashLimitWarning, cashStampDuty, daysBetween, defaultWithholding, discountRate, documentDay, documentTvaRate, dueDateError, formatDay,
+  invoiceDueDay, invoiceOverdue, invoicePayment, invoiceSettlements, invoiceVat, isCashMethod, isProvisionalNumber, isWithholding, localDay,
+  newPaymentEntry, paymentEntryError, recomputeLine, taxAttestationStatus, toHT, toTTC, unitPriceHTInput, documentTotal, MAX_PAYMENT_DAYS,
+  WITHHOLDING_METHOD, WITHHOLDING_RATES,
+} from '../../utils/documentLines';
+
+/** "facture CM2611-4", or "facture (brouillon)" for a draft without a number. */
+const shareName = (q: Quote) => (isProvisionalNumber(q.quoteNumber) ? 'facture (brouillon)' : `facture ${q.quoteNumber}`);
+
+const PAYMENT_MODES: Array<[string, string]> = [
+  ['Virement bancaire', 'Virement'], ['Chèque', 'Chèque'], ['Espèces', 'Espèces'], ['Carte bancaire', 'Carte'],
+  ['Versement', 'Versement bancaire'], ['Effet de commerce', 'Effet'],
+];
 
 const inputCls = 'w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring';
 const fieldCls = 'w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring';
@@ -89,18 +102,21 @@ export default function InvoiceDetailPage() {
   const [avoirLeft, setAvoirLeft] = useState<Record<string, number> | null>(null);
   const [avoirQty, setAvoirQty] = useState<Record<string, number>>({});
 
+  // Settled = money received + VAT withheld by the client; each settlement at its own date.
   const paymentSummary = useMemo(() => {
     if (!invoice) return null;
-    const avance = invoice.avance_amount || 0;
-    const entries = (invoice.payment_methods_json || []) as PaymentEntry[];
-    const paymentsTotal = entries.reduce((s, e) => s + (e.amount || 0), 0);
-    const totalPaid = avance + paymentsTotal;
-    const reste = Math.max(0, invoice.totalAmount - totalPaid);
-    const status: 'paid' | 'partial' | 'unpaid' =
-      reste <= 0 && (totalPaid > 0 || invoice.totalAmount === 0) ? 'paid' :
-      totalPaid > 0 ? 'partial' : 'unpaid';
-    return { avance, entries, paymentsTotal, totalPaid, reste, status };
+    const p = invoicePayment(invoice);
+    return { ...p, totalPaid: p.paid, settlements: invoiceSettlements(invoice) };
   }, [invoice]);
+
+  // Stamp duty on cash settlements, when the issuing company opted in.
+  const stampDutyOn = !!companySettings?.cash_stamp_duty;
+  // A cash advance entered or changed now bears the duty; one recorded
+  // before (maybe before the setting was on) is left as it was.
+  const avanceTakesStamp = stampDutyOn && showAvance && draftAvance > 0 && isCashMethod(draftPaymentMethod) && !!invoice
+    && (draftAvance !== (invoice.avance_amount || 0) || draftPaymentMethod !== (invoice.payment_method || ''));
+  const finaliseConfirmText = (day: string) =>
+    `Finaliser la facture ? Elle prend maintenant le prochain numéro de la série de ${day.slice(5, 7)}/${day.slice(0, 4)} et ne pourra plus revenir en brouillon (pour l’annuler : un avoir).`;
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -202,10 +218,28 @@ export default function InvoiceDetailPage() {
       return;
     }
     // A wrong ICE or due date is never saved; the automatic save waits for a fix.
-    const problem = iceError(draftCustomerIce) || (draftDueDate ? dueDateError(draftDate || documentDay(invoice), draftDueDate) : null);
+    const invoiceDay = draftDate || documentDay(invoice);
+    const problem = iceError(draftCustomerIce) || (draftDueDate ? dueDateError(invoiceDay, draftDueDate) : null)
+      || draftPaymentMethods.map(e => paymentEntryError(e, invoiceDay)).find(Boolean) || null;
     if (problem) {
       if (!isAutoSave) showToast({ type: 'error', message: problem });
       return;
+    }
+    // Finalising takes the next number of the series and cannot be undone:
+    // never on an automatic save, and only once confirmed.
+    const finalising = invoice.status === 'draft' && draftStatus !== 'draft' && !isAutoSave;
+    if (finalising && !window.confirm(finaliseConfirmText(invoiceDay))) return;
+    const sentStatus = invoice.status === 'draft' && !finalising ? invoice.status : draftStatus;
+    // A cash advance cannot carry its stamp duty: with the duty on, it is
+    // saved as the first dated settlement instead (same order, same amount).
+    let avanceAmount = showAvance ? draftAvance : 0;
+    let entries = draftPaymentMethods;
+    if (avanceTakesStamp) {
+      entries = [newPaymentEntry({
+        method: draftPaymentMethod, reference: draftPaymentReference, bank: draftPaymentBank, amount: avanceAmount,
+        date: draftPaymentDate || invoiceDay, stamp_duty: cashStampDuty(avanceAmount), advance: !!draftPaymentDate && draftPaymentDate < invoiceDay,
+      }), ...entries];
+      avanceAmount = 0;
     }
     const paymentUpdates = {
       notes: draftNotes.trim() || null,
@@ -214,14 +248,14 @@ export default function InvoiceDetailPage() {
       payment_method: draftPaymentMethod || null,
       payment_reference: draftPaymentReference || null,
       payment_bank: draftPaymentBank || null,
-      avance_amount: showAvance ? draftAvance : 0,
-      payment_methods_json: draftPaymentMethods.length > 0 ? draftPaymentMethods : [],
+      avance_amount: avanceAmount,
+      payment_methods_json: entries.length > 0 ? entries : [],
       due_date: draftDueDate || null,
-      // Money received so far, for the client balance and accounting.
+      // Settled so far (money received + VAT withheld), for the client balance and accounting.
       paid_amount: invoicePayment({
         totalAmount: isPosted ? invoice.totalAmount : documentTotal(draftItems),
-        avance_amount: showAvance ? draftAvance : 0,
-        payment_methods_json: draftPaymentMethods,
+        avance_amount: avanceAmount,
+        payment_methods_json: entries,
       }).paid,
     };
     // Only the buyer's ICE, address and status may be completed on a booked
@@ -235,14 +269,17 @@ export default function InvoiceDetailPage() {
         ...(invoice.status === 'draft' && draftNumber.trim() !== invoice.quoteNumber ? { quoteNumber: draftNumber.trim() } : {}),
         customer: { ...filledCustomer, fullName: draftCustomerName, phoneNumber: draftCustomerPhone, city: draftCustomerCity },
         items: draftItems,
-        status: draftStatus,
+        status: sentStatus,
         quote_date: draftDate || null,
       });
       // The number may follow a new month; later saves start from the stored row.
       setInvoice(prev => prev ? { ...prev, ...saved } : saved);
       setDraftNumber(saved.quoteNumber);
+      if (entries !== draftPaymentMethods) { setDraftPaymentMethods(entries); setDraftAvance(0); setShowAvance(false); }
       if (!isAutoSave) {
-        showToast({ type: 'success', title: 'Facture mise à jour', message: 'Modifications sauvegardées' });
+        showToast(finalising && saved.status !== 'draft'
+          ? { type: 'success', title: 'Facture finalisée', message: `Numéro attribué : ${saved.quoteNumber}` }
+          : { type: 'success', title: 'Facture mise à jour', message: 'Modifications sauvegardées' });
         setIsEditing(false);
         await load();
       }
@@ -327,6 +364,22 @@ export default function InvoiceDetailPage() {
     product: null as any,
   }]);
 
+  /** Issue the draft: it takes the next number of its month's series (CGI art. 145-III). */
+  const handleFinalize = async () => {
+    if (!invoice) return;
+    if (!window.confirm(finaliseConfirmText(documentDay(invoice)))) return;
+    setIsSaving(true);
+    try {
+      const saved = await SupabaseDocumentsService.finalizeInvoice(invoice.id);
+      showToast({ type: 'success', title: 'Facture finalisée', message: `Numéro attribué : ${saved.quoteNumber}` });
+      await load();
+    } catch (e) {
+      showToast({ type: 'error', title: 'Finalisation impossible', message: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleLock = async () => {
     if (!invoice) return;
     try {
@@ -392,7 +445,7 @@ export default function InvoiceDetailPage() {
     } catch { /* continue even if PDF fails */ }
 
     const company = companySettings?.company_name?.trim() || '';
-    const msg = `Bonjour ${invoice.customer?.fullName || ''},\nVeuillez trouver ci-joint votre facture ${invoice.quoteNumber} d'un montant de ${formatMoney(invoice.totalAmount)}.${company ? `\n\nCordialement,\n${company}` : ''}`;
+    const msg = `Bonjour ${invoice.customer?.fullName || ''},\nVeuillez trouver ci-joint votre ${shareName(invoice)} d'un montant de ${formatMoney(invoice.totalAmount)}.${company ? `\n\nCordialement,\n${company}` : ''}`;
     const waUrl = buildWhatsAppShareUrl(phone, msg);
     const redirected = redirectPreparingWindowToWhatsApp(waUrl, waPopup);
     if (!redirected) {
@@ -434,9 +487,9 @@ export default function InvoiceDetailPage() {
 
   const handleEmail = () => {
     if (!invoice) return;
-    const subject = encodeURIComponent(`Facture ${invoice.quoteNumber}`);
+    const subject = encodeURIComponent(shareName(invoice).replace(/^f/, 'F'));
     const body = encodeURIComponent(
-      `Bonjour ${invoice.customer?.fullName || ''},\n\nVeuillez trouver ci-joint votre facture ${invoice.quoteNumber} d'un montant de ${formatMoney(invoice.totalAmount)}.\n\nCordialement,\n${companySettings?.company_name || ''}`
+      `Bonjour ${invoice.customer?.fullName || ''},\n\nVeuillez trouver ci-joint votre ${shareName(invoice)} d'un montant de ${formatMoney(invoice.totalAmount)}.\n\nCordialement,\n${companySettings?.company_name || ''}`
     );
     window.location.href = `mailto:?subject=${subject}&body=${body}`;
   };
@@ -473,9 +526,39 @@ export default function InvoiceDetailPage() {
     if (invoice.is_locked) { handleUnlock(); return; }
     startEdit();
     setShowExtraPayments(true);
-    setDraftPaymentMethods(prev => [...prev, { method: '', reference: '', bank: '', amount: 0 }]);
-    setTimeout(() => document.getElementById('invoice-payment')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+    setDraftPaymentMethods(prev => [...prev, newPaymentEntry({ amount: paymentSummary?.reste || 0 })]);
+    setTimeout(() => document.getElementById('invoice-payment')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }), 50);
   };
+
+  /**
+   * The client paid without the VAT and withheld it (CGI art. 117-IV): a
+   * settlement that is not money received. Defaults to the VAT still not
+   * withheld, capped by what is left to pay.
+   */
+  const withholdingEntry = (base: Pick<Quote, 'totalAmount' | 'avance_amount' | 'payment_methods_json'>, share = 100) => newPaymentEntry({
+    kind: 'vat_withholding', method: WITHHOLDING_METHOD, withholding_rate: share,
+    amount: defaultWithholding({ ...base, tva_rate: invoice?.tva_rate }, companySettings?.tva_rate, share),
+  });
+  const handleRecordWithholding = () => {
+    if (!invoice) return;
+    if (invoice.is_locked) { handleUnlock(); return; }
+    startEdit();
+    setShowExtraPayments(true);
+    setDraftPaymentMethods(prev => [...prev, withholdingEntry(invoice)]);
+    setTimeout(() => document.getElementById('invoice-payment')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }), 50);
+  };
+
+  /** Change one payment line; a cash line gets its stamp duty (frozen) when the company applies it. */
+  const updatePaymentEntry = (idx: number, patch: Partial<PaymentEntry>) => setDraftPaymentMethods(prev => prev.map((p, i) => {
+    if (i !== idx) return p;
+    const next: PaymentEntry = { ...p, ...patch };
+    if (isWithholding(next)) return next;
+    if ('method' in patch || 'amount' in patch) {
+      if (stampDutyOn && isCashMethod(next.method) && (Number(next.amount) || 0) > 0) next.stamp_duty = cashStampDuty(Number(next.amount));
+      else delete next.stamp_duty;
+    }
+    return next;
+  }));
 
   if (!isSuperAdmin && !isCompta) return <div className="text-center py-12 text-muted-foreground">Accès réservé au rôle Comptabilité.</div>;
   if (isLoading) return <div className="flex items-center justify-center min-h-[40vh]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>;
@@ -499,9 +582,20 @@ export default function InvoiceDetailPage() {
   const shownTotal = isEditing ? draftTotal : invoice.totalAmount;
   const shownHT = toHT(shownTotal, tvaRate);
   // While editing, the card follows the payments being typed.
-  const draftPaid = (showAvance ? draftAvance : 0) + draftPaymentMethods.reduce((s, e) => s + (e.amount || 0), 0);
-  const paidNow = isEditing ? draftPaid : (paymentSummary?.totalPaid ?? 0);
-  const resteNow = Math.max(0, shownTotal - paidNow);
+  const draftView = { totalAmount: shownTotal, avance_amount: showAvance ? draftAvance : 0, payment_methods_json: draftPaymentMethods, payment_method: draftPaymentMethod };
+  const draftSummary = invoicePayment(draftView);
+  const shownSummary = isEditing ? draftSummary : invoicePayment(invoice);
+  const paidNow = shownSummary.paid;
+  const resteNow = Math.max(0, Math.round((shownTotal - paidNow) * 100) / 100);
+  // Art. 193: cash on a sale of 20,000 DH or more (warning only).
+  const cashWarning = cashLimitWarning(shownTotal, shownSummary.cash);
+  const invoiceDayNow = isEditing && draftDate ? draftDate : documentDay(invoice);
+  const provisional = isProvisionalNumber(invoice.quoteNumber);
+  const isDraft = invoice.status === 'draft';
+  const shownNumber = provisional ? 'Brouillon' : invoice.quoteNumber;
+  // Art. 117-IV: without a recent attestation, VAT-registered clients withhold the VAT.
+  const attestation = companySettings?.payment_settings_available ? taxAttestationStatus(companySettings.tax_attestation_date) : null;
+  const showAttestation = !!attestation && attestation.state !== 'valid' && tvaRate > 0 && !isIndividual;
   const isPaid = paymentSummary?.status === 'paid';
   const invoiceDate = invoice.quote_date ? new Date(invoice.quote_date).toLocaleDateString('fr-FR') : new Date(invoice.createdAt).toLocaleDateString('fr-FR');
   const panel = 'rounded-xl border border-border bg-card shadow-sm';
@@ -510,7 +604,8 @@ export default function InvoiceDetailPage() {
     : paymentSummary.status === 'partial' ? { label: 'Paiement partiel', cls: 'bg-amber-500/10 text-amber-800 ring-amber-600/20 dark:text-amber-300', Icon: Clock }
     : invoice.status === 'final' ? { label: 'Non payée', cls: 'bg-red-500/10 text-red-700 ring-red-600/20 dark:text-red-300', Icon: AlertCircle }
     : null;
-  const primaryPayment = [invoice.payment_method, invoice.payment_reference, invoice.payment_bank, invoice.payment_date ? new Date(invoice.payment_date).toLocaleDateString('fr-FR') : ''].filter(Boolean);
+  // The invoice's own payment mention (mode, reference, bank), when no advance carries it.
+  const primaryPayment = (invoice.avance_amount || 0) > 0 ? [] : [invoice.payment_method, invoice.payment_reference, invoice.payment_bank, invoice.payment_date ? formatDay(invoice.payment_date.slice(0, 10)) : ''].filter(Boolean);
 
   const steps: Array<{ label: string; detail: string; state: 'done' | 'current' | 'todo'; to?: string }> = [
     chain?.quote
@@ -545,14 +640,15 @@ export default function InvoiceDetailPage() {
           <nav aria-label="Fil d’Ariane" className="hidden items-center gap-1.5 text-sm text-muted-foreground sm:flex">
             <Link to="/compta/invoices" className="hover:text-foreground">Factures</Link>
             <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
-            <span className="text-foreground">{invoice.quoteNumber}</span>
+            <span className="text-foreground">{shownNumber}</span>
           </nav>
           {isEditing ? (
             <div className="mt-1 flex flex-wrap items-center gap-2">
               <label className="sr-only" htmlFor="invoice-number">Numéro de facture</label>
-              {/* Continuous numbering: an issued invoice keeps its number. */}
-              <input id="invoice-number" value={draftNumber} onChange={e => setDraftNumber(e.target.value)}
-                disabled={numberFixed} title={numberFixed ? 'Le numéro d’une facture finalisée ne change plus' : undefined}
+              {/* Continuous numbering: an issued invoice keeps its number; a draft gets one when finalised. */}
+              <input id="invoice-number" value={provisional ? '' : draftNumber} onChange={e => setDraftNumber(e.target.value)}
+                disabled={numberFixed || provisional} placeholder={provisional ? 'N° à la finalisation' : undefined}
+                title={numberFixed ? 'Le numéro d’une facture finalisée ne change plus' : provisional ? 'Le numéro est attribué quand la facture est finalisée' : undefined}
                 className="w-48 rounded-lg border border-input bg-background px-2.5 py-1.5 text-lg font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-70" />
               <label className="sr-only" htmlFor="invoice-date">Date de la facture</label>
               <input id="invoice-date" type="date" value={draftDate} onChange={e => changeDraftDate(e.target.value)} disabled={isPosted}
@@ -566,7 +662,12 @@ export default function InvoiceDetailPage() {
               )}
             </div>
           ) : (
-            <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">Facture {invoice.quoteNumber}</h1>
+            <>
+              <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">{provisional ? 'Facture brouillon' : `Facture ${invoice.quoteNumber}`}</h1>
+              {provisional && (
+                <p className="text-xs text-muted-foreground">Réf. provisoire {invoice.quoteNumber} · le numéro est attribué à la finalisation</p>
+              )}
+            </>
           )}
         </div>
         {isEditing ? (
@@ -622,6 +723,16 @@ export default function InvoiceDetailPage() {
               <Lock className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
               <p className="min-w-0 flex-1 text-sm text-foreground">
                 {POSTED_INVOICE_MESSAGE} Les paiements, l’échéance et l’ICE du client restent modifiables.
+              </p>
+            </div>
+          )}
+
+          {showAttestation && attestation && (
+            <div role="status" className={`flex items-start gap-3 rounded-xl border px-4 py-3 ${attestation.state === 'expiring' ? 'border-amber-500/30 bg-amber-500/10' : 'border-red-500/30 bg-red-500/10'}`}>
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300" aria-hidden="true" />
+              <p className="min-w-0 flex-1 text-sm text-foreground">
+                {attestation.message}
+                {attestation.state !== 'expiring' && ' Un client qui retient la TVA vous règle le HT : enregistrez sa retenue avec « TVA retenue par le client ».'}
               </p>
             </div>
           )}
@@ -925,54 +1036,93 @@ export default function InvoiceDetailPage() {
                   {showExtraPayments ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
                 </button>
                 {showExtraPayments && (
-                  <div className="space-y-2.5 p-4">
-                    {draftPaymentMethods.map((pm, idx) => (
-                      <div key={idx} className="grid grid-cols-2 items-center gap-2 sm:grid-cols-[1fr_1fr_1fr_110px_32px]">
-                        <select
-                          value={pm.method}
-                          onChange={e => setDraftPaymentMethods(prev => prev.map((p, i) => i === idx ? { ...p, method: e.target.value } : p))}
-                          className={inputCls} aria-label="Mode de règlement"
-                        >
-                          <option value="">— Mode —</option>
-                          <option value="Virement bancaire">Virement</option>
-                          <option value="Chèque">Chèque</option>
-                          <option value="Espèces">Espèces</option>
-                          <option value="Versement">Versement</option>
-                          <option value="Effet de commerce">Effet</option>
-                        </select>
-                        <input
-                          value={pm.reference || ''}
-                          onChange={e => setDraftPaymentMethods(prev => prev.map((p, i) => i === idx ? { ...p, reference: e.target.value } : p))}
-                          className={inputCls} placeholder="Référence" aria-label="Référence du règlement"
-                        />
-                        <input
-                          value={pm.bank || ''}
-                          onChange={e => setDraftPaymentMethods(prev => prev.map((p, i) => i === idx ? { ...p, bank: e.target.value } : p))}
-                          className={inputCls} placeholder="Banque" aria-label="Banque du règlement"
-                        />
-                        <input
-                          type="number"
-                          value={pm.amount || ''}
-                          onChange={e => setDraftPaymentMethods(prev => prev.map((p, i) => i === idx ? { ...p, amount: Number(e.target.value) } : p))}
-                          className={`${inputCls} text-right`} placeholder="Montant" aria-label="Montant du règlement"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setDraftPaymentMethods(prev => prev.filter((_, i) => i !== idx))}
+                  <div className="space-y-3 p-4">
+                    {draftPaymentMethods.map((pm, idx) => {
+                      const withholding = isWithholding(pm);
+                      const dateError = paymentEntryError(pm, invoiceDayNow);
+                      const before = !!pm.date && pm.date < invoiceDayNow;
+                      const remove = (
+                        <button type="button" onClick={() => setDraftPaymentMethods(prev => prev.filter((_, i) => i !== idx))}
                           aria-label="Retirer ce règlement"
-                          className="flex h-8 w-8 items-center justify-center rounded-lg text-destructive transition-colors hover:bg-destructive/10"
-                        >
+                          className="flex h-8 w-8 items-center justify-center rounded-lg text-destructive transition-colors hover:bg-destructive/10">
                           <X className="h-4 w-4" />
                         </button>
-                      </div>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={() => setDraftPaymentMethods(prev => [...prev, { method: '', reference: '', bank: '', amount: 0 }])}
-                      className="flex items-center gap-1.5 pt-0.5 text-sm font-semibold text-primary hover:underline"
-                    >
-                      <Plus className="h-4 w-4" />Ajouter un règlement
-                    </button>
+                      );
+                      const dateInput = (
+                        <input type="date" value={pm.date || ''} onChange={e => updatePaymentEntry(idx, { date: e.target.value })}
+                          className={inputCls} aria-label={withholding ? 'Date de la retenue' : 'Date du règlement'}
+                          title={pm.date ? undefined : 'Sans date : date de paiement de la facture'} />
+                      );
+                      return (
+                        <div key={pm.id || idx} className={`space-y-1.5 rounded-lg ${withholding ? 'border border-violet-500/30 bg-violet-500/5 p-2.5' : ''}`}>
+                          {withholding ? (
+                            <>
+                              <p className="text-xs font-semibold text-violet-800 dark:text-violet-300">TVA retenue à la source par le client — non encaissée</p>
+                              <div className="grid grid-cols-2 items-center gap-2 sm:grid-cols-[140px_1fr_1fr_110px_32px]">
+                                {dateInput}
+                                <select value={String(pm.withholding_rate || 100)} aria-label="Part de la TVA retenue" className={inputCls}
+                                  onChange={e => {
+                                    const share = Number(e.target.value);
+                                    // Recomputed from the invoice without this line, so the share applies to the whole VAT.
+                                    const others = { totalAmount: shownTotal, avance_amount: showAvance ? draftAvance : 0, payment_methods_json: draftPaymentMethods.filter((_, i) => i !== idx) };
+                                    updatePaymentEntry(idx, { withholding_rate: share, amount: withholdingEntry(others, share).amount });
+                                  }}>
+                                  {WITHHOLDING_RATES.map(r => <option key={r} value={String(r)}>{r === 100 ? '100 % (biens d’équipement, travaux)' : '75 % (prestations, art. 117-V)'}</option>)}
+                                </select>
+                                <input value={pm.reference || ''} onChange={e => updatePaymentEntry(idx, { reference: e.target.value })}
+                                  className={inputCls} placeholder="Réf. (attestation de retenue)" aria-label="Référence de la retenue" />
+                                <input type="number" min="0" step="0.01" value={pm.amount || ''} onChange={e => updatePaymentEntry(idx, { amount: Number(e.target.value) })}
+                                  className={`${inputCls} text-right`} placeholder="Montant" aria-label="Montant de la TVA retenue" />
+                                {remove}
+                              </div>
+                              <p className="text-[11px] text-muted-foreground">
+                                TVA de la facture : {formatMoney(invoiceVat({ totalAmount: shownTotal, tva_rate: invoice.tva_rate }, companySettings?.tva_rate))}. Le client la verse lui-même au fisc ; elle solde cette part de la facture.
+                              </p>
+                            </>
+                          ) : (
+                            <div className="grid grid-cols-2 items-center gap-2 sm:grid-cols-[140px_1fr_1fr_1fr_110px_32px]">
+                              {dateInput}
+                              <select value={pm.method} onChange={e => updatePaymentEntry(idx, { method: e.target.value })} className={inputCls} aria-label="Mode de règlement">
+                                <option value="">— Mode —</option>
+                                {PAYMENT_MODES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                                {pm.method && !PAYMENT_MODES.some(([v]) => v === pm.method) && <option value={pm.method}>{pm.method}</option>}
+                              </select>
+                              <input value={pm.reference || ''} onChange={e => updatePaymentEntry(idx, { reference: e.target.value })}
+                                className={inputCls} placeholder="Référence" aria-label="Référence du règlement" />
+                              <input value={pm.bank || ''} onChange={e => updatePaymentEntry(idx, { bank: e.target.value })}
+                                className={inputCls} placeholder="Banque" aria-label="Banque du règlement" />
+                              <input type="number" min="0" step="0.01" value={pm.amount || ''} onChange={e => updatePaymentEntry(idx, { amount: Number(e.target.value) })}
+                                className={`${inputCls} text-right`} placeholder="Montant" aria-label="Montant du règlement" />
+                              {remove}
+                            </div>
+                          )}
+                          {!withholding && (pm.stamp_duty || 0) > 0 && isCashMethod(pm.method) && (
+                            <p className="text-xs font-medium text-amber-800 dark:text-amber-300">
+                              Droit de timbre 0,25 % : {formatMoney(pm.stamp_duty)} — à encaisser : {formatMoney((Number(pm.amount) || 0) + (pm.stamp_duty || 0))}
+                            </p>
+                          )}
+                          {before && !withholding && (
+                            <label className="flex items-center gap-2 text-xs text-foreground">
+                              <input type="checkbox" checked={!!pm.advance} onChange={e => updatePaymentEntry(idx, { advance: e.target.checked })} className="h-4 w-4 rounded accent-primary" />
+                              Avance reçue avant la facture
+                            </label>
+                          )}
+                          {dateError && <p className="text-xs text-destructive">{dateError}</p>}
+                        </div>
+                      );
+                    })}
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 pt-0.5">
+                      <button type="button" onClick={() => setDraftPaymentMethods(prev => [...prev, newPaymentEntry({ amount: draftSummary.reste })])}
+                        className="flex items-center gap-1.5 text-sm font-semibold text-primary hover:underline">
+                        <Plus className="h-4 w-4" />Ajouter un règlement
+                      </button>
+                      {tvaRate > 0 && (
+                        <button type="button" onClick={() => setDraftPaymentMethods(prev => [...prev, withholdingEntry(draftView)])}
+                          className="flex items-center gap-1.5 text-sm font-semibold text-violet-700 hover:underline dark:text-violet-300">
+                          <Plus className="h-4 w-4" />TVA retenue par le client
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -997,7 +1147,19 @@ export default function InvoiceDetailPage() {
                     )}
                   </div>
                 )}
+                {avanceTakesStamp && (
+                  <p className="border-t border-border px-4 py-2 text-xs font-medium text-amber-800 dark:text-amber-300">
+                    Droit de timbre 0,25 % : {formatMoney(cashStampDuty(draftAvance))} — à encaisser : {formatMoney(draftAvance + cashStampDuty(draftAvance))}.
+                    {' '}L’avance en espèces sera enregistrée comme règlement daté.
+                  </p>
+                )}
               </div>
+
+              {cashWarning && (
+                <p role="alert" className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
+                  <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />{cashWarning.message}
+                </p>
+              )}
             </section>
           )}
 
@@ -1044,7 +1206,13 @@ export default function InvoiceDetailPage() {
             <h2 id="invoice-pay-title" className="font-semibold text-foreground">Paiement</h2>
             <dl className="mt-3 space-y-2 text-sm">
               <div className="flex justify-between"><dt className="text-muted-foreground">Total TTC</dt><dd className="font-medium tabular-nums text-foreground">{formatMoney(shownTotal)}</dd></div>
-              <div className="flex justify-between"><dt className="text-muted-foreground">Déjà payé</dt><dd className="font-medium tabular-nums text-emerald-700 dark:text-emerald-300">{formatMoney(paidNow)}</dd></div>
+              <div className="flex justify-between"><dt className="text-muted-foreground">Encaissé</dt><dd className="font-medium tabular-nums text-emerald-700 dark:text-emerald-300">{formatMoney(shownSummary.received)}</dd></div>
+              {shownSummary.withheld > 0 && (
+                <div className="flex justify-between"><dt className="text-muted-foreground">TVA retenue par le client</dt><dd className="font-medium tabular-nums text-violet-700 dark:text-violet-300">{formatMoney(shownSummary.withheld)}</dd></div>
+              )}
+              {shownSummary.stampDuty > 0 && (
+                <div className="flex justify-between text-xs"><dt className="text-muted-foreground">Droit de timbre encaissé (en plus)</dt><dd className="tabular-nums text-foreground">{formatMoney(shownSummary.stampDuty)}</dd></div>
+              )}
               <div className="flex justify-between">
                 <dt className="text-muted-foreground">Échéance</dt>
                 <dd className={`font-medium tabular-nums ${overdue.overdue ? 'text-red-700 dark:text-red-300' : 'text-foreground'}`}>
@@ -1056,15 +1224,16 @@ export default function InvoiceDetailPage() {
               <p className="text-sm font-semibold text-foreground">{resteNow <= 0 && paidNow > 0 ? 'Facture soldée' : 'Reste à payer'}</p>
               <p className={`text-2xl font-bold tabular-nums tracking-tight ${resteNow <= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-foreground'}`}>{formatMoney(resteNow)}</p>
             </div>
-            {!isEditing && paymentSummary && (paymentSummary.avance > 0 || paymentSummary.entries.some(e => e.amount || e.method) || primaryPayment.length > 0) && (
-              <ul className="mt-3 space-y-1.5 border-t border-border pt-3 text-xs">
-                {paymentSummary.avance > 0 && (
-                  <li className="flex justify-between gap-2"><span className="text-muted-foreground">Avance reçue</span><span className="tabular-nums text-foreground">{formatMoney(paymentSummary.avance)}</span></li>
-                )}
-                {paymentSummary.entries.filter(e => e.amount || e.method).map((e, i) => (
-                  <li key={i} className="flex justify-between gap-2">
-                    <span className="min-w-0 text-muted-foreground">{[e.method || 'Règlement', e.reference, e.bank].filter(Boolean).join(' · ')}</span>
-                    <span className="shrink-0 tabular-nums text-foreground">{e.amount ? formatMoney(e.amount) : '—'}</span>
+            {!isEditing && paymentSummary && (paymentSummary.settlements.some(s => s.amount || s.method) || primaryPayment.length > 0) && (
+              <ul className="mt-3 space-y-1.5 border-t border-border pt-3 text-xs" aria-label="Règlements">
+                {paymentSummary.settlements.filter(s => s.amount || s.method).map(s => (
+                  <li key={s.key} className="flex justify-between gap-2">
+                    <span className={`min-w-0 ${s.kind === 'vat_withholding' ? 'text-violet-700 dark:text-violet-300' : 'text-muted-foreground'}`}>
+                      <span className="tabular-nums">{formatDay(s.date)}</span>
+                      {' · '}{[s.source === 'avance' ? `Avance${s.method ? ` (${s.method})` : ''}` : s.kind === 'vat_withholding' ? `TVA retenue par le client${s.withholdingRate && s.withholdingRate !== 100 ? ` (${s.withholdingRate} %)` : ''}` : (s.method || 'Règlement'), s.reference, s.bank].filter(Boolean).join(' · ')}
+                      {s.stampDuty > 0 && <span className="block">+ droit de timbre {formatMoney(s.stampDuty)}</span>}
+                    </span>
+                    <span className="shrink-0 tabular-nums text-foreground">{s.amount ? formatMoney(s.amount) : '—'}</span>
                   </li>
                 ))}
                 {primaryPayment.length > 0 && (
@@ -1072,10 +1241,27 @@ export default function InvoiceDetailPage() {
                 )}
               </ul>
             )}
+            {!isEditing && cashWarning && (
+              <p role="alert" className="mt-3 rounded-lg bg-amber-500/10 px-2.5 py-2 text-xs text-amber-900 dark:text-amber-200">{cashWarning.message}</p>
+            )}
             {!isEditing && resteNow > 0 && (
-              <button type="button" onClick={handleRecordPayment}
-                className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-primary py-2.5 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90">
-                <Wallet className="h-4 w-4" />Enregistrer un paiement
+              <>
+                <button type="button" onClick={handleRecordPayment}
+                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-primary py-2.5 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90">
+                  <Wallet className="h-4 w-4" />Enregistrer un paiement
+                </button>
+                {tvaRate > 0 && (
+                  <button type="button" onClick={handleRecordWithholding}
+                    className="mt-2 w-full rounded-lg border border-border py-2 text-sm font-semibold text-foreground hover:bg-secondary">
+                    TVA retenue par le client
+                  </button>
+                )}
+              </>
+            )}
+            {!isEditing && isDraft && !invoice.is_locked && (
+              <button type="button" onClick={handleFinalize} disabled={isSaving}
+                className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-primary/40 py-2 text-sm font-semibold text-primary hover:bg-primary/5 disabled:opacity-60">
+                <CheckCircle className="h-4 w-4" />Finaliser la facture
               </button>
             )}
           </section>

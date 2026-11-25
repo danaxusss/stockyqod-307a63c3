@@ -6,7 +6,8 @@ import { SupabaseDocumentsService } from '../../utils/supabaseDocuments';
 import { SupabasePayslipsService } from '../../utils/supabasePayslips';
 import { CompanySettingsService } from '../../utils/companySettings';
 import { getCompanyContext } from '../../utils/supabaseCompanyFilter';
-import { buildInvoiceEntry, buildAvoirEntry, buildPaymentEntries, buildPayslipEntry, type EntryDraft } from '../../accounting/postingRules';
+import { buildInvoiceEntry, buildAvoirEntry, buildPaymentEntries, buildPayslipEntry, buildStampDutyEntries, type EntryDraft } from '../../accounting/postingRules';
+import { CUSTOMER_TAX_ACCOUNTS } from '../../accounting/pcmSeed';
 import { invoicePayment } from '../../utils/documentLines';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
@@ -67,11 +68,19 @@ export default function AComptabiliserPage() {
 
   const opts = () => ({ post: autoPost, createdBy: currentUser?.username || null });
 
+  // Charts initialised before 34581 / 44578 were seeded get them when first used.
+  const ensureCustomerTaxAccounts = async (drafts: EntryDraft[]) => {
+    const codes: string[] = Object.values(CUSTOMER_TAX_ACCOUNTS);
+    const used = codes.filter(c => drafts.some(d => d.lines.some(l => l.account_code === c)));
+    if (used.length) await AccountingService.ensureSeedAccounts(used);
+  };
+
   // Each entry goes into the fiscal year of its own date.
   const generate = async (drafts: EntryDraft[], key: string) => {
     if (drafts.length === 0) return;
     setBusy(key);
     try {
+      await ensureCustomerTaxAccounts(drafts);
       for (const d of drafts) await AccountingService.createFromDraft(d, journals, opts());
       showToast({ type: 'success', message: autoPost ? 'Écriture validée' : 'Brouillon généré' });
       await load();
@@ -80,10 +89,12 @@ export default function AComptabiliserPage() {
     } finally { setBusy(null); }
   };
 
+  // Settlements (money and VAT withheld by the client), then the stamp duty
+  // collected on cash payments, each on its own date.
   const paymentDrafts = useCallback((q: Quote) => {
     const t = paymentTotals.get(q.id) || { amount: 0, count: 0 };
-    return buildPaymentEntries(q, t.amount, t.count);
-  }, [paymentTotals]);
+    return [...buildPaymentEntries(q, t.amount, t.count), ...buildStampDutyEntries(q, postedIds)];
+  }, [paymentTotals, postedIds]);
   // A payslip posted through its pay run is already in the books.
   const inPostedRun = useCallback((p: Payslip) => !!p.run_id && postedIds.has(`run:${p.run_id}`), [postedIds]);
   const payslipDraft = (p: Payslip) => buildPayslipEntry(p, (p as any).employee?.full_name, loanAmounts.get(p.id) || 0);
@@ -105,6 +116,7 @@ export default function AComptabiliserPage() {
         ...pending.av.map(q => buildAvoirEntry(q, tvaRate)),
         ...pending.ps.map(payslipDraft),
       ];
+      await ensureCustomerTaxAccounts(drafts);
       for (const d of drafts) await AccountingService.createFromDraft(d, journals, opts());
       showToast({ type: 'success', title: 'Terminé', message: `${drafts.length} écriture(s) ${autoPost ? 'validées' : 'en brouillon'}` });
       await load();
@@ -182,7 +194,7 @@ export default function AComptabiliserPage() {
             return (
               <Row key={`${q.id}:pay`} k={`${q.id}:pay`}
                 label={`Règlement ${q.quoteNumber}`}
-                sub={`${q.customer?.fullName || ''} · reçu ${fmtMad(invoicePayment(q).paid)}${drafts.length ? ` · ${drafts.length} à comptabiliser` : ''}`}
+                sub={`${q.customer?.fullName || ''} · encaissé ${fmtMad(invoicePayment(q).received)}${invoicePayment(q).withheld > 0 ? ` · TVA retenue ${fmtMad(invoicePayment(q).withheld)}` : ''}${drafts.length ? ` · ${drafts.length} à comptabiliser` : ''}`}
                 amount={drafts.length ? toBook : invoicePayment(q).paid} done={drafts.length === 0}
                 onGen={() => generate(drafts, `${q.id}:pay`)} />
             );

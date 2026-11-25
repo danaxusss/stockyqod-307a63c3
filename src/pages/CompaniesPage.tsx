@@ -7,7 +7,7 @@ import {
   Bot, Zap, ToggleLeft, ToggleRight
 } from 'lucide-react';
 import { SupabaseCompaniesService } from '../utils/supabaseCompanies';
-import { LegalIdsWarning, PaymentDaysField, TvaRateField, VatExemptionField } from '../components/settings/BillingSettingsFields';
+import { CashStampDutyField, LegalIdsWarning, PaymentDaysField, TaxAttestationField, TvaRateField, VatExemptionField } from '../components/settings/BillingSettingsFields';
 import { billingSettingsError, iceError, normalizeIce } from '../utils/legalIds';
 import {
   CompanySettingsService, CompanySettings, QuoteVisibleFields, QuoteStyle, DEFAULT_SHARE_TEMPLATES
@@ -629,6 +629,10 @@ export default function CompaniesPage() {
                   className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring" />
                 <VatExemptionField value={s.vat_exemption_text} onChange={text => setS({ vat_exemption_text: text })}
                   className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring" />
+                <TaxAttestationField value={s.tax_attestation_date} onChange={day => setS({ tax_attestation_date: day })}
+                  available={s.payment_settings_available !== false}
+                  className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring" />
+                <CashStampDutyField value={s.cash_stamp_duty} onChange={on => setS({ cash_stamp_duty: on })} available={s.payment_settings_available !== false} />
               </div>
             </div>
 
