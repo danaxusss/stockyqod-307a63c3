@@ -22,6 +22,15 @@ export const PRODUCT_COLUMNS =
 
 export type ProductCosts = Map<string, number>;
 
+/**
+ * Whether this user is shown purchase prices: the database's
+ * stocky_can_see_costs() — everyone but resellers, an admin or super admin
+ * whose price type is "reseller" still seeing them.
+ */
+export function seesPurchaseCosts(user: { priceDisplayType?: string | null; isAdmin?: boolean; isSuperAdmin?: boolean }): boolean {
+  return user.priceDisplayType !== 'reseller' || !!user.isAdmin || !!user.isSuperAdmin;
+}
+
 /** A table, view or function this database does not have (migration not run). */
 export function isMissingDbObject(error: unknown): boolean {
   const e = error as { code?: string; message?: string } | null;

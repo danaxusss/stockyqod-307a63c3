@@ -31,6 +31,8 @@ const RAW: [string, string, (Partial<SeedAccount>)?][] = [
   ['1161', 'Report à nouveau (SC)', {}],
   ['1181', 'Résultat net en instance d\'affectation', {}],
   ['1191', 'Résultat net de l\'exercice (SC)', {}],
+  // A loss is carried on its own account (CGNC 1199), not as a debit on 1191.
+  ['1199', 'Résultat net de l\'exercice (solde débiteur)', {}],
   ['1481', 'Emprunts auprès des établissements de crédit', {}],
   // Classe 2 — Actif immobilisé
   ['2111', 'Frais de constitution', {}],
@@ -38,11 +40,13 @@ const RAW: [string, string, (Partial<SeedAccount>)?][] = [
   ['2230', 'Fonds commercial', {}],
   ['2321', 'Bâtiments', {}],
   ['2331', 'Installations techniques', {}],
+  ['2332', 'Matériel et outillage', {}],
   ['2340', 'Matériel de transport', {}],
   ['2351', 'Mobilier de bureau', {}],
   ['2355', 'Matériel informatique', {}],
   ['2356', 'Agencements, aménagements', {}],
   ['2811', 'Amort. frais de constitution', {}],
+  ['2822', 'Amort. brevets, marques, droits et valeurs similaires', {}],
   ['2832', 'Amort. des bâtiments', {}],
   ['2833', 'Amort. installations techniques', {}],
   ['2834', 'Amort. matériel de transport', {}],
@@ -52,10 +56,15 @@ const RAW: [string, string, (Partial<SeedAccount>)?][] = [
   ['3421', 'Clients', { lettrable: true, aux_kind: 'client' }],
   ['3424', 'Clients douteux ou litigieux', { lettrable: true }],
   ['3427', 'Clients - factures à établir', {}],
+  ['3453', 'État - acomptes sur impôts sur les résultats', {}],
   ['3455', 'État - TVA récupérable', {}],
   ['34551', 'État - TVA récupérable sur immobilisations', {}],
   ['34552', 'État - TVA récupérable sur charges', {}],
+  ['3456', 'État - crédit de TVA (suivant déclarations)', {}],
   ['3458', 'État - autres comptes débiteurs', {}],
+  // VAT the clients withheld at source (CGI art. 117-IV): owed back by the
+  // State, imputed on the VAT return or refunded (art. 103-6°).
+  ['34581', 'État - TVA retenue à la source par les clients', {}],
   ['3488', 'Divers débiteurs', { lettrable: true }],
   // Classe 4 — Passif circulant (hors trésorerie)
   ['4411', 'Fournisseurs', { lettrable: true, aux_kind: 'fournisseur' }],
@@ -65,14 +74,24 @@ const RAW: [string, string, (Partial<SeedAccount>)?][] = [
   ['4443', 'Caisses de retraite (CIMR)', {}],
   ['4445', 'Mutuelles / AMO', {}],
   ['4452', 'État - IR (retenue à la source)', {}],
+  ['4453', 'État - impôts sur les résultats', {}],
   ['4455', 'État - TVA facturée', { vat_rate: 20 }],
   ['44551', 'État - TVA facturée 20%', { vat_rate: 20 }],
-  ['44552', 'État - TVA facturée 14%', { vat_rate: 14 }],
+  // Since 1 January 2026 VAT has two rates, 20 % and 10 % (LF 2024 reform).
+  // The 14 % (44552) and 7 % (44557) accounts are no longer seeded; existing
+  // charts keep them because they may carry history.
   ['44553', 'État - TVA facturée 10%', { vat_rate: 10 }],
-  ['44557', 'État - TVA facturée 7%', { vat_rate: 7 }],
   ['4456', 'État - TVA due', {}],
+  ['4457', 'État - impôts et taxes à payer', {}],
+  // Stamp duty collected on cash settlements (CGI art. 252-I-B), paid over
+  // before the end of the following month (art. 254-II).
+  ['44578', 'État - droits de timbre sur règlements en espèces', {}],
   ['4458', 'État - autres comptes créditeurs', {}],
   ['4488', 'Divers créditeurs', { lettrable: true }],
+  // Withholdings on supplier payments, owed to the State the month after
+  // (sub-accounts of 4452 and 4458; see accounting/supplierPosting.ts).
+  ['44525', 'État - IR/IS retenus à la source sur rémunérations de tiers', {}],
+  ['44581', 'État - TVA retenue à la source (art. 117 CGI)', {}],
   // Classe 5 — Trésorerie
   ['5141', 'Banque', {}],
   ['5143', 'Banque (compte 2)', {}],
@@ -81,6 +100,7 @@ const RAW: [string, string, (Partial<SeedAccount>)?][] = [
   // Classe 6 — Charges
   ['6111', 'Achats de marchandises', {}],
   ['6114', 'Variation de stocks de marchandises', {}],
+  ['6119', 'Rabais, remises et ristournes obtenus sur achats de marchandises', {}],
   ['6121', 'Achats de matières premières', {}],
   ['6125', 'Achats non stockés (fournitures)', {}],
   ['6131', 'Locations et charges locatives', {}],
@@ -97,8 +117,12 @@ const RAW: [string, string, (Partial<SeedAccount>)?][] = [
   ['6311', 'Intérêts des emprunts', {}],
   ['6386', 'Escomptes accordés', {}],
   ['6191', 'Dotations d\'exploitation aux amortissements', {}],
+  ['6192', 'D.E.A. des immobilisations incorporelles', {}],
+  ['6193', 'D.E.A. des immobilisations corporelles', {}],
+  ['6701', 'Impôts sur les bénéfices', {}],
   // Classe 7 — Produits
   ['7111', 'Ventes de marchandises', {}],
+  ['7119', 'Rabais, remises et ristournes accordés par l\'entreprise', {}],
   ['7121', 'Ventes de biens produits', {}],
   ['7124', 'Ventes de services / prestations', {}],
   ['7127', 'Ventes de produits accessoires', {}],
@@ -140,3 +164,10 @@ export const DEFAULT_ACCOUNTS = {
   chargesPersonnel: '6171',
   chargesSociales: '6174',
 };
+
+// Accounts of the customer settlements: VAT withheld by clients and stamp
+// duty on cash (kept apart from DEFAULT_ACCOUNTS, which other modules extend).
+export const CUSTOMER_TAX_ACCOUNTS = {
+  tvaRetenueClients: '34581',
+  droitsTimbre: '44578',
+} as const;

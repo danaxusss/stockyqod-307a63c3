@@ -1,17 +1,22 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { FileText, Search } from 'lucide-react';
-import type { Account, FiscalYear } from '../../types';
+import { Download, FileText, Search } from 'lucide-react';
+import type { Account, FiscalYear, Journal } from '../../types';
 import { AccountingService } from '../../utils/supabaseAccounting';
+import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
 import { PageHeader } from '../../components/PageHeader';
-import { EmptyState, field, LoadingState, MobileField, panel, td, tdNum, th, theadRow, thRight } from '../../components/backoffice/BackOfficeUi';
+import { btnSecondary, EmptyState, field, LoadingState, MobileField, panel, td, tdNum, th, theadRow, thRight } from '../../components/backoffice/BackOfficeUi';
+import { downloadText, grandLivreRows, reportHeader, toCsv } from '../../accounting/ledgerExport';
+import { errorText } from '../../accounting/errors';
 
 function fmt(n: number) { return n === 0 ? '' : new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n); }
 
 export default function GrandLivrePage() {
   const { showToast } = useToast();
+  const { companyName } = useAuth();
   const [fy, setFy] = useState<FiscalYear | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [journals, setJournals] = useState<Journal[]>([]);
   const [lines, setLines] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<string>('');
@@ -21,9 +26,9 @@ export default function GrandLivrePage() {
     try {
       const year = await AccountingService.ensureCurrentFiscalYear();
       setFy(year);
-      const [a, l] = await Promise.all([AccountingService.listAccounts(), AccountingService.getPostedLines(year.id)]);
-      setAccounts(a); setLines(l);
-    } catch (e: any) { showToast({ type: 'error', message: e?.message || 'Erreur' }); }
+      const [a, l, j] = await Promise.all([AccountingService.listAccounts(), AccountingService.getPostedLines(year.id), AccountingService.listJournals()]);
+      setAccounts(a); setLines(l); setJournals(j);
+    } catch (e) { showToast({ type: 'error', message: errorText(e, 'Erreur') }); }
     finally { setLoading(false); }
   }, [showToast]);
   useEffect(() => { load(); }, [load]);
@@ -52,11 +57,32 @@ export default function GrandLivrePage() {
     });
   }, [accountLines]);
 
+  // CSV of the displayed account, or of every account that moved, headed by
+  // the company, year, date produced and software (CNC avis 24 §2.7).
+  const exportCsv = (all: boolean) => {
+    if (!fy) return;
+    const codes = all ? movedCodes : [selected];
+    const journalCode = new Map(journals.map(j => [j.id, j.code]));
+    const report = all ? 'Grand livre - tous les comptes' : `Grand livre - compte ${selected} ${accByCode.get(selected)?.label || ''}`.trim();
+    const rows = [
+      ...reportHeader({ company: companyName || '', report, fiscalYear: fy, producedAt: new Date() }),
+      ...grandLivreRows(lines, codes, c => accByCode.get(c)?.label || '', id => journalCode.get(id || '') || ''),
+    ];
+    downloadText(toCsv(rows), `grand-livre-${all ? 'tous-comptes' : selected}-${fy.label}.csv`, 'text/csv;charset=utf-8;');
+  };
+
   const soldeFmt = (n: number) => new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(n);
 
   return (
     <div className="mx-auto max-w-[110rem]">
-      <PageHeader title="Grand livre" subtitle={`Exercice ${fy?.label ?? ''} · ${movedCodes.length} comptes mouvementés`}>
+      <PageHeader
+        title="Grand livre"
+        subtitle={`Exercice ${fy?.label ?? ''} · ${movedCodes.length} comptes mouvementés`}
+        actions={<>
+          <button onClick={() => exportCsv(false)} disabled={!selected || accountLines.length === 0} className={btnSecondary}><Download className="h-4 w-4" /> CSV du compte</button>
+          <button onClick={() => exportCsv(true)} disabled={movedCodes.length === 0} className={btnSecondary}><Download className="h-4 w-4" /> CSV tous les comptes</button>
+        </>}
+      >
         <div className={`${panel} p-3`}>
           <div className="relative sm:max-w-md">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />

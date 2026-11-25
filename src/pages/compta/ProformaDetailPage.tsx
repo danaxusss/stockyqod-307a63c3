@@ -12,7 +12,7 @@ import { ClientDropdown } from '../../components/ClientDropdown';
 import { ClientFormModal } from '../../components/ClientFormModal';
 import { ProductSearchModal } from '../../components/ProductSearchModal';
 import { PrintPreviewModal } from '../../components/PrintPreviewModal';
-import { discountRate, documentTotal, localDay, recomputeLine, toHT, toTTC, unitPriceHTInput } from '../../utils/documentLines';
+import { discountRate, documentTotal, documentTvaRate, localDay, recomputeLine, toHT, toTTC, unitPriceHTInput } from '../../utils/documentLines';
 import { formatMoney } from '../../utils/format';
 import { DocClientCard, DocPhoneBar, DocProgress, DocToggle, type DocStep } from '../../components/documents/DocParts';
 import { docDate, docFieldCls, docInputCls, docPanel, docSideAction, docTh } from '../../components/documents/docStyles';
@@ -271,7 +271,8 @@ export default function ProformaDetailPage() {
   // paid_amount on a proforma is the amount already invoiced from it.
   const remaining = proforma.totalAmount - (proforma.paid_amount || 0);
   const draftTotal = documentTotal(draftItems);
-  const tvaRate = companies.find(c => c.id === proforma.company_id)?.tva_rate ?? 20;
+  // The rate frozen on the proforma; the company's current one for older proformas.
+  const tvaRate = documentTvaRate(proforma, companies.find(c => c.id === proforma.company_id)?.tva_rate);
   const shownItems = isEditing ? draftItems : proforma.items;
   const showDiscount = isEditing || shownItems.some(i => discountRate(i) > 0);
   const shownTotal = isEditing ? draftTotal : proforma.totalAmount;

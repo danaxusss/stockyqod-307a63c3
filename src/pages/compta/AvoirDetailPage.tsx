@@ -2,12 +2,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Download, Printer, Boxes, Loader, ChevronRight, Check, FileText, Undo2 } from 'lucide-react';
 import { Quote } from '../../types';
-import { SupabaseDocumentsService } from '../../utils/supabaseDocuments';
+import { SupabaseDocumentsService, POSTED_AVOIR_MESSAGE } from '../../utils/supabaseDocuments';
 import { PdfExportService } from '../../utils/pdfExport';
 import { CompanySettingsService } from '../../utils/companySettings';
 import { SupabaseCompaniesService } from '../../utils/supabaseCompanies';
 import { PrintPreviewModal } from '../../components/PrintPreviewModal';
-import { discountRate, localDay, toHT } from '../../utils/documentLines';
+import { discountRate, documentDay, documentTvaRate, formatDay, localDay, toHT } from '../../utils/documentLines';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../hooks/useAuth';
 import { useKeyboardSave, useAutoSave } from '../../hooks/useShortcuts';
@@ -23,11 +23,13 @@ export default function AvoirDetailPage() {
   const [stockReturned, setStockReturned] = useState<boolean | null>(null);
   const [stockBusy, setStockBusy] = useState(false);
   const [avoirDate, setAvoirDate] = useState('');
-  const [printTTCOnly, setPrintTTCOnly] = useState(false);
   const [showPrintPreview, setShowPrintPreview] = useState(false);
   const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
   const [previewFilename, setPreviewFilename] = useState('');
-  const [tvaRate, setTvaRate] = useState(20);
+  // The issuing company's current rate: only for credit notes from before rates were stored.
+  const [companyRate, setCompanyRate] = useState<number | null>(null);
+  // Booked in the accounts: its date no longer changes.
+  const [isPosted, setIsPosted] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -36,10 +38,11 @@ export default function AvoirDetailPage() {
       const doc = await SupabaseDocumentsService.getById(id);
       setAvoir(doc);
       setAvoirDate(doc?.quote_date || localDay(new Date(doc?.createdAt || Date.now())));
+      setIsPosted(doc ? await SupabaseDocumentsService.isPosted(doc.id).catch(() => false) : false);
       const compId = doc?.issuing_company_id || doc?.company_id;
       if (compId) {
         const settings = await CompanySettingsService.getSettings(compId).catch(() => null);
-        if (settings?.tva_rate != null) setTvaRate(settings.tva_rate);
+        if (settings?.tva_rate != null) setCompanyRate(settings.tva_rate);
       }
       if (doc?.id) {
         import('../../inventory/lib/stockPosting')
@@ -56,22 +59,22 @@ export default function AvoirDetailPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Number of the invoice this credit note cancels, for display only.
-  const [sourceNumber, setSourceNumber] = useState<string | null>(null);
+  // The invoice this credit note corrects: number and date, shown as on the PDF.
+  const [source, setSource] = useState<{ number: string; day: string } | null>(null);
   useEffect(() => {
     const parentId = avoir?.parent_document_id;
-    if (!parentId) { setSourceNumber(null); return; }
+    if (!parentId) { setSource(null); return; }
     let cancelled = false;
     SupabaseDocumentsService.getById(parentId)
-      .then(doc => { if (!cancelled) setSourceNumber(doc?.quoteNumber || null); })
+      .then(doc => { if (!cancelled) setSource(doc ? { number: doc.quoteNumber, day: documentDay(doc) } : null); })
       .catch(() => { /* the link still works without the number */ });
     return () => { cancelled = true; };
   }, [avoir?.parent_document_id]);
 
   const saveDate = useCallback(async () => {
-    if (!avoir) return;
+    if (!avoir || isPosted) return;
     try { await SupabaseDocumentsService.updateDocument(avoir.id, { quote_date: avoirDate || null }); } catch { /* silent */ }
-  }, [avoir, avoirDate]);
+  }, [avoir, avoirDate, isPosted]);
 
   useKeyboardSave(saveDate, !!avoir && !isLoading);
   useAutoSave(saveDate, !!avoir && !isLoading);
@@ -110,7 +113,8 @@ export default function AvoirDetailPage() {
     if (!avoir) return;
     try {
       const settings = await getSettings(avoir);
-      await PdfExportService.exportQuoteToPdf(avoir, settings, undefined, undefined, undefined, 'avoir', undefined, printTTCOnly);
+      // HT, VAT and TTC are always printed on a credit note, with its invoice.
+      await PdfExportService.exportQuoteToPdf(await SupabaseDocumentsService.withSourceInvoice(avoir), settings, undefined, undefined, undefined, 'avoir', undefined, false);
     } catch (e) {
       showToast({ type: 'error', title: 'Erreur PDF', message: String(e) });
     }
@@ -120,7 +124,7 @@ export default function AvoirDetailPage() {
     if (!avoir) return;
     try {
       const settings = await getSettings(avoir);
-      const { blob, filename } = await PdfExportService.generatePdfBlob(avoir, settings, undefined, undefined, undefined, 'avoir', undefined, printTTCOnly);
+      const { blob, filename } = await PdfExportService.generatePdfBlob(await SupabaseDocumentsService.withSourceInvoice(avoir), settings, undefined, undefined, undefined, 'avoir', undefined, false);
       setPreviewBlob(blob);
       setPreviewFilename(filename);
       setShowPrintPreview(true);
@@ -134,8 +138,9 @@ export default function AvoirDetailPage() {
   if (!avoir) return <div className="py-12 text-center text-muted-foreground">Avoir introuvable. <Link to="/compta/avoirs" className="font-semibold text-primary hover:underline">Retour aux avoirs</Link></div>;
 
   const panel = 'rounded-xl border border-border bg-card shadow-sm';
+  const tvaRate = documentTvaRate(avoir, companyRate);
   const totalHT = toHT(avoir.totalAmount, tvaRate);
-  const customerLine = [avoir.customer?.phoneNumber, avoir.customer?.city].filter(Boolean).join(' · ');
+  const customerLine = [avoir.customer?.phoneNumber, avoir.customer?.address, avoir.customer?.city, avoir.customer?.ice && `ICE ${avoir.customer.ice}`].filter(Boolean).join(' · ');
   const initials = (avoir.customer?.fullName || '').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('');
 
   return (
@@ -163,8 +168,8 @@ export default function AvoirDetailPage() {
             <section className={`${panel} flex flex-wrap items-center gap-3 px-4 py-3 sm:px-5`} aria-label="Facture source">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary" aria-hidden="true"><FileText className="h-4 w-4" /></span>
               <div className="min-w-0 flex-1">
-                <p className="text-xs text-muted-foreground">Avoir sur la facture</p>
-                <p className="font-semibold text-foreground">{sourceNumber || '…'}</p>
+                <p className="text-xs text-muted-foreground">Avoir sur facture</p>
+                <p className="font-semibold text-foreground">{source ? `N° ${source.number} du ${formatDay(source.day)}` : '…'}</p>
               </div>
               <Link to={`/compta/invoices/${avoir.parent_document_id}`} className="rounded-lg border border-border px-3 py-1.5 text-sm font-semibold text-foreground hover:bg-secondary">
                 Voir la facture
@@ -188,10 +193,12 @@ export default function AvoirDetailPage() {
                 type="date"
                 value={avoirDate}
                 onChange={e => setAvoirDate(e.target.value)}
+                disabled={isPosted}
+                title={isPosted ? POSTED_AVOIR_MESSAGE : undefined}
                 onBlur={async () => {
-                  if (!avoir) return;
+                  if (!avoir || isPosted) return;
                   try { await SupabaseDocumentsService.updateDocument(avoir.id, { quote_date: avoirDate || null }); }
-                  catch { /* ignore */ }
+                  catch (e) { showToast({ type: 'error', message: e instanceof Error ? e.message : String(e) }); }
                 }}
                 className="-ml-1 mt-0.5 w-full rounded-md border border-transparent bg-transparent px-1 py-1 text-sm font-medium text-foreground hover:border-input focus:border-input focus:ring-2 focus:ring-ring"
               />
@@ -249,7 +256,11 @@ export default function AvoirDetailPage() {
             )}
             <dl className="space-y-1.5 border-t border-border px-4 py-3 text-sm sm:px-5">
               <div className="flex justify-between"><dt className="text-muted-foreground">Total HT</dt><dd className="tabular-nums text-foreground">{formatMoney(totalHT)}</dd></div>
-              <div className="flex justify-between"><dt className="text-muted-foreground">TVA {tvaRate} %</dt><dd className="tabular-nums text-foreground">{formatMoney(avoir.totalAmount - totalHT)}</dd></div>
+              {tvaRate === 0 ? (
+                <div className="flex justify-between"><dt className="text-muted-foreground">Exonéré de TVA</dt><dd className="tabular-nums text-foreground">{formatMoney(0)}</dd></div>
+              ) : (
+                <div className="flex justify-between"><dt className="text-muted-foreground">TVA {tvaRate} %</dt><dd className="tabular-nums text-foreground">{formatMoney(avoir.totalAmount - totalHT)}</dd></div>
+              )}
               <div className="flex justify-between text-base font-semibold"><dt className="text-foreground">Total TTC</dt><dd className="tabular-nums text-foreground">{formatMoney(avoir.totalAmount)}</dd></div>
             </dl>
           </section>
@@ -293,16 +304,7 @@ export default function AvoirDetailPage() {
               className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-border py-2.5 text-sm font-semibold text-foreground hover:bg-secondary">
               <Printer className="h-4 w-4 text-primary" />Aperçu avant impression
             </button>
-            <label className="relative mt-3 flex cursor-pointer items-center gap-3 border-t border-border pt-3">
-              <input type="checkbox" checked={printTTCOnly} onChange={e => setPrintTTCOnly(e.target.checked)} className="peer sr-only" />
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-medium text-foreground">Prix TTC uniquement</span>
-                <span className="block text-xs text-muted-foreground">Masquer le détail HT et TVA sur le PDF</span>
-              </span>
-              <span aria-hidden="true" className={`relative h-5 w-9 shrink-0 rounded-full transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-ring ${printTTCOnly ? 'bg-primary' : 'bg-muted-foreground/30'}`}>
-                <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${printTTCOnly ? 'left-[1.125rem]' : 'left-0.5'}`} />
-              </span>
-            </label>
+            {/* No "TTC only" option: a credit note always shows HT, VAT and TTC. */}
           </section>
         </aside>
       </div>

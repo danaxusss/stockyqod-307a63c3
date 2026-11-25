@@ -1,6 +1,47 @@
 import { SupabaseCompaniesService, invalidateCompaniesCache } from './supabaseCompanies';
 import { supabase } from '@/integrations/supabase/client';
 import { getCompanyContext } from './supabaseCompanyFilter';
+import { writeTolerant } from './schemaFallback';
+import { DEFAULT_PAYMENT_DAYS } from './documentLines';
+
+// Settings columns added by 20261125120000_billing_compliance.sql: saving
+// still works on a database that does not have them yet.
+const NEW_SETTINGS_COLUMNS = ['payment_terms_days', 'vat_exemption_text'];
+// Added by 20261126130000_customer_payments.sql. Dropped first and on their
+// own, so a database with the billing columns but not these still saves those.
+const PAYMENT_SETTINGS_COLUMNS = ['tax_attestation_date', 'cash_stamp_duty'];
+// Added by 20261127120000_vat_return.sql (VAT return settings).
+export const VAT_SETTINGS_COLUMNS = ['vat_regime', 'vat_periodicity', 'vat_prorata', 'vat_opening_credit', 'vat_start_date'];
+
+/** Save with every column set tolerated, the most recent one dropped first. */
+const saveTolerant = (payload: Record<string, unknown>, run: (p: Record<string, unknown>) => PromiseLike<{ data: unknown; error: { message?: string; code?: string } | null }>) =>
+  writeTolerant(payload, VAT_SETTINGS_COLUMNS, p0 => writeTolerant(p0, PAYMENT_SETTINGS_COLUMNS, p => writeTolerant(p, NEW_SETTINGS_COLUMNS, run)));
+
+const dayOrEmpty = (v: unknown) => (v ? String(v).slice(0, 10) : '');
+
+/** The two payment settings of a settings row, and whether the row has them at all. */
+const paymentSettingsOf = (row: Record<string, unknown>) => ({
+  tax_attestation_date: dayOrEmpty(row.tax_attestation_date),
+  cash_stamp_duty: row.cash_stamp_duty === true,
+  payment_settings_available: 'cash_stamp_duty' in row,
+});
+
+/**
+ * The VAT return settings of a settings row (defaults when the migration was
+ * not run): regime "encaissement" (CGI art. 95), periodicity '' until chosen,
+ * prorata 100 %, no opening credit.
+ */
+export const vatSettingsOf = (row: Record<string, unknown>) => {
+  const prorata = Number(row.vat_prorata);
+  return {
+    vat_regime: (row.vat_regime === 'debit' ? 'debit' : 'encaissement') as 'debit' | 'encaissement',
+    vat_periodicity: (row.vat_periodicity === 'M' || row.vat_periodicity === 'T' ? row.vat_periodicity : '') as 'M' | 'T' | '',
+    vat_prorata: row.vat_prorata != null && Number.isFinite(prorata) && prorata > 0 ? prorata : 100,
+    vat_opening_credit: Number(row.vat_opening_credit) || 0,
+    vat_start_date: dayOrEmpty(row.vat_start_date),
+    vat_settings_available: 'vat_regime' in row,
+  };
+};
 
 export interface PrintColumns {
   showImage: boolean;
@@ -135,7 +176,33 @@ export interface CompanySettings {
   quote_style: QuoteStyle;
   share_templates: ShareTemplates;
   payment_terms: string;
+  /** Invoice due date = invoice date + this many days (loi 69-21: 60 by default, 120 at most). */
+  payment_terms_days: number;
   tva_rate: number;
+  /** Printed after "Exonéré de TVA" on documents at 0 % (e.g. the CGI article). */
+  vat_exemption_text: string;
+  /**
+   * Issue date (YYYY-MM-DD, '' when unknown) of the company's attestation de
+   * régularité fiscale: under 6 months old, its VAT-registered clients do not
+   * withhold the VAT of its invoices (CGI art. 117-IV).
+   */
+  tax_attestation_date: string;
+  /** Collect the 0.25 % stamp duty on cash settlements (CGI art. 252-I-B). Off by default. */
+  cash_stamp_duty: boolean;
+  /** Whether the database has the two settings above (migration 20261126130000 run). */
+  payment_settings_available: boolean;
+  /** VAT return: 'encaissement' (default, CGI art. 95) or 'debit' (option). */
+  vat_regime: 'encaissement' | 'debit';
+  /** VAT return: monthly or quarterly (art. 108); '' until chosen. */
+  vat_periodicity: 'M' | 'T' | '';
+  /** Deduction prorata in % (art. 104), 100 by default. */
+  vat_prorata: number;
+  /** VAT credit carried into the first period declared with Stocky. */
+  vat_opening_credit: number;
+  /** First day of the first period declared with Stocky (YYYY-MM-DD), '' when not set. */
+  vat_start_date: string;
+  /** Whether the database has the VAT settings (migration 20261127120000 run). */
+  vat_settings_available: boolean;
   quote_validity_days: number;
   updated_at: string;
 }
@@ -155,6 +222,17 @@ const DEFAULT_VISIBLE_FIELDS: QuoteVisibleFields = {
   showValidityDate: true,
   printColumns: DEFAULT_PRINT_COLUMNS,
 };
+
+/** The VAT columns of a settings save ('' stored as null); keys absent from `settings` stay undefined. */
+export function vatSettingsPayload(settings: Partial<CompanySettings>): Record<string, unknown> {
+  return {
+    vat_regime: settings.vat_regime,
+    vat_periodicity: settings.vat_periodicity === undefined ? undefined : (settings.vat_periodicity || null),
+    vat_prorata: settings.vat_prorata,
+    vat_opening_credit: settings.vat_opening_credit,
+    vat_start_date: settings.vat_start_date === undefined ? undefined : (settings.vat_start_date || null),
+  };
+}
 
 export class CompanySettingsService {
   /**
@@ -191,6 +269,10 @@ export class CompanySettingsService {
       phone2: (data as any).phone2 || '',
       phone_dir: (data as any).phone_dir || '',
       phone_gsm: (data as any).phone_gsm || '',
+      payment_terms_days: (data as any).payment_terms_days ?? DEFAULT_PAYMENT_DAYS,
+      vat_exemption_text: (data as any).vat_exemption_text || '',
+      ...paymentSettingsOf(data as Record<string, unknown>),
+      ...vatSettingsOf(data as Record<string, unknown>),
       quote_visible_fields: {
         ...DEFAULT_VISIBLE_FIELDS,
         ...(data.quote_visible_fields as Record<string, unknown>),
@@ -243,6 +325,10 @@ export class CompanySettingsService {
       tva_rate: data.tva_rate ?? 20,
       quote_validity_days: data.quote_validity_days ?? 30,
       payment_terms: data.payment_terms || '',
+      payment_terms_days: data.payment_terms_days ?? DEFAULT_PAYMENT_DAYS,
+      vat_exemption_text: data.vat_exemption_text || '',
+      ...paymentSettingsOf(data),
+      ...vatSettingsOf(data),
       updated_at: data.updated_at || '',
       quote_visible_fields: {
         ...DEFAULT_VISIBLE_FIELDS,
@@ -305,6 +391,11 @@ export class CompanySettingsService {
       tva_rate: settings.tva_rate,
       quote_validity_days: settings.quote_validity_days,
       payment_terms: settings.payment_terms,
+      payment_terms_days: settings.payment_terms_days,
+      vat_exemption_text: settings.vat_exemption_text,
+      tax_attestation_date: settings.tax_attestation_date === undefined ? undefined : (settings.tax_attestation_date || null),
+      cash_stamp_duty: settings.cash_stamp_duty,
+      ...vatSettingsPayload(settings),
       updated_at: new Date().toISOString(),
     };
     if (settings.quote_visible_fields) updateData.quote_visible_fields = settings.quote_visible_fields;
@@ -316,7 +407,8 @@ export class CompanySettingsService {
     if (settings.share_templates) updateData.share_templates = settings.share_templates;
     // Remove undefined keys
     Object.keys(updateData).forEach(k => updateData[k] === undefined && delete updateData[k]);
-    const { error } = await supabase.from('companies').update(updateData as any).eq('id', companyId);
+    const { error } = await saveTolerant(updateData,
+      payload => supabase.from('companies').update(payload as never).eq('id', companyId));
     invalidateCompaniesCache();
     if (error) throw error;
   }
@@ -340,11 +432,15 @@ export class CompanySettingsService {
       updateData.quote_style = mergedStyle;
       delete updateData.share_templates;
     }
+    // Read-only flags, not columns.
+    delete updateData.payment_settings_available;
+    delete updateData.vat_settings_available;
+    if (updateData.tax_attestation_date === '') updateData.tax_attestation_date = null;
+    Object.assign(updateData, vatSettingsPayload(settings));
+    Object.keys(updateData).forEach(k => updateData[k] === undefined && delete updateData[k]);
 
-    const { error } = await supabase
-      .from('company_settings')
-      .update(updateData as any)
-      .eq('id', current.id);
+    const { error } = await saveTolerant(updateData,
+      payload => supabase.from('company_settings').update(payload as never).eq('id', current.id));
 
     if (error) throw error;
   }

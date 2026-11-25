@@ -57,6 +57,7 @@ import { buildWhatsAppShareUrl, canSharePdfFile, downloadPdfFile, openPreparingW
 import { SupabaseDocumentsService } from '../utils/supabaseDocuments';
 import { formatMoney, toDateInputValue } from '../utils/format';
 import { resolveProductImageUrl } from '../utils/productImages';
+import { documentTvaRate } from '../utils/documentLines';
 
 const ITEMS_PER_PAGE = 40;
 
@@ -288,6 +289,11 @@ export function QuoteCartPage() {
       setIncludeProductImages(s?.quote_visible_fields?.printColumns?.showImage === true);
     }).catch(console.error);
   }, [letterheadCompanyId]);
+
+  // The quote keeps the VAT rate it was priced with; a new quote takes the
+  // company's current rate (left to the database while settings are loading).
+  const quoteTvaRate = documentTvaRate(quote, companySettings?.tva_rate);
+  const savedTvaRate = quote?.tva_rate ?? companySettings?.tva_rate;
 
   useEffect(() => {
     StockLocationsService.getProviders().then(setProviders).catch(() => {});
@@ -715,6 +721,7 @@ export function QuoteCartPage() {
         notes,
         notes2: notes2 || undefined,
         quote_date: quoteDate || undefined,
+        tva_rate: savedTvaRate,
       };
 
       await SupabaseQuotesService.saveQuote(quoteData);
@@ -830,6 +837,7 @@ export function QuoteCartPage() {
         items,
         totalAmount,
         notes,
+        tva_rate: savedTvaRate,
       };
       await SupabaseQuotesService.saveQuote(quoteData);
       setQuote(quoteData);
@@ -870,7 +878,8 @@ export function QuoteCartPage() {
         customer,
         items,
         totalAmount,
-        notes
+        notes,
+        tva_rate: savedTvaRate,
       };
 
       // Sheets (and photos of products without one) shared through a link.
@@ -959,7 +968,7 @@ export function QuoteCartPage() {
           quantity: item.quantity, unitPriceTTC: item.unitPrice, totalTTC: item.subtotal,
         }))}
         totalTTC={readOnlyTotal}
-        tvaRate={companySettings?.tva_rate ?? 20}
+        tvaRate={quoteTvaRate}
         isExporting={isExporting}
         onExport={handleExport}
       />
@@ -976,7 +985,7 @@ export function QuoteCartPage() {
   };
 
   const buildQuoteWhatsAppMessage = (settings: CompanySettings | null) => {
-    const tvaRate = settings?.tva_rate ?? companySettings?.tva_rate ?? 20;
+    const tvaRate = documentTvaRate(quote, settings?.tva_rate ?? companySettings?.tva_rate);
     const totalHT = totalAmount / (1 + tvaRate / 100);
     const totalTVA = totalAmount - totalHT;
     const tpl = settings?.share_templates?.whatsapp || companySettings?.share_templates?.whatsapp || DEFAULT_SHARE_TEMPLATES.whatsapp;
@@ -1004,7 +1013,7 @@ export function QuoteCartPage() {
     setIsPreparingWaPdf(true);
     try {
       const freshSettings = await CompanySettingsService.getSettings(quoteCompanyId(quote)).catch(() => companySettings);
-      const quoteData: Quote = { id: quote?.id || crypto.randomUUID(), company_id: quote?.company_id || companyId || undefined, issuing_company_id: quote?.issuing_company_id, quoteNumber, commandNumber: commandNumber || undefined, createdAt: quote?.createdAt || new Date(), updatedAt: new Date(), status, customer, items, totalAmount, notes, notes2: notes2 || undefined, quote_date: quoteDate || undefined };
+      const quoteData: Quote = { id: quote?.id || crypto.randomUUID(), company_id: quote?.company_id || companyId || undefined, issuing_company_id: quote?.issuing_company_id, quoteNumber, commandNumber: commandNumber || undefined, createdAt: quote?.createdAt || new Date(), updatedAt: new Date(), status, customer, items, totalAmount, notes, notes2: notes2 || undefined, quote_date: quoteDate || undefined, tva_rate: savedTvaRate };
       const link = await attachmentsLink();
       const { blob, filename } = await (await loadPdfExport()).generatePdfBlob(quoteData, freshSettings || companySettings, link?.url, link?.expiryLabel, useStamp, 'quote', undefined, printTTCOnly, includeProductImages, link?.label);
       setWaPdfShare({ blob, filename, message: buildQuoteWhatsAppMessage(freshSettings || companySettings) });
@@ -1047,7 +1056,7 @@ export function QuoteCartPage() {
     await markQuoteAsSent();
   };
 
-  const tvaRate = companySettings?.tva_rate ?? 20;
+  const tvaRate = quoteTvaRate;
   const totalHT = totalAmount / (1 + tvaRate / 100);
   const totalTVA = totalAmount - totalHT;
   const lineHT = (item: QuoteItem) => item.subtotal / (1 + tvaRate / 100);
@@ -1084,7 +1093,7 @@ export function QuoteCartPage() {
     setIsExporting(true);
     try {
       const freshSettings = await CompanySettingsService.getSettings(quoteCompanyId(quote)).catch(() => companySettings);
-      const quoteData: Quote = { id: quote?.id || crypto.randomUUID(), company_id: quote?.company_id || companyId || undefined, issuing_company_id: quote?.issuing_company_id, quoteNumber, commandNumber: commandNumber || undefined, createdAt: quote?.createdAt || new Date(), updatedAt: new Date(), status, customer, items, totalAmount, notes, notes2: notes2 || undefined, quote_date: quoteDate || undefined };
+      const quoteData: Quote = { id: quote?.id || crypto.randomUUID(), company_id: quote?.company_id || companyId || undefined, issuing_company_id: quote?.issuing_company_id, quoteNumber, commandNumber: commandNumber || undefined, createdAt: quote?.createdAt || new Date(), updatedAt: new Date(), status, customer, items, totalAmount, notes, notes2: notes2 || undefined, quote_date: quoteDate || undefined, tva_rate: savedTvaRate };
       const link = await attachmentsLink();
       await (await loadPdfExport()).exportQuoteToPdf(quoteData, freshSettings || companySettings, link?.url, link?.expiryLabel, useStamp, 'quote', undefined, printTTCOnly, includeProductImages, false, link?.label);
     } catch { /* continue */ }

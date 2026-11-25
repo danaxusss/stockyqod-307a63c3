@@ -61,7 +61,11 @@ class Query implements PromiseLike<{ data: any; error: any }> {
   }
   delete() { this.op = 'delete'; return this; }
   eq(col: string, v: unknown) { this.filters.push(r => String(getPath(r, col)) === String(v)); return this; }
-  gt(col: string, v: number) { this.filters.push(r => Number(getPath(r, col)) > v); return this; }
+  // Numbers compare as numbers, anything else (dates, timestamps) as text.
+  gt(col: string, v: number | string) {
+    this.filters.push(r => (typeof v === 'number' ? Number(getPath(r, col)) > v : String(getPath(r, col)) > String(v)));
+    return this;
+  }
   gte(col: string, v: unknown) { this.filters.push(r => String(getPath(r, col)) >= String(v)); return this; }
   lt(col: string, v: unknown) { this.filters.push(r => String(getPath(r, col)) < String(v)); return this; }
   lte(col: string, v: unknown) { this.filters.push(r => String(getPath(r, col)) <= String(v)); return this; }

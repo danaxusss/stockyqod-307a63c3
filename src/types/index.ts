@@ -102,13 +102,34 @@ export interface CustomerInfo {
   ice?: string;
   salesPerson: string;
   clientCode?: string;
+  /** Private person: no ICE expected on their invoices. */
+  isIndividual?: boolean;
 }
 
+/**
+ * One settlement of an invoice, stored in quotes.payment_methods_json.
+ * Entries saved before dated payments carry only method/reference/bank/amount:
+ * their date is the invoice's payment_date, else the invoice date.
+ */
 export interface PaymentEntry {
+  /** Stable id (uuid) of entries recorded since dated payments; absent on older ones. */
+  id?: string;
+  /** "Espèces", "Chèque", "Virement bancaire"…; for a withholding: "TVA retenue à la source". */
   method: string;
   reference?: string;
   bank?: string;
+  /** Part of the invoice (TTC) this entry settles. Never includes the stamp duty. */
   amount?: number;
+  /** YYYY-MM-DD the money was received (or the VAT withheld). */
+  date?: string;
+  /** 'payment' (default, money received) or 'vat_withholding' (VAT kept by the client, CGI art. 117-IV/V). */
+  kind?: 'payment' | 'vat_withholding';
+  /** Cash only: stamp duty collected on top of `amount` (CGI art. 252-I-B), frozen when recorded. */
+  stamp_duty?: number;
+  /** Withholding only: share of the invoice VAT withheld (100, or 75 for the services of art. 117-V). */
+  withholding_rate?: number;
+  /** A payment dated before the invoice, confirmed as an advance. */
+  advance?: boolean;
 }
 
 export interface Quote {
@@ -140,6 +161,12 @@ export interface Quote {
   payment_method?: string;
   payment_reference?: string;
   payment_bank?: string;
+  /** VAT rate frozen when the document was issued (null: from before, use the company rate). */
+  tva_rate?: number;
+  /** Invoices: payment due date (YYYY-MM-DD). */
+  due_date?: string;
+  /** Credit notes, for the PDF only: the invoice they correct. */
+  source_invoice?: { quoteNumber: string; day: string };
 }
 
 export interface QuoteTemplate {
@@ -171,6 +198,10 @@ export interface Company {
   tva_rate: number;
   quote_validity_days: number;
   payment_terms: string;
+  /** Invoice payment delay in days (loi 69-21: 60 by default, 120 at most). */
+  payment_terms_days?: number;
+  /** Printed after "Exonéré de TVA" on documents at 0 %. */
+  vat_exemption_text?: string;
   share_templates: Record<string, string>;
   quote_visible_fields: Record<string, boolean>;
   quote_style: Record<string, unknown>;
@@ -194,6 +225,8 @@ export interface Client {
   email: string;
   client_code?: string;
   company_id?: string;
+  /** Private person (no ICE on their invoices). */
+  is_individual?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -545,14 +578,33 @@ export interface Employee {
   dependents_count: number;
   position?: string;
   department?: string;
-  contract_type: 'CDI' | 'CDD' | 'Interim';
+  /** 'Stage': internship (ANAPEC), with its IR / CNSS exemptions. */
+  contract_type: 'CDI' | 'CDD' | 'Interim' | 'Stage';
   cnss_number?: string;
   cimr_number?: string;
   cimr_rate?: number;
+  /** Employer CIMR rate in %; empty means the same as the employee rate. */
+  cimr_employer_rate?: number | null;
   bank_iban?: string;
   hire_date?: string;
   base_salary: number;
   is_active: boolean;
+  matricule?: string | null;
+  mode_paiement?: 'virement' | 'cheque' | 'especes' | null;
+  date_sortie?: string | null;
+  // Declarations (20261126140000_payroll_declarations.sql): identity data of
+  // the annual salary return; missing before that migration has run.
+  last_name?: string | null;
+  first_name?: string | null;
+  address?: string | null;
+  residence_card?: string | null;
+  tax_id?: string | null;
+  /** List of the salary return; empty = automatic (Stage → trainee, else permanent). */
+  dts_category?: 'permanent' | 'occasionnel' | 'stagiaire' | 'exonere_57_20' | 'exonere_247' | null;
+  /** Trainee: first day of the internship (exemption periods start here); empty = hire date. */
+  stage_start_date?: string | null;
+  /** Trainee: CNSS and training tax not due (ANAPEC contract, to confirm with the CNSS). */
+  stage_cnss_exempt?: boolean | null;
   created_at: string;
   updated_at: string;
 }
@@ -593,8 +645,26 @@ export interface Payslip {
   amo_employer: number;
   alloc_familiales: number;
   tfp_employer?: number;
+  /** Employer CIMR share. */
+  cimr_employer?: number;
+  /** IR taxable gross (salaire brut imposable), for the annual tax return. */
+  ir_taxable_gross?: number | null;
+  /** Net taxable salary (salaire net imposable). */
+  net_taxable?: number | null;
+  /** Uncapped CNSS base (the 6,000 cap applies to the CNSS branches only). */
+  cnss_base?: number | null;
+  amo_base?: number | null;
+  /** Days declared to the CNSS (26 for a full month). */
+  cnss_days?: number;
+  dependents_count?: number | null;
+  /** IR regularisation applied (positive: given back to the employee); ir_amount is net of it. */
+  ir_regularisation?: number;
+  /** Validated payslips the regularisation covers. */
+  ir_regularisation_ids?: string[];
   is_locked?: boolean;
   run_id?: string | null;
+  /** Loan repayments applied when the payslip was validated (to undo them). */
+  loan_repayments?: { loan_id: string; amount: number }[] | null;
   notes?: string;
   items: PayslipItem[];
   created_at: string;

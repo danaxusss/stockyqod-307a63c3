@@ -1,10 +1,83 @@
 import { supabase } from './supabaseClient';
 import { getCompanyContext } from './supabaseCompanyFilter';
 import { Quote, QuoteItem, CustomerInfo } from '../types';
-import { documentTotal, invoicePayment, mergeLines, recomputeLine, sameCustomer } from './documentLines';
+import { addDays, daysBetween, documentDay, documentTotal, dueDateError, invoicePayment, isProvisionalNumber, localDay, mergeLines, provisionalNumber, recomputeLine, sameCustomer, DEFAULT_PAYMENT_DAYS } from './documentLines';
 import { readAll, type Pageable } from './readAll';
+import { writeTolerant, type DbResult } from './schemaFallback';
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
+
+// Columns added by 20261125120000_billing_compliance.sql. Until the owner runs
+// it, writes retry without them and reads see them as null.
+const NEW_DOC_COLUMNS = ['tva_rate', 'due_date'];
+
+// The few query-builder calls the new code uses, typed loosely like
+// homeData's looseDb() (the generated types do not know these columns).
+interface LooseQuery extends PromiseLike<DbResult<unknown>> {
+  select(columns?: string): LooseQuery;
+  insert(values: unknown): LooseQuery;
+  update(values: unknown): LooseQuery;
+  delete(): LooseQuery;
+  eq(column: string, value: unknown): LooseQuery;
+  neq(column: string, value: unknown): LooseQuery;
+  gt(column: string, value: unknown): LooseQuery;
+  or(filter: string): LooseQuery;
+  order(column: string, options?: { ascending?: boolean }): LooseQuery;
+  limit(n: number): LooseQuery;
+  single(): LooseQuery;
+  maybeSingle(): LooseQuery;
+}
+const table = (name: string) => (supabase as unknown as { from(t: string): LooseQuery }).from(name);
+const rpc = (fn: string, args: Record<string, unknown>) =>
+  (supabase as unknown as { rpc(f: string, a: Record<string, unknown>): PromiseLike<DbResult<unknown>> }).rpc(fn, args);
+
+/** What a user sees when a booked invoice or credit note would change. */
+export const POSTED_INVOICE_MESSAGE = 'Cette facture est comptabilisée. Extournez son écriture dans Comptabilité ou établissez un avoir.';
+export const POSTED_AVOIR_MESSAGE = 'Cet avoir est comptabilisé. Extournez son écriture dans Comptabilité pour le modifier.';
+const postedMessage = (type: string | null | undefined) => (type === 'avoir' ? POSTED_AVOIR_MESSAGE : POSTED_INVOICE_MESSAGE);
+
+/** "FAC2611-12" → { prefix: "FAC", ym: "2611", n: 12 }; null for a number typed by hand. */
+export function parseInvoiceNumber(number: string): { prefix: string; ym: string; n: number } | null {
+  const m = /^(.*?)(\d{2}(?:0[1-9]|1[0-2]))-(\d+)$/.exec((number || '').trim());
+  return m ? { prefix: m[1], ym: m[2], n: Number(m[3]) } : null;
+}
+
+/** YYMM of a YYYY-MM-DD day. */
+const yearMonthOfDay = (day: string) => `${day.slice(2, 4)}${day.slice(5, 7)}`;
+
+/** A call to a database function that does not exist yet (migration not run). */
+function isMissingFunction(error: { code?: string; message?: string } | null | undefined, name: string): boolean {
+  if (!error) return false;
+  const message = error.message || '';
+  return error.code === 'PGRST202' || error.code === '42883'
+    || new RegExp(`(function|rpc)\\s+(public\\.)?${name}\\b.*(does not exist|missing)|could not find the function[^\\n]*${name}`, 'i').test(message);
+}
+
+/** Shown when a draft is finalised by someone else at the same moment. */
+export const ALREADY_FINALISED_MESSAGE = 'Cette facture vient d’être finalisée par quelqu’un d’autre : rechargez la page.';
+
+/** Why a draft invoice cannot be finalised yet, or null. */
+export function finaliseError(doc: { customer?: { fullName?: string } | null; items?: unknown[] | null }): string | null {
+  if (!doc.customer?.fullName?.trim()) return 'Indiquez le client avant de finaliser la facture.';
+  if (!doc.items?.length) return 'Ajoutez au moins une ligne avant de finaliser la facture.';
+  return null;
+}
+
+// Customer fields a booked invoice can still receive: completing the buyer's
+// ICE or address (mandatory mentions) changes neither who was invoiced nor
+// any amount in the books. The database trigger ignores the same keys.
+const CUSTOMER_FILLABLE = new Set(['ice', 'address', 'isIndividual']);
+function customerIdentity(c: unknown): string {
+  const entries = Object.entries((c || {}) as Record<string, unknown>)
+    .filter(([k]) => !CUSTOMER_FILLABLE.has(k))
+    .sort(([a], [b]) => a.localeCompare(b));
+  return JSON.stringify(entries);
+}
+
+// What a line contributes to the books and to the printed invoice.
+const lineKey = (i: QuoteItem) => JSON.stringify([i.id, Number(i.quantity) || 0, Number(i.unitPrice) || 0, Number(i.discount) || 0, Number(i.subtotal) || 0,
+  i.quoteName ?? i.product?.name ?? '', i.quoteBrand ?? i.product?.brand ?? '', i.quoteBarcode ?? i.product?.barcode ?? '']);
+const sameLines = (a: QuoteItem[], b: QuoteItem[]) => a.length === b.length && a.every((item, i) => lineKey(item) === lineKey(b[i]));
 
 // Extended row type with financial pipeline columns
 type DocRow = {
@@ -34,6 +107,9 @@ type DocRow = {
   avance_amount: number | null;
   payment_methods_json: unknown;
   quote_date: string | null;
+  // Absent before the billing compliance migration.
+  tva_rate?: number | string | null;
+  due_date?: string | null;
 };
 
 function mapDocRow(row: DocRow): Quote {
@@ -68,6 +144,8 @@ function mapDocRow(row: DocRow): Quote {
     avance_amount: Number(row.avance_amount || 0),
     payment_methods_json: (Array.isArray(row.payment_methods_json) ? row.payment_methods_json : []) as Quote['payment_methods_json'],
     quote_date: row.quote_date || undefined,
+    tva_rate: row.tva_rate !== null && row.tva_rate !== undefined && row.tva_rate !== '' ? Number(row.tva_rate) : undefined,
+    due_date: row.due_date ? String(row.due_date).slice(0, 10) : undefined,
   };
 }
 
@@ -78,7 +156,10 @@ export interface ClientFinancialRow {
   phoneNumber: string;
   clientCode?: string;
   totalAmount: number;
+  /** Settled: money received plus VAT withheld by the client. */
   paidAmount: number;
+  /** Part of paidAmount the client withheld as VAT (art. 117-IV), not money received. */
+  withheldAmount: number;
   remaining: number;
   proformaCount: number;
   invoiceCount: number;
@@ -91,6 +172,26 @@ export interface ClientFinancialRow {
 }
 
 const nameKey = (name: string | null | undefined) => (name || '').trim().toLowerCase();
+
+export interface DocumentUpdates {
+  quoteNumber?: string;
+  customer?: CustomerInfo;
+  items?: QuoteItem[];
+  notes?: string | null;
+  notes2?: string | null;
+  status?: string;
+  payment_date?: string | null;
+  payment_method?: string | null;
+  payment_reference?: string | null;
+  payment_bank?: string | null;
+  is_locked?: boolean;
+  avance_amount?: number | null;
+  payment_methods_json?: unknown;
+  quote_date?: string | null;
+  paid_amount?: number;
+  /** Invoices: YYYY-MM-DD, between the invoice date and 120 days after it. */
+  due_date?: string | null;
+}
 
 export class SupabaseDocumentsService {
   // Format a sequential counter.
@@ -120,9 +221,10 @@ export class SupabaseDocumentsService {
 
   // Atomically increment the per-company counter and return the formatted string.
   // For invoices: uses monthly doc_type key (e.g. "invoice_2601") and fetches company doc_prefix.
-  static async nextNumber(companyId: string, type: 'bl' | 'proforma' | 'invoice' | 'bon_commande'): Promise<string> {
+  // The month is the invoice's own date (`invoiceDay`, YYYY-MM-DD), today by default.
+  static async nextNumber(companyId: string, type: 'bl' | 'proforma' | 'invoice' | 'bon_commande', invoiceDay?: string): Promise<string> {
     if (type === 'invoice') {
-      const ym = this.currentYearMonth();
+      const ym = invoiceDay ? yearMonthOfDay(invoiceDay) : this.currentYearMonth();
       const docTypeKey = `invoice_${ym}`;
       const { data, error } = await (supabase.rpc as any)('next_document_number', {
         p_company_id: companyId,
@@ -145,6 +247,56 @@ export class SupabaseDocumentsService {
     });
     if (error) throw new Error(`Erreur numérotation: ${error.message}`);
     return this.formatDocNumber(type as 'bl' | 'proforma' | 'bon_commande', data as number);
+  }
+
+  /**
+   * The billing settings of the company issuing a document: its VAT rate now
+   * and its payment delay. Read with select('*'), so a database without the
+   * payment_terms_days column still answers (60 days then).
+   */
+  static async companyBilling(companyId: string | null | undefined): Promise<{ tvaRate: number; paymentDays: number }> {
+    const fallback = { tvaRate: 20, paymentDays: DEFAULT_PAYMENT_DAYS };
+    if (!companyId) return fallback;
+    const { data } = await table('companies').select('*').eq('id', companyId).maybeSingle();
+    const row = data as { tva_rate?: number | string | null; payment_terms_days?: number | null } | null;
+    if (!row) return fallback;
+    const rate = Number(row.tva_rate);
+    const days = Number(row.payment_terms_days);
+    return {
+      tvaRate: row.tva_rate !== null && row.tva_rate !== undefined && Number.isFinite(rate) ? rate : 20,
+      paymentDays: row.payment_terms_days !== null && row.payment_terms_days !== undefined && Number.isFinite(days) ? days : DEFAULT_PAYMENT_DAYS,
+    };
+  }
+
+  /** The rate a new document takes: its source document's, else the issuing company's current rate. */
+  private static async rateFor(source: { tva_rate?: number | string | null } | null | undefined, companyId: string | null | undefined): Promise<number> {
+    const stored = source?.tva_rate;
+    if (stored !== null && stored !== undefined && stored !== '' && Number.isFinite(Number(stored))) return Number(stored);
+    return (await this.companyBilling(companyId)).tvaRate;
+  }
+
+  /** Insert a document; on a database without the new columns, insert it without them. */
+  private static async insertDoc(row: Record<string, unknown>, errorPrefix: string): Promise<Quote> {
+    const { data, error } = await writeTolerant(row, NEW_DOC_COLUMNS, payload => table('quotes').insert(payload).select('*').single());
+    if (error) throw new Error(`${errorPrefix}: ${error.message}`);
+    return mapDocRow(data as DocRow);
+  }
+
+  /**
+   * Whether a document has a validated (not reversed) journal entry: its
+   * entry carries the document id as source_id. Payment entries use derived
+   * ids ("<id>:pay…") and do not count: payments can still be recorded.
+   * The database function sees every company's books (a billing user may
+   * edit another company's invoice); before the migration, the entries the
+   * user can read are checked directly, and no accounting tables means no
+   * entries.
+   */
+  static async isPosted(documentId: string): Promise<boolean> {
+    const viaFunction = await rpc('stocky_document_is_posted', { p_document_id: documentId });
+    if (!viaFunction.error) return viaFunction.data === true;
+    const { data, error } = await table('journal_entries').select('id').eq('source_id', documentId).eq('status', 'posted').limit(1);
+    if (error) return false;
+    return ((data as unknown[]) || []).length > 0;
   }
 
   // Create a BL copy from an existing quote.
@@ -193,20 +345,18 @@ export class SupabaseDocumentsService {
       source_bl_ids: [],
       paid_amount: 0,
       company_id: companyId,
+      // The delivery note keeps the quote's VAT rate.
+      tva_rate: await this.rateFor(srcData as DocRow, (srcData as DocRow).issuing_company_id || companyId),
     };
 
-    const { data: newDoc, error: insertErr } = await (supabase.from('quotes') as any)
-      .insert(blData)
-      .select('*')
-      .single();
-    if (insertErr) throw new Error(`Erreur création BL: ${insertErr.message}`);
+    const bl = await this.insertDoc(blData, 'Erreur création BL');
 
     // Mark the original quote as final
     await (supabase.from('quotes') as any)
       .update({ status: 'final', updated_at: now })
       .eq('id', quoteId);
 
-    return mapDocRow(newDoc as DocRow);
+    return bl;
   }
 
   // Merge multiple BLs into a single Proforma.
@@ -233,6 +383,12 @@ export class SupabaseDocumentsService {
     const converted = bls.filter(bl => bl.status === 'final');
     if (converted.length) {
       throw new Error(`Déjà transformé en proforma : ${converted.map(b => b.quoteNumber).join(', ')}`);
+    }
+    // Lines are stored TTC: lines taxed at different rates cannot share the
+    // single rate of one proforma.
+    const rates = [...new Set(bls.map(bl => bl.tva_rate).filter((r): r is number => r !== undefined))];
+    if (rates.length > 1) {
+      throw new Error(`Ces BL ont des taux de TVA différents (${rates.join(' %, ')} %) : faites un proforma par taux.`);
     }
     const { data: holders } = await (supabase.from('quotes') as any)
       .select('quote_number')
@@ -283,14 +439,10 @@ export class SupabaseDocumentsService {
         source_bl_ids: bls.map(b => b.id),
         paid_amount: 0,
         company_id: targetCompanyId,
+        tva_rate: rates.length ? rates[0] : (await this.companyBilling(targetCompanyId)).tvaRate,
       };
 
-      const { data: newDoc, error: insertErr } = await (supabase.from('quotes') as any)
-        .insert(proformaData)
-        .select('*')
-        .single();
-      if (insertErr) throw new Error(`Erreur création Proforma: ${insertErr.message}`);
-      return mapDocRow(newDoc as DocRow);
+      return await this.insertDoc(proformaData, 'Erreur création Proforma');
     } catch (e) {
       await release();
       throw e;
@@ -374,16 +526,20 @@ export class SupabaseDocumentsService {
       throw new Error('Le proforma a été modifié entre-temps (autre onglet ou utilisateur). Rechargez la page et recommencez.');
     }
 
+    let inserted = false;
     try {
-      const invoiceNumber = await this.nextNumber(issuingCompanyId, 'invoice');
+      const today = localDay();
+      const billing = await this.companyBilling(issuingCompanyId);
       const now = new Date().toISOString();
       const invoiceItems = selectedItems.map(mark);
+      // Saved as a draft first, then finalised: the number is taken in the
+      // same step that issues the invoice, so a failed save burns no number.
       const invoiceData: Record<string, unknown> = {
         id: invoiceId,
-        quote_number: invoiceNumber,
+        quote_number: provisionalNumber(invoiceId),
         created_at: now,
         updated_at: now,
-        status: 'final',
+        status: 'draft',
         customer_info: proforma.customer,
         items: invoiceItems,
         total_amount: documentTotal(invoiceItems),
@@ -395,17 +551,98 @@ export class SupabaseDocumentsService {
         paid_amount: 0,
         issuing_company_id: issuingCompanyId,
         company_id: row.company_id || null,
+        // The proforma's rate (the lines were priced with it); due date from
+        // the issuing company's payment delay.
+        tva_rate: await this.rateFor(row, issuingCompanyId),
+        due_date: addDays(today, billing.paymentDays),
       };
-      const { data: newInvoice, error: invErr } = await (supabase.from('quotes') as any)
-        .insert(invoiceData)
-        .select('*')
-        .single();
-      if (invErr) throw new Error(`Erreur création Facture: ${invErr.message}`);
-      return mapDocRow(newInvoice as DocRow);
+      const draft = await this.insertDoc(invoiceData, 'Erreur création Facture');
+      inserted = true;
+      // A proforma without a client gives a draft to complete, finalised later.
+      if (finaliseError(draft)) return draft;
+      return await this.finalizeInvoice(invoiceId);
     } catch (e) {
+      if (inserted) await table('quotes').delete().eq('id', invoiceId).eq('status', 'draft').then(() => undefined, () => undefined);
       await this.releaseInvoiceLines(proformaId, invoiceId, selectedItemIds).catch(() => {});
       throw e;
     }
+  }
+
+  /**
+   * Issue a draft invoice: it takes the next number of its issuer's series
+   * for the month of its date (CGI art. 145-III, continuous series) and
+   * becomes final, in one step.
+   *
+   * The database function stocky_finalize_invoice (migration
+   * 20261126130000) does it in one transaction: the row is locked, the
+   * series of that company and month is serialised, the counter is advanced
+   * through next_document_number and a number already used is skipped; if
+   * anything fails the counter goes back with the rest. Two people
+   * finalising at once get two different numbers, in the order they finalise.
+   *
+   * Before the migration, the same is done from here: the number is taken,
+   * then written only if the invoice is still the same draft. A failure
+   * between the two leaves that number unused (a gap), as before.
+   *
+   * A draft that already holds a series number (created before numbering at
+   * finalisation) keeps it.
+   */
+  static async finalizeInvoice(id: string): Promise<Quote> {
+    const { data: current, error: readError } = await table('quotes').select('*').eq('id', id).maybeSingle();
+    if (readError) throw new Error(`Erreur finalisation: ${readError.message}`);
+    const row = current as DocRow | null;
+    if (!row) throw new Error('Facture introuvable');
+    if (row.document_type !== 'invoice') throw new Error('Seule une facture se finalise.');
+    if (row.status !== 'draft') return mapDocRow(row);
+    const problem = finaliseError(mapDocRow(row));
+    if (problem) throw new Error(problem);
+
+    const viaFunction = await rpc('stocky_finalize_invoice', { p_invoice_id: id });
+    if (!viaFunction.error) {
+      const { data: saved } = await table('quotes').select('*').eq('id', id).maybeSingle();
+      if (!saved) throw new Error('Facture introuvable');
+      return mapDocRow(saved as DocRow);
+    }
+    if (!isMissingFunction(viaFunction.error, 'stocky_finalize_invoice')) {
+      throw new Error(viaFunction.error.message || 'Erreur finalisation');
+    }
+
+    const now = new Date().toISOString();
+    if (!isProvisionalNumber(row.quote_number)) {
+      const { data, error } = await table('quotes').update({ status: 'final', updated_at: now }).eq('id', id).eq('status', 'draft').select('*');
+      if (error) throw new Error(`Erreur finalisation: ${error.message}`);
+      const rows = (data as DocRow[]) || [];
+      if (rows.length !== 1) throw new Error(ALREADY_FINALISED_MESSAGE);
+      return mapDocRow(rows[0]);
+    }
+    const issuer = row.issuing_company_id || row.company_id || getCompanyContext().companyId;
+    if (!issuer) throw new Error('Société émettrice inconnue : impossible de numéroter la facture.');
+    const day = row.quote_date ? String(row.quote_date).slice(0, 10) : localDay(new Date(row.created_at));
+    let number = await this.nextNumber(issuer, 'invoice', day);
+    // A number already in the series (typed by hand, or a counter behind the
+    // data) is skipped rather than given twice.
+    for (let guard = 0; guard < 20 && await this.invoiceNumberTaken(issuer, number, id); guard++) {
+      number = await this.nextNumber(issuer, 'invoice', day);
+    }
+    const { data, error } = await table('quotes')
+      .update({ quote_number: number, status: 'final', updated_at: now })
+      .eq('id', id).eq('status', 'draft').eq('quote_number', row.quote_number)
+      .select('*');
+    if (error) throw new Error(`Erreur finalisation: ${error.message}`);
+    const rows = (data as DocRow[]) || [];
+    if (rows.length !== 1) throw new Error(ALREADY_FINALISED_MESSAGE);
+    return mapDocRow(rows[0]);
+  }
+
+  /** Whether another invoice of the issuer already carries this number. */
+  private static async invoiceNumberTaken(issuer: string, number: string, exceptId: string): Promise<boolean> {
+    const { data, error } = await table('quotes')
+      .select('id, issuing_company_id, company_id')
+      .eq('document_type', 'invoice')
+      .eq('quote_number', number)
+      .limit(5);
+    if (error) return false;
+    return ((data as DocRow[]) || []).some(r => r.id !== exceptId && (r.issuing_company_id || r.company_id) === issuer);
   }
 
   // Put a proforma's lines back to "not billed" after their invoice is gone.
@@ -456,14 +693,30 @@ export class SupabaseDocumentsService {
 
   /**
    * Invoices or credit notes for one company's books: those it issued
-   * (documents without an issuer belong to their owning company).
+   * (documents without an issuer belong to their owning company). Drafts are
+   * left out: an invoice is booked once it is issued (finalised, or settled
+   * for imported ones), never while it can still change.
    */
   static async getForLedger(type: 'invoice' | 'avoir', companyId: string): Promise<Quote[]> {
     return this.readDocs(() => (supabase.from('quotes') as any)
       .select('*')
       .eq('document_type', type)
+      .neq('status', 'draft')
       .or(`issuing_company_id.eq.${companyId},and(issuing_company_id.is.null,company_id.eq.${companyId})`)
       .order('created_at', { ascending: false }));
+  }
+
+  /**
+   * Every invoice one company issued, drafts included, for the statements of
+   * VAT withheld by clients and of stamp duty: duty collected in cash on a
+   * draft is owed all the same.
+   */
+  static async getIssuedInvoicesWithDrafts(companyId: string): Promise<Quote[]> {
+    return this.readDocs(() => table('quotes')
+      .select('*')
+      .eq('document_type', 'invoice')
+      .or(`issuing_company_id.eq.${companyId},and(issuing_company_id.is.null,company_id.eq.${companyId})`)
+      .order('created_at', { ascending: true }), 'factures');
   }
 
   static async getById(id: string): Promise<Quote | null> {
@@ -478,10 +731,48 @@ export class SupabaseDocumentsService {
     return data ? mapDocRow(data as DocRow) : null;
   }
 
+  /**
+   * Invoices of the same issuing company created after `doc` that hold a
+   * number of the series: finalised ones, and drafts created before numbering
+   * at finalisation (they already hold the next numbers). Drafts with a
+   * provisional reference hold none and do not count.
+   */
+  private static async laterInvoices(doc: Pick<DocRow, 'created_at' | 'issuing_company_id' | 'company_id'>, exceptId: string): Promise<Array<Pick<DocRow, 'id' | 'quote_number'>>> {
+    const issuer = doc.issuing_company_id || doc.company_id;
+    if (!issuer || !doc.created_at) return [];
+    const { data, error } = await table('quotes')
+      .select('id, quote_number, created_at, issuing_company_id, company_id')
+      .eq('document_type', 'invoice')
+      .or(`issuing_company_id.eq.${issuer},company_id.eq.${issuer}`)
+      .gt('created_at', doc.created_at)
+      .order('created_at', { ascending: true });
+    if (error) throw new Error(`Erreur vérification de la série de factures: ${error.message}`);
+    return ((data as DocRow[]) || [])
+      .filter(r => r.id !== exceptId && (r.issuing_company_id || r.company_id) === issuer && !isProvisionalNumber(r.quote_number));
+  }
+
+  /**
+   * What the deletion confirmation of an invoice must say. A finalised
+   * invoice's number is not given back: next_document_number is not defined
+   * in this repository's migrations, so whether its counter can be moved back
+   * without handing the same number to an invoice finalised meanwhile cannot
+   * be checked, and a number the client may have received must not name a
+   * different invoice later.
+   */
+  static deletionNotice(doc: Pick<Quote, 'status' | 'quoteNumber' | 'document_type'>): string {
+    if (doc.document_type !== 'invoice') return '';
+    if (doc.status === 'draft') {
+      return isProvisionalNumber(doc.quoteNumber)
+        ? 'Brouillon sans numéro : sa suppression ne laisse aucun trou dans la série.'
+        : `Ce brouillon porte déjà le numéro ${doc.quoteNumber} : ce numéro ne sera pas réutilisé.`;
+    }
+    return `Seule la dernière facture émise peut être supprimée. Le numéro ${doc.quoteNumber} ne sera pas réutilisé : la série gardera ce trou, à justifier. Pour annuler une facture, préférez un avoir.`;
+  }
+
   static async deleteDocument(id: string): Promise<void> {
     const { companyId, bypassFilter } = getCompanyContext();
     const { data: doc } = await (supabase.from('quotes') as any)
-      .select('document_type, parent_document_id, source_bl_ids, items, quote_number')
+      .select('document_type, parent_document_id, source_bl_ids, items, quote_number, status, created_at, issuing_company_id, company_id')
       .eq('id', id)
       .maybeSingle();
     // A credit note cancels part of its invoice: without the invoice it would
@@ -490,6 +781,19 @@ export class SupabaseDocumentsService {
       const avoirs = await this.getAvoirsForInvoice(id);
       if (avoirs.length) {
         throw new Error(`Cette facture a des avoirs (${avoirs.map(a => a.quoteNumber).join(', ')}) : supprimez-les d'abord.`);
+      }
+    }
+    // A booked invoice or credit note stays: its entry would point to nothing.
+    if ((doc?.document_type === 'invoice' || doc?.document_type === 'avoir') && await this.isPosted(id)) {
+      throw new Error(postedMessage(doc.document_type));
+    }
+    // Invoice numbers form one continuous series (CGI art. 145-III): an issued
+    // invoice can only go if it is the last one of its company, else its
+    // number would be missing. Drafts were never issued.
+    if (doc?.document_type === 'invoice' && doc.status !== 'draft') {
+      const later = await this.laterInvoices(doc as DocRow, id);
+      if (later.length) {
+        throw new Error(`Seule la dernière facture émise peut être supprimée (sinon son numéro manquerait dans la série ; ${later[0].quote_number} a été émise après). Établissez un avoir pour annuler ${doc.quote_number}.`);
       }
     }
     let q = (supabase.from('quotes') as any).delete().eq('id', id);
@@ -601,11 +905,11 @@ export class SupabaseDocumentsService {
 
     // ── 3. Aggregate by phone, or by name when there is no phone ───────────
     interface Agg {
-      totalAmount: number; paidAmount: number;
+      totalAmount: number; paidAmount: number; withheldAmount: number;
       proformaCount: number; invoiceCount: number;
       name: string; // client name from first encountered document
     }
-    const empty = (name: string): Agg => ({ totalAmount: 0, paidAmount: 0, proformaCount: 0, invoiceCount: 0, name });
+    const empty = (name: string): Agg => ({ totalAmount: 0, paidAmount: 0, withheldAmount: 0, proformaCount: 0, invoiceCount: 0, name });
     const byPhone = new Map<string, Agg>();
     const byName = new Map<string, Agg>();
 
@@ -623,10 +927,12 @@ export class SupabaseDocumentsService {
       } else if (doc.document_type === 'invoice') {
         agg.invoiceCount += 1;
         agg.totalAmount += total;
-        agg.paidAmount += invoicePayment({
+        const settled = invoicePayment({
           totalAmount: total, avance_amount: Number(doc.avance_amount || 0),
           payment_methods_json: Array.isArray(doc.payment_methods_json) ? doc.payment_methods_json : [],
-        }).paid;
+        });
+        agg.paidAmount += settled.paid;
+        agg.withheldAmount += settled.withheld;
       } else {
         agg.totalAmount -= total;
       }
@@ -638,6 +944,7 @@ export class SupabaseDocumentsService {
       fullName: extra.clientName,
       totalAmount: round2(agg.totalAmount),
       paidAmount: round2(agg.paidAmount),
+      withheldAmount: round2(agg.withheldAmount),
       remaining: round2(agg.totalAmount - agg.paidAmount),
       proformaCount: agg.proformaCount,
       invoiceCount: agg.invoiceCount,
@@ -660,7 +967,7 @@ export class SupabaseDocumentsService {
       const agg = empty(c.full_name);
       for (const part of [byPhoneAgg, byNameAgg]) {
         if (!part) continue;
-        agg.totalAmount += part.totalAmount; agg.paidAmount += part.paidAmount;
+        agg.totalAmount += part.totalAmount; agg.paidAmount += part.paidAmount; agg.withheldAmount += part.withheldAmount;
         agg.proformaCount += part.proformaCount; agg.invoiceCount += part.invoiceCount;
       }
       if (byNameAgg) byName.delete(key);
@@ -746,10 +1053,9 @@ export class SupabaseDocumentsService {
       source_bl_ids: [],
       paid_amount: 0,
       company_id: companyId,
+      tva_rate: await this.rateFor(srcData as DocRow, companyId),
     };
-    const { data, error } = await (supabase.from('quotes') as any).insert(row).select('*').single();
-    if (error) throw new Error(`Erreur création BC: ${error.message}`);
-    return mapDocRow(data as DocRow);
+    return this.insertDoc(row, 'Erreur création BC');
   }
 
   // Create a BC pre-filled from a BL
@@ -779,10 +1085,9 @@ export class SupabaseDocumentsService {
       source_bl_ids: [blId],
       paid_amount: 0,
       company_id: companyId,
+      tva_rate: await this.rateFor(srcData as DocRow, companyId),
     };
-    const { data, error } = await (supabase.from('quotes') as any).insert(row).select('*').single();
-    if (error) throw new Error(`Erreur création BC: ${error.message}`);
-    return mapDocRow(data as DocRow);
+    return this.insertDoc(row, 'Erreur création BC');
   }
 
   // Create a blank document of the given type directly (no source document needed).
@@ -791,9 +1096,13 @@ export class SupabaseDocumentsService {
     type: 'bl' | 'proforma' | 'invoice' | 'bon_commande',
     companyId: string
   ): Promise<Quote> {
-    const number = await this.nextNumber(companyId, type);
-    const now = new Date().toISOString();
+    const today = localDay();
     const newId = crypto.randomUUID();
+    // A draft invoice takes no number of the series: it gets one when it is
+    // finalised, so an abandoned draft leaves no gap (CGI art. 145-III).
+    const number = type === 'invoice' ? provisionalNumber(newId) : await this.nextNumber(companyId, type, today);
+    const billing = await this.companyBilling(companyId);
+    const now = new Date().toISOString();
     const emptyCustomer = { fullName: '', phoneNumber: '', address: '', city: '', salesPerson: '', ice: '' };
     const row: Record<string, unknown> = {
       id: newId,
@@ -807,36 +1116,92 @@ export class SupabaseDocumentsService {
       document_type: type,
       company_id: companyId,
       paid_amount: 0,
+      tva_rate: billing.tvaRate,
+      ...(type === 'invoice' ? { due_date: addDays(today, billing.paymentDays) } : {}),
     };
-    const { data, error } = await (supabase.from('quotes') as any)
-      .insert(row)
-      .select('*')
-      .single();
-    if (error) throw new Error(`Erreur création ${type}: ${error.message}`);
-    return mapDocRow(data as DocRow);
+    return this.insertDoc(row, `Erreur création ${type}`);
+  }
+
+  /**
+   * The rules for changing an invoice or a credit note, checked against the
+   * row as stored (the database trigger checks the booked ones again):
+   * - booked (validated journal entry): number, date, customer, lines and
+   *   totals are fixed; payments, notes, due date and the lock still change;
+   * - an issued invoice keeps its number, does not go back to draft, and its
+   *   date stays in the month of its number (FAC2611-… is a November invoice);
+   * - a draft has no number of the series: it takes one when it is
+   *   finalised (the returned `finalise`), and a provisional reference
+   *   cannot be replaced by hand;
+   * - an older draft that holds a number and is moved to another month gives
+   *   that number up (it no longer matches its month) and is numbered again
+   *   when finalised;
+   * - the due date stays between the invoice date and 120 days after it, and
+   *   follows the invoice date when only the date changes.
+   * Values that did not really change are not written again.
+   */
+  private static async guardBillingUpdate(current: DocRow, updates: DocumentUpdates, data: Record<string, unknown>): Promise<{ finalise: boolean }> {
+    const type = current.document_type;
+    if (type !== 'invoice' && type !== 'avoir') return { finalise: false };
+    const createdDay = localDay(new Date(current.created_at));
+    const currentDay = current.quote_date ? String(current.quote_date).slice(0, 10) : createdDay;
+    const newDay = updates.quote_date === undefined ? currentDay : (updates.quote_date ? updates.quote_date.slice(0, 10) : createdDay);
+    const dayChanged = newDay !== currentDay;
+    const numberChanged = updates.quoteNumber !== undefined && updates.quoteNumber.trim() !== (current.quote_number || '').trim();
+    const customerChanged = updates.customer !== undefined && customerIdentity(updates.customer) !== customerIdentity(current.customer_info);
+    const currentItems = (Array.isArray(current.items) ? current.items : []) as QuoteItem[];
+    const linesChanged = updates.items !== undefined && !sameLines(updates.items, currentItems);
+    const toDraft = updates.status === 'draft' && current.status !== 'draft';
+
+    if (!numberChanged) delete data.quote_number;
+    if (!dayChanged) delete data.quote_date;
+    if (updates.items !== undefined && !linesChanged) { delete data.items; delete data.total_amount; }
+    if (updates.status !== undefined && updates.status === current.status) delete data.status;
+
+    if ((numberChanged || dayChanged || customerChanged || linesChanged || toDraft) && await this.isPosted(current.id)) {
+      throw new Error(postedMessage(type));
+    }
+    if (type !== 'invoice') return { finalise: false };
+
+    const issued = current.status !== 'draft';
+    if (issued && toDraft) throw new Error('Une facture finalisée ne revient pas en brouillon : pour l’annuler, établissez un avoir.');
+    if (issued && numberChanged) throw new Error('Le numéro d’une facture finalisée ne peut plus être modifié (numérotation continue).');
+    if (!issued && numberChanged && isProvisionalNumber(current.quote_number)) {
+      throw new Error('Le numéro de la facture est attribué automatiquement quand elle est finalisée.');
+    }
+    // Finalising goes through finalizeInvoice, after the other changes are saved.
+    const finalise = !issued && updates.status !== undefined && updates.status !== 'draft';
+    if (finalise) delete data.status;
+    const number = numberChanged ? updates.quoteNumber!.trim() : current.quote_number;
+    const parsed = parseInvoiceNumber(number);
+    if (dayChanged && parsed && parsed.ym !== yearMonthOfDay(newDay)) {
+      if (issued) {
+        throw new Error(`La date de la facture ${number} doit rester en ${parsed.ym.slice(2)}/20${parsed.ym.slice(0, 2)}, le mois de son numéro. Pour une autre date, établissez un avoir et une nouvelle facture.`);
+      }
+      if (!numberChanged) data.quote_number = provisionalNumber(current.id);
+    }
+
+    const currentDue = current.due_date ? String(current.due_date).slice(0, 10) : null;
+    let due = updates.due_date === undefined ? undefined : (updates.due_date ? updates.due_date.slice(0, 10) : null);
+    if (due === undefined && dayChanged && currentDue) {
+      due = addDays(newDay, daysBetween(currentDay, currentDue));
+      data.due_date = due;
+    }
+    if (due) {
+      const err = dueDateError(newDay, due);
+      if (err) throw new Error(err);
+    }
+    if (finalise) {
+      const problem = finaliseError({
+        customer: (updates.customer ?? current.customer_info) as { fullName?: string } | null,
+        items: (updates.items ?? current.items) as unknown[] | null,
+      });
+      if (problem) throw new Error(problem);
+    }
+    return { finalise };
   }
 
   // Update any document fields (quote number, customer, items, notes, status)
-  static async updateDocument(
-    id: string,
-    updates: {
-      quoteNumber?: string;
-      customer?: CustomerInfo;
-      items?: QuoteItem[];
-      notes?: string | null;
-      notes2?: string | null;
-      status?: string;
-      payment_date?: string | null;
-      payment_method?: string | null;
-      payment_reference?: string | null;
-      payment_bank?: string | null;
-      is_locked?: boolean;
-      avance_amount?: number | null;
-      payment_methods_json?: unknown;
-      quote_date?: string | null;
-      paid_amount?: number;
-    }
-  ): Promise<Quote> {
+  static async updateDocument(id: string, updates: DocumentUpdates): Promise<Quote> {
     const updateData: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
     };
@@ -858,11 +1223,22 @@ export class SupabaseDocumentsService {
     if (updates.payment_methods_json !== undefined) updateData.payment_methods_json = updates.payment_methods_json;
     if (updates.quote_date !== undefined) updateData.quote_date = updates.quote_date || null;
     if (updates.paid_amount !== undefined) updateData.paid_amount = updates.paid_amount;
+    if (updates.due_date !== undefined) updateData.due_date = updates.due_date || null;
+
+    const touchesBilling = [updates.quoteNumber, updates.customer, updates.items, updates.quote_date, updates.status, updates.due_date]
+      .some(v => v !== undefined);
+    let finalise = false;
+    if (touchesBilling) {
+      const { data: current } = await table('quotes').select('*').eq('id', id).maybeSingle();
+      if (current) finalise = (await this.guardBillingUpdate(current as DocRow, updates, updateData)).finalise;
+    }
 
     const { companyId, bypassFilter } = getCompanyContext();
-    let q = (supabase.from('quotes') as any).update(updateData).eq('id', id);
-    if (!bypassFilter && companyId) q = q.eq('company_id', companyId);
-    const { data, error } = await q.select('*').single();
+    const { data, error } = await writeTolerant(updateData, NEW_DOC_COLUMNS, payload => {
+      let q = table('quotes').update(payload).eq('id', id);
+      if (!bypassFilter && companyId) q = q.eq('company_id', companyId);
+      return q.select('*').single();
+    });
     if (error) throw new Error(`Erreur mise à jour: ${error.message}`);
     const saved = data as DocRow;
     // A line taken off an invoice made from a proforma is no longer billed:
@@ -870,6 +1246,8 @@ export class SupabaseDocumentsService {
     if (updates.items !== undefined && saved.document_type === 'invoice' && saved.parent_document_id) {
       await this.releaseRemovedInvoiceLines(saved.parent_document_id, id, updates.items.map(i => i.id));
     }
+    // The draft is saved; now it takes its number and becomes final.
+    if (finalise) return this.finalizeInvoice(id);
     return mapDocRow(saved);
   }
 
@@ -906,9 +1284,13 @@ export class SupabaseDocumentsService {
     const companyId = (docType === 'invoice' ? src.issuing_company_id || src.company_id : src.company_id || src.issuing_company_id)
       || getCompanyContext().companyId;
 
+    // The copy is dated today (its date is not copied).
+    const today = localDay();
+    const newId = crypto.randomUUID();
     let newNumber: string;
     if (docType === 'invoice') {
-      newNumber = companyId ? await this.nextNumber(companyId, 'invoice') : `FAC-COPIE-${Date.now()}`;
+      // A copy is a draft: numbered when it is finalised.
+      newNumber = provisionalNumber(newId);
     } else if (docType === 'bl') {
       newNumber = companyId ? await this.nextNumber(companyId, 'bl') : `BL-COPIE-${Date.now()}`;
     } else if (docType === 'proforma') {
@@ -921,7 +1303,6 @@ export class SupabaseDocumentsService {
     }
 
     const now = new Date().toISOString();
-    const newId = crypto.randomUUID();
     const insertData: Record<string, unknown> = {
       id: newId,
       quote_number: newNumber,
@@ -948,14 +1329,12 @@ export class SupabaseDocumentsService {
       payment_bank: null,
       avance_amount: 0,
       payment_methods_json: [],
+      // Same prices, same rate as the copied document.
+      tva_rate: await this.rateFor(src, companyId),
     };
+    if (docType === 'invoice') insertData.due_date = addDays(today, (await this.companyBilling(companyId)).paymentDays);
 
-    const { data: newDoc, error: insertErr } = await (supabase.from('quotes') as any)
-      .insert(insertData)
-      .select('*')
-      .single();
-    if (insertErr) throw new Error(`Erreur duplication: ${insertErr.message}`);
-    return mapDocRow(newDoc as DocRow);
+    return this.insertDoc(insertData, 'Erreur duplication');
   }
 
   static async createAvoirStandalone(payload: {
@@ -991,11 +1370,9 @@ export class SupabaseDocumentsService {
       issuing_company_id: payload.issuingCompanyId || payload.companyId,
       avance_amount: 0,
       payment_methods_json: [],
+      tva_rate: (await this.companyBilling(payload.issuingCompanyId || payload.companyId)).tvaRate,
     };
-    const { data: newDoc, error: insertErr } = await (supabase.from('quotes') as any)
-      .insert(insertData).select('*').single();
-    if (insertErr) throw new Error(`Erreur création avoir: ${insertErr.message}`);
-    return mapDocRow(newDoc as DocRow);
+    return this.insertDoc(insertData, 'Erreur création avoir');
   }
 
   /** Credit notes already issued against an invoice. */
@@ -1079,14 +1456,20 @@ export class SupabaseDocumentsService {
       payment_method: null,
       avance_amount: 0,
       payment_methods_json: [],
+      // A credit note cancels the invoice at the invoice's own rate.
+      tva_rate: await this.rateFor(src, companyId),
     };
 
-    const { data: newDoc, error: insertErr } = await (supabase.from('quotes') as any)
-      .insert(insertData)
-      .select('*')
-      .single();
-    if (insertErr) throw new Error(`Erreur création avoir: ${insertErr.message}`);
-    return mapDocRow(newDoc as DocRow);
+    return this.insertDoc(insertData, 'Erreur création avoir');
+  }
+
+  /** The invoice a credit note corrects, for its PDF ("Avoir sur facture N° … du …"). */
+  static async withSourceInvoice(avoir: Quote): Promise<Quote> {
+    if (avoir.document_type !== 'avoir' || !avoir.parent_document_id) return avoir;
+    const { data } = await table('quotes').select('quote_number, quote_date, created_at').eq('id', avoir.parent_document_id).maybeSingle();
+    const row = data as Pick<DocRow, 'quote_number' | 'quote_date' | 'created_at'> | null;
+    if (!row) return avoir;
+    return { ...avoir, source_invoice: { quoteNumber: row.quote_number, day: documentDay({ quote_date: row.quote_date || undefined, createdAt: new Date(row.created_at) }) } };
   }
 
   /**

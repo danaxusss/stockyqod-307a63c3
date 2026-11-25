@@ -7,6 +7,10 @@ import {
   Bot, Zap, ToggleLeft, ToggleRight
 } from 'lucide-react';
 import { SupabaseCompaniesService } from '../utils/supabaseCompanies';
+import { CashStampDutyField, LegalIdsWarning, PaymentDaysField, TaxAttestationField, TvaRateField, VatExemptionField } from '../components/settings/BillingSettingsFields';
+import { VatReturnSettingsFields } from '../components/settings/VatReturnSettingsFields';
+import { vatSettingsFieldsError } from '../accounting/vatReturn';
+import { billingSettingsError, iceError, normalizeIce } from '../utils/legalIds';
 import {
   CompanySettingsService, CompanySettings, QuoteVisibleFields, QuoteStyle, DEFAULT_SHARE_TEMPLATES
 } from '../utils/companySettings';
@@ -333,9 +337,14 @@ export default function CompaniesPage() {
       showToast({ type: 'error', message: 'Le nom de la société est requis' });
       return;
     }
+    const iceProblem = iceError(createFormData.ice);
+    if (iceProblem) {
+      showToast({ type: 'error', message: iceProblem });
+      return;
+    }
     setIsCreating(true);
     try {
-      await SupabaseCompaniesService.createCompany(createFormData as any);
+      await SupabaseCompaniesService.createCompany({ ...createFormData, ice: normalizeIce(createFormData.ice) } as any);
       showToast({ type: 'success', message: 'Société créée' });
       setShowCreateModal(false);
       setCreateFormData(emptyForm);
@@ -399,6 +408,11 @@ export default function CompaniesPage() {
 
   const handleEditSave = async () => {
     if (!editingCompany || !editSettings) return;
+    const invalid = billingSettingsError(editSettings) || vatSettingsFieldsError(editSettings);
+    if (invalid) {
+      showToast({ type: 'error', message: invalid });
+      return;
+    }
     setIsEditSaving(true);
     try {
       let logoUrl = editSettings.logo_url;
@@ -413,6 +427,7 @@ export default function CompaniesPage() {
       }
       await CompanySettingsService.updateCompanySettings(editingCompany.id, {
         ...editSettings,
+        ice: normalizeIce(editSettings.ice),
         logo_url: logoUrl,
         stamp_url: stampUrl,
       });
@@ -563,6 +578,7 @@ export default function CompaniesPage() {
               <h2 className="text-sm font-semibold text-foreground flex items-center space-x-2">
                 <Building2 className="h-4 w-4 text-primary" /><span>Infos société</span>
               </h2>
+              <LegalIdsWarning settings={s} />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {[
                   { key: 'company_name', label: 'Nom', icon: <Building2 className="h-3.5 w-3.5" />, placeholder: 'Nom de la société' },
@@ -575,7 +591,7 @@ export default function CompaniesPage() {
                   { key: 'rc', label: 'RC', icon: <Hash className="h-3.5 w-3.5" />, placeholder: 'Registre du commerce' },
                   { key: 'if_number', label: 'IF', icon: <Hash className="h-3.5 w-3.5" />, placeholder: 'Identifiant Fiscal' },
                   { key: 'cnss', label: 'CNSS', icon: <Hash className="h-3.5 w-3.5" />, placeholder: 'CNSS' },
-                  { key: 'patente', label: 'Patente', icon: <Hash className="h-3.5 w-3.5" />, placeholder: 'Patente' },
+                  { key: 'patente', label: 'TP (Patente)', icon: <Hash className="h-3.5 w-3.5" />, placeholder: 'Taxe professionnelle' },
                 ].map(({ key, label, icon, placeholder }) => (
                   <div key={key} className={key === 'address' ? 'sm:col-span-2' : ''}>
                     <label className="block text-xs font-medium text-foreground mb-1 flex items-center space-x-1">
@@ -596,12 +612,8 @@ export default function CompaniesPage() {
                 <FileText className="h-4 w-4 text-primary" /><span>Paramètres du devis</span>
               </h2>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">TVA (%)</label>
-                  <input type="number" min="0" max="100" value={s.tva_rate}
-                    onChange={e => setS({ tva_rate: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring" />
-                </div>
+                <TvaRateField value={s.tva_rate} onChange={rate => setS({ tva_rate: rate })}
+                  className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring" />
                 <div>
                   <label className="block text-xs font-medium text-foreground mb-1">Validité (jours)</label>
                   <input type="number" min="1" value={s.quote_validity_days}
@@ -613,8 +625,18 @@ export default function CompaniesPage() {
                   <input type="text" value={s.payment_terms || ''}
                     onChange={e => setS({ payment_terms: e.target.value })}
                     className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring"
-                    placeholder="30 jours" />
+                    placeholder="60 jours à compter de la date de facture" />
                 </div>
+                <PaymentDaysField value={s.payment_terms_days} onChange={days => setS({ payment_terms_days: days })}
+                  className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring" />
+                <VatExemptionField value={s.vat_exemption_text} onChange={text => setS({ vat_exemption_text: text })}
+                  className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring" />
+                <TaxAttestationField value={s.tax_attestation_date} onChange={day => setS({ tax_attestation_date: day })}
+                  available={s.payment_settings_available !== false}
+                  className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring" />
+                <CashStampDutyField value={s.cash_stamp_duty} onChange={on => setS({ cash_stamp_duty: on })} available={s.payment_settings_available !== false} />
+                <VatReturnSettingsFields value={s} onChange={patch => setS(patch)} idPrefix="company-vat" available={s.vat_settings_available !== false}
+                  className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring" />
               </div>
             </div>
 

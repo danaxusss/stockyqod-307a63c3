@@ -1,6 +1,7 @@
 import { supabase } from './supabaseClient';
 import { getCompanyContext } from './supabaseCompanyFilter';
 import { parseLocaleNumber } from './localeNumber';
+import { writeTolerant } from './schemaFallback';
 
 export type ImportDocType = 'clients' | 'quote' | 'bl' | 'proforma' | 'invoice' | 'avoir' | 'retour';
 
@@ -458,6 +459,8 @@ export async function importDocuments(rows: ParsedDocument[], type: ImportDocTyp
         notes:        doc.notes || null,
         status,
         ...(companyId ? { company_id: companyId, issuing_company_id: companyId } : {}),
+        // The rate the HT prices of the file were converted with.
+        tva_rate: tvaRate,
       };
 
       if (type === 'invoice') {
@@ -471,7 +474,8 @@ export async function importDocuments(rows: ParsedDocument[], type: ImportDocTyp
         payload.notes = doc.avoirReason + (doc.notes ? `\n${doc.notes}` : '');
       }
 
-      const { error } = await supabase.from('quotes').insert(payload);
+      // Before the billing compliance migration there is no tva_rate column.
+      const { error } = await writeTolerant(payload, ['tva_rate'], p => supabase.from('quotes').insert(p as never));
       if (error) errors.push(`${doc.numero}: ${error.message}`);
       else created++;
     } catch (e: any) {

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { BookOpen, Plus, Loader, Trash2, Check, X, RotateCcw, Lock } from 'lucide-react';
+import { BookOpen, Plus, Loader, Trash2, Check, RotateCcw, Lock, Download } from 'lucide-react';
 import type { Account, FiscalYear, Journal, JournalEntry, JournalEntryLine } from '../../types';
 import { AccountingService } from '../../utils/supabaseAccounting';
 import { useAuth } from '../../hooks/useAuth';
@@ -8,6 +8,9 @@ import { PageHeader } from '../../components/PageHeader';
 import { StatusPill } from '../../components/lists/StatusPill';
 import { btnPrimary, btnSecondary, EmptyState, field, fieldAuto, fieldLabel, fieldSm, iconBtn, iconBtnDanger, LoadingState, panel, td, th, theadRow } from '../../components/backoffice/BackOfficeUi';
 import { localDay } from '../../utils/documentLines';
+import { validateEntryLines } from '../../accounting/entryValidation';
+import { downloadText, journalRows, reportHeader, toCsv } from '../../accounting/ledgerExport';
+import { errorText } from '../../accounting/errors';
 
 function fmt(n: number) { return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n); }
 const todayStr = () => localDay();
@@ -15,7 +18,7 @@ const todayStr = () => localDay();
 type Editing = { entry: JournalEntry | null; date: string; reference: string; label: string; lines: JournalEntryLine[] } | null;
 
 export default function JournalEntryPage() {
-  const { currentUser } = useAuth();
+  const { currentUser, companyName } = useAuth();
   const { showToast } = useToast();
 
   const [fy, setFy] = useState<FiscalYear | null>(null);
@@ -26,6 +29,8 @@ export default function JournalEntryPage() {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Editing>(null);
   const [busy, setBusy] = useState(false);
+  const [period, setPeriod] = useState({ from: '', to: '' });
+  const [exporting, setExporting] = useState(false);
 
   const accByCode = useMemo(() => new Map(accounts.map(a => [a.code, a])), [accounts]);
   const journalById = useMemo(() => new Map(journals.map(j => [j.id, j])), [journals]);
@@ -39,13 +44,14 @@ export default function JournalEntryPage() {
     try {
       const year = await AccountingService.ensureCurrentFiscalYear();
       setFy(year);
+      setPeriod({ from: year.start_date, to: year.end_date });
       const [j, a] = await Promise.all([AccountingService.listJournals(), AccountingService.listAccounts()]);
       setJournals(j); setAccounts(a);
       const jid = j[0]?.id || '';
       setJournalId(jid);
       if (jid) await loadEntries(jid, year.id);
-    } catch (e: any) {
-      showToast({ type: 'error', message: e?.message || 'Erreur de chargement' });
+    } catch (e) {
+      showToast({ type: 'error', message: errorText(e, 'Erreur de chargement') });
     } finally { setLoading(false); }
   }, [showToast, loadEntries]);
 
@@ -81,12 +87,16 @@ export default function JournalEntryPage() {
   const addLine = () => setEditing(prev => prev ? { ...prev, lines: [...prev.lines, { account_code: '', label: '', debit: 0, credit: 0 }] } : prev);
   const removeLine = (i: number) => setEditing(prev => prev ? { ...prev, lines: prev.lines.filter((_, idx) => idx !== i) } : prev);
 
-  const persistDraft = async (): Promise<string | null> => {
+  // Checked in code on save and before posting: a line is a debit or a
+  // credit, never negative, on an active account of the chart.
+  const persistDraft = async (forPosting = false): Promise<string | null> => {
     if (!editing || !fy || !journalId) return null;
-    const lines = editing.lines.filter(l => l.account_code && (Number(l.debit) > 0 || Number(l.credit) > 0));
-    if (lines.length < 2) { showToast({ type: 'error', message: 'Au moins deux lignes mouvementées' }); return null; }
-    const bad = lines.find(l => !accByCode.has(l.account_code));
-    if (bad) { showToast({ type: 'error', message: `Compte inconnu: ${bad.account_code}` }); return null; }
+    const check = validateEntryLines(editing.lines, accounts, { forPosting });
+    if (check.errors.length > 0) {
+      showToast({ type: 'error', title: 'Écriture à corriger', message: check.errors.slice(0, 3).join(' ') + (check.errors.length > 3 ? ` (+${check.errors.length - 3})` : '') });
+      return null;
+    }
+    const lines = check.lines;
     if (editing.entry) {
       await AccountingService.updateEntryDraft(editing.entry.id, { entry_date: editing.date, reference: editing.reference || null, label: editing.label || null }, lines);
       return editing.entry.id;
@@ -103,7 +113,7 @@ export default function JournalEntryPage() {
     try {
       const id = await persistDraft();
       if (id) { showToast({ type: 'success', message: 'Brouillon enregistré' }); setEditing(null); await loadEntries(journalId, fy!.id); }
-    } catch (e: any) { showToast({ type: 'error', message: e?.message || 'Échec' }); }
+    } catch (e) { showToast({ type: 'error', message: errorText(e, 'Échec') }); }
     finally { setBusy(false); }
   };
 
@@ -111,12 +121,12 @@ export default function JournalEntryPage() {
     if (!balanced) { showToast({ type: 'error', message: 'Écriture déséquilibrée' }); return; }
     setBusy(true);
     try {
-      const id = await persistDraft();
+      const id = await persistDraft(true);
       if (!id) return;
       await AccountingService.postEntry(id, currentUser?.username || null);
       showToast({ type: 'success', title: 'Écriture validée', message: 'Comptabilisée' });
       setEditing(null); await loadEntries(journalId, fy!.id);
-    } catch (e: any) { showToast({ type: 'error', title: 'Erreur', message: e?.message || 'Échec de la validation' }); }
+    } catch (e) { showToast({ type: 'error', title: 'Erreur', message: errorText(e, 'Échec de la validation') }); }
     finally { setBusy(false); }
   };
 
@@ -127,14 +137,34 @@ export default function JournalEntryPage() {
       await AccountingService.reverseEntry(e.id, currentUser?.username || null);
       showToast({ type: 'success', message: 'Écriture contre-passée' });
       await loadEntries(journalId, fy!.id);
-    } catch (err: any) { showToast({ type: 'error', message: err?.message || 'Échec' }); }
+    } catch (err) { showToast({ type: 'error', message: errorText(err, 'Échec') }); }
     finally { setBusy(false); }
   };
 
   const deleteDraft = async (e: JournalEntry) => {
     if (!confirm('Supprimer ce brouillon ?')) return;
     try { await AccountingService.deleteDraft(e.id); await loadEntries(journalId, fy!.id); }
-    catch (err: any) { showToast({ type: 'error', message: err?.message || 'Échec' }); }
+    catch (err) { showToast({ type: 'error', message: errorText(err, 'Échec') }); }
+  };
+
+  // CSV of the validated entries of the selected journal over a period,
+  // headed by company, year, period, date produced and software (avis 24 §2.7).
+  const exportJournal = async () => {
+    if (!fy || !journalId) return;
+    if (!period.from || !period.to || period.from > period.to) { showToast({ type: 'error', message: 'Période invalide' }); return; }
+    setExporting(true);
+    try {
+      const j = journalById.get(journalId);
+      const lines = (await AccountingService.getPostedLines(fy.id))
+        .filter(l => l.journal_id === journalId && l.entry_date >= period.from && l.entry_date <= period.to);
+      if (lines.length === 0) { showToast({ type: 'info', message: 'Aucune écriture validée sur cette période' }); return; }
+      const rows = [
+        ...reportHeader({ company: companyName || '', report: `Journal ${j?.code || ''} - ${j?.label || ''}`, fiscalYear: fy, period, producedAt: new Date() }),
+        ...journalRows(lines, c => accByCode.get(c)?.label || ''),
+      ];
+      downloadText(toCsv(rows), `journal-${j?.code || ''}-${period.from}-${period.to}.csv`, 'text/csv;charset=utf-8;');
+    } catch (e) { showToast({ type: 'error', message: errorText(e, 'Échec') }); }
+    finally { setExporting(false); }
   };
 
   if (loading) return <LoadingState />;
@@ -165,7 +195,7 @@ export default function JournalEntryPage() {
   return (
     <div className="mx-auto max-w-[110rem]">
       <datalist id="acc-list">
-        {accounts.map(a => <option key={a.code} value={a.code}>{a.code} — {a.label}</option>)}
+        {accounts.filter(a => a.active !== false).map(a => <option key={a.code} value={a.code}>{a.code} — {a.label}</option>)}
       </datalist>
 
       <PageHeader
@@ -179,6 +209,19 @@ export default function JournalEntryPage() {
           {!editing && <button onClick={startNew} className={btnPrimary}><Plus className="h-4 w-4" /> Écriture</button>}
         </>}
       />
+
+      {!editing && fy && (
+        <div className={`${panel} mb-4 flex flex-wrap items-end gap-2 p-3`}>
+          <div><label className={fieldLabel} htmlFor="jx-from">Du</label>
+            <input id="jx-from" type="date" value={period.from} min={fy.start_date} max={fy.end_date} onChange={e => setPeriod(p => ({ ...p, from: e.target.value }))} className={fieldAuto} /></div>
+          <div><label className={fieldLabel} htmlFor="jx-to">Au</label>
+            <input id="jx-to" type="date" value={period.to} min={fy.start_date} max={fy.end_date} onChange={e => setPeriod(p => ({ ...p, to: e.target.value }))} className={fieldAuto} /></div>
+          <button onClick={exportJournal} disabled={exporting} className={btnSecondary}>
+            {exporting ? <Loader className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} CSV du journal {journalById.get(journalId)?.code || ''}
+          </button>
+          <span className="text-xs text-muted-foreground">Écritures validées uniquement.</span>
+        </div>
+      )}
 
       {editing ? (
         <section className={`${panel} mb-4 border-primary/40`} aria-label="Écriture en cours">

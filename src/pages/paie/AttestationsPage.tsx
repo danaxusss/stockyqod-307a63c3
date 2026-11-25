@@ -1,116 +1,144 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { FileCheck2, Printer } from 'lucide-react';
 import { SupabaseEmployeesService } from '../../utils/supabaseEmployees';
+import { SupabasePayslipsService } from '../../utils/supabasePayslips';
+import { HrDocumentService } from '../../utils/supabasePayrollHr';
 import { CompanySettingsService, type CompanySettings } from '../../utils/companySettings';
 import { getCompanyContext } from '../../utils/supabaseCompanyFilter';
-import type { Employee } from '../../types';
+import { buildCertificatePdf, certificateText, salaryFigures, type CertificateData, type CertificateKind } from '../../utils/hrPdf';
+import { localDay } from '../../utils/documentLines';
+import { fmt } from '../../utils/payrollFormat';
+import type { Employee, Payslip } from '../../types';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
 import { PageHeader } from '../../components/PageHeader';
+import { PrintPreviewModal } from '../../components/PrintPreviewModal';
 import { btnPrimary, EmptyState, field, fieldLabel, LoadingState, panel } from '../../components/backoffice/BackOfficeUi';
+import { Notice } from './payrollUi';
 
-function fmt(n: number) { return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(n); }
-const today = () => new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
-const CONTRACT: Record<string, string> = { CDI: 'contrat à durée indéterminée', CDD: 'contrat à durée déterminée', Interim: 'contrat d\'intérim' };
-
-type DocType = 'salaire' | 'travail' | 'certificat';
+const errMsg = (e: unknown) => (e instanceof Error ? e.message : (e as { message?: string })?.message || 'Échec');
 
 export default function AttestationsPage() {
   const { isPaie, isSuperAdmin } = useAuth();
   const { showToast } = useToast();
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [settings, setSettings] = useState<CompanySettings | null>(null);
+  const [company, setCompany] = useState<CompanySettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [employeeId, setEmployeeId] = useState('');
-  const [docType, setDocType] = useState<DocType>('travail');
+  const [kind, setKind] = useState<CertificateKind>('attestation_travail');
+  const [exitDate, setExitDate] = useState('');
+  const [payslips, setPayslips] = useState<Payslip[]>([]);
+  const [year, setYear] = useState(new Date().getFullYear());
+  const [preview, setPreview] = useState<{ blob: Blob; filename: string; number: string } | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const emps = await SupabaseEmployeesService.list();
-      setEmployees(emps);
+      setEmployees(await SupabaseEmployeesService.list());
       const { companyId } = getCompanyContext();
-      if (companyId) setSettings(await CompanySettingsService.getSettings(companyId).catch(() => null));
-    } catch (e: any) { showToast({ type: 'error', message: e?.message || 'Erreur' }); }
+      if (companyId) setCompany(await CompanySettingsService.getSettings(companyId).catch(() => null));
+    } catch (e) { showToast({ type: 'error', message: errMsg(e) }); }
     finally { setLoading(false); }
   }, [showToast]);
   useEffect(() => { load(); }, [load]);
 
   const emp = employees.find(e => e.id === employeeId);
-  const company = settings?.company_name || 'La société';
-  // Companies have no city field: the town is the last part of the address
-  // ("12 Bd Zerktouni, 20000 Casablanca" → "Casablanca").
-  const addressParts = (settings?.address || '').split(/[,\n]/).map(x => x.replace(/\b\d{5}\b/g, '').trim()).filter(Boolean);
-  const town = addressParts.length > 1 ? addressParts[addressParts.length - 1] : '';
-  const genre = emp?.gender === 'F' ? 'Madame' : 'Monsieur';
-  const hire = emp?.hire_date ? new Date(emp.hire_date).toLocaleDateString('fr-FR') : '…';
+  useEffect(() => {
+    setExitDate(emp?.date_sortie || '');
+    if (!emp) { setPayslips([]); return; }
+    SupabasePayslipsService.list({ employeeId: emp.id }).then(ps => {
+      setPayslips(ps);
+      const last = ps.filter(p => p.is_locked).map(p => p.period_year).sort((a, b) => b - a)[0];
+      if (last) setYear(last);
+    }).catch(e => showToast({ type: 'error', message: errMsg(e) }));
+  }, [emp, showToast]);
+
+  const figures = useMemo(() => salaryFigures(payslips, year), [payslips, year]);
+  const left = !!emp && (!emp.is_active || (!!emp.date_sortie && emp.date_sortie <= localDay()));
+  const years = useMemo(() => [...new Set(payslips.filter(p => p.is_locked).map(p => p.period_year))].sort((a, b) => b - a), [payslips]);
+
+  const problem = !emp ? null
+    : kind === 'certificat_travail' && !exitDate ? 'Saisissez la date de sortie (dernier jour du contrat).'
+      : kind !== 'certificat_travail' && left ? `${emp.full_name} a quitté la société${emp.date_sortie ? ` le ${emp.date_sortie.split('-').reverse().join('/')}` : ''} : délivrez un certificat de travail.`
+        : kind === 'attestation_salaire' && figures.lastMonths.length === 0 ? 'Aucun bulletin validé : l\'attestation de salaire reprend les bulletins validés.'
+          : null;
+
+  const data = (number: string, provisional: boolean): CertificateData => ({
+    kind, number, provisional, issuedOn: localDay(), exitDate: exitDate || null,
+    lastMonths: figures.lastMonths, annual: figures.annual,
+  });
+
+  const generate = async () => {
+    if (!emp || problem) return;
+    setBusy(true);
+    try {
+      const { number, registered } = await HrDocumentService.issue(kind, emp.id, localDay(), { exit_date: exitDate || null, year });
+      if (!registered) showToast({ type: 'warning', message: 'Base non à jour (migration 20261126150000_hr.sql) : numéro provisoire, document non enregistré.' });
+      const { doc, filename } = buildCertificatePdf(emp, company, data(number, !registered));
+      setPreview({ blob: doc.output('blob'), filename, number });
+    } catch (e) { showToast({ type: 'error', message: errMsg(e) }); }
+    finally { setBusy(false); }
+  };
 
   if (!isPaie && !isSuperAdmin) return <div className="py-12 text-center text-muted-foreground">Accès réservé au rôle Paie.</div>;
   if (loading) return <LoadingState />;
 
-  const title = docType === 'salaire' ? 'ATTESTATION DE SALAIRE' : docType === 'travail' ? 'ATTESTATION DE TRAVAIL' : 'CERTIFICAT DE TRAVAIL';
+  const companyName = company?.company_name || 'La société';
+  const text = emp ? certificateText(emp, companyName, data('…', false)) : [];
 
   return (
     <div className="mx-auto max-w-[110rem]">
-      <div className="print:hidden">
-        <PageHeader
-          title="Attestations"
-          subtitle="Documents RH imprimables"
-          actions={emp && <button onClick={() => window.print()} className={btnPrimary}><Printer className="h-4 w-4" /> Imprimer</button>}
-        />
-      </div>
+      <PageHeader
+        title="Attestations"
+        subtitle="Attestation de travail, de salaire, certificat de travail"
+        actions={emp && <button onClick={generate} disabled={busy || !!problem} className={btnPrimary}><Printer className="h-4 w-4" /> Générer le PDF</button>}
+      />
 
-      <div className={`${panel} mb-4 grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] print:hidden`}>
+      <div className={`${panel} mb-4 grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]`}>
         <div><label className={fieldLabel} htmlFor="att-employee">Employé</label>
-          <select id="att-employee" value={employeeId} onChange={e => setEmployeeId(e.target.value)} className={field}><option value="">—</option>{employees.map(e => <option key={e.id} value={e.id}>{e.full_name}</option>)}</select></div>
+          <select id="att-employee" value={employeeId} onChange={e => setEmployeeId(e.target.value)} className={field}><option value="">—</option>{employees.map(e => <option key={e.id} value={e.id}>{e.full_name}{e.is_active ? '' : ' (sorti)'}</option>)}</select></div>
         <div><label className={fieldLabel} htmlFor="att-type">Type</label>
-          <select id="att-type" value={docType} onChange={e => setDocType(e.target.value as DocType)} className={field}><option value="travail">Attestation de travail</option><option value="salaire">Attestation de salaire</option><option value="certificat">Certificat de travail</option></select></div>
+          <select id="att-type" value={kind} onChange={e => setKind(e.target.value as CertificateKind)} className={field}>
+            <option value="attestation_travail">Attestation de travail</option>
+            <option value="attestation_salaire">Attestation de salaire</option>
+            <option value="certificat_travail">Certificat de travail</option>
+          </select></div>
+        {kind === 'certificat_travail' && (
+          <div><label className={fieldLabel} htmlFor="att-exit">Date de sortie</label>
+            <input id="att-exit" type="date" value={exitDate} onChange={e => setExitDate(e.target.value)} className={field} /></div>
+        )}
+        {kind === 'attestation_salaire' && (
+          <div><label className={fieldLabel} htmlFor="att-year">Année (cumuls)</label>
+            <select id="att-year" value={year} onChange={e => setYear(Number(e.target.value))} className={field}>{(years.length ? years : [year]).map(y => <option key={y} value={y}>{y}</option>)}</select></div>
+        )}
       </div>
 
-      {!emp && (
-        <div className={`${panel} print:hidden`}>
-          <EmptyState icon={FileCheck2} title="Choisissez un employé pour préparer le document." />
-        </div>
-      )}
+      {!emp && <div className={panel}><EmptyState icon={FileCheck2} title="Choisissez un employé pour préparer le document." /></div>}
 
       {emp && (
-        <div id="print-area" className="mx-auto max-w-3xl rounded-xl border border-border bg-white p-6 leading-relaxed text-black shadow-sm sm:p-10 print:max-w-none print:border-0 print:p-0 print:shadow-none" style={{ minHeight: 400 }}>
-          <div className="flex justify-between items-start mb-8">
-            <div>
-              <div className="font-bold text-lg">{company}</div>
-              {settings?.address && <div className="text-xs text-gray-600">{settings.address}</div>}
-              {settings?.ice && <div className="text-xs text-gray-600">ICE : {settings.ice}</div>}
-            </div>
-            <div className="text-xs text-gray-600 text-right">{town ? `${town}, le ${today()}` : `Le ${today()}`}</div>
-          </div>
-
-          <h2 className="text-center font-bold text-base underline mb-8 tracking-wide">{title}</h2>
-
-          <div className="text-sm space-y-4">
-            <p>Nous soussignés, <b>{company}</b>, attestons que {genre} <b>{emp.full_name}</b>
-              {emp.cin ? <>, titulaire de la CIN n° <b>{emp.cin}</b>,</> : ''} est employé(e) au sein de notre société
-              {emp.position ? <> en qualité de <b>{emp.position}</b></> : ''} depuis le <b>{hire}</b>
-              {emp.contract_type ? <> dans le cadre d'un <b>{CONTRACT[emp.contract_type] || 'contrat'}</b></> : ''}.</p>
-
-            {docType === 'salaire' && (
-              <p>{genre} {emp.full_name} perçoit à ce titre un salaire mensuel brut de <b>{fmt(emp.base_salary)} MAD</b>
-                {emp.cnss_number ? <> (n° CNSS : {emp.cnss_number})</> : ''}.</p>
+        <div className="mx-auto max-w-3xl space-y-3">
+          {problem && <Notice tone="error">{problem}</Notice>}
+          {kind === 'certificat_travail' && <Notice tone="info">Le certificat indique l'entrée, la sortie et les postes occupés (Code du travail, art. 72) ; rien d'autre sans accord des deux parties.</Notice>}
+          <section className="space-y-3 rounded-xl border border-border bg-white p-6 text-sm leading-relaxed text-black shadow-sm sm:p-10" aria-label="Texte du document">
+            {text.slice(0, -1).map((t, i) => <p key={i}>{t}</p>)}
+            {kind === 'attestation_salaire' && (
+              <table className="w-full text-xs">
+                <thead><tr className="border-b"><th className="py-1 text-left">Mois</th><th className="py-1 text-right">Brut</th><th className="py-1 text-right">Net payé</th></tr></thead>
+                <tbody>
+                  {figures.lastMonths.map(m => <tr key={m.label} className="border-b border-gray-100"><td className="py-1">{m.label}</td><td className="py-1 text-right tabular-nums">{fmt(m.gross)}</td><td className="py-1 text-right tabular-nums">{fmt(m.net)}</td></tr>)}
+                  {figures.annual && (
+                    <tr className="font-semibold"><td className="py-1">Année {figures.annual.year} ({figures.annual.months} mois) · net imposable {fmt(figures.annual.netTaxable)} · IR {fmt(figures.annual.ir)}</td><td className="py-1 text-right tabular-nums">{fmt(figures.annual.gross)}</td><td className="py-1 text-right tabular-nums">{fmt(figures.annual.net)}</td></tr>
+                  )}
+                </tbody>
+              </table>
             )}
-            {docType === 'certificat' && (
-              <p>{genre} {emp.full_name} nous a quittés le <b>{emp.date_sortie ? new Date(emp.date_sortie).toLocaleDateString('fr-FR') : '…'}</b>,
-                libre de tout engagement. Nous lui délivrons le présent certificat pour servir et valoir ce que de droit.</p>
-            )}
-            {docType !== 'certificat' && (
-              <p>La présente attestation est délivrée à l'intéressé(e) pour servir et valoir ce que de droit.</p>
-            )}
-          </div>
-
-          <div className="mt-16 text-right text-sm">
-            <div>La Direction</div>
-            <div className="mt-16 text-xs text-gray-500">Signature & cachet</div>
-          </div>
+            <p>{text[text.length - 1]}</p>
+          </section>
         </div>
       )}
+
+      {preview && <PrintPreviewModal blob={preview.blob} filename={preview.filename} onClose={() => setPreview(null)} />}
     </div>
   );
 }

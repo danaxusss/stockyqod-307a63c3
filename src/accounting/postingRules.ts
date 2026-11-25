@@ -1,5 +1,6 @@
-import type { Quote, Payslip, JournalType, JournalEntryLine, PaymentEntry } from '../types';
-import { DEFAULT_ACCOUNTS } from './pcmSeed';
+import type { Quote, Payslip, JournalType, JournalEntryLine } from '../types';
+import { DEFAULT_ACCOUNTS, CUSTOMER_TAX_ACCOUNTS } from './pcmSeed';
+import { documentTvaRate, invoiceSettlements, isCashMethod } from '../utils/documentLines';
 
 export interface EntryDraft {
   journalType: JournalType;
@@ -22,8 +23,13 @@ function toDate(v: string | Date | undefined): string {
   return String(v).slice(0, 10);
 }
 
-/** Facture de vente: D 3421 (TTC) / C 7111 (HT) / C 4455 (TVA). */
-export function buildInvoiceEntry(q: Quote, tvaRate: number): EntryDraft {
+/**
+ * Facture de vente: D 3421 (TTC) / C 7111 (HT) / C 4455 (TVA). The VAT is
+ * split at the rate frozen on the invoice; `companyRate` only serves invoices
+ * from before rates were stored.
+ */
+export function buildInvoiceEntry(q: Quote, companyRate: number): EntryDraft {
+  const tvaRate = documentTvaRate(q, companyRate);
   const ttc = r2(q.totalAmount);
   const ht = r2(ttc / (1 + (tvaRate || 0) / 100));
   const tva = r2(ttc - ht);
@@ -36,8 +42,9 @@ export function buildInvoiceEntry(q: Quote, tvaRate: number): EntryDraft {
   return { journalType: 'vente', date: toDate(q.quote_date || q.createdAt), reference: q.quoteNumber, label, sourceType: 'invoice', sourceId: q.id, lines };
 }
 
-/** Avoir: contre-passation de la vente. C 3421 / D 7111 / D 4455. */
-export function buildAvoirEntry(q: Quote, tvaRate: number): EntryDraft {
+/** Avoir: contre-passation de la vente. C 3421 / D 7111 / D 4455, at the credit note's own rate. */
+export function buildAvoirEntry(q: Quote, companyRate: number): EntryDraft {
+  const tvaRate = documentTvaRate(q, companyRate);
   const ttc = r2(q.totalAmount);
   const ht = r2(ttc / (1 + (tvaRate || 0) / 100));
   const tva = r2(ttc - ht);
@@ -50,23 +57,39 @@ export function buildAvoirEntry(q: Quote, tvaRate: number): EntryDraft {
   return { journalType: 'vente', date: toDate(q.quote_date || q.createdAt), reference: q.quoteNumber, label, sourceType: 'invoice', sourceId: q.id, lines };
 }
 
-export interface InvoicePaymentLine { amount: number; method: string; reference: string; date: string }
-
-/** Money received on an invoice, one line per payment: the advance, then each recorded payment. */
-export function invoicePaymentLines(q: Quote): InvoicePaymentLine[] {
-  const date = toDate(q.payment_date || q.quote_date || q.createdAt);
-  const out: InvoicePaymentLine[] = [];
-  if ((q.avance_amount || 0) > 0) out.push({ amount: r2(q.avance_amount || 0), method: q.payment_method || '', reference: q.payment_reference || '', date });
-  for (const e of (q.payment_methods_json || []) as PaymentEntry[]) {
-    if ((Number(e.amount) || 0) > 0) out.push({ amount: r2(e.amount), method: e.method || q.payment_method || '', reference: e.reference || '', date });
-  }
-  return out;
+export interface InvoicePaymentLine {
+  amount: number;
+  method: string;
+  reference: string;
+  /** The settlement's own date (undated older entries: the invoice's payment date, else its date). */
+  date: string;
+  kind: 'payment' | 'vat_withholding';
+  /** Stamp duty collected on top of a cash payment (booked apart, see buildStampDutyEntries). */
+  stampDuty: number;
+  /** Stable key of the settlement ('avance', entry id, or '#index'). */
+  key: string;
 }
 
 /**
- * Encaissements not yet booked: D 5141/5161 / C 3421 for each payment beyond
- * the `alreadyPosted` amount, so a second payment on an invoice is booked too.
- * `existing` is how many payment entries the invoice already has.
+ * What settled an invoice, one line per settlement: the advance, then each
+ * recorded payment or VAT withholding, each at its own date.
+ */
+export function invoicePaymentLines(q: Quote): InvoicePaymentLine[] {
+  return invoiceSettlements(q)
+    .filter(s => s.amount > 0)
+    .map(s => ({
+      amount: r2(s.amount), method: s.method || (s.kind === 'payment' ? q.payment_method || '' : ''), reference: s.reference,
+      date: toDate(s.date), kind: s.kind, stampDuty: s.stampDuty, key: s.key,
+    }));
+}
+
+/**
+ * Settlements not yet booked, each on its own date, beyond the
+ * `alreadyPosted` amount (so a second payment on an invoice is booked too):
+ * - money: D 5161 (cash) or 5141 (bank) / C 3421;
+ * - VAT withheld by the client (CGI art. 117-IV): no money comes in and the
+ *   State owes the amount back: D 34581 / C 3421, in the OD journal.
+ * `existing` is how many settlement entries the invoice already has.
  */
 export function buildPaymentEntries(q: Quote, alreadyPosted: number, existing: number): EntryDraft[] {
   let covered = r2(alreadyPosted);
@@ -75,8 +98,18 @@ export function buildPaymentEntries(q: Quote, alreadyPosted: number, existing: n
     const amount = r2(p.amount - Math.min(p.amount, covered));
     covered = r2(Math.max(0, covered - p.amount));
     if (amount <= 0.005) continue;
-    const isCash = /esp[eè]ce|cash|caisse|liquide/i.test(p.method);
     const n = existing + out.length;
+    const sourceId = n === 0 ? `${q.id}:pay` : `${q.id}:pay:${n}`;
+    const client: JournalEntryLine = { account_code: DEFAULT_ACCOUNTS.clients, label: q.customer?.fullName || 'Client', debit: 0, credit: amount };
+    if (p.kind === 'vat_withholding') {
+      const label = `TVA retenue à la source ${q.quoteNumber} - ${q.customer?.fullName || ''}`.trim();
+      out.push({
+        journalType: 'od', date: p.date, reference: p.reference || q.quoteNumber, label, sourceType: 'payment', sourceId,
+        lines: [{ account_code: CUSTOMER_TAX_ACCOUNTS.tvaRetenueClients, label, debit: amount, credit: 0 }, client],
+      });
+      continue;
+    }
+    const isCash = isCashMethod(p.method);
     const label = `Règlement ${q.quoteNumber} - ${q.customer?.fullName || ''}`.trim();
     out.push({
       journalType: isCash ? 'caisse' : 'banque',
@@ -84,21 +117,51 @@ export function buildPaymentEntries(q: Quote, alreadyPosted: number, existing: n
       reference: p.reference || q.quoteNumber,
       label,
       sourceType: 'payment',
-      sourceId: n === 0 ? `${q.id}:pay` : `${q.id}:pay:${n}`,
+      sourceId,
       lines: [
         { account_code: isCash ? DEFAULT_ACCOUNTS.caisse : DEFAULT_ACCOUNTS.banque, label, debit: amount, credit: 0 },
-        { account_code: DEFAULT_ACCOUNTS.clients, label: q.customer?.fullName || 'Client', debit: 0, credit: amount },
+        client,
       ],
     });
   }
   return out;
 }
 
+/** Source id of the stamp-duty entry of one settlement. */
+export const stampDutySourceId = (invoiceId: string, key: string) => `${invoiceId}:timbre:${key}`;
+
+/**
+ * Stamp duty collected on cash payments (CGI art. 252-I-B): the cash came in
+ * with the payment, but the duty belongs to the State, not to sales and not to
+ * the client account: D 5161 / C 44578, on the payment's date. One entry per
+ * settlement, skipped once `generated` holds its source id. Kept apart from
+ * the payment entries so their amounts stay what settles the invoice.
+ */
+export function buildStampDutyEntries(q: Quote, generated: Set<string>): EntryDraft[] {
+  return invoicePaymentLines(q)
+    .filter(p => p.kind === 'payment' && p.stampDuty > 0 && !generated.has(stampDutySourceId(q.id, p.key)))
+    .map(p => {
+      const label = `Droit de timbre ${q.quoteNumber} - ${q.customer?.fullName || ''}`.trim();
+      return {
+        journalType: 'caisse' as JournalType, date: p.date, reference: p.reference || q.quoteNumber, label,
+        sourceType: 'stamp_duty', sourceId: stampDutySourceId(q.id, p.key),
+        lines: [
+          { account_code: DEFAULT_ACCOUNTS.caisse, label, debit: r2(p.stampDuty), credit: 0 },
+          { account_code: CUSTOMER_TAX_ACCOUNTS.droitsTimbre, label: 'Droit de timbre 0,25 %', debit: 0, credit: r2(p.stampDuty) },
+        ],
+      };
+    });
+}
+
 /** Écriture de paie (journal PAIE) pour un bulletin. */
 export function buildPayslipEntry(p: Payslip, employeeName?: string, loanRepaid = 0): EntryDraft {
   const tfp = p.tfp_employer || 0;
-  const employer = r2((p.cnss_employer || 0) + (p.amo_employer || 0) + (p.alloc_familiales || 0) + tfp);
+  const cimrEmployer = p.cimr_employer || 0;
+  // Employer charges: CNSS, AMO, family allowances, training tax and the
+  // employer CIMR share, all on 6174 with the other social charges.
+  const employer = r2((p.cnss_employer || 0) + (p.amo_employer || 0) + (p.alloc_familiales || 0) + tfp + cimrEmployer);
   const cnssTotal = r2((p.cnss_employee || 0) + (p.amo_employee || 0) + (p.cnss_employer || 0) + (p.amo_employer || 0) + (p.alloc_familiales || 0) + tfp);
+  const cimr = r2((p.cimr_employee || 0) + cimrEmployer);
   const loans = r2(Math.min(loanRepaid, p.other_deductions || 0));
   const other = r2((p.other_deductions || 0) - loans);
   const period = `${String(p.period_month).padStart(2, '0')}/${p.period_year}`;
@@ -109,7 +172,9 @@ export function buildPayslipEntry(p: Payslip, employeeName?: string, loanRepaid 
   if (employer > 0) lines.push({ account_code: DEFAULT_ACCOUNTS.chargesSociales, label: 'Charges patronales', debit: employer, credit: 0 });
   lines.push({ account_code: DEFAULT_ACCOUNTS.remunerationsDues, label: 'Net à payer', debit: 0, credit: r2(p.net_salary) });
   if (cnssTotal > 0) lines.push({ account_code: DEFAULT_ACCOUNTS.cnss, label: 'CNSS/AMO', debit: 0, credit: cnssTotal });
-  if ((p.cimr_employee || 0) > 0) lines.push({ account_code: '4443', label: 'CIMR', debit: 0, credit: r2(p.cimr_employee) });
+  // Employee and employer CIMR shares are both owed to the fund.
+  if (cimr > 0) lines.push({ account_code: '4443', label: 'CIMR', debit: 0, credit: cimr });
+  // ir_amount is the IR actually withheld, net of any regularisation.
   if ((p.ir_amount || 0) > 0) lines.push({ account_code: DEFAULT_ACCOUNTS.irRetenue, label: 'IR retenue', debit: 0, credit: r2(p.ir_amount) });
   // Repaid advances clear the receivable they were booked to.
   if (loans > 0) lines.push({ account_code: '3488', label: 'Remboursement avances / prêts', debit: 0, credit: loans });

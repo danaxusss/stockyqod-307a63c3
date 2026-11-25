@@ -10,6 +10,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useIsMobile } from '../hooks/use-mobile';
 import { PageHeader } from '../components/PageHeader';
 import { RowMenu } from '../components/lists/RowMenu';
+import { iceError, normalizeIce } from '../utils/legalIds';
 
 const CLIENTS_PER_PAGE = 15;
 type SortField = 'full_name' | 'phone_number' | 'city' | 'created_at';
@@ -99,7 +100,7 @@ export default function ClientsPage() {
 
   const openCreateModal = () => {
     setEditingClient(null);
-    setFormData({ full_name: '', phone_number: '', address: '', city: '', ice: '', email: '' });
+    setFormData({ full_name: '', phone_number: '', address: '', city: '', ice: '', email: '', is_individual: false });
     setShowModal(true);
   };
 
@@ -112,6 +113,7 @@ export default function ClientsPage() {
       city: client.city,
       ice: client.ice,
       email: client.email,
+      is_individual: client.is_individual ?? false,
     });
     setShowModal(true);
   };
@@ -121,13 +123,19 @@ export default function ClientsPage() {
       showToast({ type: 'error', message: 'Le nom et le téléphone sont requis' });
       return;
     }
+    const iceProblem = iceError(formData.ice);
+    if (iceProblem) {
+      showToast({ type: 'error', message: iceProblem });
+      return;
+    }
     setIsSaving(true);
     try {
+      const payload = { ...formData, ice: normalizeIce(formData.ice) };
       if (editingClient) {
-        await SupabaseClientsService.updateClient(editingClient.id, formData);
+        await SupabaseClientsService.updateClient(editingClient.id, payload);
         showToast({ type: 'success', message: 'Client mis à jour' });
       } else {
-        await SupabaseClientsService.createClient(formData);
+        await SupabaseClientsService.createClient(payload);
         showToast({ type: 'success', message: 'Client créé' });
       }
       setShowModal(false);
@@ -359,8 +367,13 @@ export default function ClientsPage() {
                       className="w-full pl-8 pr-3 py-1.5 text-sm border border-input rounded-lg focus:ring-2 focus:ring-ring bg-background text-foreground"
                       placeholder={placeholder} />
                   </div>
+                  {key === 'ice' && iceError(formData.ice) && <p className="mt-1 text-[11px] text-destructive">{iceError(formData.ice)}</p>}
                 </div>
               ))}
+              <label className="flex items-center gap-2 text-xs font-medium text-foreground">
+                <input type="checkbox" checked={!!formData.is_individual} onChange={e => setFormData(prev => ({ ...prev, is_individual: e.target.checked }))} className="h-4 w-4 rounded accent-primary" />
+                Particulier (sans ICE)
+              </label>
             </div>
             <div className="flex space-x-2">
               <button onClick={() => setShowModal(false)} className="flex-1 px-3 py-1.5 text-sm border border-input rounded-lg hover:bg-secondary text-foreground">

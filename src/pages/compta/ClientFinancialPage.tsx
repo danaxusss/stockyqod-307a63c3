@@ -159,7 +159,9 @@ export default function ClientFinancialPage() {
                   'Client':        r.fullName || r.clientName,
                   'Téléphone':     r.phoneNumber || '',
                   'Total Facturé': r.totalAmount,
-                  'Payé':          r.paidAmount,
+                  // Réglé = encaissé + TVA retenue par le client (not money received).
+                  'Réglé':         r.paidAmount,
+                  'Dont TVA retenue': r.withheldAmount,
                   'Reste':         r.remaining,
                   'N° Proformas':  r.proformaCount,
                   'N° Factures':   r.invoiceCount,
@@ -211,7 +213,7 @@ export default function ClientFinancialPage() {
             <table className="w-full">
               <thead className="bg-secondary">
                 <tr>
-                  {['Code', 'Client', 'Tel', 'Total', 'Payé', 'Reste', 'Pro.', 'Fact.', ''].map(h => (
+                  {['Code', 'Client', 'Tel', 'Total', 'Réglé', 'Reste', 'Pro.', 'Fact.', ''].map(h => (
                     <th key={h} className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground uppercase">
                       {h}
                     </th>
@@ -249,6 +251,9 @@ export default function ClientFinancialPage() {
                     </td>
                     <td className="px-3 py-2.5">
                       <span className="text-xs font-mono text-emerald-600 dark:text-emerald-400 finance-amount">{fmt(row.paidAmount)} Dh</span>
+                      {row.withheldAmount > 0 && (
+                        <span className="block text-[10px] text-violet-700 dark:text-violet-300">dont TVA retenue {fmt(row.withheldAmount)} Dh</span>
+                      )}
                     </td>
                     <td className="px-3 py-2.5">
                       <span className={`text-xs font-mono font-bold finance-amount ${row.remaining > 0 ? 'text-destructive' : 'text-emerald-600 dark:text-emerald-400'}`}>

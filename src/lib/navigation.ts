@@ -30,6 +30,13 @@ export interface Access {
   superAdmin: boolean;
   /** Sales staff follow up their own quotes; managers and admins see all. */
   ownQuotesOnly: boolean;
+  /**
+   * The stock valued at a date (inventaire détaillé, stock comptable): stock
+   * or accounting staff who see purchase prices (never resellers).
+   */
+  stockValuation: boolean;
+  /** Supplier invoices, payments and payment delays: billing or accounting staff who see purchase prices. */
+  supplierInvoices: boolean;
 }
 
 export interface AccessFlags {
@@ -46,6 +53,8 @@ export interface AccessFlags {
   isTasks: boolean;
   isTasksOnly: boolean;
   tasksRole: string | null;
+  /** Shown purchase prices (seesPurchaseCosts); unknown counts as yes, the database still withholds them. */
+  seesCosts?: boolean;
 }
 
 export function computeAccess(f: AccessFlags): Access {
@@ -68,10 +77,21 @@ export function computeAccess(f: AccessFlags): Access {
     statistics: main && admin,
     superAdmin: main && f.isSuperAdmin,
     ownQuotesOnly: (f.isJuniorSales || f.isSeniorSales) && !admin && !f.isManager,
+    stockValuation: main && (f.isStock || f.isSuperAdmin || admin || f.isCompta) && f.seesCosts !== false,
+    supplierInvoices: main && (f.isFacturation || f.isSuperAdmin || admin || f.isCompta) && f.seesCosts !== false,
   };
 }
 
 export interface NavItem { to: string; label: string; }
+
+/** The inventory valued at a date, in quantity and value. */
+export const STOCK_VALUATION_PATH = '/inventaire/stock-comptable';
+/** Supplier invoices and their reports (Documents menu, or Comptabilité for accountants). */
+const SUPPLIER_NAV: NavItem[] = [
+  { to: '/compta/factures-fournisseurs', label: 'Factures fournisseurs' },
+  { to: '/compta/fournisseurs', label: 'Fournisseurs' },
+  { to: '/compta/delais-paiement', label: 'Délais de paiement' },
+];
 export interface NavModule {
   id: string;
   label: string;
@@ -109,6 +129,8 @@ export function buildModules(a: Access): NavModule[] {
         { to: '/compta/bons-commande', label: 'Bons de commande' },
         { to: '/compta/returns', label: 'Retours' },
         { to: '/compta/clients', label: 'Clients (financier)' },
+        { to: '/compta/releves-fiscaux', label: 'Retenue de TVA et timbre' },
+        ...(a.supplierInvoices ? SUPPLIER_NAV : []),
       ],
     });
   }
@@ -125,6 +147,7 @@ export function buildModules(a: Access): NavModule[] {
         { to: '/inventaire/inventaire', label: 'Inventaire physique' },
         { to: '/inventaire/commandes', label: 'Commandes fournisseur' },
         { to: '/inventaire/rapports', label: 'Valorisation & rapports' },
+        ...(a.stockValuation ? [{ to: STOCK_VALUATION_PATH, label: 'Stock comptable' }] : []),
       ],
     });
   }
@@ -143,6 +166,10 @@ export function buildModules(a: Access): NavModule[] {
         { to: '/comptabilite/banque', label: 'Rapprochement bancaire' },
         { to: '/comptabilite/immobilisations', label: 'Immobilisations' },
         { to: '/comptabilite/cloture', label: 'Clôture d’exercice' },
+        // Accountants without the stock module reach the inventory from here.
+        ...(a.stockValuation && !a.stock ? [{ to: STOCK_VALUATION_PATH, label: 'Stock comptable' }] : []),
+        // Accountants without the Documents menu reach the supplier invoices here.
+        ...(a.supplierInvoices && !a.billing ? SUPPLIER_NAV : []),
         { to: '/comptabilite/plan', label: 'Plan comptable' },
       ],
     });

@@ -7,6 +7,7 @@ import { LoginModal } from './components/LoginModal';
 import { FloatingQuoteCart } from './components/FloatingQuoteCart';
 import { useAuth } from './hooks/useAuth';
 import { useAccess } from './hooks/useAccess';
+import { STOCK_VALUATION_PATH } from './lib/navigation';
 import { useUserAuth } from './hooks/useUserAuth';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Toaster as SonnerToaster } from './components/ui/sonner';
@@ -34,6 +35,7 @@ const ProformaDetailPage = React.lazy(() => import('./pages/compta/ProformaDetai
 const InvoiceDirectoryPage = React.lazy(() => import('./pages/compta/InvoiceDirectoryPage'));
 const InvoiceDetailPage = React.lazy(() => import('./pages/compta/InvoiceDetailPage'));
 const ClientFinancialPage = React.lazy(() => import('./pages/compta/ClientFinancialPage'));
+const CustomerTaxStatementsPage = React.lazy(() => import('./pages/compta/CustomerTaxStatementsPage'));
 const BLDirectoryPage = React.lazy(() => import('./pages/compta/BLDirectoryPage'));
 const BLDetailPage = React.lazy(() => import('./pages/compta/BLDetailPage'));
 const ReturnsPage = React.lazy(() => import('./pages/compta/ReturnsPage'));
@@ -62,10 +64,16 @@ const StockReceivePage = React.lazy(() => import('./pages/inventaire/StockReceiv
 const StockTransferPage = React.lazy(() => import('./pages/inventaire/StockTransferPage'));
 const StockCountPage = React.lazy(() => import('./pages/inventaire/StockCountPage'));
 const StockReportsPage = React.lazy(() => import('./pages/inventaire/StockReportsPage'));
+const StockComptablePage = React.lazy(() => import('./pages/inventaire/StockComptablePage'));
 const PurchaseOrdersPage = React.lazy(() => import('./pages/inventaire/PurchaseOrdersPage'));
 const PurchaseOrderDetailPage = React.lazy(() => import('./pages/inventaire/PurchaseOrderDetailPage'));
 const StockVouchersPage = React.lazy(() => import('./pages/inventaire/StockVouchersPage'));
 const StockVoucherPage = React.lazy(() => import('./pages/inventaire/StockVoucherPage'));
+const SupplierInvoicesPage = React.lazy(() => import('./pages/fournisseurs/SupplierInvoicesPage'));
+const SupplierInvoiceDetailPage = React.lazy(() => import('./pages/fournisseurs/SupplierInvoiceDetailPage'));
+const SuppliersPage = React.lazy(() => import('./pages/fournisseurs/SuppliersPage'));
+const PaymentDelaysPage = React.lazy(() => import('./pages/fournisseurs/PaymentDelaysPage'));
+const WithholdingsPage = React.lazy(() => import('./pages/fournisseurs/WithholdingsPage'));
 const EmployeesPage = React.lazy(() => import('./pages/paie/EmployeesPage'));
 const PayslipsPage = React.lazy(() => import('./pages/paie/PayslipsPage'));
 const PayslipDetailPage = React.lazy(() => import('./pages/paie/PayslipDetailPage'));
@@ -233,6 +241,7 @@ function AppContent() {
                 <Route path="/compta/invoices" element={<InvoiceDirectoryPage />} />
                 <Route path="/compta/invoices/:id" element={<InvoiceDetailPage />} />
                 <Route path="/compta/clients" element={<ClientFinancialPage />} />
+                <Route path="/compta/releves-fiscaux" element={<CustomerTaxStatementsPage />} />
                 <Route path="/compta/returns" element={<ReturnsPage />} />
                 <Route path="/compta/avoirs" element={<AvoirDirectoryPage />} />
                 <Route path="/compta/avoirs/:id" element={<AvoirDetailPage />} />
@@ -253,6 +262,16 @@ function AppContent() {
                 <Route path="/inventaire/commandes/:id" element={<PurchaseOrderDetailPage />} />
                 <Route path="/inventaire/bons" element={<StockVouchersPage />} />
                 <Route path="/inventaire/bons/:id" element={<StockVoucherPage />} />
+              </>
+            )}
+            {access.stockValuation && <Route path={STOCK_VALUATION_PATH} element={<StockComptablePage />} />}
+            {access.supplierInvoices && (
+              <>
+                <Route path="/compta/factures-fournisseurs" element={<SupplierInvoicesPage />} />
+                <Route path="/compta/factures-fournisseurs/:id" element={<SupplierInvoiceDetailPage />} />
+                <Route path="/compta/fournisseurs" element={<SuppliersPage />} />
+                <Route path="/compta/delais-paiement" element={<PaymentDelaysPage />} />
+                <Route path="/compta/retenues-source" element={<WithholdingsPage />} />
               </>
             )}
             {access.payroll && (

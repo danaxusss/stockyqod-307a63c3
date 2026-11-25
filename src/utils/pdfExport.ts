@@ -4,8 +4,14 @@ import autoTable from 'jspdf-autotable';
 import { Quote } from '../types';
 import { CompanySettings, QuoteStyle } from './companySettings';
 import { getQuoteItemBarcode, getQuoteItemBrand, getQuoteItemName } from './quoteItemDisplay';
-import { discountRate, invoicePayment, lineSubtotal } from './documentLines';
+import { discountRate, documentTvaRate, formatDay, invoiceDueDay, invoicePayment, invoiceSettlements, isProvisionalNumber, lineSubtotal, DEFAULT_PAYMENT_DAYS, PROVISIONAL_NUMBER_PREFIX } from './documentLines';
+import { amountInWordsFr } from './amountInWords';
 import { loadCurrentProductImages, resolveProductImageUrl } from './productImages';
+
+type DocumentType = 'quote' | 'bl' | 'proforma' | 'invoice' | 'avoir' | 'bon_commande';
+
+/** Invoices and credit notes carry the mentions of CGI art. 145-III whatever the print settings. */
+export const isLegalBillingDocument = (type: DocumentType) => type === 'invoice' || type === 'avoir';
 
 async function generateQRDataUrl(text: string): Promise<string | null> {
   try {
@@ -60,66 +66,6 @@ const DARK: [number, number, number] = [30, 30, 30];
 const GRAY: [number, number, number] = [100, 100, 100];
 const WHITE: [number, number, number] = [255, 255, 255];
 
-function numberToWordsFr(amount: number): string {
-  const UNITS = ['', 'UN', 'DEUX', 'TROIS', 'QUATRE', 'CINQ', 'SIX', 'SEPT', 'HUIT', 'NEUF',
-    'DIX', 'ONZE', 'DOUZE', 'TREIZE', 'QUATORZE', 'QUINZE', 'SEIZE', 'DIX-SEPT', 'DIX-HUIT', 'DIX-NEUF'];
-  const TENS = ['', 'DIX', 'VINGT', 'TRENTE', 'QUARANTE', 'CINQUANTE', 'SOIXANTE'];
-
-  function below100(n: number): string {
-    if (n === 0) return '';
-    if (n < 20) return UNITS[n];
-    const t = Math.floor(n / 10);
-    const u = n % 10;
-    if (t <= 6) {
-      if (u === 0) return TENS[t];
-      if (u === 1) return `${TENS[t]} ET UN`;
-      return `${TENS[t]}-${UNITS[u]}`;
-    }
-    if (t === 7) {
-      if (u === 0) return 'SOIXANTE-DIX';
-      if (u === 1) return 'SOIXANTE ET ONZE';
-      return `SOIXANTE-${UNITS[10 + u]}`;
-    }
-    if (t === 8) {
-      if (u === 0) return 'QUATRE-VINGTS';
-      return `QUATRE-VINGT-${UNITS[u]}`;
-    }
-    if (u === 0) return 'QUATRE-VINGT-DIX';
-    return `QUATRE-VINGT-${UNITS[10 + u]}`;
-  }
-
-  function below1000(n: number): string {
-    if (n === 0) return '';
-    if (n < 100) return below100(n);
-    const h = Math.floor(n / 100);
-    const rest = n % 100;
-    const restStr = below100(rest);
-    if (h === 1) return rest === 0 ? 'CENT' : `CENT ${restStr}`;
-    const hWord = UNITS[h];
-    if (rest === 0) return `${hWord} CENTS`;
-    return `${hWord} CENT ${restStr}`;
-  }
-
-  function convert(n: number): string {
-    if (n === 0) return 'ZÉRO';
-    const parts: string[] = [];
-    const millions = Math.floor(n / 1_000_000);
-    const thousands = Math.floor((n % 1_000_000) / 1000);
-    const below = n % 1000;
-    if (millions > 0) parts.push(millions === 1 ? 'UN MILLION' : `${below1000(millions)} MILLIONS`);
-    if (thousands > 0) parts.push(thousands === 1 ? 'MILLE' : `${below1000(thousands)} MILLE`);
-    if (below > 0) parts.push(below1000(below));
-    return parts.join(' ');
-  }
-
-  const totalCents = Math.round(amount * 100);
-  const dh = Math.floor(totalCents / 100);
-  const ct = totalCents % 100;
-  let result = `${convert(dh)} DIRHAM${dh > 1 ? 'S' : ''}`;
-  if (ct > 0) result += ` ET ${convert(ct)} CENTIME${ct > 1 ? 'S' : ''}`;
-  return result + ' TTC';
-}
-
 export class PdfExportService {
   static formatDate(date: Date): string {
     const d = String(date.getDate()).padStart(2, '0');
@@ -134,7 +80,18 @@ export class PdfExportService {
     return `${intPart},${parts[1]}`;
   }
 
-  static async exportQuoteToPdf(quote: Quote, settings?: CompanySettings | null, techSheetsUrl?: string, techSheetsExpiryLabel?: string, useStampOverride?: boolean, documentType: 'quote' | 'bl' | 'proforma' | 'invoice' | 'avoir' | 'bon_commande' = 'quote', blShowPrices?: boolean, printTTCOnly = true, showProductImagesOverride?: boolean, returnBlob?: boolean, techSheetsLabel?: string): Promise<void | Blob> {
+  static async exportQuoteToPdf(quote: Quote, settings?: CompanySettings | null, techSheetsUrl?: string, techSheetsExpiryLabel?: string, useStampOverride?: boolean, documentType: DocumentType = 'quote', blShowPrices?: boolean, printTTCOnly = true, showProductImagesOverride?: boolean, returnBlob?: boolean, techSheetsLabel?: string): Promise<void | Blob> {
+    const { doc, filename } = await this.buildQuotePdf(quote, settings, techSheetsUrl, techSheetsExpiryLabel, useStampOverride, documentType, blShowPrices, printTTCOnly, showProductImagesOverride, techSheetsLabel);
+    if (returnBlob) return doc.output('blob') as unknown as Blob;
+    doc.save(filename);
+  }
+
+  /** The document as a PDF (not saved): what exportQuoteToPdf saves or returns as a blob. */
+  static async buildQuotePdf(quote: Quote, settings?: CompanySettings | null, techSheetsUrl?: string, techSheetsExpiryLabel?: string, useStampOverride?: boolean, documentType: DocumentType = 'quote', blShowPrices?: boolean, printTTCOnlyOption = true, showProductImagesOverride?: boolean, techSheetsLabel?: string): Promise<{ doc: jsPDF; filename: string }> {
+    // Invoices and credit notes always show HT, VAT and TTC (CGI art. 145-III):
+    // "TTC only" stays a choice for quotes, proformas and delivery notes.
+    const legalDoc = isLegalBillingDocument(documentType);
+    const printTTCOnly = legalDoc ? false : printTTCOnlyOption;
     const style: QuoteStyle = settings?.quote_style || {
       accentColor: '#3B82F6', fontFamily: 'helvetica', showBorders: true,
       borderRadius: 1, headerSize: 'large', totalsStyle: 'highlighted', template: 'classic',
@@ -152,17 +109,24 @@ export class PdfExportService {
     const contentWidth = pageWidth - margin * 2;
     let y = margin;
 
-    const fields = settings?.quote_visible_fields || {
+    const configuredFields = settings?.quote_visible_fields || {
       showLogo: true, showCompanyAddress: true, showCompanyPhone: true,
       showCompanyEmail: true, showCompanyWebsite: false, showCompanyICE: true,
       showClientICE: true, showTVA: true, showTVABreakdown: true, showNotes: true,
       showPaymentTerms: true, showValidityDate: true, printTTCOnly: false,
       printColumns: { showImage: false, showBrand: true, showBarcode: true, showUnitPrice: true, showDiscount: true },
     };
+    // Mandatory mentions cannot be hidden on invoices and credit notes:
+    // seller and buyer ICE, the VAT detail and, on invoices, the payment terms.
+    const fields = legalDoc
+      ? { ...configuredFields, showCompanyICE: true, showClientICE: true, showTVA: true, showTVABreakdown: true, ...(documentType === 'invoice' ? { showPaymentTerms: true } : {}) }
+      : configuredFields;
 
     const printCols = fields.printColumns || { showImage: false, showBrand: true, showBarcode: true, showUnitPrice: true, showDiscount: true };
 
-    const tvaRate = settings?.tva_rate ?? 20;
+    // The rate frozen on the document, not the company's current one.
+    const tvaRate = documentTvaRate(quote, settings?.tva_rate);
+    const exempt = tvaRate === 0;
     const companyName = settings?.company_name || 'Mon Entreprise';
 
     const hasDiscount = quote.items.some(item => (item.discount ?? 0) > 0);
@@ -178,7 +142,7 @@ export class PdfExportService {
       if (settings?.rc) legalParts.push(`RC N° ${settings.rc}`);
       if (settings?.if_number) legalParts.push(`IF N° ${settings.if_number}`);
       if (settings?.cnss) legalParts.push(`CNSS N° ${settings.cnss}`);
-      if (settings?.patente) legalParts.push(`PATENTE N° ${settings.patente}`);
+      if (settings?.patente) legalParts.push(`TP N° ${settings.patente}`);
       if (settings?.ice && fields.showCompanyICE) legalParts.push(`ICE N° ${settings.ice}`);
       if (legalParts.length > 0) lines.push(legalParts.join(' - '));
 
@@ -202,9 +166,13 @@ export class PdfExportService {
     const footerTotalHeight = footerLines.length * footerLineHeight + 8;
 
     // === Document type label ===
+    // A draft invoice is not an invoice yet: it says BROUILLON and shows no
+    // number of the series (CGI art. 145-III), only its provisional reference.
+    const draftInvoice = documentType === 'invoice' && quote.status === 'draft';
     const docTypeLabel = documentType === 'bl' ? 'BON DE LIVRAISON'
       : documentType === 'bon_commande' ? 'BON DE COMMANDE'
       : documentType === 'proforma' ? 'PROFORMA'
+      : draftInvoice ? 'BROUILLON'
       : documentType === 'invoice' ? 'FACTURE'
       : documentType === 'avoir' ? 'AVOIR'
       : 'DEVIS';
@@ -233,7 +201,9 @@ export class PdfExportService {
     const buildMetaRows = (): [string, string][] => {
       const rows: [string, string][] = [
         ['Date', this.formatDate(quoteDate)],
-        ['N° de piece', quote.quoteNumber],
+        draftInvoice
+          ? ['Réf. brouillon', isProvisionalNumber(quote.quoteNumber) ? quote.quoteNumber.slice(PROVISIONAL_NUMBER_PREFIX.length) : `${quote.quoteNumber} (brouillon)`]
+          : ['N° de piece', quote.quoteNumber],
       ];
       if (quote.commandNumber) rows.push(['N° de cmd', quote.commandNumber]);
       if (fields.showValidityDate && documentType === 'quote') {
@@ -243,7 +213,9 @@ export class PdfExportService {
         rows.push(['Validite', `${validityDays} j (${this.formatDate(validityDate)})`]);
       }
       if (documentType === 'invoice') {
-        if (quote.payment_date) rows.push(['Date paiement', this.formatDate(new Date(quote.payment_date))]);
+        // Due date (loi 69-21): the stored one, else the legal 60 days.
+        rows.push(['Échéance', formatDay(invoiceDueDay(quote))]);
+        if (quote.payment_date) rows.push(['Date paiement', formatDay(String(quote.payment_date).slice(0, 10))]);
         if (quote.payment_method) rows.push(['Mode paiement', quote.payment_method]);
         if (quote.payment_reference) rows.push(['N° référence', quote.payment_reference]);
         if (quote.payment_bank) rows.push(['Banque', quote.payment_bank]);
@@ -973,12 +945,15 @@ export class PdfExportService {
 
       const footerBaseY = pageHeight - footerTotalHeight - 2;
 
-      // Disclaimer
-      const disclaimer = '* Les produits et prix de ce devis peuvent légèrement évoluer lors de la confirmation selon les disponibilités en stock et les variations de prix à l\'arrivage.';
-      doc.setFont(font, 'italic');
-      doc.setFontSize(4.5);
-      doc.setTextColor(160, 160, 160);
-      doc.text(disclaimer, pageWidth / 2, footerBaseY - 3.5, { align: 'center', maxWidth: contentWidth });
+      // Disclaimer: a quote's prices may still move; an invoice, a credit
+      // note or a delivery note states what was sold, so it carries none.
+      if (documentType === 'quote') {
+        const disclaimer = '* Les produits et prix de ce devis peuvent légèrement évoluer lors de la confirmation selon les disponibilités en stock et les variations de prix à l\'arrivage.';
+        doc.setFont(font, 'italic');
+        doc.setFontSize(4.5);
+        doc.setTextColor(160, 160, 160);
+        doc.text(disclaimer, pageWidth / 2, footerBaseY - 3.5, { align: 'center', maxWidth: contentWidth });
+      }
 
       if (template !== 'minimal') {
         doc.setDrawColor(...ACCENT);
@@ -1027,6 +1002,15 @@ export class PdfExportService {
       y = await drawSplitHeader();
     } else {
       y = await drawClassicHeader();
+    }
+
+    // A credit note names the invoice it corrects.
+    if (documentType === 'avoir' && quote.source_invoice) {
+      doc.setFont(font, 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(...DARK);
+      doc.text(`Avoir sur facture N° ${quote.source_invoice.quoteNumber} du ${formatDay(quote.source_invoice.day)}`, margin, y + 1);
+      y += 6;
     }
 
     // ============================================================
@@ -1381,37 +1365,52 @@ export class PdfExportService {
             } else {
               drawTotalsRow('TOTAL HT', this.formatCurrency(totalHT) + ' Dh');
             }
-            drawTotalsRow(`TVA ${tvaRate}%`, this.formatCurrency(totalTVA) + ' Dh');
+            // At 0 % the exemption is stated below the totals, not as a 0 % line.
+            if (!exempt) drawTotalsRow(`TVA ${tvaRate}%`, this.formatCurrency(totalTVA) + ' Dh');
           }
         }
         drawTotalsRow('TOTAL TTC', this.formatCurrency(totalTTC) + ' Dh', true);
       }
 
       // Payment summary (invoice)
+      // Money received and VAT withheld by the client are shown apart: the
+      // withholding settles the invoice but is not money received.
       if (documentType === 'invoice') {
-        const avance = quote.avance_amount ?? 0;
-        const paymentsTotal = (quote.payment_methods_json || []).reduce((s: number, e: any) => s + (e.amount || 0), 0);
-        const totalPaid = avance + paymentsTotal;
-        const reste = Math.max(0, totalTTC - totalPaid);
-        if (avance > 0) drawTotalsRow('AVANCE REÇUE', '-' + this.formatCurrency(avance) + ' Dh');
-        if (paymentsTotal > 0) drawTotalsRow('PAIEMENTS REÇUS', '-' + this.formatCurrency(paymentsTotal) + ' Dh');
+        const settled = invoicePayment({ ...quote, totalAmount: totalTTC });
+        const totalPaid = settled.paid;
+        const reste = Math.max(0, Math.round((totalTTC - totalPaid) * 100) / 100);
+        if (settled.received > 0) drawTotalsRow('ENCAISSÉ', '-' + this.formatCurrency(settled.received) + ' Dh');
+        if (settled.withheld > 0) drawTotalsRow('TVA RETENUE PAR LE CLIENT', '-' + this.formatCurrency(settled.withheld) + ' Dh');
         if (totalPaid > 0) {
           if (reste <= 0) {
             drawTotalsRow('FACTURE SOLDÉE ✓', this.formatCurrency(totalTTC) + ' Dh', true);
           } else {
-            drawTotalsRow('TOTAL PAYÉ', this.formatCurrency(totalPaid) + ' Dh');
+            drawTotalsRow(settled.withheld > 0 ? 'TOTAL RÉGLÉ' : 'TOTAL PAYÉ', this.formatCurrency(totalPaid) + ' Dh');
             drawTotalsRow('RESTE À PAYER', this.formatCurrency(reste) + ' Dh', true);
           }
         }
       }
+
+      // VAT exemption, with the text the company chose (e.g. its CGI article).
+      if (exempt) {
+        const mention = (settings?.vat_exemption_text || '').trim();
+        doc.setFont(font, 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(...DARK);
+        const exemptLines = doc.splitTextToSize(`Exonéré de TVA${mention ? ` - ${mention}` : ''}`, contentWidth);
+        y += 2;
+        doc.text(exemptLines, margin, y + 3);
+        y += exemptLines.length * 3.5 + 3;
+      }
     }
 
-    // === INVOICE: "Arrêté" block ===
-    if (documentType === 'invoice') {
-      const amountInLetters = numberToWordsFr(quote.totalAmount);
+    // === INVOICE / CREDIT NOTE: "Arrêté" block ===
+    if (legalDoc) {
+      const amountInLetters = `${amountInWordsFr(quote.totalAmount)} TTC`;
       const blockPadX = 4;
       const blockPadY = 3.5;
-      const labelText = 'Arrêté la présente facture à la somme de :';
+      const labelText = documentType === 'avoir' ? 'Arrêté le présent avoir à la somme de :'
+        : draftInvoice ? 'Montant du brouillon (facture non émise) :' : 'Arrêté la présente facture à la somme de :';
       doc.setFontSize(7);
       const lettersLines = doc.splitTextToSize(amountInLetters, contentWidth - blockPadX * 2 - 2);
       const blockH = blockPadY * 2 + 5 + lettersLines.length * 4.5;
@@ -1437,13 +1436,54 @@ export class PdfExportService {
       y += blockH + 4;
     }
 
+    // === INVOICE: settlements, each at its own date ===
+    // VAT withheld by the client is told apart from money received; the stamp
+    // duty on cash is shown on top of the payment, outside the invoice total.
+    if (documentType === 'invoice') {
+      const settlements = invoiceSettlements(quote).filter(s => s.amount > 0);
+      if (settlements.length > 0) {
+        const lines: string[] = [];
+        for (const s of settlements) {
+          const what = s.kind === 'vat_withholding'
+            ? `TVA retenue à la source par le client (art. 117 CGI${s.withholdingRate && s.withholdingRate !== 100 ? `, ${s.withholdingRate} %` : ''}) - non encaissée`
+            : [s.source === 'avance' ? `Avance${s.method ? ` ${s.method}` : ''}` : (s.method || 'Règlement'), s.reference, s.bank].filter(Boolean).join(' · ');
+          const stamp = s.stampDuty > 0 ? ` + droit de timbre 0,25 % : ${this.formatCurrency(s.stampDuty)} Dh (perçu en sus)` : '';
+          lines.push(`${formatDay(s.date)} · ${what} : ${this.formatCurrency(s.amount)} Dh${stamp}`);
+        }
+        const stampTotal = settlements.reduce((t, s) => t + s.stampDuty, 0);
+        if (stampTotal > 0) lines.push(`Droit de timbre sur règlements en espèces (art. 252 CGI) : ${this.formatCurrency(Math.round(stampTotal * 100) / 100)} Dh, hors total de la facture.`);
+        doc.setFontSize(7);
+        const wrapped = lines.flatMap(l => doc.splitTextToSize(l, contentWidth - 4));
+        const blockH = 5 + wrapped.length * 3.4;
+        if (y + blockH > pageHeight - footerTotalHeight - 8) {
+          doc.addPage();
+          drawPageDecorations();
+          y = 12;
+        }
+        doc.setFont(font, 'bold');
+        doc.setTextColor(...DARK);
+        doc.text('Règlements :', margin, y + 3);
+        doc.setFont(font, 'normal');
+        doc.setTextColor(...GRAY);
+        doc.text(wrapped, margin + 2, y + 6.5);
+        y += blockH + 3;
+      }
+    }
+
     // === PAYMENT TERMS ===
-    if (!isBL && !isBC && fields.showPaymentTerms) {
+    // Invoices state their terms and due date (loi 69-21); a credit note has none.
+    if (!isBL && !isBC && documentType !== 'avoir' && fields.showPaymentTerms) {
       doc.setFontSize(7);
       doc.setFont(font, 'italic');
       doc.setTextColor(...GRAY);
-      doc.text(`Conditions de reglement : ${settings?.payment_terms || '30 jours'}`, margin, y);
-      y += 5;
+      const days = settings?.payment_terms_days ?? DEFAULT_PAYMENT_DAYS;
+      const typed = (settings?.payment_terms || '').trim();
+      const termsText = documentType === 'invoice'
+        ? `Conditions de règlement : ${typed || (days > 0 ? `${days} jours à compter de la date de facture` : 'comptant')} · Échéance : ${formatDay(invoiceDueDay(quote))}`
+        : `Conditions de règlement : ${typed || '30 jours'}`;
+      const termsLines = doc.splitTextToSize(termsText, contentWidth);
+      doc.text(termsLines, margin, y);
+      y += termsLines.length * 3.5 + 1.5;
     }
 
     // === NOTES ===
@@ -1538,6 +1578,18 @@ export class PdfExportService {
     const totalPagesCount = doc.getNumberOfPages();
     for (let i = 1; i <= totalPagesCount; i++) {
       doc.setPage(i);
+      if (draftInvoice) {
+        // Across every page: a draft must never pass for an issued invoice.
+        doc.setGState(doc.GState({ opacity: 0.12 }));
+        doc.setFont(font, 'bold');
+        doc.setFontSize(54);
+        doc.setTextColor(200, 0, 0);
+        doc.text('BROUILLON', pageWidth / 2, pageHeight / 2, { align: 'center', angle: 35 });
+        doc.setGState(doc.GState({ opacity: 1 }));
+        doc.setFontSize(7);
+        doc.setTextColor(200, 0, 0);
+        doc.text('BROUILLON - sans numéro, ce document n’est pas une facture.', margin, pageHeight - footerTotalHeight - 4);
+      }
       doc.setFontSize(6);
       doc.setFont(font, 'normal');
       doc.setTextColor(...GRAY);
@@ -1548,12 +1600,13 @@ export class PdfExportService {
 
     // === SAVE ===
     const docPrefix = documentType === 'bl' ? 'BL'
+      : documentType === 'bon_commande' ? 'BC'
       : documentType === 'proforma' ? 'Proforma'
       : documentType === 'invoice' ? 'Facture'
+      : documentType === 'avoir' ? 'Avoir'
       : 'Devis';
-    const filename = `${docPrefix}_${quote.quoteNumber}_${this.formatDate(quote.createdAt).replace(/\//g, '-')}.pdf`;
-    if (returnBlob) return doc.output('blob') as unknown as Blob;
-    doc.save(filename);
+    const filename = `${draftInvoice ? 'Brouillon_facture' : docPrefix}_${quote.quoteNumber}_${this.formatDate(quote.createdAt).replace(/\//g, '-')}.pdf`;
+    return { doc, filename };
   }
 
   static async generatePdfBlob(
@@ -1574,7 +1627,7 @@ export class PdfExportService {
       : documentType === 'invoice' ? 'Facture'
       : documentType === 'avoir' ? 'Avoir'
       : 'Devis';
-    const filename = `${docPrefix}_${quote.quoteNumber}.pdf`;
+    const filename = `${documentType === 'invoice' && quote.status === 'draft' ? 'Brouillon_facture' : docPrefix}_${quote.quoteNumber}.pdf`;
     const blob = await this.exportQuoteToPdf(quote, settings, techSheetsUrl, techSheetsExpiryLabel, useStampOverride, documentType, blShowPrices, printTTCOnly, showProductImagesOverride, true, techSheetsLabel) as unknown as Blob;
     return { blob, filename };
   }
@@ -1604,7 +1657,9 @@ export class PdfExportService {
     doc.text(clientName, pageWidth - margin, 12, { align: 'right' });
     y = 24;
 
-    const tvaDivisor = 1 + tvaRate / 100;
+    // Each document at its own frozen rate; `tvaRate` (the company's) only
+    // for documents from before rates were stored.
+    const htOf = (d: Quote, ttc: number) => ttc / (1 + documentTvaRate(d, tvaRate) / 100);
 
     // Money received on each invoice: advance plus recorded payments.
     const getStatus = (inv: Quote): string => {
@@ -1617,15 +1672,16 @@ export class PdfExportService {
     // Invoices, and credit notes as negative lines: the total is what the
     // client owes, the same as the client balances page.
     const isAvoir = (d: Quote) => d.document_type === 'avoir';
-    const headers = [['N° Document', 'Date', 'HT', 'TVA', 'TTC', 'Payé', 'Reste', 'Statut']];
+    // "Réglé" = money received + VAT withheld by the client; both detailed below.
+    const headers = [['N° Document', 'Date', 'HT', 'TVA', 'TTC', 'Réglé', 'Reste', 'Statut']];
     const body = documents.map(d => {
       const ttc = isAvoir(d) ? -Math.abs(d.totalAmount) : d.totalAmount;
-      const ht = ttc / tvaDivisor;
+      const ht = htOf(d, ttc);
       const tva = ttc - ht;
       const { paid, reste } = isAvoir(d) ? { paid: 0, reste: ttc } : invoicePayment(d);
       const dateStr = d.quote_date ? d.quote_date : d.createdAt.toLocaleDateString('fr-FR');
       return [
-        d.quoteNumber || '-',
+        isProvisionalNumber(d.quoteNumber) ? 'Brouillon' : (d.quoteNumber || '-'),
         dateStr,
         this.formatCurrency(ht),
         this.formatCurrency(tva),
@@ -1641,7 +1697,7 @@ export class PdfExportService {
     const totalTTC = invoicesTTC - avoirsTTC;
     const totalPaid = documents.filter(d => !isAvoir(d)).reduce((s, i) => s + invoicePayment(i).paid, 0);
     const totalReste = totalTTC - totalPaid;
-    const totalHT = totalTTC / tvaDivisor;
+    const totalHT = documents.reduce((s, d) => s + htOf(d, isAvoir(d) ? -Math.abs(d.totalAmount) : d.totalAmount), 0);
     const totalTVA = totalTTC - totalHT;
 
     // A negative rest means the client is in credit.
@@ -1671,6 +1727,38 @@ export class PdfExportService {
       },
       margin: { left: margin, right: margin },
     });
+
+    // Every settlement at its own date: money received apart from the VAT
+    // the client withheld (which it pays to the tax office itself).
+    const settlements = documents.filter(d => !isAvoir(d)).flatMap(d => invoiceSettlements(d)
+      .filter(s => s.amount > 0)
+      .map(s => ({ s, number: isProvisionalNumber(d.quoteNumber) ? 'Brouillon' : (d.quoteNumber || '-') })))
+      .sort((a, b) => a.s.date.localeCompare(b.s.date));
+    if (settlements.length > 0) {
+      const received = settlements.filter(x => x.s.kind === 'payment').reduce((t, x) => t + x.s.amount, 0);
+      const withheld = settlements.filter(x => x.s.kind === 'vat_withholding').reduce((t, x) => t + x.s.amount, 0);
+      const rows = settlements.map(({ s, number }) => [
+        formatDay(s.date),
+        number,
+        s.kind === 'vat_withholding' ? 'TVA retenue par le client' : [s.source === 'avance' ? 'Avance' : '', s.method || 'Règlement'].filter(Boolean).join(' '),
+        s.reference || '',
+        this.formatCurrency(s.amount),
+      ]);
+      rows.push(['', '', 'Encaissé', '', this.formatCurrency(received)]);
+      if (withheld > 0) rows.push(['', '', 'TVA retenue par le client', '', this.formatCurrency(withheld)]);
+      autoTable(doc, {
+        startY: (doc.lastAutoTable?.finalY || y) + 8,
+        head: [['Date', 'Document', 'Règlement', 'Référence', 'Montant']],
+        body: rows,
+        styles: { font, fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: ACCENT, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+        columnStyles: { 0: { cellWidth: 22 }, 1: { cellWidth: 30 }, 4: { halign: 'right', cellWidth: 28 } },
+        willDrawCell: (data: { section: string; row: { index: number }; cell: { styles: { fontStyle: string } } }) => {
+          if (data.section === 'body' && data.row.index >= settlements.length) data.cell.styles.fontStyle = 'bold';
+        },
+        margin: { left: margin, right: margin },
+      });
+    }
 
     return doc;
   }
@@ -1794,10 +1882,14 @@ async function buildPayslipPdf(payslip: any, settings: any): Promise<{ doc: any;
   iy += 11;
   infoField('N° CNSS', emp.cnss_number || '—', col1x, iy);
 
-  // Ancienneté years
+  // Ancienneté: completed years at the end of the pay period, not today.
   let ancienLabel = '—';
   if (emp.hire_date) {
-    const years = Math.floor((Date.now() - new Date(emp.hire_date).getTime()) / (365.25 * 24 * 3600 * 1000));
+    const [hy, hm, hd] = String(emp.hire_date).slice(0, 10).split('-').map(Number);
+    const end = new Date(payslip.period_year, payslip.period_month || 12, 0);
+    let years = end.getFullYear() - hy;
+    if (end.getMonth() + 1 < hm || (end.getMonth() + 1 === hm && end.getDate() < hd)) years -= 1;
+    years = Math.max(0, years || 0);
     ancienLabel = `${years} an${years > 1 ? 's' : ''} (${Math.round(payslip.anciennete_rate * 100)}%)`;
   }
   infoField('Ancienneté', ancienLabel, col2x, iy);
@@ -1808,24 +1900,39 @@ async function buildPayslipPdf(payslip: any, settings: any): Promise<{ doc: any;
   y += 34;
   doc.setTextColor(...DARK);
 
-  // ── Earnings table ──
+  // Rates of the settings the payslip was computed with (official values of
+  // its year when the caller did not pass them).
+  const rates = payslip.rates || (await import('./payrollDefaults')).officialSettingsFor(payslip.period_year);
+  const pctLabel = (r: number) => `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format((Number(r) || 0) * 100)} %`;
+  const money = (n: number) => PdfExportService.formatCurrency(Number(n) || 0);
+
+  // Lines: the payslip's own (with their flags), else the legacy items
+  // (earnings, and deductions always taken after tax).
+  type PdfLine = { label: string; type: 'gain' | 'retenue'; amount: number; base?: string; quantity?: number; rate?: number; grossDeduction: boolean };
+  const pdfLines: PdfLine[] = Array.isArray(payslip.lines)
+    ? payslip.lines.map((l: any) => ({
+      label: l.label, type: l.type, amount: Number(l.amount) || 0, base: l.base, quantity: l.quantity, rate: l.rate,
+      // A deduction subject to a contribution or the IR is an absence: it lowers the gross.
+      grossDeduction: l.type === 'retenue' && !!(l.soumis_cnss || l.soumis_amo || l.soumis_ir || l.soumis_cimr),
+    }))
+    : (payslip.items || []).map((i: any) => ({ label: i.label, type: i.item_type === 'earning' ? 'gain' : 'retenue', amount: Number(i.amount) || 0, grossDeduction: false }));
+
+  // ── Earnings table: its rows add up to the gross (absences negative) ──
   y += 4;
-  const earningItems = (payslip.items || []).filter((i: any) => i.item_type === 'earning');
+  const hourly = (Number(payslip.base_salary) || 0) / 191;
+  const lineBase = (l: PdfLine) => (l.base === 'heures'
+    ? `${String(l.quantity ?? 0).replace('.', ',')} h × ${money(hourly)} × ${String(l.rate ?? 0).replace('.', ',')}`
+    : '');
 
   const earningsBody: any[] = [
-    ['Salaire de base', '', PdfExportService.formatCurrency(payslip.base_salary)],
+    ['Salaire de base', `${payslip.hours_worked || 191} h`, money(payslip.base_salary)],
   ];
   if (payslip.anciennete_amount > 0) {
-    earningsBody.push([
-      `Prime d'ancienneté (${Math.round(payslip.anciennete_rate * 100)}%)`,
-      '',
-      PdfExportService.formatCurrency(payslip.anciennete_amount),
-    ]);
+    earningsBody.push([`Prime d'ancienneté (${Math.round(payslip.anciennete_rate * 100)}%)`, '', money(payslip.anciennete_amount)]);
   }
-  earningItems.forEach((item: any) => {
-    earningsBody.push([item.label, '', PdfExportService.formatCurrency(item.amount)]);
-  });
-  earningsBody.push([{ content: 'SALAIRE BRUT', styles: { fontStyle: 'bold' } }, '', { content: PdfExportService.formatCurrency(payslip.total_gross), styles: { fontStyle: 'bold' } }]);
+  pdfLines.filter(l => l.type === 'gain').forEach(l => earningsBody.push([l.label, lineBase(l), money(l.amount)]));
+  pdfLines.filter(l => l.grossDeduction).forEach(l => earningsBody.push([l.label, lineBase(l), `-${money(l.amount)}`]));
+  earningsBody.push([{ content: 'SALAIRE BRUT', styles: { fontStyle: 'bold' } }, '', { content: money(payslip.total_gross), styles: { fontStyle: 'bold' } }]);
 
   autoTable(doc, {
     startY: y,
@@ -1833,7 +1940,7 @@ async function buildPayslipPdf(payslip: any, settings: any): Promise<{ doc: any;
     body: earningsBody,
     styles: { font, fontSize: 8, cellPadding: 2 },
     headStyles: { fillColor: ACCENT, textColor: WHITE, fontStyle: 'bold', fontSize: 8 },
-    columnStyles: { 0: { cellWidth: contentWidth * 0.6 }, 1: { cellWidth: contentWidth * 0.2 }, 2: { cellWidth: contentWidth * 0.2, halign: 'right' } },
+    columnStyles: { 0: { cellWidth: contentWidth * 0.55 }, 1: { cellWidth: contentWidth * 0.25 }, 2: { cellWidth: contentWidth * 0.2, halign: 'right' } },
     margin: { left: margin, right: margin },
     willDrawCell: (data: any) => {
       if (data.section === 'body' && data.row.index === earningsBody.length - 1) {
@@ -1844,29 +1951,32 @@ async function buildPayslipPdf(payslip: any, settings: any): Promise<{ doc: any;
 
   y = (doc as any).lastAutoTable.finalY + 4;
 
-  // ── Deductions table ──
-  const deductionItems = (payslip.items || []).filter((i: any) => i.item_type === 'deduction');
-
+  // ── Deductions table: its rows add up to "Total retenues" ──
+  const reg = Number(payslip.ir_regularisation) || 0;
+  const irBeforeReg = Math.round(((Number(payslip.ir_amount) || 0) + reg) * 100) / 100;
+  const cnssBase = payslip.cnss_base != null ? Math.min(Number(payslip.cnss_base), rates.cnss_cap) : null;
   const deductionsBody: any[] = [
-    ['CNSS (4,48% plafonné)', '', PdfExportService.formatCurrency(payslip.cnss_employee)],
-    ['AMO (2,26%)', '', PdfExportService.formatCurrency(payslip.amo_employee)],
-    ['IR (barème progressif)', '', PdfExportService.formatCurrency(payslip.ir_amount)],
+    [`CNSS (${pctLabel(rates.cnss_rate_emp)} plafonné)`, cnssBase != null ? money(cnssBase) : '', money(payslip.cnss_employee)],
+    [`AMO (${pctLabel(rates.amo_rate_emp)})`, payslip.amo_base != null ? money(payslip.amo_base) : '', money(payslip.amo_employee)],
   ];
   if (payslip.cimr_employee > 0) {
-    deductionsBody.push(['CIMR', '', PdfExportService.formatCurrency(payslip.cimr_employee)]);
+    const cimrRate = Number(emp.cimr_rate) || 0;
+    deductionsBody.push([cimrRate ? `CIMR (${pctLabel(cimrRate / 100)})` : 'CIMR', '', money(payslip.cimr_employee)]);
   }
-  deductionItems.forEach((item: any) => {
-    deductionsBody.push([item.label, '', PdfExportService.formatCurrency(item.amount)]);
-  });
-  deductionsBody.push([{ content: 'TOTAL RETENUES', styles: { fontStyle: 'bold' } }, '', { content: PdfExportService.formatCurrency(payslip.total_deductions), styles: { fontStyle: 'bold' } }]);
+  deductionsBody.push(['IR (barème progressif)', payslip.net_taxable != null ? money(payslip.net_taxable) : '', money(irBeforeReg)]);
+  if (reg !== 0) {
+    deductionsBody.push([`Régularisation IR ${payslip.period_year}`, '', reg > 0 ? `-${money(reg)}` : money(-reg)]);
+  }
+  pdfLines.filter(l => l.type === 'retenue' && !l.grossDeduction).forEach(l => deductionsBody.push([l.label, '', money(l.amount)]));
+  deductionsBody.push([{ content: 'TOTAL RETENUES', styles: { fontStyle: 'bold' } }, '', { content: money(payslip.total_deductions), styles: { fontStyle: 'bold' } }]);
 
   autoTable(doc, {
     startY: y,
-    head: [['Retenues et cotisations', '', 'Montant (MAD)']],
+    head: [['Retenues et cotisations', 'Base', 'Montant (MAD)']],
     body: deductionsBody,
     styles: { font, fontSize: 8, cellPadding: 2 },
     headStyles: { fillColor: [180, 50, 50], textColor: WHITE, fontStyle: 'bold', fontSize: 8 },
-    columnStyles: { 0: { cellWidth: contentWidth * 0.6 }, 1: { cellWidth: contentWidth * 0.2 }, 2: { cellWidth: contentWidth * 0.2, halign: 'right' } },
+    columnStyles: { 0: { cellWidth: contentWidth * 0.55 }, 1: { cellWidth: contentWidth * 0.25 }, 2: { cellWidth: contentWidth * 0.2, halign: 'right' } },
     margin: { left: margin, right: margin },
     willDrawCell: (data: any) => {
       if (data.section === 'body' && data.row.index === deductionsBody.length - 1) {
@@ -1885,36 +1995,53 @@ async function buildPayslipPdf(payslip: any, settings: any): Promise<{ doc: any;
   doc.setFontSize(10);
   doc.text('SALAIRE NET À PAYER :', margin + 4, y + 7);
   doc.setFontSize(13);
-  doc.text(`${PdfExportService.formatCurrency(payslip.net_salary)} MAD`, pageWidth - margin - 4, y + 7, { align: 'right' });
+  doc.text(`${money(payslip.net_salary)} MAD`, pageWidth - margin - 4, y + 7, { align: 'right' });
 
   y += 20;
   doc.setTextColor(...DARK);
   doc.setFont(font, 'italic');
   doc.setFontSize(7.5);
-  const netWords = numberToWordsFr(Math.round(payslip.net_salary));
-  doc.text(`Arrêté à la somme de : ${netWords} Dirhams`, margin, y);
+  // The words already name the currency (and the centimes).
+  const netWords = amountInWordsFr(payslip.net_salary);
+  doc.text(`Arrêté à la somme de : ${netWords}`, margin, y, { maxWidth: contentWidth });
 
   y += 6;
-  if (payslip.frais_pro > 0) {
-    doc.setFont(font, 'normal');
-    doc.setFontSize(7);
-    doc.setTextColor(150, 150, 150);
-    doc.text(
-      `Frais professionnels (abattement fiscal, non retenu) : ${PdfExportService.formatCurrency(payslip.frais_pro)} MAD`,
-      margin, y
-    );
-    y += 6;
+  // ── Tax figures (information, not deductions) ──
+  doc.setFont(font, 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(150, 150, 150);
+  const taxInfo = [
+    payslip.ir_taxable_gross != null ? `Brut imposable : ${money(payslip.ir_taxable_gross)}` : null,
+    `Frais professionnels (abattement fiscal, non retenu) : ${money(payslip.frais_pro)}`,
+    payslip.net_taxable != null ? `Net imposable : ${money(payslip.net_taxable)}` : null,
+    `Jours déclarés CNSS : ${payslip.cnss_days ?? 26}`,
+  ].filter(Boolean).join('  ·  ');
+  doc.text(`${taxInfo} (MAD)`, margin, y, { maxWidth: contentWidth });
+  y += 6;
+  // Trainee: why IR (and CNSS) are or are not withheld.
+  if (payslip.trainee_note) {
+    doc.text(String(payslip.trainee_note).replace(/[\u202f\u00a0]/g, ' '), margin, y, { maxWidth: contentWidth });
+    y += 8;
   }
   doc.setTextColor(...DARK);
 
-  // ── Employer cost note ──
-  if (payslip.cnss_employer > 0 || payslip.amo_employer > 0 || payslip.alloc_familiales > 0) {
+  // ── Employer cost note (training tax and employer CIMR included) ──
+  const tfp = Number(payslip.tfp_employer) || 0;
+  const cimrEr = Number(payslip.cimr_employer) || 0;
+  const total_employer = (payslip.cnss_employer || 0) + (payslip.amo_employer || 0) + (payslip.alloc_familiales || 0) + tfp + cimrEr;
+  if (total_employer > 0) {
     doc.setFont(font, 'normal');
     doc.setFontSize(7);
     doc.setTextColor(150, 150, 150);
-    const total_employer = (payslip.cnss_employer || 0) + (payslip.amo_employer || 0) + (payslip.alloc_familiales || 0);
+    const parts = [
+      `CNSS ${pctLabel(rates.cnss_rate_er)} : ${money(payslip.cnss_employer)}`,
+      `AMO ${pctLabel(rates.amo_rate_er)} : ${money(payslip.amo_employer)}`,
+      `Alloc. fam. ${pctLabel(rates.af_rate)} : ${money(payslip.alloc_familiales)}`,
+      `Formation pro. ${pctLabel(rates.tfp_rate)} : ${money(tfp)}`,
+    ];
+    if (cimrEr > 0) parts.push(`CIMR : ${money(cimrEr)}`);
     doc.text(
-      `Charges patronales (informatif) — CNSS: ${PdfExportService.formatCurrency(payslip.cnss_employer)} | AMO: ${PdfExportService.formatCurrency(payslip.amo_employer)} | Alloc. fam.: ${PdfExportService.formatCurrency(payslip.alloc_familiales)} | Total: ${PdfExportService.formatCurrency(total_employer)} MAD`,
+      `Charges patronales (informatif) — ${parts.join(' | ')} | Total : ${money(total_employer)} MAD`,
       margin, y, { maxWidth: contentWidth }
     );
     y += 8;
