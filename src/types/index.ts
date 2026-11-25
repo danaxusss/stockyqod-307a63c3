@@ -572,6 +572,15 @@ export interface Employee {
   matricule?: string | null;
   mode_paiement?: 'virement' | 'cheque' | 'especes' | null;
   date_sortie?: string | null;
+  // Declarations (20261126140000_payroll_declarations.sql): identity data of
+  // the annual salary return; missing before that migration has run.
+  last_name?: string | null;
+  first_name?: string | null;
+  address?: string | null;
+  residence_card?: string | null;
+  tax_id?: string | null;
+  /** List of the salary return; empty = automatic (Stage → trainee, else permanent). */
+  dts_category?: 'permanent' | 'occasionnel' | 'stagiaire' | 'exonere_57_20' | 'exonere_247' | null;
   created_at: string;
   updated_at: string;
 }

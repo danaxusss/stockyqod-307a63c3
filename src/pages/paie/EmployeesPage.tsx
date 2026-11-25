@@ -6,6 +6,7 @@ import { PayrollSettingsService } from '../../utils/supabasePayrollSettings';
 import { officialSettingsFor, type PayrollSettings } from '../../utils/payrollDefaults';
 import { smigWarning } from '../../utils/payrollCalc';
 import { Notice } from './payrollUi';
+import { EmployeeDeclarationFields } from './EmployeeDeclarationFields';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
 import { getCompanyContext } from '../../utils/supabaseCompanyFilter';
@@ -187,6 +188,8 @@ function EmployeeForm({ initial, companyId, onSave, onCancel, saving, settings }
           {smig && <Notice className="sm:col-span-2 lg:col-span-4">{smig}</Notice>}
         </div>
       </fieldset>
+
+      <EmployeeDeclarationFields value={form} onChange={(k, v) => set(k, v)} />
 
       <div className="flex gap-2 border-t border-border pt-4 sm:justify-end">
         <button type="button" onClick={onCancel} className={`${btnSecondary} flex-1 sm:flex-none`}>Annuler</button>
