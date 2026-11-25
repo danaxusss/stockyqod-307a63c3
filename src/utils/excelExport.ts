@@ -10,6 +10,7 @@ const loadExcel = async () => {
   return ((mod as unknown as { default?: typeof ExcelJS }).default ?? mod) as typeof ExcelJS;
 };
 import { getQuoteItemBarcode, getQuoteItemBrand, getQuoteItemName } from './quoteItemDisplay';
+import { documentTvaRate } from './documentLines';
 
 export class ExcelExportService {
   // Generate quote number in format QT-YYYYMMDD-XXXX
@@ -42,11 +43,11 @@ export class ExcelExportService {
     }).format(amount);
   }
 
-  // Calculate totals (HT, TVA 20%, TTC)
-  static calculateTotals(totalAmount: number): { ht: number; tva: number; ttc: number } {
+  // Calculate totals (HT, TVA, TTC) at the document's rate
+  static calculateTotals(totalAmount: number, tvaRate = 20): { ht: number; tva: number; ttc: number } {
     // totalAmount is already TTC (includes VAT), so we need to calculate backwards
     const ttc = totalAmount;
-    const ht = ttc / 1.20; // Calculate HT by dividing TTC by 1.20 (since TTC = HT * 1.20)
+    const ht = ttc / (1 + tvaRate / 100);
     const tva = ttc - ht; // TVA is the difference between TTC and HT
     
     return { ht, tva, ttc };
@@ -306,7 +307,7 @@ export class ExcelExportService {
       worksheet.getCell(`B${rowIndex}`).value = getQuoteItemBarcode(item); // BARCODE
       worksheet.getCell(`C${rowIndex}`).value = getQuoteItemName(item); // TITLE
       worksheet.getCell(`D${rowIndex}`).value = item.quantity; // QTE
-      const unitPriceHT = item.unitPrice / 1.20;
+      const unitPriceHT = item.unitPrice / (1 + documentTvaRate(quote) / 100);
       const discount = item.discount ?? 0;
       const discountedHT = unitPriceHT * (1 - discount / 100);
       const totalHTItem = discountedHT * item.quantity;
@@ -316,7 +317,7 @@ export class ExcelExportService {
 
     // Calculate and populate totals (only on the last page)
     if (pageNumber === totalPages) {
-      const totals = this.calculateTotals(quote.totalAmount);
+      const totals = this.calculateTotals(quote.totalAmount, documentTvaRate(quote));
       worksheet.getCell('F48').value = parseFloat(totals.ht.toFixed(2)); // TOTAL HT
       worksheet.getCell('F49').value = parseFloat(totals.tva.toFixed(2)); // TVA 20%
       worksheet.getCell('F50').value = parseFloat(totals.ttc.toFixed(2)); // TOTAL TTC

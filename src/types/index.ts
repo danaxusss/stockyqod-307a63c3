@@ -102,6 +102,8 @@ export interface CustomerInfo {
   ice?: string;
   salesPerson: string;
   clientCode?: string;
+  /** Private person: no ICE expected on their invoices. */
+  isIndividual?: boolean;
 }
 
 export interface PaymentEntry {
@@ -140,6 +142,12 @@ export interface Quote {
   payment_method?: string;
   payment_reference?: string;
   payment_bank?: string;
+  /** VAT rate frozen when the document was issued (null: from before, use the company rate). */
+  tva_rate?: number;
+  /** Invoices: payment due date (YYYY-MM-DD). */
+  due_date?: string;
+  /** Credit notes, for the PDF only: the invoice they correct. */
+  source_invoice?: { quoteNumber: string; day: string };
 }
 
 export interface QuoteTemplate {
@@ -171,6 +179,10 @@ export interface Company {
   tva_rate: number;
   quote_validity_days: number;
   payment_terms: string;
+  /** Invoice payment delay in days (loi 69-21: 60 by default, 120 at most). */
+  payment_terms_days?: number;
+  /** Printed after "Exonéré de TVA" on documents at 0 %. */
+  vat_exemption_text?: string;
   share_templates: Record<string, string>;
   quote_visible_fields: Record<string, boolean>;
   quote_style: Record<string, unknown>;
@@ -194,6 +206,8 @@ export interface Client {
   email: string;
   client_code?: string;
   company_id?: string;
+  /** Private person (no ICE on their invoices). */
+  is_individual?: boolean;
   created_at: string;
   updated_at: string;
 }

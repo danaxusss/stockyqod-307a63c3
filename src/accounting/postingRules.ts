@@ -1,5 +1,6 @@
 import type { Quote, Payslip, JournalType, JournalEntryLine, PaymentEntry } from '../types';
 import { DEFAULT_ACCOUNTS } from './pcmSeed';
+import { documentTvaRate } from '../utils/documentLines';
 
 export interface EntryDraft {
   journalType: JournalType;
@@ -22,8 +23,13 @@ function toDate(v: string | Date | undefined): string {
   return String(v).slice(0, 10);
 }
 
-/** Facture de vente: D 3421 (TTC) / C 7111 (HT) / C 4455 (TVA). */
-export function buildInvoiceEntry(q: Quote, tvaRate: number): EntryDraft {
+/**
+ * Facture de vente: D 3421 (TTC) / C 7111 (HT) / C 4455 (TVA). The VAT is
+ * split at the rate frozen on the invoice; `companyRate` only serves invoices
+ * from before rates were stored.
+ */
+export function buildInvoiceEntry(q: Quote, companyRate: number): EntryDraft {
+  const tvaRate = documentTvaRate(q, companyRate);
   const ttc = r2(q.totalAmount);
   const ht = r2(ttc / (1 + (tvaRate || 0) / 100));
   const tva = r2(ttc - ht);
@@ -36,8 +42,9 @@ export function buildInvoiceEntry(q: Quote, tvaRate: number): EntryDraft {
   return { journalType: 'vente', date: toDate(q.quote_date || q.createdAt), reference: q.quoteNumber, label, sourceType: 'invoice', sourceId: q.id, lines };
 }
 
-/** Avoir: contre-passation de la vente. C 3421 / D 7111 / D 4455. */
-export function buildAvoirEntry(q: Quote, tvaRate: number): EntryDraft {
+/** Avoir: contre-passation de la vente. C 3421 / D 7111 / D 4455, at the credit note's own rate. */
+export function buildAvoirEntry(q: Quote, companyRate: number): EntryDraft {
+  const tvaRate = documentTvaRate(q, companyRate);
   const ttc = r2(q.totalAmount);
   const ht = r2(ttc / (1 + (tvaRate || 0) / 100));
   const tva = r2(ttc - ht);

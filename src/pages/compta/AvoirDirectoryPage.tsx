@@ -119,7 +119,8 @@ export default function AvoirDirectoryPage() {
         const c = await SupabaseCompaniesService.getCompanyById(compId);
         return c ? { company_name: c.name, address: c.address, phone: c.phone, email: c.email, ice: c.ice } as any : null;
       })() : null);
-      await PdfExportService.exportQuoteToPdf(av, companySettings, undefined, undefined, undefined, 'avoir', undefined, false);
+      // The PDF names the invoice the credit note corrects.
+      await PdfExportService.exportQuoteToPdf(await SupabaseDocumentsService.withSourceInvoice(av), companySettings, undefined, undefined, undefined, 'avoir', undefined, false);
     } catch (e) {
       showToast({ type: 'error', title: 'Erreur PDF', message: String(e) });
     }

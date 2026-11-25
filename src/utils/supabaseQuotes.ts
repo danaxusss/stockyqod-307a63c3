@@ -4,6 +4,7 @@ import { Quote, QuoteTemplate, CustomerInfo, QuoteItem } from '../types';
 import { getCompanyContext } from './supabaseCompanyFilter';
 import { readAll } from './readAll';
 import { hydrateItemCosts } from './productCosts';
+import { writeTolerant } from './schemaFallback';
 
 type QuoteRow = {
   id: string;
@@ -21,6 +22,7 @@ type QuoteRow = {
   company_id?: string | null;
   issuing_company_id?: string | null;
   created_by: string | null;
+  tva_rate?: number | string | null;
 };
 
 type TemplateRow = {
@@ -53,6 +55,7 @@ function mapQuoteRow(row: QuoteRow): Quote {
     company_id: row.company_id || undefined,
     issuing_company_id: row.issuing_company_id || undefined,
     createdBy: row.created_by || undefined,
+    tva_rate: row.tva_rate !== null && row.tva_rate !== undefined && row.tva_rate !== '' ? Number(row.tva_rate) : undefined,
   };
 }
 
@@ -88,13 +91,16 @@ export class SupabaseQuotesService {
     };
     if (quote.notes2 !== undefined) quoteData.notes2 = quote.notes2 || null;
     if (quote.quote_date !== undefined) quoteData.quote_date = quote.quote_date || null;
+    // The VAT rate the quote was priced with (kept when the company rate changes).
+    if (quote.tva_rate !== undefined && quote.tva_rate !== null) quoteData.tva_rate = quote.tva_rate;
     // A quote stays with the company it was made for, whoever edits it.
     const owner = quote.company_id || companyId;
     if (owner) quoteData.company_id = owner;
 
-    const { error } = await (supabase
+    // Before the billing compliance migration the column does not exist.
+    const { error } = await writeTolerant(quoteData, ['tva_rate'], payload => (supabase
       .from('quotes') as any)
-      .upsert(quoteData, { onConflict: 'id', ignoreDuplicates: false });
+      .upsert(payload, { onConflict: 'id', ignoreDuplicates: false }));
 
     if (error) {
       throw new Error(`Failed to save quote: ${error.message}`);
