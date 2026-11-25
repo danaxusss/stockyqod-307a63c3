@@ -4,7 +4,7 @@ import autoTable from 'jspdf-autotable';
 import { Quote } from '../types';
 import { CompanySettings, QuoteStyle } from './companySettings';
 import { getQuoteItemBarcode, getQuoteItemBrand, getQuoteItemName } from './quoteItemDisplay';
-import { discountRate, documentTvaRate, formatDay, invoiceDueDay, invoicePayment, lineSubtotal, DEFAULT_PAYMENT_DAYS } from './documentLines';
+import { discountRate, documentTvaRate, formatDay, invoiceDueDay, invoicePayment, invoiceSettlements, isProvisionalNumber, lineSubtotal, DEFAULT_PAYMENT_DAYS, PROVISIONAL_NUMBER_PREFIX } from './documentLines';
 import { amountInWordsFr } from './amountInWords';
 import { loadCurrentProductImages, resolveProductImageUrl } from './productImages';
 
@@ -166,9 +166,13 @@ export class PdfExportService {
     const footerTotalHeight = footerLines.length * footerLineHeight + 8;
 
     // === Document type label ===
+    // A draft invoice is not an invoice yet: it says BROUILLON and shows no
+    // number of the series (CGI art. 145-III), only its provisional reference.
+    const draftInvoice = documentType === 'invoice' && quote.status === 'draft';
     const docTypeLabel = documentType === 'bl' ? 'BON DE LIVRAISON'
       : documentType === 'bon_commande' ? 'BON DE COMMANDE'
       : documentType === 'proforma' ? 'PROFORMA'
+      : draftInvoice ? 'BROUILLON'
       : documentType === 'invoice' ? 'FACTURE'
       : documentType === 'avoir' ? 'AVOIR'
       : 'DEVIS';
@@ -197,7 +201,9 @@ export class PdfExportService {
     const buildMetaRows = (): [string, string][] => {
       const rows: [string, string][] = [
         ['Date', this.formatDate(quoteDate)],
-        ['N° de piece', quote.quoteNumber],
+        draftInvoice
+          ? ['Réf. brouillon', isProvisionalNumber(quote.quoteNumber) ? quote.quoteNumber.slice(PROVISIONAL_NUMBER_PREFIX.length) : `${quote.quoteNumber} (brouillon)`]
+          : ['N° de piece', quote.quoteNumber],
       ];
       if (quote.commandNumber) rows.push(['N° de cmd', quote.commandNumber]);
       if (fields.showValidityDate && documentType === 'quote') {
@@ -209,7 +215,7 @@ export class PdfExportService {
       if (documentType === 'invoice') {
         // Due date (loi 69-21): the stored one, else the legal 60 days.
         rows.push(['Échéance', formatDay(invoiceDueDay(quote))]);
-        if (quote.payment_date) rows.push(['Date paiement', this.formatDate(new Date(quote.payment_date))]);
+        if (quote.payment_date) rows.push(['Date paiement', formatDay(String(quote.payment_date).slice(0, 10))]);
         if (quote.payment_method) rows.push(['Mode paiement', quote.payment_method]);
         if (quote.payment_reference) rows.push(['N° référence', quote.payment_reference]);
         if (quote.payment_bank) rows.push(['Banque', quote.payment_bank]);
@@ -1367,18 +1373,19 @@ export class PdfExportService {
       }
 
       // Payment summary (invoice)
+      // Money received and VAT withheld by the client are shown apart: the
+      // withholding settles the invoice but is not money received.
       if (documentType === 'invoice') {
-        const avance = quote.avance_amount ?? 0;
-        const paymentsTotal = (quote.payment_methods_json || []).reduce((s: number, e: any) => s + (e.amount || 0), 0);
-        const totalPaid = avance + paymentsTotal;
-        const reste = Math.max(0, totalTTC - totalPaid);
-        if (avance > 0) drawTotalsRow('AVANCE REÇUE', '-' + this.formatCurrency(avance) + ' Dh');
-        if (paymentsTotal > 0) drawTotalsRow('PAIEMENTS REÇUS', '-' + this.formatCurrency(paymentsTotal) + ' Dh');
+        const settled = invoicePayment({ ...quote, totalAmount: totalTTC });
+        const totalPaid = settled.paid;
+        const reste = Math.max(0, Math.round((totalTTC - totalPaid) * 100) / 100);
+        if (settled.received > 0) drawTotalsRow('ENCAISSÉ', '-' + this.formatCurrency(settled.received) + ' Dh');
+        if (settled.withheld > 0) drawTotalsRow('TVA RETENUE PAR LE CLIENT', '-' + this.formatCurrency(settled.withheld) + ' Dh');
         if (totalPaid > 0) {
           if (reste <= 0) {
             drawTotalsRow('FACTURE SOLDÉE ✓', this.formatCurrency(totalTTC) + ' Dh', true);
           } else {
-            drawTotalsRow('TOTAL PAYÉ', this.formatCurrency(totalPaid) + ' Dh');
+            drawTotalsRow(settled.withheld > 0 ? 'TOTAL RÉGLÉ' : 'TOTAL PAYÉ', this.formatCurrency(totalPaid) + ' Dh');
             drawTotalsRow('RESTE À PAYER', this.formatCurrency(reste) + ' Dh', true);
           }
         }
@@ -1402,7 +1409,8 @@ export class PdfExportService {
       const amountInLetters = `${amountInWordsFr(quote.totalAmount)} TTC`;
       const blockPadX = 4;
       const blockPadY = 3.5;
-      const labelText = documentType === 'avoir' ? 'Arrêté le présent avoir à la somme de :' : 'Arrêté la présente facture à la somme de :';
+      const labelText = documentType === 'avoir' ? 'Arrêté le présent avoir à la somme de :'
+        : draftInvoice ? 'Montant du brouillon (facture non émise) :' : 'Arrêté la présente facture à la somme de :';
       doc.setFontSize(7);
       const lettersLines = doc.splitTextToSize(amountInLetters, contentWidth - blockPadX * 2 - 2);
       const blockH = blockPadY * 2 + 5 + lettersLines.length * 4.5;
@@ -1426,6 +1434,40 @@ export class PdfExportService {
       doc.setTextColor(...DARK);
       doc.text(lettersLines, margin + blockPadX, y + blockPadY + 3.5 + 5, { maxWidth: contentWidth - blockPadX * 2 - 2 });
       y += blockH + 4;
+    }
+
+    // === INVOICE: settlements, each at its own date ===
+    // VAT withheld by the client is told apart from money received; the stamp
+    // duty on cash is shown on top of the payment, outside the invoice total.
+    if (documentType === 'invoice') {
+      const settlements = invoiceSettlements(quote).filter(s => s.amount > 0);
+      if (settlements.length > 0) {
+        const lines: string[] = [];
+        for (const s of settlements) {
+          const what = s.kind === 'vat_withholding'
+            ? `TVA retenue à la source par le client (art. 117 CGI${s.withholdingRate && s.withholdingRate !== 100 ? `, ${s.withholdingRate} %` : ''}) - non encaissée`
+            : [s.source === 'avance' ? `Avance${s.method ? ` ${s.method}` : ''}` : (s.method || 'Règlement'), s.reference, s.bank].filter(Boolean).join(' · ');
+          const stamp = s.stampDuty > 0 ? ` + droit de timbre 0,25 % : ${this.formatCurrency(s.stampDuty)} Dh (perçu en sus)` : '';
+          lines.push(`${formatDay(s.date)} · ${what} : ${this.formatCurrency(s.amount)} Dh${stamp}`);
+        }
+        const stampTotal = settlements.reduce((t, s) => t + s.stampDuty, 0);
+        if (stampTotal > 0) lines.push(`Droit de timbre sur règlements en espèces (art. 252 CGI) : ${this.formatCurrency(Math.round(stampTotal * 100) / 100)} Dh, hors total de la facture.`);
+        doc.setFontSize(7);
+        const wrapped = lines.flatMap(l => doc.splitTextToSize(l, contentWidth - 4));
+        const blockH = 5 + wrapped.length * 3.4;
+        if (y + blockH > pageHeight - footerTotalHeight - 8) {
+          doc.addPage();
+          drawPageDecorations();
+          y = 12;
+        }
+        doc.setFont(font, 'bold');
+        doc.setTextColor(...DARK);
+        doc.text('Règlements :', margin, y + 3);
+        doc.setFont(font, 'normal');
+        doc.setTextColor(...GRAY);
+        doc.text(wrapped, margin + 2, y + 6.5);
+        y += blockH + 3;
+      }
     }
 
     // === PAYMENT TERMS ===
@@ -1536,6 +1578,18 @@ export class PdfExportService {
     const totalPagesCount = doc.getNumberOfPages();
     for (let i = 1; i <= totalPagesCount; i++) {
       doc.setPage(i);
+      if (draftInvoice) {
+        // Across every page: a draft must never pass for an issued invoice.
+        doc.setGState(doc.GState({ opacity: 0.12 }));
+        doc.setFont(font, 'bold');
+        doc.setFontSize(54);
+        doc.setTextColor(200, 0, 0);
+        doc.text('BROUILLON', pageWidth / 2, pageHeight / 2, { align: 'center', angle: 35 });
+        doc.setGState(doc.GState({ opacity: 1 }));
+        doc.setFontSize(7);
+        doc.setTextColor(200, 0, 0);
+        doc.text('BROUILLON - sans numéro, ce document n’est pas une facture.', margin, pageHeight - footerTotalHeight - 4);
+      }
       doc.setFontSize(6);
       doc.setFont(font, 'normal');
       doc.setTextColor(...GRAY);
@@ -1551,7 +1605,7 @@ export class PdfExportService {
       : documentType === 'invoice' ? 'Facture'
       : documentType === 'avoir' ? 'Avoir'
       : 'Devis';
-    const filename = `${docPrefix}_${quote.quoteNumber}_${this.formatDate(quote.createdAt).replace(/\//g, '-')}.pdf`;
+    const filename = `${draftInvoice ? 'Brouillon_facture' : docPrefix}_${quote.quoteNumber}_${this.formatDate(quote.createdAt).replace(/\//g, '-')}.pdf`;
     return { doc, filename };
   }
 
@@ -1573,7 +1627,7 @@ export class PdfExportService {
       : documentType === 'invoice' ? 'Facture'
       : documentType === 'avoir' ? 'Avoir'
       : 'Devis';
-    const filename = `${docPrefix}_${quote.quoteNumber}.pdf`;
+    const filename = `${documentType === 'invoice' && quote.status === 'draft' ? 'Brouillon_facture' : docPrefix}_${quote.quoteNumber}.pdf`;
     const blob = await this.exportQuoteToPdf(quote, settings, techSheetsUrl, techSheetsExpiryLabel, useStampOverride, documentType, blShowPrices, printTTCOnly, showProductImagesOverride, true, techSheetsLabel) as unknown as Blob;
     return { blob, filename };
   }
@@ -1618,7 +1672,8 @@ export class PdfExportService {
     // Invoices, and credit notes as negative lines: the total is what the
     // client owes, the same as the client balances page.
     const isAvoir = (d: Quote) => d.document_type === 'avoir';
-    const headers = [['N° Document', 'Date', 'HT', 'TVA', 'TTC', 'Payé', 'Reste', 'Statut']];
+    // "Réglé" = money received + VAT withheld by the client; both detailed below.
+    const headers = [['N° Document', 'Date', 'HT', 'TVA', 'TTC', 'Réglé', 'Reste', 'Statut']];
     const body = documents.map(d => {
       const ttc = isAvoir(d) ? -Math.abs(d.totalAmount) : d.totalAmount;
       const ht = htOf(d, ttc);
@@ -1626,7 +1681,7 @@ export class PdfExportService {
       const { paid, reste } = isAvoir(d) ? { paid: 0, reste: ttc } : invoicePayment(d);
       const dateStr = d.quote_date ? d.quote_date : d.createdAt.toLocaleDateString('fr-FR');
       return [
-        d.quoteNumber || '-',
+        isProvisionalNumber(d.quoteNumber) ? 'Brouillon' : (d.quoteNumber || '-'),
         dateStr,
         this.formatCurrency(ht),
         this.formatCurrency(tva),
@@ -1672,6 +1727,38 @@ export class PdfExportService {
       },
       margin: { left: margin, right: margin },
     });
+
+    // Every settlement at its own date: money received apart from the VAT
+    // the client withheld (which it pays to the tax office itself).
+    const settlements = documents.filter(d => !isAvoir(d)).flatMap(d => invoiceSettlements(d)
+      .filter(s => s.amount > 0)
+      .map(s => ({ s, number: isProvisionalNumber(d.quoteNumber) ? 'Brouillon' : (d.quoteNumber || '-') })))
+      .sort((a, b) => a.s.date.localeCompare(b.s.date));
+    if (settlements.length > 0) {
+      const received = settlements.filter(x => x.s.kind === 'payment').reduce((t, x) => t + x.s.amount, 0);
+      const withheld = settlements.filter(x => x.s.kind === 'vat_withholding').reduce((t, x) => t + x.s.amount, 0);
+      const rows = settlements.map(({ s, number }) => [
+        formatDay(s.date),
+        number,
+        s.kind === 'vat_withholding' ? 'TVA retenue par le client' : [s.source === 'avance' ? 'Avance' : '', s.method || 'Règlement'].filter(Boolean).join(' '),
+        s.reference || '',
+        this.formatCurrency(s.amount),
+      ]);
+      rows.push(['', '', 'Encaissé', '', this.formatCurrency(received)]);
+      if (withheld > 0) rows.push(['', '', 'TVA retenue par le client', '', this.formatCurrency(withheld)]);
+      autoTable(doc, {
+        startY: (doc.lastAutoTable?.finalY || y) + 8,
+        head: [['Date', 'Document', 'Règlement', 'Référence', 'Montant']],
+        body: rows,
+        styles: { font, fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: ACCENT, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+        columnStyles: { 0: { cellWidth: 22 }, 1: { cellWidth: 30 }, 4: { halign: 'right', cellWidth: 28 } },
+        willDrawCell: (data: { section: string; row: { index: number }; cell: { styles: { fontStyle: string } } }) => {
+          if (data.section === 'body' && data.row.index >= settlements.length) data.cell.styles.fontStyle = 'bold';
+        },
+        margin: { left: margin, right: margin },
+      });
+    }
 
     return doc;
   }

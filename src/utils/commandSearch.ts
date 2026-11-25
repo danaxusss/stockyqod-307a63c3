@@ -87,6 +87,7 @@ export const PAGE_ALIASES: Record<string, string> = {
   '/compta/avoirs': 'av avoir credit',
   '/compta/bons-commande': 'bc commande client',
   '/compta/returns': 'retour',
+  '/compta/releves-fiscaux': 'retenue source timbre especes releve',
   '/inventaire/commandes': 'bc achat fournisseur',
   '/inventaire/reception': 'reception achat',
   '/inventaire/bons': 'be bs bon entree sortie casse perte stock initial',

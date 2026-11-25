@@ -106,11 +106,30 @@ export interface CustomerInfo {
   isIndividual?: boolean;
 }
 
+/**
+ * One settlement of an invoice, stored in quotes.payment_methods_json.
+ * Entries saved before dated payments carry only method/reference/bank/amount:
+ * their date is the invoice's payment_date, else the invoice date.
+ */
 export interface PaymentEntry {
+  /** Stable id (uuid) of entries recorded since dated payments; absent on older ones. */
+  id?: string;
+  /** "Espèces", "Chèque", "Virement bancaire"…; for a withholding: "TVA retenue à la source". */
   method: string;
   reference?: string;
   bank?: string;
+  /** Part of the invoice (TTC) this entry settles. Never includes the stamp duty. */
   amount?: number;
+  /** YYYY-MM-DD the money was received (or the VAT withheld). */
+  date?: string;
+  /** 'payment' (default, money received) or 'vat_withholding' (VAT kept by the client, CGI art. 117-IV/V). */
+  kind?: 'payment' | 'vat_withholding';
+  /** Cash only: stamp duty collected on top of `amount` (CGI art. 252-I-B), frozen when recorded. */
+  stamp_duty?: number;
+  /** Withholding only: share of the invoice VAT withheld (100, or 75 for the services of art. 117-V). */
+  withholding_rate?: number;
+  /** A payment dated before the invoice, confirmed as an advance. */
+  advance?: boolean;
 }
 
 export interface Quote {

@@ -120,6 +120,7 @@ export function buildModules(a: Access): NavModule[] {
         { to: '/compta/bons-commande', label: 'Bons de commande' },
         { to: '/compta/returns', label: 'Retours' },
         { to: '/compta/clients', label: 'Clients (financier)' },
+        { to: '/compta/releves-fiscaux', label: 'Retenue de TVA et timbre' },
       ],
     });
   }

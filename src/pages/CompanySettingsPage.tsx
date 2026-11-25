@@ -9,7 +9,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs'
 import UserManagementPage from './UserManagementPage';
 import { StockLocationsTab } from '../components/StockLocationsTab';
 import { DocumentVisibilitySetting } from '../components/settings/DocumentVisibilitySetting';
-import { LegalIdsWarning, PaymentDaysField, TvaRateField, VatExemptionField } from '../components/settings/BillingSettingsFields';
+import { CashStampDutyField, LegalIdsWarning, PaymentDaysField, TaxAttestationField, TvaRateField, VatExemptionField } from '../components/settings/BillingSettingsFields';
 import { billingSettingsError, normalizeIce } from '../utils/legalIds';
 import { supabase } from '@/integrations/supabase/client';
 import { readAll, type Pageable } from '../utils/readAll';
@@ -403,6 +403,8 @@ function CompanySettingsTab() {
         payment_terms_days: settings.payment_terms_days,
         tva_rate: settings.tva_rate,
         vat_exemption_text: settings.vat_exemption_text,
+        tax_attestation_date: settings.tax_attestation_date,
+        cash_stamp_duty: settings.cash_stamp_duty,
         quote_validity_days: settings.quote_validity_days,
         doc_prefix: settings.doc_prefix,
         qr_code_url: settings.qr_code_url,
@@ -590,6 +592,10 @@ function CompanySettingsTab() {
           </div>
           <PaymentDaysField value={settings.payment_terms_days} onChange={days => setSettings({ ...settings, payment_terms_days: days })} className={inputClass} />
           <VatExemptionField value={settings.vat_exemption_text} onChange={text => setSettings({ ...settings, vat_exemption_text: text })} className={inputClass} />
+          <TaxAttestationField value={settings.tax_attestation_date} onChange={day => setSettings({ ...settings, tax_attestation_date: day })} className={inputClass}
+            available={settings.payment_settings_available !== false} />
+          <CashStampDutyField value={settings.cash_stamp_duty} onChange={on => setSettings({ ...settings, cash_stamp_duty: on })}
+            available={settings.payment_settings_available !== false} />
           <div>
             <label className="block text-xs font-medium text-foreground mb-1">Validité du devis (jours)</label>
             <input type="number" value={settings.quote_validity_days} onChange={e => setSettings({ ...settings, quote_validity_days: parseInt(e.target.value) || 30 })} className={inputClass} min="1" />

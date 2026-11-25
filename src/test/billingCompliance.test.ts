@@ -322,10 +322,14 @@ describe('continuous numbering', () => {
     expect(await Docs.nextNumber('c1', 'invoice', '2026-10-31')).toBe('CM2610-1');
     expect(seen).toEqual(['invoice_2610']);
 
-    // A draft moved to another month takes a number of that month.
+    // An older draft that holds a number and moves to another month gives the
+    // number up (it no longer matches its month) and takes none until it is
+    // finalised, in the series of its new month.
     quotes().push(doc('d1', 'invoice', { quote_number: 'CM2611-5', status: 'draft', quote_date: '2026-11-05' }));
     const moved = await Docs.updateDocument('d1', { quote_date: '2026-10-28', quoteNumber: 'CM2611-5' });
-    expect(moved.quoteNumber).toBe('CM2610-2');
+    expect(moved.quoteNumber).toMatch(/^BROUILLON-/);
+    expect(seen).toEqual(['invoice_2610']);
+    expect((await Docs.finalizeInvoice('d1')).quoteNumber).toBe('CM2610-2');
     expect(seen).toEqual(['invoice_2610', 'invoice_2610']);
 
     // An issued invoice stays in the month of its number.

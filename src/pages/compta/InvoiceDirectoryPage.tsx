@@ -14,7 +14,7 @@ import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../hooks/useAuth';
 import { getCompanyContext } from '../../utils/supabaseCompanyFilter';
 import { exportToCSV } from '../../utils/csvExport';
-import { documentDay, formatDay, invoiceOverdue, invoicePayment, matchesPaymentFilter } from '../../utils/documentLines';
+import { documentDay, formatDay, invoiceNumberLabel, invoiceOverdue, invoicePayment, isProvisionalNumber, matchesPaymentFilter } from '../../utils/documentLines';
 import { formatMoney } from '../../utils/format';
 import { useCompactList, useIsMobile } from '../../hooks/use-mobile';
 import { PageHeader } from '../../components/PageHeader';
@@ -33,12 +33,20 @@ type PayStatusFilter = 'all' | 'paid' | 'partial' | 'unpaid' | 'overdue';
 /** Payment status of an invoice, as shown in the list. Late (past due, not fully paid) wins. */
 function InvoiceStatus({ inv }: { inv: Quote }) {
   if (!inv.customer?.fullName?.trim()) return <StatusPill tone="neutral">Brouillon vide</StatusPill>;
+  // A draft is not issued yet: no due date runs, nothing is owed on it.
+  if (inv.status === 'draft') return <StatusPill tone="neutral">Brouillon</StatusPill>;
   const late = invoiceOverdue(inv);
   if (late.overdue) return <StatusPill tone="danger" icon={<AlertCircle className="h-3 w-3" />}>En retard · {late.days} j</StatusPill>;
   const { status } = computePayment(inv);
   if (status === 'paid') return <StatusPill tone="success" icon={<CheckCircle className="h-3 w-3" />}>Payé</StatusPill>;
   if (status === 'partial') return <StatusPill tone="warning" icon={<Clock className="h-3 w-3" />}>Partiel</StatusPill>;
   return <StatusPill tone="danger" icon={<AlertCircle className="h-3 w-3" />}>Non payé</StatusPill>;
+}
+
+/** The invoice number, or "Brouillon" and the provisional reference of a draft not numbered yet. */
+function InvoiceNumber({ number }: { number: string }) {
+  if (!isProvisionalNumber(number)) return <>{number}</>;
+  return <>{invoiceNumberLabel(number)} <span className="font-normal text-xs text-muted-foreground">{number.slice(number.indexOf('-') + 1)}</span></>;
 }
 
 type SortField = 'quoteNumber' | 'customer' | 'date' | 'total' | 'reste';
@@ -282,7 +290,9 @@ export default function InvoiceDirectoryPage() {
     });
     list.sort((a, b) => {
       let cmp = 0;
-      if (sortField === 'quoteNumber') cmp = a.quoteNumber.localeCompare(b.quoteNumber);
+      // Drafts without a number after the numbered invoices; numbers in series order (…-9 before …-10).
+      if (sortField === 'quoteNumber') cmp = Number(isProvisionalNumber(a.quoteNumber)) - Number(isProvisionalNumber(b.quoteNumber))
+        || a.quoteNumber.localeCompare(b.quoteNumber, 'fr', { numeric: true });
       else if (sortField === 'customer') cmp = (a.customer?.fullName || '').localeCompare(b.customer?.fullName || '');
       else if (sortField === 'date') cmp = documentDay(a).localeCompare(documentDay(b)) || new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
       else if (sortField === 'total') cmp = a.totalAmount - b.totalAmount;
@@ -308,19 +318,24 @@ export default function InvoiceDirectoryPage() {
       } catch { /* non-fatal */ }
     }
     const rows = filtered.map(inv => {
-      const { avance, paid, reste, status } = computePayment(inv);
+      const { avance, paid, reste, status, received, withheld, stampDuty } = computePayment(inv);
       const late = invoiceOverdue(inv);
-      const statusLabel = late.overdue ? `En retard (${late.days} j)` : status === 'paid' ? 'Payé' : status === 'partial' ? 'Partiel' : 'Non payé';
+      const statusLabel = inv.status === 'draft' ? 'Brouillon' : late.overdue ? `En retard (${late.days} j)` : status === 'paid' ? 'Payé' : status === 'partial' ? 'Partiel' : 'Non payé';
       return {
         'Code Client': ((inv.customer as any)?.clientCode || clientCodeMap[inv.customer?.phoneNumber || ''] || ''),
-        'N° Facture': inv.quoteNumber,
+        // A draft has no number yet: its provisional reference, marked as such.
+        'N° Facture': isProvisionalNumber(inv.quoteNumber) ? `Brouillon (${inv.quoteNumber})` : inv.quoteNumber,
         'Client': inv.customer?.fullName || '',
         'Téléphone': inv.customer?.phoneNumber || '',
         'Ville': inv.customer?.city || '',
         'Société Émettrice': (inv.issuing_company_id && companies[inv.issuing_company_id]) || '',
         'Total TTC': inv.totalAmount,
         'Avance': avance || '',
-        'Total Payé': paid,
+        // Encaissé = money received; TVA retenue = settled by the client's withholding, not cash.
+        'Encaissé': received,
+        'TVA retenue client': withheld || '',
+        'Total réglé': paid,
+        'Droit de timbre': stampDuty || '',
         'Reste': reste,
         'Statut Paiement': statusLabel,
         'Échéance': formatDay(late.dueDay),
@@ -367,6 +382,9 @@ export default function InvoiceDirectoryPage() {
           <button onClick={handleExportCSV} className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground hover:bg-secondary">
             <Download className="h-4 w-4" />CSV
           </button>
+          <Link to="/compta/releves-fiscaux" className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground hover:bg-secondary">
+            <FileText className="h-4 w-4" />Retenue de TVA et timbre
+          </Link>
           <button onClick={handleNewInvoice} disabled={isCreating}
             className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
             {isCreating ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" /> : <Plus className="h-4 w-4" />}
@@ -431,7 +449,7 @@ export default function InvoiceDirectoryPage() {
                 const { reste } = computePayment(inv);
                 return (
                   <DocumentCard key={inv.id} to={`/compta/invoices/${inv.id}`}
-                    number={<>{inv.quoteNumber}{inv.is_locked && <Lock className="ml-1 inline h-3 w-3 text-amber-600" aria-label="Verrouillée" />}</>}
+                    number={<><InvoiceNumber number={inv.quoteNumber} />{inv.is_locked && <Lock className="ml-1 inline h-3 w-3 text-amber-600" aria-label="Verrouillée" />}</>}
                     status={<InvoiceStatus inv={inv} />}
                     title={inv.customer?.fullName || '—'}
                     subtitle={[inv.customer?.phoneNumber, inv.issuing_company_id && companies[inv.issuing_company_id]].filter(Boolean).join(' · ')}
@@ -462,13 +480,13 @@ export default function InvoiceDirectoryPage() {
               </thead>
               <tbody className="divide-y divide-border">
                 {paginated.map(inv => {
-                  const { avance, paid, reste } = computePayment(inv);
+                  const { avance, paid, reste, withheld } = computePayment(inv);
                   const clientCode = (inv.customer as any)?.clientCode || (inv.customer as any)?.client_code || '';
                   return (
                   <tr key={inv.id} className="cursor-pointer hover:bg-secondary/60"
                     onClick={event => { if (!(event.target as HTMLElement).closest('a,button,[role="menu"]')) navigate(`/compta/invoices/${inv.id}`); }}>
                     <td className="whitespace-nowrap px-3 py-2.5">
-                      <Link to={`/compta/invoices/${inv.id}`} className="font-mono font-semibold text-primary hover:underline">{inv.quoteNumber}</Link>
+                      <Link to={`/compta/invoices/${inv.id}`} className="font-mono font-semibold text-primary hover:underline"><InvoiceNumber number={inv.quoteNumber} /></Link>
                       {inv.is_locked && <Lock className="ml-1 inline h-3 w-3 text-amber-600 dark:text-amber-400" aria-label="Verrouillée" />}
                     </td>
                     <td className="px-3 py-2.5">
@@ -492,6 +510,7 @@ export default function InvoiceDirectoryPage() {
                     <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-emerald-700 dark:text-emerald-300">
                       {paid > 0 ? formatMoney(paid) : <span className="text-muted-foreground">—</span>}
                       {avance > 0 && <div className="text-xs text-muted-foreground">dont avance {formatMoney(avance)}</div>}
+                      {withheld > 0 && <div className="text-xs text-violet-700 dark:text-violet-300">dont TVA retenue {formatMoney(withheld)}</div>}
                     </td>
                     <td className="whitespace-nowrap px-3 py-2.5 text-right font-semibold tabular-nums text-amber-700 dark:text-amber-300">
                       {reste > 0 ? formatMoney(reste) : <span className="font-normal text-muted-foreground">—</span>}
@@ -553,6 +572,8 @@ export default function InvoiceDirectoryPage() {
             <p className="text-xs text-muted-foreground">
               Saisir le PIN spécial pour supprimer <span className="font-mono font-semibold text-foreground">{pendingDeleteInv.quoteNumber}</span>.
             </p>
+            {/* Continuous numbering: say plainly what happens to the number. */}
+            <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">{SupabaseDocumentsService.deletionNotice(pendingDeleteInv)}</p>
             <input
               type="password"
               value={pinInput}

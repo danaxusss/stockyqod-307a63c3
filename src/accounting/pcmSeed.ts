@@ -62,6 +62,9 @@ const RAW: [string, string, (Partial<SeedAccount>)?][] = [
   ['34552', 'État - TVA récupérable sur charges', {}],
   ['3456', 'État - crédit de TVA (suivant déclarations)', {}],
   ['3458', 'État - autres comptes débiteurs', {}],
+  // VAT the clients withheld at source (CGI art. 117-IV): owed back by the
+  // State, imputed on the VAT return or refunded (art. 103-6°).
+  ['34581', 'État - TVA retenue à la source par les clients', {}],
   ['3488', 'Divers débiteurs', { lettrable: true }],
   // Classe 4 — Passif circulant (hors trésorerie)
   ['4411', 'Fournisseurs', { lettrable: true, aux_kind: 'fournisseur' }],
@@ -80,6 +83,9 @@ const RAW: [string, string, (Partial<SeedAccount>)?][] = [
   ['44553', 'État - TVA facturée 10%', { vat_rate: 10 }],
   ['4456', 'État - TVA due', {}],
   ['4457', 'État - impôts et taxes à payer', {}],
+  // Stamp duty collected on cash settlements (CGI art. 252-I-B), paid over
+  // before the end of the following month (art. 254-II).
+  ['44578', 'État - droits de timbre sur règlements en espèces', {}],
   ['4458', 'État - autres comptes créditeurs', {}],
   ['4488', 'Divers créditeurs', { lettrable: true }],
   // Classe 5 — Trésorerie
@@ -154,3 +160,10 @@ export const DEFAULT_ACCOUNTS = {
   chargesPersonnel: '6171',
   chargesSociales: '6174',
 };
+
+// Accounts of the customer settlements: VAT withheld by clients and stamp
+// duty on cash (kept apart from DEFAULT_ACCOUNTS, which other modules extend).
+export const CUSTOMER_TAX_ACCOUNTS = {
+  tvaRetenueClients: '34581',
+  droitsTimbre: '44578',
+} as const;
