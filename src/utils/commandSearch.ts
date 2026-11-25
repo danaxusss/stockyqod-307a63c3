@@ -90,6 +90,7 @@ export const PAGE_ALIASES: Record<string, string> = {
   '/inventaire/commandes': 'bc achat fournisseur',
   '/inventaire/reception': 'reception achat',
   '/inventaire/bons': 'be bs bon entree sortie casse perte stock initial',
+  '/inventaire/stock-comptable': 'inventaire detaille valorisation cloture bilan 3111 cmup',
   '/comptabilite/tva': 'tva',
   '/photos': 'photo image',
   '/photos/finder': 'photo image recherche internet',

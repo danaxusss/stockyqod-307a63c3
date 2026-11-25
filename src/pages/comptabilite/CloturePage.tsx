@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { Lock, Loader, AlertTriangle, CheckCircle2, Download, FileText, Calculator, Trash2 } from 'lucide-react';
-import type { Account, FiscalYear } from '../../types';
+import { Link } from 'react-router-dom';
+import { Lock, Loader, AlertTriangle, CheckCircle2, Download, FileText, Calculator, Trash2, Boxes } from 'lucide-react';
+import type { Account, FiscalYear, JournalEntry, JournalEntryLine } from '../../types';
 import { AccountingService } from '../../utils/supabaseAccounting';
 import { SupabaseCompaniesService } from '../../utils/supabaseCompanies';
 import { getCompanyContext } from '../../utils/supabaseCompanyFilter';
@@ -14,13 +15,20 @@ import { cmBaseFromBalances, estimateCorporateTax, resultBeforeTaxFromBalances }
 import { balancesOf } from '../../accounting/fiscalYears';
 import { downloadText } from '../../accounting/ledgerExport';
 import { errorText } from '../../accounting/errors';
+import { openingStockBalance, stockEntryAmounts, stockEntryState, stockVariation, STOCK_ACCOUNT, STOCK_VARIATION_ACCOUNT } from '../../accounting/stockEntry';
+import { buildStockStatement, statementTotals } from '../../inventory/lib/stockValuation';
+import { useStockAtDate } from '../../inventory/hooks/useStockAtDate';
+import { useAccessibleLocations } from '../../inventory/hooks/useAccessibleLocations';
+import { seesPurchaseCosts } from '../../utils/productCosts';
+import { STOCK_VALUATION_PATH } from '../../lib/navigation';
 
 function fmtMad(n: number) { return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n) + ' MAD'; }
 const pct = (r: number) => `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(r * 100)} %`;
 const frDay = (d: string) => d.split('-').reverse().join('/');
 
 export default function CloturePage() {
-  const { currentUser } = useAuth();
+  const { currentUser, getPriceDisplayType, isAdmin, isSuperAdmin } = useAuth();
+  const seesCosts = seesPurchaseCosts({ priceDisplayType: getPriceDisplayType?.(), isAdmin, isSuperAdmin });
   const { showToast } = useToast();
   const [years, setYears] = useState<FiscalYear[]>([]);
   const [openFy, setOpenFy] = useState<FiscalYear | null>(null);
@@ -31,7 +39,13 @@ export default function CloturePage() {
   const [fecYearId, setFecYearId] = useState('');
   const [fecReport, setFecReport] = useState<(FecCheck & { label: string; file: string }) | null>(null);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState<'close' | 'fec' | 'tax' | null>(null);
+  const [busy, setBusy] = useState<'close' | 'fec' | 'tax' | 'stock' | null>(null);
+  const [yearLines, setYearLines] = useState<Array<JournalEntryLine & { entry_id?: string; source_type?: string | null; source_id?: string | null }>>([]);
+  const [stockEntries, setStockEntries] = useState<JournalEntry[]>([]);
+  const [postedStockLines, setPostedStockLines] = useState<JournalEntryLine[]>([]);
+  const [draftStockLines, setDraftStockLines] = useState<JournalEntryLine[]>([]);
+  // The accountant's figure after the physical count; null: the valued stock.
+  const [closingInput, setClosingInput] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -45,18 +59,55 @@ export default function CloturePage() {
       const fy = [...all].filter(y => y.status === 'open').sort((a, b) => a.start_date.localeCompare(b.start_date))[0];
       if (!fy) { setOpenFy(null); return; }
       setOpenFy(fy);
-      const [drafts, lines, taxEntries] = await Promise.all([
+      const [drafts, lines, taxEntries, stock] = await Promise.all([
         AccountingService.listEntries({ fiscalYearId: fy.id, status: 'draft', limit: 1000 }),
         AccountingService.getPostedLines(fy.id),
         AccountingService.entriesForSource(AccountingService.taxSourceId(fy.id)),
+        AccountingService.stockEntries(fy),
       ]);
       setDraftCount(drafts.length);
       setBalances(balancesOf(lines));
+      setYearLines(lines);
       setTaxEntryExists(taxEntries.length > 0);
+      setStockEntries(stock);
+      // A posted stock entry's lines are among the year's posted lines; a draft's are read apart.
+      const current = stockEntryState(stock).entry;
+      setPostedStockLines(current?.status === 'posted' ? lines.filter(l => (l as { entry_id?: string }).entry_id === current.id) : []);
+      setDraftStockLines(current?.status === 'draft' ? await AccountingService.entryLines(current.id) : []);
+      setClosingInput(null);
     } catch (e) { showToast({ type: 'error', message: errorText(e, 'Erreur') }); }
     finally { setLoading(false); }
   }, [showToast]);
   useEffect(() => { load(); }, [load]);
+
+  // ── Stock de marchandises ──
+  const stockState = useMemo(() => stockEntryState(stockEntries), [stockEntries]);
+  const openingStock = useMemo(() => openFy ? openingStockBalance(yearLines, openFy.id, new Set(stockEntries.map(e => e.id))) : 0, [yearLines, openFy, stockEntries]);
+  const valuation = useStockAtDate(openFy && seesCosts ? openFy.end_date : null);
+  const { keyAllowed, loading: locationsLoading } = useAccessibleLocations();
+  const valued = useMemo(() => {
+    if (!openFy || !valuation.products || !valuation.movements || locationsLoading) return null;
+    return statementTotals(buildStockStatement(valuation.products, valuation.movements, { day: openFy.end_date, vatRate: valuation.vatRate, keyInScope: keyAllowed }));
+  }, [openFy, valuation.products, valuation.movements, valuation.vatRate, locationsLoading, keyAllowed]);
+  const closingStock = closingInput !== null ? Math.round((Number(closingInput.replace(',', '.')) || 0) * 100) / 100 : valued?.value ?? 0;
+  const closingEdited = closingInput !== null && valued !== null && Math.abs(closingStock - valued.value) > 0.005;
+  const postedAmounts = useMemo(() => stockEntryAmounts(postedStockLines), [postedStockLines]);
+  const draftAmounts = useMemo(() => stockEntryAmounts(draftStockLines), [draftStockLines]);
+  // No figure yet (valuation still loading or unavailable, nothing typed): no entry.
+  const noClosingFigure = closingInput === null && valued === null;
+
+  const createStockEntry = async () => {
+    if (!openFy) return;
+    const replace = stockState.state === 'draft';
+    if (!confirm(`${replace ? 'Remplacer le brouillon de' : 'Créer'} l'écriture de stock au ${frDay(openFy.end_date)} (journal OD, en brouillon) : annulation du stock initial de ${fmtMad(openingStock)} (débit ${STOCK_VARIATION_ACCOUNT}, crédit ${STOCK_ACCOUNT}) et stock final de ${fmtMad(closingStock)} (débit ${STOCK_ACCOUNT}, crédit ${STOCK_VARIATION_ACCOUNT}) ?`)) return;
+    setBusy('stock');
+    try {
+      const res = await AccountingService.saveStockEntryDraft(openFy, { opening: openingStock, closing: closingStock }, currentUser?.username || null);
+      showToast({ type: 'success', title: res.replaced ? 'Brouillon remplacé' : 'Brouillon créé', message: 'Écriture de stock dans le journal OD, à valider dans Saisie / Journaux.' });
+      await load();
+    } catch (e) { showToast({ type: 'error', message: errorText(e, 'Échec') }); }
+    finally { setBusy(null); }
+  };
 
   const result = useMemo(() => resultBeforeTaxFromBalances(balances), [balances]);
   const resultat = result.result - result.taxBooked;
@@ -69,6 +120,11 @@ export default function CloturePage() {
 
   const close = async () => {
     if (!openFy) return;
+    // Not blocked (a company may keep its stock outside Stocky), but never silent.
+    if (stockState.state !== 'posted' && (Math.abs(openingStock) > 0.005 || valued === null || valued.value > 0.005)) {
+      const figures = `stock initial au compte ${STOCK_ACCOUNT} : ${fmtMad(openingStock)}, stock valorisé au ${frDay(openFy.end_date)} : ${valued === null ? 'non calculé' : fmtMad(valued.value)}`;
+      if (!confirm(`Aucune écriture de stock validée pour l'exercice ${openFy.label} (${figures}). Le résultat de l'exercice ne tiendra pas compte du stock de marchandises. Clôturer quand même ?`)) return;
+    }
     if (!confirm(`Clôturer définitivement l'exercice ${openFy.label} ? Les écritures deviennent non modifiables et les à-nouveaux sont générés sur l'exercice suivant.`)) return;
     setBusy('close');
     try {
@@ -171,6 +227,60 @@ export default function CloturePage() {
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
               <span>Validez ou supprimez les écritures en brouillon avant de clôturer (Saisie / Journaux).</span>
             </p>
+          )}
+
+          {openFy && (
+            <Panel title={`Stock de marchandises ${openFy.label}`}>
+              <p className={info}>Inventaire au {frDay(openFy.end_date)} : le stock initial est annulé et le stock final enregistré par le compte {STOCK_VARIATION_ACCOUNT} (CGNC).</p>
+              <div className="divide-y divide-border border-t border-border">
+                <div className={row}><span className="text-muted-foreground">Stock initial (compte {STOCK_ACCOUNT})</span><span className={amountCls}>{fmtMad(stockState.state === 'posted' ? postedAmounts.opening : openingStock)}</span></div>
+                {stockState.state === 'posted' ? (
+                  <>
+                    <div className={row}><span className="text-muted-foreground">Stock final comptabilisé</span><span className={amountCls}>{fmtMad(postedAmounts.closing)}</span></div>
+                    <div className={row}><span className="text-muted-foreground">Variation de stock ({STOCK_VARIATION_ACCOUNT})</span><span className={amountCls}>{fmtMad(stockVariation(postedAmounts.opening, postedAmounts.closing))}</span></div>
+                  </>
+                ) : (
+                  <>
+                    <div className={row}>
+                      <span className="min-w-0 text-muted-foreground">
+                        Stock valorisé au {frDay(openFy.end_date)}
+                        {seesCosts && <> · <Link to={`${STOCK_VALUATION_PATH}?date=${openFy.end_date}`} className="font-medium text-primary hover:underline">Voir l'inventaire</Link></>}
+                        {valued && (valued.fallbackLines > 0 || valued.negativeLines > 0) && (
+                          <span className="block text-xs">{valued.fallbackLines} ligne(s) au coût actuel · {valued.negativeLines} en quantité négative</span>
+                        )}
+                      </span>
+                      <span className={amountCls}>{!seesCosts ? 'Prix d’achat non accessibles' : valuation.error ? 'Non calculé' : valued ? fmtMad(valued.value) : <Loader className="h-4 w-4 animate-spin" aria-label="Calcul en cours" />}</span>
+                    </div>
+                    <div className={row}>
+                      <label htmlFor="stock-final" className="text-muted-foreground">
+                        Stock final retenu
+                        {closingEdited && valued && <span className="block text-xs text-amber-800 dark:text-amber-200">Écart avec le stock valorisé : {fmtMad(Math.round((closingStock - valued.value) * 100) / 100)}</span>}
+                      </label>
+                      <input id="stock-final" type="number" min={0} step="0.01" inputMode="decimal"
+                        value={closingInput ?? (valued ? String(valued.value) : '')}
+                        onChange={e => setClosingInput(e.target.value)}
+                        className={`${fieldAuto} w-40 text-right tabular-nums`} />
+                    </div>
+                    <div className={row}><span className="text-muted-foreground">Variation de stock ({STOCK_VARIATION_ACCOUNT})</span><span className={amountCls}>{fmtMad(stockVariation(openingStock, closingStock))}</span></div>
+                  </>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 sm:px-5">
+                <span className="text-xs text-muted-foreground">
+                  {stockState.state === 'posted'
+                    ? <span className="flex flex-wrap items-center gap-2"><StatusPill tone="success" icon={<CheckCircle2 className="h-3 w-3" />}>Écriture validée{stockState.entry?.entry_number ? ` n° ${stockState.entry.entry_number}` : ''}</StatusPill>Pour la refaire, contre-passez-la d'abord dans Saisie / Journaux.</span>
+                    : stockState.state === 'draft'
+                      ? `Brouillon créé (stock initial ${fmtMad(draftAmounts.opening)}, stock final ${fmtMad(draftAmounts.closing)}) : validez-le dans Saisie / Journaux, ou remplacez-le.`
+                      : 'Une variation positive augmente les charges, négative les diminue.'}
+                </span>
+                {stockState.state !== 'posted' && (
+                  <button onClick={createStockEntry} disabled={busy !== null || noClosingFigure || (Math.abs(openingStock) < 0.005 && closingStock < 0.005) || closingStock < 0} className={btnSecondary}>
+                    {busy === 'stock' ? <Loader className="h-4 w-4 animate-spin" /> : <Boxes className="h-4 w-4 text-primary" />}
+                    {stockState.state === 'draft' ? 'Remplacer le brouillon' : "Créer l'écriture de stock"}
+                  </button>
+                )}
+              </div>
+            </Panel>
           )}
 
           {openFy && tax && (

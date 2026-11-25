@@ -1,6 +1,7 @@
 import { supabase } from './supabaseClient';
 import { getCompanyContext } from './supabaseCompanyFilter';
 import { loadProductCosts, withProductCosts } from './productCosts';
+import { readAll, type Pageable } from './readAll';
 import type { Product, StockMovement, StockMovementType, StockSourceType, ProductStockSetting } from '../types';
 
 export interface ApplyMovementParams {
@@ -139,6 +140,18 @@ export class StockService {
       if (!data || data.length < pageSize) break;
     }
     return rows;
+  }
+
+  /**
+   * Every movement recorded at or after `instant` (ISO), every location and
+   * company: what stock at a past date is rebuilt from. Only the columns it
+   * needs, page by page past the 1,000-row cap, in a stable order (id).
+   */
+  static async getMovementsSince(instant: string): Promise<StockMovement[]> {
+    return readAll<StockMovement>(() => (supabase as unknown as { from(t: string): { select(c: string): { gte(c: string, v: string): Pageable<StockMovement> } } })
+      .from('stock_movements')
+      .select('id, barcode, location_key, type, quantity, unit_cost, reason, source_type, created_by, created_at')
+      .gte('created_at', instant), 'id');
   }
 
   static async getMovements(filters: MovementFilters = {}): Promise<StockMovement[]> {

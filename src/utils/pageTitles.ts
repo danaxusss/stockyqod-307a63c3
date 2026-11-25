@@ -47,6 +47,7 @@ const TITLES: [string, string][] = [
   ['/inventaire/transfert', 'Transfert'],
   ['/inventaire/inventaire', 'Inventaire physique'],
   ['/inventaire/rapports', 'Valorisation & rapports'],
+  ['/inventaire/stock-comptable', 'Stock comptable'],
   ['/inventaire/commandes', 'Commandes fournisseur'],
   ['/inventaire/commandes/', 'Commande fournisseur'],
   ['/paie/employes', 'Employés'],

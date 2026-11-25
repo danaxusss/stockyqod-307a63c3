@@ -4,6 +4,7 @@ import { readAll } from './readAll';
 import { PCM_SEED, DEFAULT_JOURNALS } from '../accounting/pcmSeed';
 import { balancesOf, buildOpeningLines, decideNewFiscalYear, RESULT_LOSS_ACCOUNT, RESULT_PROFIT_ACCOUNT } from '../accounting/fiscalYears';
 import type { FecEntry, FecLine } from '../accounting/fec';
+import { buildStockEntryLines, stockEntryState, stockSourceId, STOCK_ACCOUNT, STOCK_VARIATION_ACCOUNT } from '../accounting/stockEntry';
 import type { Account, FiscalYear, Journal, JournalEntry, JournalEntryLine } from '../types';
 
 // The generated Database types do not list the accounting tables, so their
@@ -447,6 +448,60 @@ export class AccountingService {
         { account_code: '4453', label: `IS ${fy.label}`, debit: 0, credit: value },
       ],
     }, journals, { createdBy: user });
+  }
+
+  // ── Year-end stock entry ──────────────────────────────────────────────────
+  /** Entries carrying the stock source id of a fiscal year (draft, posted or reversed). */
+  static async stockEntries(fy: FiscalYear): Promise<JournalEntry[]> {
+    return this.entriesForSource(stockSourceId(fy.id));
+  }
+
+  /** Lines of one entry, whatever its status. */
+  static async entryLines(entryId: string): Promise<JournalEntryLine[]> {
+    return (await this.linesForEntries([entryId])).sort((x, y) => (x.sort_order ?? 0) - (y.sort_order ?? 0)) as JournalEntryLine[];
+  }
+
+  /**
+   * The DRAFT stock entry of a fiscal year, dated at its end in the OD
+   * journal: cancels the opening stock and records the closing stock through
+   * 6114 (see accounting/stockEntry.ts). One per year: a draft is replaced,
+   * a posted entry is never touched (it must be reversed in Saisie first;
+   * once reversed a new one can be made).
+   */
+  static async saveStockEntryDraft(fy: FiscalYear, amounts: { opening: number; closing: number }, user: string | null): Promise<{ entry: JournalEntry; replaced: boolean }> {
+    const lines = buildStockEntryLines({ ...amounts, endDate: fy.end_date });
+    const existing = await this.stockEntries(fy);
+    const { state, entry } = stockEntryState(existing);
+    if (state === 'posted') {
+      throw new Error(`L'écriture de stock de l'exercice ${fy.label} est déjà validée${entry?.entry_number ? ` (n° ${entry.entry_number})` : ''} : contre-passez-la dans Saisie / Journaux avant d'en créer une autre.`);
+    }
+    await this.ensureSeedAccounts([STOCK_ACCOUNT, STOCK_VARIATION_ACCOUNT]);
+    const header = { reference: `STOCK ${fy.label}`, label: `Stock de marchandises ${fy.label} (inventaire au ${frDay(fy.end_date)})` };
+    if (state === 'draft' && entry) {
+      await this.updateEntryDraft(entry.id, { entry_date: fy.end_date, ...header }, lines);
+      // Two drafts could only come from two tabs clicking at once: keep one.
+      for (const extra of existing.filter(e => e.status === 'draft' && e.id !== entry.id)) await this.deleteDraft(extra.id);
+      return { entry: { ...entry, entry_date: fy.end_date, ...header }, replaced: true };
+    }
+    const journals = await this.listJournals();
+    const created = await this.createFromDraft({
+      journalType: 'od', date: fy.end_date, ...header, sourceType: 'manual', sourceId: stockSourceId(fy.id), lines,
+    }, journals, { createdBy: user });
+    return { entry: created, replaced: false };
+  }
+
+  /**
+   * Balance (debit − credit) of an account in the books at the end of `day`:
+   * posted lines of the fiscal year containing that day, dated up to it (the
+   * year's à-nouveaux included). Null when no fiscal year covers the day.
+   */
+  static async accountBalanceAt(code: string, day: string): Promise<{ balance: number; fiscalYear: FiscalYear } | null> {
+    const fy = (await this.listFiscalYears()).find(y => contains(y, day));
+    if (!fy) return null;
+    const lines = await this.getAccountLines(code, fy.id);
+    const balance = lines.filter(l => String(l.entry_date || '').slice(0, 10) <= day)
+      .reduce((s, l) => s + (Number(l.debit) || 0) - (Number(l.credit) || 0), 0);
+    return { balance: Math.round(balance * 100) / 100, fiscalYear: fy };
   }
 
   // ── Posted-entries helper (two-step: entries → lines, avoids embedded filters) ─
