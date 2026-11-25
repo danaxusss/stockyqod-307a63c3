@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
-import { ChevronRight, Loader, PackageCheck, Send, Ban, ClipboardList, StickyNote } from 'lucide-react';
+import { ChevronRight, Loader, PackageCheck, Send, Ban, ClipboardList, StickyNote, FileText } from 'lucide-react';
 import { StatusPill, type StatusTone } from '../../components/lists/StatusPill';
 import { formatMoney } from '../../utils/format';
 import { OpsLoading, OpsSection } from './StockOpsUi';
@@ -10,6 +10,9 @@ import { OverReceiptError, PurchaseOrdersService } from '../../utils/supabasePur
 import { useAccessibleLocations } from '../../inventory/hooks/useAccessibleLocations';
 import { findLevelKey, locationCandidates } from '../../inventory/lib/locationKeys';
 import { useAuth } from '../../hooks/useAuth';
+import { seesPurchaseCosts } from '../../utils/productCosts';
+import { SuppliersService } from '../../utils/supabaseSuppliers';
+import { matchSupplier, supplierDisplayName, type Supplier } from '../../accounting/supplierInvoices';
 import { useToast } from '../../context/ToastContext';
 
 const STATUS: Record<PurchaseOrderStatus, { label: string; tone: StatusTone }> = {
@@ -23,10 +26,17 @@ const STATUS: Record<PurchaseOrderStatus, { label: string; tone: StatusTone }> =
 export default function PurchaseOrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { currentUser } = useAuth();
+  const auth = useAuth();
+  const { currentUser } = auth;
+  // Same rule as navigation's supplierInvoices access (billing or accounting staff who see costs).
+  const canInvoice = !!(auth.isFacturation || auth.isSuperAdmin || auth.isAdmin || auth.isCompta)
+    && seesPurchaseCosts({ priceDisplayType: auth.getPriceDisplayType?.(), isAdmin: auth.isAdmin, isSuperAdmin: auth.isSuperAdmin });
   const { showToast } = useToast();
 
   const [po, setPo] = useState<PurchaseOrder | null>(null);
+  // Supplier records, to link an order that only carries the supplier's name.
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [linkTo, setLinkTo] = useState('');
   const { accessibleLocations: locations } = useAccessibleLocations();
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -46,6 +56,7 @@ export default function PurchaseOrderDetailPage() {
     } finally { setLoading(false); }
   }, [id, showToast]);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { SuppliersService.list().then(setSuppliers).catch(() => setSuppliers([])); }, []);
   // Default to the first location the user can receive into.
   useEffect(() => {
     if (!recvLocation && locations.length > 0) setRecvLocation(locations[0].abbreviation || locations[0].name);
@@ -110,6 +121,15 @@ export default function PurchaseOrderDetailPage() {
   );
 
   const canReceive = po.status !== 'received' && po.status !== 'cancelled';
+  const supplierId = (po as PurchaseOrder & { supplier_id?: string | null }).supplier_id ?? null;
+  const linked = supplierId ? suppliers.find(s => s.id === supplierId) : undefined;
+  const guess = !supplierId ? matchSupplier(suppliers, po) : undefined;
+  const linkSupplier = async () => {
+    const s = suppliers.find(x => x.id === (linkTo || guess?.id));
+    if (!s) return;
+    try { await SuppliersService.linkPurchaseOrder(po.id, s); showToast({ type: 'success', message: `Commande liée à ${s.name}` }); await load(); }
+    catch (e) { showToast({ type: 'error', message: (e as Error)?.message || 'Erreur' }); }
+  };
 
   const dateFr = (d: string | null) => d ? new Date(d).toLocaleDateString('fr-FR') : '—';
 
@@ -131,7 +151,7 @@ export default function PurchaseOrderDetailPage() {
         <div className="min-w-0 space-y-4">
           <OpsSection title="Articles" aside={<span className="text-sm text-muted-foreground">{(po.items || []).length} ligne{(po.items || []).length !== 1 ? 's' : ''}</span>}>
             <div className={`hidden gap-x-4 border-b border-border bg-secondary/40 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground md:grid ${receiving ? 'grid-cols-[minmax(0,1fr)_6rem_8rem_7rem_7rem]' : 'grid-cols-[minmax(0,1fr)_6rem_8rem_7rem]'}`}>
-              <span>Article</span><span className="text-right">Commandé</span><span>Reçu</span><span className="text-right">Coût u.</span>{receiving && <span className="text-right">À recevoir</span>}
+              <span>Article</span><span className="text-right">Commandé</span><span>Reçu</span><span className="text-right">Coût u. TTC</span>{receiving && <span className="text-right">À recevoir</span>}
             </div>
             <ul className="divide-y divide-border">
               {(po.items || []).map(it => {
@@ -151,7 +171,7 @@ export default function PurchaseOrderDetailPage() {
                           <span className={`block h-full rounded-full ${pct >= 100 ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${pct}%` }} />
                         </span>
                       </div>
-                      <p className="text-right text-sm tabular-nums text-foreground"><span className="block text-xs text-muted-foreground md:hidden">Coût u.</span>{formatMoney(Number(it.unit_cost))}</p>
+                      <p className="text-right text-sm tabular-nums text-foreground"><span className="block text-xs text-muted-foreground md:hidden">Coût u. TTC</span>{formatMoney(Number(it.unit_cost))}</p>
                       {receiving && (
                         <label className="block">
                           <span className="block text-right text-xs text-muted-foreground md:sr-only">À recevoir</span>
@@ -165,7 +185,7 @@ export default function PurchaseOrderDetailPage() {
               })}
             </ul>
             <div className="flex items-baseline justify-between gap-2 border-t border-border px-5 py-3">
-              <span className="font-semibold text-foreground">Total HT</span>
+              <span className="font-semibold text-foreground">Total TTC</span>
               <span className="text-lg font-bold tabular-nums text-foreground">{formatMoney(Number(po.total_ht))}</span>
             </div>
           </OpsSection>
@@ -182,15 +202,29 @@ export default function PurchaseOrderDetailPage() {
           <section className={`${opsPanel} p-5`}>
             <h2 className="font-semibold text-foreground">Commande</h2>
             <dl className="mt-3 space-y-2 text-sm">
-              <div className="flex justify-between gap-2"><dt className="text-muted-foreground">Fournisseur</dt><dd className="truncate text-right font-medium text-foreground">{po.provider_name || 'Sans fournisseur'}</dd></div>
+              <div className="flex justify-between gap-2"><dt className="text-muted-foreground">Fournisseur</dt><dd className="truncate text-right font-medium text-foreground">{linked ? supplierDisplayName(linked) : po.provider_name || 'Sans fournisseur'}</dd></div>
               <div className="flex justify-between gap-2"><dt className="text-muted-foreground">Date</dt><dd className="font-medium text-foreground">{dateFr(po.order_date)}</dd></div>
               <div className="flex justify-between gap-2"><dt className="text-muted-foreground">Date prévue</dt><dd className="font-medium text-foreground">{dateFr(po.expected_date)}</dd></div>
               <div className="flex justify-between gap-2"><dt className="text-muted-foreground">Emplacement</dt><dd className="font-medium text-foreground">{po.location_key || '—'}</dd></div>
             </dl>
             <div className="mt-3 flex items-baseline justify-between gap-2 border-t border-border pt-3">
-              <span className="font-semibold text-foreground">Total HT</span>
+              <span className="font-semibold text-foreground">Total TTC</span>
               <span className="text-xl font-bold tabular-nums text-foreground">{formatMoney(Number(po.total_ht))}</span>
             </div>
+            <p className="mt-2 text-xs text-muted-foreground">Coûts saisis TTC (TVA comprise).</p>
+            {!supplierId && suppliers.length > 0 && (
+              <div className="mt-3 space-y-2 border-t border-border pt-3">
+                <label htmlFor="po-link-supplier" className={opsLabel}>Lier à une fiche fournisseur</label>
+                <select id="po-link-supplier" value={linkTo || guess?.id || ''} onChange={e => setLinkTo(e.target.value)} className={opsField}>
+                  <option value="">—</option>
+                  {suppliers.map(s => <option key={s.id} value={s.id}>{supplierDisplayName(s)}</option>)}
+                </select>
+                <button onClick={linkSupplier} disabled={!(linkTo || guess)} className={`${opsSecondaryBtn} w-full`}>Lier la commande</button>
+              </div>
+            )}
+            {canInvoice && po.status !== 'cancelled' && (
+              <Link to={`/compta/factures-fournisseurs/nouvelle?po=${po.id}`} className={`${opsSecondaryBtn} mt-3 w-full`}><FileText className="h-4 w-4" />Saisir la facture fournisseur</Link>
+            )}
             {!receiving && (canReceive || po.status === 'draft') && (
               <div className="mt-4 space-y-2">
                 {canReceive && <button onClick={startReceive} disabled={busy} className={`${opsPrimaryBtn} w-full`}><PackageCheck className="h-4 w-4" />Réceptionner</button>}
@@ -223,7 +257,7 @@ export default function PurchaseOrderDetailPage() {
         <div className={opsPhoneBar}>
           <div className="mx-auto flex max-w-3xl items-center gap-3">
             <div className="min-w-0 flex-1">
-              <p className="text-xs text-muted-foreground">Total HT</p>
+              <p className="text-xs text-muted-foreground">Total TTC</p>
               <p className="whitespace-nowrap text-lg font-bold tabular-nums leading-tight text-foreground">{formatMoney(Number(po.total_ht))}</p>
             </div>
             {receiving ? (

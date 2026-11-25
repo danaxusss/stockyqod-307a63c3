@@ -14,6 +14,7 @@ import { useToast } from '../../context/ToastContext';
 import { PageHeader, Panel } from '../../components/PageHeader';
 import { StatusPill } from '../../components/lists/StatusPill';
 import { btnPrimary, btnSoft, checkbox, KpiTile, LoadingState, PhoneActionBar } from '../../components/backoffice/BackOfficeUi';
+import { SupplierPostingSection } from '../fournisseurs/SupplierPostingSection';
 
 function fmtMad(n: number) { return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(n) + ' MAD'; }
 
@@ -223,6 +224,9 @@ export default function AComptabiliserPage() {
           {payslips.length === 0 && <Empty />}
         </Section>
       </div>
+
+      {/* Supplier invoices and payments: their own section, loaded and posted apart. */}
+      <SupplierPostingSection autoPost={autoPost} />
     </div>
   );
 }

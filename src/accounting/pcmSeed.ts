@@ -88,6 +88,10 @@ const RAW: [string, string, (Partial<SeedAccount>)?][] = [
   ['44578', 'État - droits de timbre sur règlements en espèces', {}],
   ['4458', 'État - autres comptes créditeurs', {}],
   ['4488', 'Divers créditeurs', { lettrable: true }],
+  // Withholdings on supplier payments, owed to the State the month after
+  // (sub-accounts of 4452 and 4458; see accounting/supplierPosting.ts).
+  ['44525', 'État - IR/IS retenus à la source sur rémunérations de tiers', {}],
+  ['44581', 'État - TVA retenue à la source (art. 117 CGI)', {}],
   // Classe 5 — Trésorerie
   ['5141', 'Banque', {}],
   ['5143', 'Banque (compte 2)', {}],

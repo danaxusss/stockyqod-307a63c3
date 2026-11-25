@@ -11,6 +11,8 @@ import type { Product, Provider, PurchaseOrderItem, PurchaseOrderStatus } from '
 import { StockService } from '../../utils/supabaseStock';
 import { StockLocationsService } from '../../utils/supabaseStockLocations';
 import { PurchaseOrdersService } from '../../utils/supabasePurchaseOrders';
+import { SuppliersService } from '../../utils/supabaseSuppliers';
+import { supplierDisplayName, type Supplier } from '../../accounting/supplierInvoices';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
 import { useAccessibleLocations } from '../../inventory/hooks/useAccessibleLocations';
@@ -81,7 +83,7 @@ export default function PurchaseOrdersPage() {
                     <th className={`${th} text-left`}>N°</th>
                     <th className={`${th} text-left`}>Fournisseur</th>
                     <th className={`${th} text-left`}>Date</th>
-                    <th className={`${th} text-right`}>Total HT</th>
+                    <th className={`${th} text-right`}>Total TTC</th>
                     <th className={`${th} text-left`}>Statut</th>
                   </tr>
                 </thead>
@@ -120,6 +122,8 @@ function CreatePOModal({ createdBy, initialBarcodes = [], onClose, onCreated }: 
   const { showToast } = useToast();
   const [products, setProducts] = useState<Product[]>([]);
   const [providers, setProviders] = useState<Provider[]>([]);
+  // Supplier records (factures fournisseurs); the plain provider list until there are any.
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const { accessibleLocations: locations } = useAccessibleLocations();
   const [providerId, setProviderId] = useState('');
   const [locationKey, setLocationKey] = useState('');
@@ -135,11 +139,12 @@ function CreatePOModal({ createdBy, initialBarcodes = [], onClose, onCreated }: 
 
   useEffect(() => {
     (async () => {
-      const [p, pr, settings] = await Promise.all([
+      const [p, pr, settings, sup] = await Promise.all([
         StockService.getProducts(), StockLocationsService.getProviders(),
         StockService.getStockSettings().catch(() => []),
+        SuppliersService.list().catch(() => [] as Supplier[]),
       ]);
-      setProducts(p); setProviders(pr);
+      setProducts(p); setProviders(pr); setSuppliers(sup.filter(s => s.active !== false));
       if (initialBarcodes.length > 0) {
         const reorderQty = new Map(settings.filter(s => !s.location_key).map(s => [s.barcode, s.reorder_qty]));
         const seeded = initialBarcodes
@@ -170,9 +175,11 @@ function CreatePOModal({ createdBy, initialBarcodes = [], onClose, onCreated }: 
     if (lines.length === 0) { showToast({ type: 'error', message: 'Ajoutez au moins une ligne' }); return; }
     setSaving(true);
     try {
-      const provider = providers.find(p => p.id === providerId);
+      const supplier = suppliers.find(s => s.id === providerId);
+      const provider = supplier ? providers.find(p => p.id === supplier.provider_id) : providers.find(p => p.id === providerId);
       const po = await PurchaseOrdersService.create({
-        provider_id: providerId || null, provider_name: provider?.name ?? null,
+        ...(supplier ? { supplier_id: supplier.id } : {}),
+        provider_id: provider?.id ?? null, provider_name: supplier ? supplierDisplayName(supplier) : provider?.name ?? null,
         location_key: locationKey || null, expected_date: expected || null,
         notes: notes.trim() || null, status: 'draft', created_by: createdBy,
       }, lines);
@@ -200,7 +207,9 @@ function CreatePOModal({ createdBy, initialBarcodes = [], onClose, onCreated }: 
               <label htmlFor="po-provider" className={opsLabel}>Fournisseur</label>
               <select id="po-provider" value={providerId} onChange={e => setProviderId(e.target.value)} className={opsField}>
                 <option value="">—</option>
-                {providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                {suppliers.length > 0
+                  ? suppliers.map(s => <option key={s.id} value={s.id}>{supplierDisplayName(s)}</option>)
+                  : providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </div>
             <div>
@@ -225,6 +234,7 @@ function CreatePOModal({ createdBy, initialBarcodes = [], onClose, onCreated }: 
             ))}
           </ProductSearch>
 
+          {lines.length > 0 && <p className="text-xs text-muted-foreground">Coûts unitaires saisis TTC (TVA comprise), comme les prix d’achat des articles.</p>}
           {lines.length > 0 && (
             <ul className="divide-y divide-border rounded-lg border border-border">
               {lines.map((l, i) => (
@@ -241,7 +251,7 @@ function CreatePOModal({ createdBy, initialBarcodes = [], onClose, onCreated }: 
                     <QtyStepper label="la quantité" onMinus={() => upd(i, 'qty_ordered', l.qty_ordered - 1)} onPlus={() => upd(i, 'qty_ordered', l.qty_ordered + 1)} minusDisabled={l.qty_ordered <= 1}
                       input={<input type="number" min={1} value={l.qty_ordered} onChange={e => upd(i, 'qty_ordered', Number(e.target.value))} aria-label="Quantité" className={stepperInput} />} />
                     <label className="flex items-center justify-end gap-1">
-                      <span className="sr-only">Coût unitaire</span>
+                      <span className="sr-only">Coût unitaire TTC</span>
                       <input type="number" min={0} step="0.01" value={l.unit_cost} onChange={e => upd(i, 'unit_cost', Number(e.target.value))}
                         className="h-10 w-24 rounded-lg border border-input bg-background px-2 text-right text-sm tabular-nums text-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
                       <span className="text-sm text-muted-foreground">Dh</span>
@@ -253,7 +263,7 @@ function CreatePOModal({ createdBy, initialBarcodes = [], onClose, onCreated }: 
           )}
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-5 py-3">
-          <p className="text-sm text-muted-foreground">Total HT <span className="ml-1 text-base font-bold tabular-nums text-foreground">{formatMoney(total)}</span></p>
+          <p className="text-sm text-muted-foreground">Total TTC <span className="ml-1 text-base font-bold tabular-nums text-foreground">{formatMoney(total)}</span></p>
           <div className="flex gap-2">
             <button onClick={onClose} className={opsSecondaryBtn}>Annuler</button>
             <button onClick={submit} disabled={saving || lines.length === 0} className={opsPrimaryBtn}>
