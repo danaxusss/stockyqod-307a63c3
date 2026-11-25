@@ -206,7 +206,7 @@ export default function CongesPage() {
                     </span>
                     <label className="shrink-0 text-xs text-muted-foreground" title="Solde d'ouverture de l'année (première année d'utilisation)">
                       <span className="sr-only">Report {year} de {s.employee.full_name}</span>
-                      <input key={`${year}-${s.openingSet ? s.carry : 'auto'}`} type="number" step="0.5" className={`${fieldSm} w-20 text-right tabular-nums`} placeholder={days1(s.carry)} defaultValue={s.openingSet ? String(s.carry) : ''}
+                      <input key={`${year}-${s.openingSet ? s.carry : 'auto'}`} type="number" step="0.5" className={`${fieldSm} !w-20 text-right tabular-nums`} placeholder={days1(s.carry)} defaultValue={s.openingSet ? String(s.carry) : ''}
                         aria-label={`Report ${year} de ${s.employee.full_name}`} disabled={migrationMissing} onBlur={e => { if (e.target.value !== (s.openingSet ? String(s.carry) : '')) setOpening(s.employee.id, e.target.value); }} />
                     </label>
                     <span className="shrink-0 rounded-lg bg-secondary px-2.5 py-1 text-sm font-semibold tabular-nums text-foreground">{days1(s.balance)} j</span>
@@ -226,7 +226,7 @@ export default function CongesPage() {
             <ul className="divide-y divide-border">
               {holidays.map((h, i) => (
                 <li key={i} className="flex items-center gap-2 px-4 py-2 sm:px-5">
-                  <input type="date" value={h.date} onChange={e => editHoliday(i, { date: e.target.value })} aria-label="Date du jour férié" className={`${fieldSm} w-40`} />
+                  <input type="date" value={h.date} onChange={e => editHoliday(i, { date: e.target.value })} aria-label="Date du jour férié" className={`${fieldSm} !w-40 shrink-0`} />
                   <input value={h.label} onChange={e => editHoliday(i, { label: e.target.value })} aria-label="Libellé du jour férié" className={`${fieldSm} min-w-0 flex-1`} />
                   <StatusPill tone={h.kind === 'civil' ? 'neutral' : 'info'}>{h.kind === 'civil' ? 'Civil' : 'Religieux'}</StatusPill>
                   <button onClick={() => removeHoliday(i)} aria-label="Retirer le jour férié" className={iconBtnDanger}><Trash2 className="h-4 w-4" /></button>
