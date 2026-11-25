@@ -2,8 +2,9 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'rea
 import { useSearchParams } from 'react-router-dom';
 import { AlertTriangle, Boxes, Coins, Download, FileText, Lock, Package, Search } from 'lucide-react';
 import { PageHeader } from '../../components/PageHeader';
+import { InvoicedStockView } from './InvoicedStockView';
 import { StatusPill } from '../../components/lists/StatusPill';
-import { btnSecondary, checkbox, EmptyState, KpiTile, LoadingState, tdNum, th, theadRow, thRight, tfootRow, td } from '../../components/backoffice/BackOfficeUi';
+import { btnSecondary, checkbox, EmptyState, KpiTile, LoadingState, Segmented, tdNum, th, theadRow, thRight, tfootRow, td } from '../../components/backoffice/BackOfficeUi';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
 import { useAccessibleLocations } from '../../inventory/hooks/useAccessibleLocations';
@@ -44,18 +45,44 @@ export default function StockComptablePage() {
       </div>
     );
   }
-  return <StockComptable />;
+  return <StockComptableViews />;
 }
 
-function StockComptable() {
+type View = 'valorise' | 'facture';
+
+/**
+ * Two views of the stock at a date: the real stock valued ("Stock réel
+ * valorisé") and the stock the invoices give next to it ("Stock facturé /
+ * réel"). ?vue=facture opens the second; the date follows from one to the other.
+ */
+function StockComptableViews() {
+  const [params, setParams] = useSearchParams();
+  const view: View = params.get('vue') === 'facture' ? 'facture' : 'valorise';
+  const asked = params.get('date') || '';
+  const [day, setDay] = useState(() => (isDay(asked) ? asked : todayIn()));
+  const pick = (v: View) => setParams(p => { const n = new URLSearchParams(p); if (v === 'facture') n.set('vue', 'facture'); else n.delete('vue'); return n; }, { replace: true });
+  return (
+    <>
+      <div className="mx-auto mb-3 max-w-[110rem]">
+        <Segmented<View> label="Vue du stock" value={view} onChange={pick}
+          options={[{ value: 'valorise', label: 'Stock réel valorisé' }, { value: 'facture', label: 'Stock facturé / réel' }]} />
+      </div>
+      {view === 'facture' ? <InvoicedStockView initialDay={day} onDay={setDay} /> : <StockComptable initialDay={day} onDay={setDay} />}
+    </>
+  );
+}
+
+function StockComptable({ initialDay, onDay }: { initialDay?: string; onDay?: (day: string) => void }) {
   const { companyName } = useAuth();
   const { showToast } = useToast();
   const today = useMemo(() => todayIn(), []);
   // ?date=YYYY-MM-DD: the Clôture page links to the statement at the year end.
   const [params] = useSearchParams();
   const asked = params.get('date') || '';
-  const [day, setDay] = useState(isDay(asked) ? asked : today);
-  const [dayInput, setDayInput] = useState(isDay(asked) ? asked : today);
+  const start = initialDay && isDay(initialDay) ? initialDay : isDay(asked) ? asked : today;
+  const [day, setDay] = useState(start);
+  const [dayInput, setDayInput] = useState(start);
+  useEffect(() => { onDay?.(day); }, [day, onDay]);
   const [locationId, setLocationId] = useState('');
   const [query, setQuery] = useState('');
   const search = useDeferredValue(query);
