@@ -51,7 +51,27 @@ END $$;
 
 CREATE INDEX IF NOT EXISTS idx_quotes_dtype_due ON public.quotes(document_type, due_date);
 
+-- ── A date out of quote_date, whatever its column type ───────────────────
+-- quote_date was added outside these migrations (date, timestamp or text
+-- depending on the database): read its first 10 characters as a date and
+-- give NULL rather than an error for anything else.
+CREATE OR REPLACE FUNCTION public.stocky_safe_date(p_value text)
+RETURNS date
+LANGUAGE plpgsql
+IMMUTABLE
+AS $fn$
+BEGIN
+  IF p_value IS NULL OR btrim(p_value) = '' THEN
+    RETURN NULL;
+  END IF;
+  RETURN left(btrim(p_value), 10)::date;
+EXCEPTION WHEN others THEN
+  RETURN NULL;
+END
+$fn$;
+
 -- ── Defaults for documents inserted without rate or due date ──────────────
+-- Never blocks an insert: on any error the document is saved as it came.
 CREATE OR REPLACE FUNCTION public.stocky_quotes_billing_defaults()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -70,8 +90,14 @@ BEGIN
     NEW.tva_rate := coalesce(v_rate, 20);
   END IF;
   IF NEW.document_type = 'invoice' AND NEW.due_date IS NULL THEN
-    NEW.due_date := coalesce(NEW.quote_date, (coalesce(NEW.created_at, now()) AT TIME ZONE 'Africa/Casablanca')::date)
+    NEW.due_date := coalesce(public.stocky_safe_date(NEW.quote_date::text),
+                             (coalesce(NEW.created_at, now()) AT TIME ZONE 'Africa/Casablanca')::date)
                     + coalesce(v_days, 60);
+  END IF;
+  RETURN NEW;
+EXCEPTION WHEN others THEN
+  IF NEW.tva_rate IS NULL THEN
+    NEW.tva_rate := 20;
   END IF;
   RETURN NEW;
 END
@@ -181,7 +207,7 @@ BEGIN
   WHERE q.tva_rate IS NULL;
 
   UPDATE public.quotes q
-  SET due_date = coalesce(q.quote_date, (q.created_at AT TIME ZONE 'Africa/Casablanca')::date) + 60
+  SET due_date = coalesce(public.stocky_safe_date(q.quote_date::text), (q.created_at AT TIME ZONE 'Africa/Casablanca')::date) + 60
   WHERE q.document_type = 'invoice' AND q.due_date IS NULL;
 
   FOR i IN 1 .. coalesce(array_length(disabled, 1), 0) LOOP
