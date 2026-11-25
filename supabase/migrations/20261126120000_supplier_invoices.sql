@@ -259,11 +259,36 @@ CREATE POLICY stocky_supplier_invoices_update ON public.supplier_invoices FOR UP
 CREATE POLICY stocky_supplier_invoices_delete ON public.supplier_invoices FOR DELETE TO authenticated
   USING ((SELECT public.stocky_is_purchase_staff()) AND public.stocky_purchase_in_scope(company_id, true));
 
--- Lines follow their invoice (the invoice's own rules apply inside EXISTS).
+-- Lines follow their invoice. Reading: the invoice is visible to the caller
+-- (its own SELECT rule applies inside EXISTS). Writing needs more than that:
+-- being able to READ another company's invoice (cross-company readers) must
+-- not allow changing its lines, so every write also requires purchase staff
+-- with WRITE scope on the invoice's company - the rule of the invoice itself.
 DROP POLICY IF EXISTS stocky_parent_rows ON public.supplier_invoice_lines;
-CREATE POLICY stocky_parent_rows ON public.supplier_invoice_lines FOR ALL TO authenticated
-  USING (EXISTS (SELECT 1 FROM public.supplier_invoices i WHERE i.id = invoice_id))
-  WITH CHECK (EXISTS (SELECT 1 FROM public.supplier_invoices i WHERE i.id = invoice_id));
+DROP POLICY IF EXISTS stocky_signed_in_only ON public.supplier_invoice_lines;
+DROP POLICY IF EXISTS stocky_supplier_invoice_lines_select ON public.supplier_invoice_lines;
+DROP POLICY IF EXISTS stocky_supplier_invoice_lines_insert ON public.supplier_invoice_lines;
+DROP POLICY IF EXISTS stocky_supplier_invoice_lines_update ON public.supplier_invoice_lines;
+DROP POLICY IF EXISTS stocky_supplier_invoice_lines_delete ON public.supplier_invoice_lines;
+CREATE POLICY stocky_signed_in_only ON public.supplier_invoice_lines AS RESTRICTIVE FOR ALL TO authenticated
+  USING ((SELECT public.stocky_is_user())) WITH CHECK ((SELECT public.stocky_is_user()));
+CREATE POLICY stocky_supplier_invoice_lines_select ON public.supplier_invoice_lines FOR SELECT TO authenticated
+  USING (EXISTS (SELECT 1 FROM public.supplier_invoices i WHERE i.id = invoice_id));
+CREATE POLICY stocky_supplier_invoice_lines_insert ON public.supplier_invoice_lines FOR INSERT TO authenticated
+  WITH CHECK ((SELECT public.stocky_is_purchase_staff())
+              AND EXISTS (SELECT 1 FROM public.supplier_invoices i
+                          WHERE i.id = invoice_id AND public.stocky_purchase_in_scope(i.company_id, true)));
+CREATE POLICY stocky_supplier_invoice_lines_update ON public.supplier_invoice_lines FOR UPDATE TO authenticated
+  USING ((SELECT public.stocky_is_purchase_staff())
+         AND EXISTS (SELECT 1 FROM public.supplier_invoices i
+                     WHERE i.id = invoice_id AND public.stocky_purchase_in_scope(i.company_id, true)))
+  WITH CHECK ((SELECT public.stocky_is_purchase_staff())
+              AND EXISTS (SELECT 1 FROM public.supplier_invoices i
+                          WHERE i.id = invoice_id AND public.stocky_purchase_in_scope(i.company_id, true)));
+CREATE POLICY stocky_supplier_invoice_lines_delete ON public.supplier_invoice_lines FOR DELETE TO authenticated
+  USING ((SELECT public.stocky_is_purchase_staff())
+         AND EXISTS (SELECT 1 FROM public.supplier_invoices i
+                     WHERE i.id = invoice_id AND public.stocky_purchase_in_scope(i.company_id, true)));
 
 DROP POLICY IF EXISTS stocky_signed_in_only ON public.supplier_payments;
 DROP POLICY IF EXISTS stocky_supplier_payments_select ON public.supplier_payments;
@@ -360,6 +385,10 @@ AS $fn$
 BEGIN
   IF pg_trigger_depth() > 1 THEN
     RETURN coalesce(NEW, OLD);
+  END IF;
+  -- A line stays on its invoice: moving it would change two invoices at once.
+  IF TG_OP = 'UPDATE' AND NEW.invoice_id IS DISTINCT FROM OLD.invoice_id THEN
+    RAISE EXCEPTION 'Une ligne ne change pas de facture.' USING ERRCODE = 'check_violation';
   END IF;
   IF public.stocky_supplier_source_posted('sinv:' || coalesce(NEW.invoice_id, OLD.invoice_id)::text)
      OR (TG_OP = 'UPDATE' AND public.stocky_supplier_source_posted('sinv:' || OLD.invoice_id::text)) THEN
