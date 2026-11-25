@@ -57,7 +57,8 @@ export async function writeEmployeeWithFallback(
       declDropped = true;
     } else if (!baseDropped) {
       const reason = mustKeep(row);
-      if (reason) return { data: null, error: { message: `${reason} Exécutez d'abord la migration 20261125140000_payroll_2026.sql dans Supabase.` } };
+      // A reason that already names its own migration (HR fields) is kept as it is.
+      if (reason) return { data: null, error: { message: /migration/i.test(reason) ? reason : `${reason} Exécutez d'abord la migration 20261125140000_payroll_2026.sql dans Supabase.` } };
       row = strip(row, columns);
       baseDropped = true;
     } else if (!declDropped) {

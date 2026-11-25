@@ -3,11 +3,28 @@
 
 import type { Employee, Payslip } from '../types';
 import type { PayrollSettings } from './payrollDefaults';
-import { FULL_MONTH_CNSS_DAYS } from './payrollDefaults';
-import { computePayslip, type PayslipResult } from './payrollCalc';
+import { FULL_MONTH_CNSS_DAYS, hrLimitsFor } from './payrollDefaults';
+import { computePayslip, type PayslipResult, type TraineeTerms } from './payrollCalc';
 import type { PayslipLine } from './payslipLines';
 
-export type PayslipEmployee = Pick<Employee, 'hire_date' | 'cimr_rate' | 'cimr_employer_rate' | 'dependents_count'>;
+export type PayslipEmployee = Pick<Employee, 'hire_date' | 'cimr_rate' | 'cimr_employer_rate' | 'dependents_count'>
+  & Partial<Pick<Employee, 'contract_type' | 'stage_start_date' | 'stage_cnss_exempt'>>;
+
+/**
+ * A trainee's terms for a pay year: start of the internship (its own date,
+ * else the hire date) and the year's legal ceilings. Null for other contracts.
+ */
+export function traineeTermsFor(employee: Partial<PayslipEmployee> | null | undefined, year: number): TraineeTerms | null {
+  if (!employee || employee.contract_type !== 'Stage') return null;
+  const start = employee.stage_start_date || employee.hire_date;
+  if (!start) return null;
+  const limits = hrLimitsFor(year);
+  return {
+    start_date: start, ir_ceiling: limits.trainee_ir_ceiling, ir_months: limits.trainee_ir_months,
+    // Default on for a trainee: only an explicit false turns it off.
+    cnss_exempt: employee.stage_cnss_exempt !== false, cnss_months: limits.trainee_cnss_months,
+  };
+}
 
 export type PayslipBasis = Pick<Payslip, 'base_salary' | 'period_month' | 'period_year'> &
   Partial<Pick<Payslip, 'dependents_count' | 'ir_regularisation'>>;
@@ -27,6 +44,7 @@ export function computeForPayslip(p: PayslipBasis, employee: PayslipEmployee | n
     dependents_count: p.dependents_count ?? employee?.dependents_count ?? 0,
     settings,
     ir_regularisation: p.ir_regularisation ?? 0,
+    trainee: traineeTermsFor(employee, p.period_year),
   });
 }
 

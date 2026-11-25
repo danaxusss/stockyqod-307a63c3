@@ -3,8 +3,9 @@ import { Plus, Pencil, UserX, UserCheck as UserCheckIcon, Users } from 'lucide-r
 import { Employee } from '../../types';
 import { SupabaseEmployeesService } from '../../utils/supabaseEmployees';
 import { PayrollSettingsService } from '../../utils/supabasePayrollSettings';
-import { officialSettingsFor, type PayrollSettings } from '../../utils/payrollDefaults';
-import { smigWarning } from '../../utils/payrollCalc';
+import { hrLimitsFor, officialSettingsFor, type PayrollSettings } from '../../utils/payrollDefaults';
+import { smigWarning, traineeIrEnd } from '../../utils/payrollCalc';
+import { checkbox } from '../../components/backoffice/BackOfficeUi';
 import { Notice } from './payrollUi';
 import { EmployeeDeclarationFields } from './EmployeeDeclarationFields';
 import { useAuth } from '../../hooks/useAuth';
@@ -18,7 +19,7 @@ function fmt(n: number) {
   return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(n);
 }
 
-const CONTRACT_LABELS = { CDI: 'CDI', CDD: 'CDD', Interim: 'Intérim' };
+const CONTRACT_LABELS = { CDI: 'CDI', CDD: 'CDD', Interim: 'Intérim', Stage: 'Stage (ANAPEC)' };
 const PAYMENT_LABELS: Record<string, string> = { virement: 'Virement', cheque: 'Chèque', especes: 'Espèces' };
 const MARITAL_LABELS: Record<string, string> = {
   celibataire: 'Célibataire', marie: 'Marié(e)', divorce: 'Divorcé(e)', veuf: 'Veuf/Veuve',
@@ -46,6 +47,8 @@ const EMPTY_FORM: Omit<Employee, 'id' | 'created_at' | 'updated_at'> = {
   matricule: '',
   mode_paiement: 'virement',
   date_sortie: null,
+  stage_start_date: null,
+  stage_cnss_exempt: null,
 };
 
 interface EmployeeFormProps {
@@ -70,10 +73,17 @@ function EmployeeForm({ initial, companyId, onSave, onCancel, saving, settings }
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     // Empty optional fields are stored as null, not as empty strings.
-    onSave({ ...form, company_id: companyId, matricule: form.matricule?.trim() || null, date_sortie: form.date_sortie || null });
+    // Trainee fields only for a trainee; a trainee's CNSS setting defaults to on.
+    const stage = form.contract_type === 'Stage'
+      ? { stage_start_date: form.stage_start_date || null, stage_cnss_exempt: form.stage_cnss_exempt !== false }
+      : { stage_start_date: null, stage_cnss_exempt: null };
+    onSave({ ...form, ...stage, company_id: companyId, matricule: form.matricule?.trim() || null, date_sortie: form.date_sortie || null });
   };
   // Non-blocking: part-time contracts may pay less than the monthly SMIG.
-  const smig = form.base_salary > 0 ? smigWarning(form.base_salary, settings) : null;
+  const smig = form.base_salary > 0 ? smigWarning(form.base_salary, settings, undefined, form.contract_type) : null;
+  const stageStart = form.stage_start_date || form.hire_date;
+  const stageYear = Number((stageStart || '').slice(0, 4)) || new Date().getFullYear();
+  const stageLimits = hrLimitsFor(stageYear);
 
   const inputCls = field;
   const labelCls = fieldLabel;
@@ -150,6 +160,29 @@ function EmployeeForm({ initial, companyId, onSave, onCancel, saving, settings }
         </div>
       </fieldset>
 
+      {form.contract_type === 'Stage' && (
+        <fieldset className="border-t border-border pt-4" aria-label="Stage ANAPEC">
+          <legend className={`${legendCls} float-left w-full`}>Stage (ANAPEC)</legend>
+          <div className="clear-both grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <label className={labelCls} htmlFor="emp-stage-start">Début du stage</label>
+              <input id="emp-stage-start" type="date" className={inputCls} value={form.stage_start_date || ''} placeholder={form.hire_date || ''} onChange={e => set('stage_start_date', e.target.value || null)} />
+            </div>
+            <div className="text-sm sm:col-span-3">
+              <p className="text-foreground">{stageStart
+                ? <>Exonération IR jusqu'au <b>{traineeIrEnd({ start_date: stageStart, ir_months: stageLimits.trainee_ir_months }).split('-').reverse().join('/')}</b> ({stageLimits.trainee_ir_months} mois), si l'indemnité mensuelle brute ne dépasse pas {stageLimits.trainee_ir_ceiling.toLocaleString('fr-FR')} MAD (au-delà, toute l'indemnité est imposée).</>
+                : 'Saisissez la date de début (ou d\'embauche) pour voir la fin de l\'exonération IR.'}</p>
+              <p className="text-xs text-muted-foreground">Stagiaire inscrit à l'ANAPEC, une seule exonération par stagiaire (CGI art. 57-16°). À déclarer dans l'état annuel des salaires.</p>
+            </div>
+            <label className="flex items-start gap-2 text-sm text-foreground sm:col-span-2 lg:col-span-4">
+              <input type="checkbox" className={`${checkbox} mt-0.5`} checked={form.stage_cnss_exempt !== false} onChange={e => set('stage_cnss_exempt', e.target.checked)} />
+              <span>Exonéré de CNSS (allocations familiales, prestations sociales) et de taxe de formation pendant {stageLimits.trainee_cnss_months} mois
+                <span className="block text-xs text-muted-foreground">À confirmer avec la CNSS et le contrat d'insertion ANAPEC : règle non vérifiée dans un texte officiel. L'AMO reste calculée.</span></span>
+            </label>
+          </div>
+        </fieldset>
+      )}
+
       <fieldset className="border-t border-border pt-4">
         <legend className={`${legendCls} float-left w-full`}>Paie et organismes</legend>
         <div className="clear-both grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -182,7 +215,7 @@ function EmployeeForm({ initial, companyId, onSave, onCancel, saving, settings }
             <input id="emp-rib" className={`${inputCls} font-mono`} value={form.bank_iban || ''} onChange={e => set('bank_iban', e.target.value)} />
           </div>
           <div className="sm:col-span-2">
-            <label className={labelCls} htmlFor="emp-salary">Salaire de base (MAD)</label>
+            <label className={labelCls} htmlFor="emp-salary">{form.contract_type === 'Stage' ? 'Indemnité de stage mensuelle brute (MAD)' : 'Salaire de base (MAD)'}</label>
             <input id="emp-salary" type="number" min={0} step={0.01} required className={`${inputCls} tabular-nums`} value={form.base_salary} onChange={e => set('base_salary', parseFloat(e.target.value) || 0)} />
           </div>
           {smig && <Notice className="sm:col-span-2 lg:col-span-4">{smig}</Notice>}

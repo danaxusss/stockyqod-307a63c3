@@ -7,6 +7,7 @@
 
 import type { PayrollSettings } from './payrollDefaults';
 import { computePayslip, type PayLine } from './payrollCalc';
+import { traineeTermsFor } from './payslipCompute';
 
 const r2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
 
@@ -30,6 +31,10 @@ export interface RegularisationEmployee {
   cimr_rate?: number | null;
   cimr_employer_rate?: number | null;
   dependents_count?: number | null;
+  /** A trainee's months recompute with their exemption (else IR would look under-withheld). */
+  contract_type?: string | null;
+  stage_start_date?: string | null;
+  stage_cnss_exempt?: boolean | null;
 }
 
 export interface RegularisationMonth {
@@ -59,6 +64,7 @@ export function recomputeIr(p: RegularisationPayslip, employee: RegularisationEm
     base_salary: p.base_salary, hire_date: employee.hire_date, period_month: p.period_month, period_year: p.period_year,
     lines: p.lines, cimr_rate: Number(employee.cimr_rate) || 0, cimr_employer_rate: employee.cimr_employer_rate ?? null,
     dependents_count: p.dependents_count ?? employee.dependents_count ?? 0, settings,
+    trainee: traineeTermsFor({ hire_date: employee.hire_date ?? undefined, cimr_rate: 0, dependents_count: 0, contract_type: employee.contract_type as 'Stage' | undefined, stage_start_date: employee.stage_start_date, stage_cnss_exempt: employee.stage_cnss_exempt }, p.period_year),
   }).ir_brut;
 }
 

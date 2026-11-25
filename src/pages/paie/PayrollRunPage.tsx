@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CalendarClock, Loader, Plus, ArrowLeft, Check, BookOpen, Lock, ChevronRight, Scale } from 'lucide-react';
+import { CalendarClock, Loader, Plus, ArrowLeft, Check, BookOpen, Lock, ChevronRight, Scale, Banknote, Unlock } from 'lucide-react';
 import { PayrollRunService, runTotals, type PayrollRun } from '../../utils/supabasePayrollRun';
 import { PayrollSettingsService } from '../../utils/supabasePayrollSettings';
 import { officialSettingsFor, type PayrollSettings } from '../../utils/payrollDefaults';
@@ -28,6 +28,9 @@ function coveredLabel(r: IrRegularisation): string {
   return months.length === 1 ? MONTHS[months[0] - 1] : `${short(months[0])}–${short(months[months.length - 1])} (${months.length} mois)`;
 }
 const currentYear = new Date().getFullYear();
+const STATUS_LABELS: Record<PayrollRun['status'], string> = { draft: 'brouillon', validated: 'validé', paid: 'payé' };
+const PAYMENT_MODES: Record<string, string> = { virement: 'Virement', cheque: 'Chèque', especes: 'Espèces' };
+const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const YEARS = Array.from({ length: 4 }, (_, i) => currentYear - i);
 
 export default function PayrollRunPage() {
@@ -42,6 +45,7 @@ export default function PayrollRunPage() {
   const [year, setYear] = useState(currentYear);
   const [runSettings, setRunSettings] = useState<PayrollSettings | null>(null);
   const [reguls, setReguls] = useState<RegulRow[] | null>(null);
+  const [paying, setPaying] = useState<{ date: string; mode: string } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -113,6 +117,30 @@ export default function PayrollRunPage() {
     finally { setBusy(false); }
   };
 
+  const markPaid = async () => {
+    if (!detail || !paying) return;
+    setBusy(true);
+    try {
+      await PayrollRunService.markPaid(detail.id, paying.date, paying.mode);
+      showToast({ type: 'success', message: `Lot marqué payé le ${paying.date.split('-').reverse().join('/')}` });
+      setPaying(null); await open(detail.id); await load();
+    } catch (e) { showToast({ type: 'error', message: errMsg(e) }); }
+    finally { setBusy(false); }
+  };
+
+  const unvalidate = async () => {
+    if (!detail) return;
+    if (!confirm(`Dévalider la paie de ${MONTHS[detail.period_month - 1]} ${detail.period_year} ? Les bulletins redeviennent modifiables, les cumuls de l'année et les remboursements de prêts de ce mois sont annulés.`)) return;
+    setBusy(true);
+    try {
+      const { warnings } = await PayrollRunService.unvalidate(detail.id);
+      warnings.forEach(w => showToast({ type: 'warning', message: w }));
+      showToast({ type: 'success', message: 'Lot dévalidé : bulletins de nouveau modifiables' });
+      await open(detail.id); await load();
+    } catch (e) { showToast({ type: 'error', message: errMsg(e) }); }
+    finally { setBusy(false); }
+  };
+
   const comptabiliser = async () => {
     if (!detail) return;
     setBusy(true);
@@ -128,9 +156,12 @@ export default function PayrollRunPage() {
     const validateButton = detail.status === 'draft' && <button onClick={validate} disabled={busy} className={btnPrimary}><Check className="h-4 w-4" /> Valider</button>;
     const bookButton = !detail.journal_entry_id && <button onClick={comptabiliser} disabled={busy} className={btnSecondary}><BookOpen className="h-4 w-4" /> Comptabiliser</button>;
     const regulButton = detail.status === 'draft' && <button onClick={previewRegularisations} disabled={busy} className={btnSecondary}><Scale className="h-4 w-4" /> Régulariser l'IR de l'année</button>;
+    const payButton = detail.status === 'validated' && <button onClick={() => setPaying(p => (p ? null : { date: today(), mode: 'virement' }))} aria-expanded={!!paying} disabled={busy} className={btnSecondary}><Banknote className="h-4 w-4" /> Marquer comme payé</button>;
+    // Only a validated run that is neither paid nor booked can be reopened.
+    const unvalidateButton = detail.status === 'validated' && !detail.journal_entry_id && <button onClick={unvalidate} disabled={busy} className={btnSecondary}><Unlock className="h-4 w-4" /> Dévalider</button>;
     // Rows, footer and tiles all read the payslips: they always agree.
     const totals = runTotals(detail.payslips || []);
-    const smigIssues = runSettings ? (detail.payslips || []).map(p => ({ p, w: smigWarning(p.base_salary, runSettings, p.hours_worked) })).filter(x => x.w) : [];
+    const smigIssues = runSettings ? (detail.payslips || []).map(p => ({ p, w: smigWarning(p.base_salary, runSettings, p.hours_worked, (p.employee as Employee | undefined)?.contract_type) })).filter(x => x.w) : [];
     const negatives = (detail.payslips || []).filter(p => p.net_salary < 0);
     const refunds = (reguls || []).filter(r => r.regul.owed > 0);
     const shortfalls = (reguls || []).filter(r => r.regul.owed < 0);
@@ -142,12 +173,25 @@ export default function PayrollRunPage() {
         </button>
         <PageHeader
           title={`Livre de paie — ${MONTHS[detail.period_month - 1]} ${detail.period_year}`}
-          subtitle={`${detail.payslips?.length || 0} bulletin(s) · statut ${detail.status}`}
+          subtitle={`${detail.payslips?.length || 0} bulletin(s) · statut ${STATUS_LABELS[detail.status] || detail.status}${detail.status === 'paid' && detail.paid_at ? ` le ${detail.paid_at.slice(0, 10).split('-').reverse().join('/')}${detail.payment_mode ? ` (${(PAYMENT_MODES[detail.payment_mode] || detail.payment_mode).toLowerCase()})` : ''}` : ''}`}
           actions={<>
             {detail.journal_entry_id && <StatusPill tone="success" icon={<Check className="h-3 w-3" />}>Comptabilisé</StatusPill>}
-            <span className="hidden gap-2 md:flex">{regulButton}{bookButton}{validateButton}</span>
+            {detail.status === 'paid' && <StatusPill tone="info">Payé</StatusPill>}
+            <span className="hidden gap-2 md:flex">{regulButton}{unvalidateButton}{payButton}{bookButton}{validateButton}</span>
           </>}
         />
+
+        {paying && (
+          <section className={`${panel} mb-4 grid grid-cols-2 items-end gap-3 p-4 sm:flex`} aria-label="Paiement du lot">
+            <div><label className={fieldLabel} htmlFor="run-paid-at">Date de paiement</label>
+              <input id="run-paid-at" type="date" value={paying.date} onChange={e => setPaying(p => p && { ...p, date: e.target.value })} className={field} /></div>
+            <div><label className={fieldLabel} htmlFor="run-paid-mode">Mode</label>
+              <select id="run-paid-mode" value={paying.mode} onChange={e => setPaying(p => p && { ...p, mode: e.target.value })} className={field}>
+                {Object.entries(PAYMENT_MODES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select></div>
+            <button onClick={markPaid} disabled={busy || !paying.date} className={`${btnPrimary} col-span-2`}><Check className="h-4 w-4" /> Confirmer le paiement</button>
+          </section>
+        )}
 
         <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
           <KpiTile label="Brut" value={fmt(totals.total_gross)} />
@@ -251,7 +295,7 @@ export default function PayrollRunPage() {
         </div>
         <p className="mt-3 text-sm text-muted-foreground">Coût total employeur (brut + charges patronales) : <span className="font-semibold tabular-nums text-foreground">{fmt(totals.employer_cost)} MAD</span></p>
 
-        {(validateButton || bookButton || regulButton) && <PhoneActionBar>{regulButton}{bookButton}{validateButton}</PhoneActionBar>}
+        {(validateButton || bookButton || regulButton || payButton || unvalidateButton) && <PhoneActionBar>{regulButton}{unvalidateButton}{payButton}{bookButton}{validateButton}</PhoneActionBar>}
       </div>
     );
   }
