@@ -1,38 +1,6 @@
-import type { Employee, PayslipItem } from '../types';
-import { DEFAULT_PAYROLL_SETTINGS, type PayrollSettings } from './payrollDefaults';
+import { LEGAL_MONTHLY_HOURS, officialSettingsFor, smigMonthly, type ExemptionCeiling, type IrBracket, type PayrollSettings } from './payrollDefaults';
 
 const r2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
-
-// Moroccan statutory rates (LF 2023 frais pro reform + LF 2025 IR scale).
-const CNSS_RATE_EMPLOYEE = 0.0448;
-const CNSS_EMPLOYEE_MONTHLY_CAP = 268.80;   // 4.48% × 6,000 MAD ceiling
-const AMO_RATE_EMPLOYEE = 0.0226;
-
-// Frais professionnels (Art. 59 CGI, reform LF 2023):
-//   35% if annual gross taxable ≤ 78,000 MAD, else 25% — capped at 35,000 MAD/yr.
-//   Computed on the salaire brut imposable (before CNSS/AMO), not net of them.
-const FRAIS_PRO_RATE_LOW = 0.35;
-const FRAIS_PRO_RATE_HIGH = 0.25;
-const FRAIS_PRO_THRESHOLD_ANNUAL = 78000;
-const FRAIS_PRO_ANNUAL_CAP = 35000;
-
-// Déduction pour charge de famille: 500 MAD/year per dependent (LF 2025), max 6.
-const FAMILY_DEDUCTION_ANNUAL_PER_DEP = 500;
-
-const CNSS_RATE_EMPLOYER = 0.0898;
-const CNSS_EMPLOYER_MONTHLY_CAP = 538.80;   // 8.98% × 6,000
-const AMO_RATE_EMPLOYER = 0.0411;
-const ALLOC_FAM_RATE = 0.0640;
-
-// IR brackets (annual MAD) → [lower, upper, rate, fixed deduction from lower]
-const IR_BRACKETS_ANNUAL: [number, number, number, number][] = [
-  [0,       40000,   0.00, 0],
-  [40000,   60000,   0.10, 4000],
-  [60000,   80000,   0.20, 10000],
-  [80000,   100000,  0.30, 18000],
-  [100000,  180000,  0.34, 22000],
-  [180000,  Infinity, 0.37, 27400],
-];
 
 export interface AncienneteResult {
   rate: number;
@@ -44,116 +12,152 @@ export function periodEnd(month: number, year: number): Date {
   return new Date(year, month, 0);
 }
 
+/** Completed years of service at a date, by calendar date. */
+export function seniorityYears(hireDateStr: string | undefined | null, asOf: Date): number {
+  if (!hireDateStr) return 0;
+  const [hy, hm, hd] = hireDateStr.slice(0, 10).split('-').map(Number);
+  if (!hy || !hm || !hd) return 0;
+  let years = asOf.getFullYear() - hy;
+  if (asOf.getMonth() + 1 < hm || (asOf.getMonth() + 1 === hm && asOf.getDate() < hd)) years -= 1;
+  return Math.max(0, years);
+}
+
+/** Seniority bonus rate for completed years (Code du travail art. 350). */
+export function seniorityRate(years: number): number {
+  if (years >= 25) return 0.25;
+  if (years >= 20) return 0.20;
+  if (years >= 12) return 0.15;
+  if (years >= 5) return 0.10;
+  if (years >= 2) return 0.05;
+  return 0;
+}
+
 /**
  * Seniority bonus. `asOf` is the end of the pay period (default: today), so a
  * payslip keeps the rate of its own month however late it is computed.
  */
 export function computeAnciennete(hireDateStr: string | undefined, basePlusRegularPrimes: number, asOf: Date = new Date()): AncienneteResult {
   if (!hireDateStr) return { rate: 0, amount: 0 };
-  const [hy, hm, hd] = hireDateStr.slice(0, 10).split('-').map(Number);
-  if (!hy || !hm || !hd) return { rate: 0, amount: 0 };
-  // Completed years, by calendar date.
-  let years = asOf.getFullYear() - hy;
-  if (asOf.getMonth() + 1 < hm || (asOf.getMonth() + 1 === hm && asOf.getDate() < hd)) years -= 1;
-
-  let rate = 0;
-  if (years >= 25) rate = 0.25;
-  else if (years >= 20) rate = 0.20;
-  else if (years >= 12) rate = 0.15;
-  else if (years >= 5) rate = 0.10;
-  else if (years >= 2) rate = 0.05;
-
-  return { rate, amount: Math.round(basePlusRegularPrimes * rate * 100) / 100 };
+  const rate = seniorityRate(seniorityYears(hireDateStr, asOf));
+  return { rate, amount: r2(basePlusRegularPrimes * rate) };
 }
 
-export interface StatutoryDeductions {
-  cnss_employee: number;
-  amo_employee: number;
-  cimr_employee: number;
-  frais_pro: number;
-  ir_amount: number;
-  cnss_employer: number;
-  amo_employer: number;
-  alloc_familiales: number;
-  tfp_employer: number;
-}
-
-function applyIRBrackets(annualTaxableBase: number, brackets: [number, number, number, number][]): number {
+function applyIRBrackets(annualTaxableBase: number, brackets: IrBracket[]): number {
   for (const [, hi, rate, fixedDed] of brackets) {
-    if (annualTaxableBase <= hi) {
-      return Math.max(0, annualTaxableBase * rate - fixedDed);
-    }
+    if (annualTaxableBase <= hi) return Math.max(0, annualTaxableBase * rate - fixedDed);
   }
   return 0;
 }
 
-export function computeStatutoryDeductions(params: {
-  grossSalary: number;                 // brut imposable (soumis IR)
-  grossSubjectCnss?: number;           // brut soumis CNSS/AMO (default = grossSalary)
-  cimrRate?: number;
-  dependentsCount?: number;
-  settings?: PayrollSettings;
-}): StatutoryDeductions {
-  const { grossSalary, cimrRate = 0, dependentsCount = 0 } = params;
-  const s = params.settings || DEFAULT_PAYROLL_SETTINGS;
-  const cnssBase = params.grossSubjectCnss ?? grossSalary;
+// ── Payslip lines ────────────────────────────────────────────────────────────
 
-  // Employee CNSS (capped)
-  const cnss_employee = Math.min(cnssBase, s.cnss_cap) * s.cnss_rate_emp;
-  // Employee AMO (no cap)
-  const amo_employee = cnssBase * s.amo_rate_emp;
-  // CIMR (optional)
-  const cimr_employee = grossSalary * (cimrRate / 100);
-
-  // Frais professionnels — on the brut imposable, rate depends on annualized gross.
-  const annualGross = grossSalary * 12;
-  const fraisRate = annualGross <= s.frais_pro_threshold ? s.frais_pro_low : s.frais_pro_high;
-  const frais_pro = Math.min(grossSalary * fraisRate, s.frais_pro_cap / 12);
-
-  // Salaire net imposable
-  const salaire_net_imposable = grossSalary - frais_pro - cnss_employee - amo_employee - cimr_employee;
-
-  // Family deductions + IR from the annual scale
-  const annual_family_ded = Math.min(dependentsCount, s.family_ded_max) * s.family_ded_per_dep;
-  const annual_ir = applyIRBrackets(salaire_net_imposable * 12, s.ir_brackets);
-  const ir_amount = Math.max(0, (annual_ir - annual_family_ded) / 12);
-
-  // Employer contributions
-  const cnss_employer = Math.min(cnssBase, s.cnss_cap) * s.cnss_rate_er;
-  const amo_employer = cnssBase * s.amo_rate_er;
-  const alloc_familiales = cnssBase * s.af_rate;
-  const tfp_employer = cnssBase * s.tfp_rate;
-
-  return {
-    cnss_employee: r2(cnss_employee), amo_employee: r2(amo_employee), cimr_employee: r2(cimr_employee),
-    frais_pro: r2(frais_pro), ir_amount: r2(ir_amount),
-    cnss_employer: r2(cnss_employer), amo_employer: r2(amo_employer),
-    alloc_familiales: r2(alloc_familiales), tfp_employer: r2(tfp_employer),
-  };
+/**
+ * A variable line of a payslip. A gain enters the gross; each flag says which
+ * base it also enters. A retenue with any flag is an absence-type deduction:
+ * it lowers the gross and each base it is flagged for. A retenue without flags
+ * (advance, loan) is taken off the net after tax.
+ */
+export interface PayLine {
+  type: 'gain' | 'retenue';
+  amount: number;
+  soumis_cnss?: boolean;
+  /** Defaults to soumis_cnss (older lines have no AMO flag). */
+  soumis_amo?: boolean | null;
+  soumis_ir?: boolean;
+  soumis_cimr?: boolean;
+  inclus_anciennete?: boolean;
+  /** Exempt for IR up to this ceiling, subject above it (only when not soumis_ir). */
+  ir_ceiling?: ExemptionCeiling | null;
+  /** Exempt for CNSS and AMO up to this ceiling (only when not subject to them). */
+  cnss_ceiling?: ExemptionCeiling | null;
 }
 
-// ── Full payroll computation / simulation ─────────────────────────────────────
-export interface PayrollInput {
+const amoFlag = (l: PayLine) => (l.soumis_amo == null ? !!l.soumis_cnss : !!l.soumis_amo);
+
+/** A retenue that lowers the gross (absence) rather than the net. */
+export function isGrossDeduction(l: PayLine): boolean {
+  return l.type === 'retenue' && !!(l.soumis_cnss || amoFlag(l) || l.soumis_ir || l.soumis_cimr);
+}
+
+/** The amount a ceiling stands for, on a given base salary. */
+export function ceilingAmount(c: ExemptionCeiling | null | undefined, baseSalary: number): number | null {
+  if (!c || !Number.isFinite(Number(c.value))) return null;
+  return c.type === 'percent' ? r2(baseSalary * Number(c.value) / 100) : r2(Number(c.value));
+}
+
+/** Part of a gain that enters a base: all of it when subject, else what exceeds its ceiling. */
+function subjectPart(amount: number, subject: boolean, ceiling: number | null): number {
+  if (subject) return amount;
+  if (ceiling == null) return 0;
+  return Math.max(0, amount - ceiling);
+}
+
+/** Hourly rate of a base salary (legal month of 191 hours). */
+export function hourlyRate(baseSalary: number): number {
+  return (Number(baseSalary) || 0) / LEGAL_MONTHLY_HOURS;
+}
+
+/** Amount of an hours line: hours × (base salary / 191) × rate. */
+export function hoursLineAmount(baseSalary: number, hours: number, rate: number): number {
+  return r2((Number(hours) || 0) * hourlyRate(baseSalary) * (Number(rate) || 0));
+}
+
+/** One rule for the seniority base everywhere: base salary + gains flagged for it. */
+export function seniorityBase(baseSalary: number, lines: PayLine[]): number {
+  return r2((Number(baseSalary) || 0) + lines.filter(l => l.type === 'gain' && l.inclus_anciennete).reduce((s, l) => s + (Number(l.amount) || 0), 0));
+}
+
+// ── The payslip computation ─────────────────────────────────────────────────
+
+export interface PayslipInput {
   base_salary: number;
+  /** Seniority from the hire date at the end of the period… */
+  hire_date?: string | null;
+  period_month?: number;
+  period_year?: number;
+  /** …or a given amount (simulator, STC). */
   anciennete_amount?: number;
-  primes_soumises?: number;      // primes soumises CNSS + IR (+ ancienneté déjà inclus dans anciennete_amount)
-  heures_supp?: number;          // montant heures supplémentaires (soumis)
-  primes_non_soumises?: number;  // indemnités exonérées (transport, panier…)
-  autres_retenues?: number;      // avances, prêts, saisies (non fiscales)
+  lines?: PayLine[];
+  /** Employee CIMR rate, in % (6 = 6 %). */
   cimr_rate?: number;
+  /** Employer CIMR rate, in %; defaults to the employee rate. */
+  cimr_employer_rate?: number | null;
   dependents_count?: number;
   settings?: PayrollSettings;
+  /**
+   * IR regularisation applied on this payslip: positive gives back IR withheld
+   * in excess earlier in the year, negative collects IR under-withheld.
+   */
+  ir_regularisation?: number;
 }
 
-export interface PayrollResult {
-  brut_imposable: number;
+export interface PayslipResult {
+  anciennete_rate: number;
+  anciennete_amount: number;
+  /** Gains on top of base and seniority. */
+  other_earnings: number;
+  /** Absence-type deductions (they lower the gross). */
+  gross_deductions: number;
+  /** Total gross paid (base + seniority + gains − absences). */
   brut_global: number;
+  /** IR taxable gross (salaire brut imposable). */
+  brut_imposable: number;
+  cnss_base: number;
+  amo_base: number;
+  cimr_base: number;
   cnss_employee: number;
   amo_employee: number;
   cimr_employee: number;
   frais_pro: number;
+  /** Net taxable salary (salaire net imposable). */
   net_imposable: number;
+  /** IR of the month before any regularisation. */
+  ir_brut: number;
+  /** Regularisation actually applied (capped so the month's IR stays ≥ 0). */
+  ir_regularisation: number;
+  /** Net IR withheld this month. */
   ir_amount: number;
+  /** Deductions after tax (advances, loans). */
   autres_retenues: number;
   total_deductions: number;
   net_salary: number;
@@ -161,146 +165,154 @@ export interface PayrollResult {
   amo_employer: number;
   alloc_familiales: number;
   tfp_employer: number;
+  cimr_employer: number;
   charges_patronales: number;
   employer_cost: number;
 }
 
-/** Full monthly payroll from structured inputs (used by real payslips + simulator). */
-export function computePayroll(input: PayrollInput): PayrollResult {
-  const s = input.settings || DEFAULT_PAYROLL_SETTINGS;
-  const base = Number(input.base_salary) || 0;
-  const anc = Number(input.anciennete_amount) || 0;
-  const primesSoumises = Number(input.primes_soumises) || 0;
-  const hs = Number(input.heures_supp) || 0;
-  const primesNon = Number(input.primes_non_soumises) || 0;
-  const autres = Number(input.autres_retenues) || 0;
+/**
+ * A full monthly payslip. Four bases come from the line flags: IR taxable
+ * gross, CNSS base (capped at 6,000 for the CNSS branches only), AMO base and
+ * CIMR base. Family allowances and training tax use the uncapped CNSS base.
+ */
+export function computePayslip(input: PayslipInput): PayslipResult {
+  const s = input.settings || officialSettingsFor(input.period_year || new Date().getFullYear());
+  const base = r2(Number(input.base_salary) || 0);
+  const lines = (input.lines || []).map(l => ({ ...l, amount: r2(Number(l.amount) || 0) }));
 
-  const brut_imposable = r2(base + anc + primesSoumises + hs);
-  const brut_global = r2(brut_imposable + primesNon);
+  const anc = input.anciennete_amount != null
+    ? { rate: 0, amount: r2(input.anciennete_amount) }
+    : input.period_month && input.period_year
+      ? computeAnciennete(input.hire_date || undefined, seniorityBase(base, lines), periodEnd(input.period_month, input.period_year))
+      : { rate: 0, amount: 0 };
 
-  const st = computeStatutoryDeductions({
-    grossSalary: brut_imposable, grossSubjectCnss: brut_imposable,
-    cimrRate: input.cimr_rate ?? 0, dependentsCount: input.dependents_count ?? 0, settings: s,
-  });
+  const fixed = base + anc.amount;
+  const gains = lines.filter(l => l.type === 'gain');
+  const absences = lines.filter(isGrossDeduction);
+  const afterTax = lines.filter(l => l.type === 'retenue' && !isGrossDeduction(l));
+  const sum = (ls: PayLine[], f: (l: PayLine) => number = l => l.amount) => ls.reduce((t, l) => t + f(l), 0);
 
-  const net_imposable = r2(brut_imposable - st.frais_pro - st.cnss_employee - st.amo_employee - st.cimr_employee);
-  const total_deductions = r2(st.cnss_employee + st.amo_employee + st.cimr_employee + st.ir_amount + autres);
+  const other_earnings = r2(sum(gains));
+  const gross_deductions = r2(sum(absences));
+  const brut_global = r2(fixed + other_earnings - gross_deductions);
+
+  const irCeil = (l: PayLine) => ceilingAmount(l.ir_ceiling, base);
+  const cnssCeil = (l: PayLine) => ceilingAmount(l.cnss_ceiling, base);
+  const brut_imposable = r2(Math.max(0, fixed
+    + sum(gains, l => subjectPart(l.amount, !!l.soumis_ir, irCeil(l)))
+    - sum(absences.filter(l => l.soumis_ir))));
+  const cnss_base = r2(Math.max(0, fixed
+    + sum(gains, l => subjectPart(l.amount, !!l.soumis_cnss, cnssCeil(l)))
+    - sum(absences.filter(l => l.soumis_cnss))));
+  const amo_base = r2(Math.max(0, fixed
+    + sum(gains, l => subjectPart(l.amount, amoFlag(l), cnssCeil(l)))
+    - sum(absences.filter(amoFlag))));
+  const cimr_base = r2(Math.max(0, fixed
+    + sum(gains.filter(l => l.soumis_cimr))
+    - sum(absences.filter(l => l.soumis_cimr))));
+
+  const capped = Math.min(cnss_base, s.cnss_cap);
+  const cnss_employee = r2(capped * s.cnss_rate_emp);
+  const amo_employee = r2(amo_base * s.amo_rate_emp);
+  const cimrRate = Number(input.cimr_rate) || 0;
+  const cimrErRate = input.cimr_employer_rate == null ? cimrRate : Number(input.cimr_employer_rate) || 0;
+  const cimr_employee = r2(cimr_base * cimrRate / 100);
+  const cimr_employer = r2(cimr_base * cimrErRate / 100);
+
+  // Professional expenses on the taxable gross; the rate depends on the
+  // annualised taxable gross, the cap is monthly (annual cap / 12).
+  const fraisRate = brut_imposable * 12 <= s.frais_pro_threshold ? s.frais_pro_low : s.frais_pro_high;
+  const frais_pro = r2(Math.min(brut_imposable * fraisRate, s.frais_pro_cap / 12));
+  const net_imposable = r2(Math.max(0, brut_imposable - frais_pro - cnss_employee - amo_employee - cimr_employee));
+
+  const familyDed = Math.min(Number(input.dependents_count) || 0, s.family_ded_max) * s.family_ded_per_dep;
+  const ir_brut = r2(Math.max(0, (applyIRBrackets(net_imposable * 12, s.ir_brackets) - familyDed) / 12));
+  const wanted = r2(Number(input.ir_regularisation) || 0);
+  // A refund cannot take the month's IR below zero; the rest stays owed.
+  const ir_regularisation = wanted > 0 ? Math.min(wanted, ir_brut) : wanted;
+  const ir_amount = r2(ir_brut - ir_regularisation);
+
+  const autres_retenues = r2(sum(afterTax));
+  const total_deductions = r2(cnss_employee + amo_employee + cimr_employee + ir_amount + autres_retenues);
   const net_salary = r2(brut_global - total_deductions);
-  const charges_patronales = r2(st.cnss_employer + st.amo_employer + st.alloc_familiales + st.tfp_employer);
+
+  const cnss_employer = r2(capped * s.cnss_rate_er);
+  const amo_employer = r2(amo_base * s.amo_rate_er);
+  const alloc_familiales = r2(cnss_base * s.af_rate);
+  const tfp_employer = r2(cnss_base * s.tfp_rate);
+  const charges_patronales = r2(cnss_employer + amo_employer + alloc_familiales + tfp_employer + cimr_employer);
   const employer_cost = r2(brut_global + charges_patronales);
 
   return {
-    brut_imposable, brut_global,
-    cnss_employee: st.cnss_employee, amo_employee: st.amo_employee, cimr_employee: st.cimr_employee,
-    frais_pro: st.frais_pro, net_imposable, ir_amount: st.ir_amount, autres_retenues: r2(autres),
-    total_deductions, net_salary,
-    cnss_employer: st.cnss_employer, amo_employer: st.amo_employer, alloc_familiales: st.alloc_familiales,
-    tfp_employer: st.tfp_employer, charges_patronales, employer_cost,
+    anciennete_rate: anc.rate, anciennete_amount: anc.amount, other_earnings, gross_deductions,
+    brut_global, brut_imposable, cnss_base, amo_base, cimr_base,
+    cnss_employee, amo_employee, cimr_employee, frais_pro, net_imposable,
+    ir_brut, ir_regularisation, ir_amount, autres_retenues, total_deductions, net_salary,
+    cnss_employer, amo_employer, alloc_familiales, tfp_employer, cimr_employer, charges_patronales, employer_cost,
   };
 }
 
-export const simulatePayroll = computePayroll;
-
-export interface PayslipTotals {
-  anciennete_rate: number;
-  anciennete_amount: number;
-  other_earnings: number;
-  total_gross: number;
-  cnss_employee: number;
-  amo_employee: number;
-  cimr_employee: number;
-  frais_pro: number;
-  ir_amount: number;
-  other_deductions: number;
-  total_deductions: number;
-  net_salary: number;
-  cnss_employer: number;
-  amo_employer: number;
-  alloc_familiales: number;
-  tfp_employer: number;
+// ── Simple inputs (simulator, STC) ──────────────────────────────────────────
+export interface PayrollInput {
+  base_salary: number;
+  anciennete_amount?: number;
+  primes_soumises?: number;      // subject to CNSS, AMO and IR
+  heures_supp?: number;          // overtime amount (subject)
+  primes_non_soumises?: number;  // fully exempt allowances
+  autres_retenues?: number;      // advances, loans (after tax)
+  cimr_rate?: number;
+  cimr_employer_rate?: number | null;
+  dependents_count?: number;
+  settings?: PayrollSettings;
 }
 
-export function buildPayslipTotals(
-  employee: Employee,
-  manualItems: PayslipItem[],
-  settings?: PayrollSettings,
-): PayslipTotals {
-  const earningItems = manualItems.filter(i => i.item_type === 'earning');
-  const deductionItems = manualItems.filter(i => i.item_type === 'deduction');
+export type PayrollResult = PayslipResult;
 
-  // Base for ancienneté = base_salary + manual earnings flagged as included
-  const ancienneteBase = employee.base_salary +
-    earningItems.filter(i => i.included_in_anciennete_base).reduce((s, i) => s + i.amount, 0);
-
-  const { rate: anciennete_rate, amount: anciennete_amount } =
-    computeAnciennete(employee.hire_date, ancienneteBase);
-
-  const other_earnings = earningItems.reduce((s, i) => s + i.amount, 0);
-  const total_gross = employee.base_salary + anciennete_amount + other_earnings;
-
-  const statutory = computeStatutoryDeductions({
-    grossSalary: total_gross,
-    cimrRate: employee.cimr_rate ?? 0,
-    dependentsCount: employee.dependents_count,
-    settings,
+/** Monthly payroll from amounts rather than lines. */
+export function computePayroll(input: PayrollInput): PayrollResult {
+  const subject = { soumis_cnss: true, soumis_amo: true, soumis_ir: true };
+  const lines: PayLine[] = [
+    { type: 'gain', amount: Number(input.primes_soumises) || 0, ...subject },
+    { type: 'gain', amount: Number(input.heures_supp) || 0, ...subject },
+    { type: 'gain', amount: Number(input.primes_non_soumises) || 0 },
+    { type: 'retenue', amount: Number(input.autres_retenues) || 0 },
+  ].filter(l => l.amount !== 0) as PayLine[];
+  return computePayslip({
+    base_salary: input.base_salary, anciennete_amount: Number(input.anciennete_amount) || 0, lines,
+    cimr_rate: input.cimr_rate, cimr_employer_rate: input.cimr_employer_rate,
+    dependents_count: input.dependents_count, settings: input.settings,
   });
-
-  const other_deductions = deductionItems.reduce((s, i) => s + i.amount, 0);
-
-  const total_deductions =
-    statutory.cnss_employee +
-    statutory.amo_employee +
-    statutory.cimr_employee +
-    statutory.ir_amount +
-    other_deductions;
-
-  const net_salary = Math.max(0, total_gross - total_deductions);
-
-  return {
-    anciennete_rate,
-    anciennete_amount,
-    other_earnings,
-    total_gross: Math.round(total_gross * 100) / 100,
-    cnss_employee: statutory.cnss_employee,
-    amo_employee: statutory.amo_employee,
-    cimr_employee: statutory.cimr_employee,
-    frais_pro: statutory.frais_pro,
-    ir_amount: statutory.ir_amount,
-    other_deductions: Math.round(other_deductions * 100) / 100,
-    total_deductions: Math.round(total_deductions * 100) / 100,
-    net_salary: Math.round(net_salary * 100) / 100,
-    cnss_employer: statutory.cnss_employer,
-    amo_employer: statutory.amo_employer,
-    alloc_familiales: statutory.alloc_familiales,
-    tfp_employer: statutory.tfp_employer,
-  };
 }
 
-/** A variable line of a payslip (gain or retenue) with its subject flags. */
-export interface PayslipLineInput {
-  type: 'gain' | 'retenue';
-  amount: number;
-  soumis_cnss?: boolean;
-  soumis_ir?: boolean;
-}
+// ── Checks ──────────────────────────────────────────────────────────────────
 
 /**
- * Splits payslip lines into computePayroll inputs. A gain subject to CNSS or
- * IR enters the taxable gross; so does a subject retenue, negatively (an
- * absence lowers the gross before CNSS and IR are computed). Other retenues
- * (advances, loans) are taken off the net after tax.
+ * Minimum-wage warning for a full-time base salary (non-blocking: part-time
+ * exists). Null when the salary reaches SMIG × 191 or the hours are part-time.
  */
-export function payslipLineTotals(lines: PayslipLineInput[]): { primesSoumises: number; primesNon: number; autres: number; gains: number } {
-  const subject = (l: PayslipLineInput) => !!(l.soumis_cnss || l.soumis_ir);
-  const sum = (ls: PayslipLineInput[]) => r2(ls.reduce((s, l) => s + (Number(l.amount) || 0), 0));
-  const gains = lines.filter(l => l.type === 'gain');
-  const retenues = lines.filter(l => l.type === 'retenue');
-  return {
-    primesSoumises: r2(sum(gains.filter(subject)) - sum(retenues.filter(subject))),
-    primesNon: sum(gains.filter(l => !subject(l))),
-    autres: sum(retenues.filter(l => !subject(l))),
-    gains: sum(gains),
-  };
+export function smigWarning(baseSalary: number, settings: PayrollSettings, hoursWorked: number = LEGAL_MONTHLY_HOURS): string | null {
+  const legal = smigMonthly(settings);
+  if (!legal || (Number(hoursWorked) || 0) < LEGAL_MONTHLY_HOURS) return null;
+  if ((Number(baseSalary) || 0) >= legal) return null;
+  const fmt = (n: number) => new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+  const year = settings.year ? ` ${settings.year}` : '';
+  return `Salaire de base sous le SMIG${year} : ${fmt(legal)} MAD pour 191 h (${fmt(settings.smig_hourly)} MAD/h). Normal seulement pour un temps partiel.`;
+}
+
+export interface NetPayCheck { error: string | null; warning: string | null }
+
+/**
+ * Net pay checks: a negative net blocks validation; advances and loans above
+ * a third of the net pay are flagged (the legal limit on what can be withheld).
+ */
+export function checkNetPay(netSalary: number, loanWithheld: number): NetPayCheck {
+  const fmt = (n: number) => new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+  if (netSalary < 0) return { error: `Net à payer négatif (${fmt(netSalary)} MAD) : réduisez les retenues avant de valider.`, warning: null };
+  const before = netSalary + loanWithheld;
+  if (loanWithheld > 0 && loanWithheld > before / 3 + 0.005) {
+    return { error: null, warning: `Les avances et prêts retenus (${fmt(loanWithheld)} MAD) dépassent le tiers du net (${fmt(before / 3)} MAD).` };
+  }
+  return { error: null, warning: null };
 }
 
 /**

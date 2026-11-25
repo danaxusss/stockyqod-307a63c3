@@ -563,10 +563,15 @@ export interface Employee {
   cnss_number?: string;
   cimr_number?: string;
   cimr_rate?: number;
+  /** Employer CIMR rate in %; empty means the same as the employee rate. */
+  cimr_employer_rate?: number | null;
   bank_iban?: string;
   hire_date?: string;
   base_salary: number;
   is_active: boolean;
+  matricule?: string | null;
+  mode_paiement?: 'virement' | 'cheque' | 'especes' | null;
+  date_sortie?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -607,6 +612,22 @@ export interface Payslip {
   amo_employer: number;
   alloc_familiales: number;
   tfp_employer?: number;
+  /** Employer CIMR share. */
+  cimr_employer?: number;
+  /** IR taxable gross (salaire brut imposable), for the annual tax return. */
+  ir_taxable_gross?: number | null;
+  /** Net taxable salary (salaire net imposable). */
+  net_taxable?: number | null;
+  /** Uncapped CNSS base (the 6,000 cap applies to the CNSS branches only). */
+  cnss_base?: number | null;
+  amo_base?: number | null;
+  /** Days declared to the CNSS (26 for a full month). */
+  cnss_days?: number;
+  dependents_count?: number | null;
+  /** IR regularisation applied (positive: given back to the employee); ir_amount is net of it. */
+  ir_regularisation?: number;
+  /** Validated payslips the regularisation covers. */
+  ir_regularisation_ids?: string[];
   is_locked?: boolean;
   run_id?: string | null;
   notes?: string;

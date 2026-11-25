@@ -8,6 +8,7 @@ import type { Employee } from '../../types';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
 import { PageHeader, Panel } from '../../components/PageHeader';
+import { payrollYears } from '../../utils/payrollFormat';
 import { StatusPill } from '../../components/lists/StatusPill';
 import { btnPrimary, EmptyState, field, fieldLabel, iconBtnDanger, LoadingState, panel } from '../../components/backoffice/BackOfficeUi';
 
@@ -22,30 +23,34 @@ export default function CongesPage() {
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ employee_id: '', type: 'paye', start_date: '', end_date: '', reason: '' });
+  // Balances are for a leave year; its settings give the days acquired a month.
+  const [year, setYear] = useState(new Date().getFullYear());
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [r, emps, s] = await Promise.all([LeaveService.list(), SupabaseEmployeesService.list(), PayrollSettingsService.get(new Date().getFullYear()).catch(() => null)]);
+      const [r, emps, s] = await Promise.all([LeaveService.list(), SupabaseEmployeesService.list(), PayrollSettingsService.get(year).catch(() => null)]);
       setRequests(r); setEmployees(emps.filter(e => e.is_active));
       if (s) setDaysPerMonth(s.conges_days_per_month);
     } catch (e: any) { showToast({ type: 'error', message: e?.message || 'Erreur' }); }
     finally { setLoading(false); }
-  }, [showToast]);
+  }, [showToast, year]);
   useEffect(() => { load(); }, [load]);
 
   // Solde congés payés (acquis - pris) par employé, année courante
   const soldes = useMemo(() => {
-    const year = new Date().getFullYear();
+    const now = new Date();
+    // A past year counts all its months; the current year up to this month.
+    const lastMonth = year < now.getFullYear() ? 11 : year > now.getFullYear() ? -1 : now.getMonth();
     return employees.map(e => {
       const hire = e.hire_date ? new Date(e.hire_date) : null;
-      const startMonth = hire && hire.getFullYear() === year ? hire.getMonth() : 0;
-      const monthsWorked = new Date().getMonth() - startMonth + 1;
+      const startMonth = hire && hire.getFullYear() === year ? hire.getMonth() : hire && hire.getFullYear() > year ? 12 : 0;
+      const monthsWorked = lastMonth - startMonth + 1;
       const acquired = Math.max(0, monthsWorked) * daysPerMonth;
       const taken = requests.filter(r => r.employee_id === e.id && r.type === 'paye' && r.status === 'approved' && new Date(r.start_date).getFullYear() === year).reduce((s, r) => s + Number(r.days), 0);
       return { employee: e, acquired: Math.round(acquired * 10) / 10, taken, solde: Math.round((acquired - taken) * 10) / 10 };
     });
-  }, [employees, requests, daysPerMonth]);
+  }, [employees, requests, daysPerMonth, year]);
 
   const submit = async () => {
     if (!form.employee_id || !form.start_date || !form.end_date) { showToast({ type: 'error', message: 'Employé et dates requis' }); return; }
@@ -89,7 +94,7 @@ export default function CongesPage() {
 
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
         {/* Soldes */}
-        <Panel title={`Soldes congés payés ${new Date().getFullYear()}`}>
+        <Panel title={`Soldes congés payés ${year}`} action={<select value={year} onChange={e => setYear(Number(e.target.value))} aria-label="Année des soldes" className="h-9 rounded-md border border-input bg-background px-2 text-sm">{payrollYears().map(y => <option key={y} value={y}>{y}</option>)}</select>}>
           {soldes.length === 0 ? <EmptyState title="Aucun employé actif" /> : (
             <ul className="divide-y divide-border">
               {soldes.map(s => (

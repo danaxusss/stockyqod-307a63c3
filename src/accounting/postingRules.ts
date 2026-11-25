@@ -104,8 +104,12 @@ export function buildPaymentEntries(q: Quote, alreadyPosted: number, existing: n
 /** Écriture de paie (journal PAIE) pour un bulletin. */
 export function buildPayslipEntry(p: Payslip, employeeName?: string, loanRepaid = 0): EntryDraft {
   const tfp = p.tfp_employer || 0;
-  const employer = r2((p.cnss_employer || 0) + (p.amo_employer || 0) + (p.alloc_familiales || 0) + tfp);
+  const cimrEmployer = p.cimr_employer || 0;
+  // Employer charges: CNSS, AMO, family allowances, training tax and the
+  // employer CIMR share, all on 6174 with the other social charges.
+  const employer = r2((p.cnss_employer || 0) + (p.amo_employer || 0) + (p.alloc_familiales || 0) + tfp + cimrEmployer);
   const cnssTotal = r2((p.cnss_employee || 0) + (p.amo_employee || 0) + (p.cnss_employer || 0) + (p.amo_employer || 0) + (p.alloc_familiales || 0) + tfp);
+  const cimr = r2((p.cimr_employee || 0) + cimrEmployer);
   const loans = r2(Math.min(loanRepaid, p.other_deductions || 0));
   const other = r2((p.other_deductions || 0) - loans);
   const period = `${String(p.period_month).padStart(2, '0')}/${p.period_year}`;
@@ -116,7 +120,9 @@ export function buildPayslipEntry(p: Payslip, employeeName?: string, loanRepaid 
   if (employer > 0) lines.push({ account_code: DEFAULT_ACCOUNTS.chargesSociales, label: 'Charges patronales', debit: employer, credit: 0 });
   lines.push({ account_code: DEFAULT_ACCOUNTS.remunerationsDues, label: 'Net à payer', debit: 0, credit: r2(p.net_salary) });
   if (cnssTotal > 0) lines.push({ account_code: DEFAULT_ACCOUNTS.cnss, label: 'CNSS/AMO', debit: 0, credit: cnssTotal });
-  if ((p.cimr_employee || 0) > 0) lines.push({ account_code: '4443', label: 'CIMR', debit: 0, credit: r2(p.cimr_employee) });
+  // Employee and employer CIMR shares are both owed to the fund.
+  if (cimr > 0) lines.push({ account_code: '4443', label: 'CIMR', debit: 0, credit: cimr });
+  // ir_amount is the IR actually withheld, net of any regularisation.
   if ((p.ir_amount || 0) > 0) lines.push({ account_code: DEFAULT_ACCOUNTS.irRetenue, label: 'IR retenue', debit: 0, credit: r2(p.ir_amount) });
   // Repaid advances clear the receivable they were booked to.
   if (loans > 0) lines.push({ account_code: '3488', label: 'Remboursement avances / prêts', debit: 0, credit: loans });

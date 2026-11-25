@@ -4,6 +4,7 @@ import { Plus, Wallet } from 'lucide-react';
 import { Payslip, Employee } from '../../types';
 import { SupabasePayslipsService } from '../../utils/supabasePayslips';
 import { SupabaseEmployeesService } from '../../utils/supabaseEmployees';
+import { PayrollRunService } from '../../utils/supabasePayrollRun';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
 import { PageHeader } from '../../components/PageHeader';
@@ -24,7 +25,7 @@ const YEARS = Array.from({ length: 5 }, (_, i) => currentYear - i);
 
 export default function PayslipsPage() {
   const navigate = useNavigate();
-  const { isSuperAdmin, isPaie, companyId: ctxCompanyId } = useAuth();
+  const { isSuperAdmin, isPaie } = useAuth();
   const { showToast } = useToast();
 
   const [payslips, setPayslips] = useState<Payslip[]>([]);
@@ -39,7 +40,6 @@ export default function PayslipsPage() {
   const [newYear, setNewYear] = useState(currentYear);
   const [showNewForm, setShowNewForm] = useState(false);
 
-  const companyId = ctxCompanyId || '';
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -77,29 +77,9 @@ export default function PayslipsPage() {
 
     setCreating(true);
     try {
-      const payslip = await SupabasePayslipsService.create({
-        company_id: employee.company_id || companyId,
-        employee_id: newEmployeeId,
-        period_month: newMonth,
-        period_year: newYear,
-        hours_worked: 191,
-        base_salary: employee.base_salary,
-        anciennete_rate: 0,
-        anciennete_amount: 0,
-        other_earnings: 0,
-        total_gross: employee.base_salary,
-        cnss_employee: 0,
-        amo_employee: 0,
-        cimr_employee: 0,
-        frais_pro: 0,
-        ir_amount: 0,
-        other_deductions: 0,
-        total_deductions: 0,
-        net_salary: employee.base_salary,
-        cnss_employer: 0,
-        amo_employer: 0,
-        alloc_familiales: 0,
-      });
+      // Computed like the run (contributions, IR, loan repayments); refused
+      // when the employee already has a payslip for that month.
+      const payslip = await PayrollRunService.createPayslip(employee, newMonth, newYear);
       navigate(`/paie/bulletins/${payslip.id}`);
     } catch (e) {
       showToast({ type: 'error', title: 'Erreur', message: (e as any)?.message || String(e) });
