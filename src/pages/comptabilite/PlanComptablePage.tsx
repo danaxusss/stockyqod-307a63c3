@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { BookMarked, Search, Plus, X, Check } from 'lucide-react';
+import { BookMarked, Search, Plus, X, Check, Pencil, EyeOff, Eye } from 'lucide-react';
 import type { Account } from '../../types';
 import { AccountingService } from '../../utils/supabaseAccounting';
 import { useToast } from '../../context/ToastContext';
 import { PageHeader } from '../../components/PageHeader';
 import { StatusPill } from '../../components/lists/StatusPill';
-import { btnPrimary, btnSecondary, EmptyState, field, fieldLabel, LoadingState, panel } from '../../components/backoffice/BackOfficeUi';
+import { btnPrimary, btnSecondary, EmptyState, field, fieldLabel, fieldSm, iconBtn, LoadingState, panel } from '../../components/backoffice/BackOfficeUi';
+import { errorText } from '../../accounting/errors';
 
 const CLASS_LABELS: Record<number, string> = {
   1: 'Financement permanent', 2: 'Actif immobilisé', 3: 'Actif circulant',
@@ -20,11 +21,12 @@ export default function PlanComptablePage() {
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ code: '', label: '', vat_rate: '', lettrable: false });
   const [saving, setSaving] = useState(false);
+  const [edit, setEdit] = useState<{ id: string; label: string } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try { setAccounts(await AccountingService.listAccounts()); }
-    catch (e: any) { showToast({ type: 'error', message: e?.message || 'Erreur' }); }
+    catch (e) { showToast({ type: 'error', message: errorText(e, 'Erreur') }); }
     finally { setLoading(false); }
   }, [showToast]);
   useEffect(() => { load(); }, [load]);
@@ -44,15 +46,36 @@ export default function PlanComptablePage() {
     const type = cls === 1 || cls === 4 ? 'bilan_passif' : cls === 2 || cls === 3 ? 'bilan_actif' : cls === 5 ? 'tresorerie' : cls === 6 ? 'charge' : 'produit';
     setSaving(true);
     try {
-      await AccountingService.upsertAccount({
+      // createAccount refuses a code already in the chart (an upsert would silently relabel it).
+      await AccountingService.createAccount({
         code: form.code.trim(), label: form.label.trim(), class: cls, type,
         vat_rate: form.vat_rate ? Number(form.vat_rate) : null, lettrable: form.lettrable,
-      } as any);
+      });
       showToast({ type: 'success', message: 'Compte enregistré' });
       setAdding(false); setForm({ code: '', label: '', vat_rate: '', lettrable: false });
       await load();
-    } catch (e: any) { showToast({ type: 'error', message: e?.message || 'Échec' }); }
+    } catch (e) { showToast({ type: 'error', message: errorText(e, 'Échec') }); }
     finally { setSaving(false); }
+  };
+
+  const saveLabel = async (a: Account) => {
+    if (!edit) return;
+    try {
+      await AccountingService.updateAccountLabel(a, edit.label);
+      setEdit(null);
+      await load();
+    } catch (e) { showToast({ type: 'error', message: errorText(e, 'Échec') }); }
+  };
+
+  // Only an account without any entry line can be deactivated (CNC avis 24 §2.6); it is then no longer offered in entries.
+  const toggleActive = async (a: Account) => {
+    const active = a.active === false;
+    if (!active && !confirm(`Désactiver le compte ${a.code} ? Il ne sera plus proposé à la saisie.`)) return;
+    try {
+      await AccountingService.setAccountActive(a, active);
+      showToast({ type: 'success', message: active ? `Compte ${a.code} réactivé` : `Compte ${a.code} désactivé` });
+      await load();
+    } catch (e) { showToast({ type: 'error', message: errorText(e, 'Échec') }); }
   };
 
   return (
@@ -110,12 +133,29 @@ export default function PlanComptablePage() {
               </div>
               <ul className="divide-y divide-border">
                 {list.map(a => (
-                  <li key={a.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-secondary/40">
+                  <li key={a.id} className={`flex items-center gap-3 px-4 py-2 hover:bg-secondary/40 ${a.active === false ? 'opacity-60' : ''}`}>
                     <span className="w-20 shrink-0 font-mono text-sm font-semibold text-foreground">{a.code}</span>
-                    <span className="min-w-0 flex-1 text-sm text-foreground">{a.label}</span>
+                    {edit?.id === a.id ? (
+                      <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                        <input value={edit.label} onChange={e => setEdit({ id: a.id, label: e.target.value })} onKeyDown={e => { if (e.key === 'Enter') saveLabel(a); if (e.key === 'Escape') setEdit(null); }}
+                          aria-label={`Libellé du compte ${a.code}`} autoFocus className={fieldSm} />
+                        <button onClick={() => saveLabel(a)} aria-label="Enregistrer le libellé" className={iconBtn}><Check className="h-4 w-4" /></button>
+                        <button onClick={() => setEdit(null)} aria-label="Annuler" className={iconBtn}><X className="h-4 w-4" /></button>
+                      </span>
+                    ) : (
+                      <span className="min-w-0 flex-1 text-sm text-foreground">{a.label}</span>
+                    )}
                     <span className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+                      {a.active === false && <StatusPill tone="neutral">désactivé</StatusPill>}
                       {a.vat_rate != null && <StatusPill tone="info">TVA {a.vat_rate}%</StatusPill>}
                       {a.lettrable && <StatusPill tone="neutral">lettrable</StatusPill>}
+                      {!a.is_system && edit?.id !== a.id && (
+                        <button onClick={() => setEdit({ id: a.id, label: a.label })} aria-label={`Modifier le libellé du compte ${a.code}`} title="Modifier le libellé" className={iconBtn}><Pencil className="h-4 w-4" /></button>
+                      )}
+                      <button onClick={() => toggleActive(a)} aria-label={a.active === false ? `Réactiver le compte ${a.code}` : `Désactiver le compte ${a.code}`}
+                        title={a.active === false ? 'Réactiver' : 'Désactiver (compte sans écriture)'} className={iconBtn}>
+                        {a.active === false ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                      </button>
                     </span>
                   </li>
                 ))}
