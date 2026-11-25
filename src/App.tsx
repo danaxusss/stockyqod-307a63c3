@@ -68,6 +68,11 @@ const PurchaseOrdersPage = React.lazy(() => import('./pages/inventaire/PurchaseO
 const PurchaseOrderDetailPage = React.lazy(() => import('./pages/inventaire/PurchaseOrderDetailPage'));
 const StockVouchersPage = React.lazy(() => import('./pages/inventaire/StockVouchersPage'));
 const StockVoucherPage = React.lazy(() => import('./pages/inventaire/StockVoucherPage'));
+const SupplierInvoicesPage = React.lazy(() => import('./pages/fournisseurs/SupplierInvoicesPage'));
+const SupplierInvoiceDetailPage = React.lazy(() => import('./pages/fournisseurs/SupplierInvoiceDetailPage'));
+const SuppliersPage = React.lazy(() => import('./pages/fournisseurs/SuppliersPage'));
+const PaymentDelaysPage = React.lazy(() => import('./pages/fournisseurs/PaymentDelaysPage'));
+const WithholdingsPage = React.lazy(() => import('./pages/fournisseurs/WithholdingsPage'));
 const EmployeesPage = React.lazy(() => import('./pages/paie/EmployeesPage'));
 const PayslipsPage = React.lazy(() => import('./pages/paie/PayslipsPage'));
 const PayslipDetailPage = React.lazy(() => import('./pages/paie/PayslipDetailPage'));
@@ -258,6 +263,15 @@ function AppContent() {
               </>
             )}
             {access.stockValuation && <Route path={STOCK_VALUATION_PATH} element={<StockComptablePage />} />}
+            {access.supplierInvoices && (
+              <>
+                <Route path="/compta/factures-fournisseurs" element={<SupplierInvoicesPage />} />
+                <Route path="/compta/factures-fournisseurs/:id" element={<SupplierInvoiceDetailPage />} />
+                <Route path="/compta/fournisseurs" element={<SuppliersPage />} />
+                <Route path="/compta/delais-paiement" element={<PaymentDelaysPage />} />
+                <Route path="/compta/retenues-source" element={<WithholdingsPage />} />
+              </>
+            )}
             {access.payroll && (
               <>
                 <Route path="/paie/employes" element={<EmployeesPage />} />

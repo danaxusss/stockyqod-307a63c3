@@ -127,8 +127,9 @@ export default function StockReceivePage() {
                 </div>
               ) : (
                 <>
+                  <p className="border-b border-border px-5 py-2 text-xs text-muted-foreground">Coûts unitaires TTC (TVA comprise), comme les prix d’achat des articles.</p>
                   <div className="hidden grid-cols-[3rem_minmax(0,1fr)_8.5rem_8rem_7.5rem_2.5rem] gap-x-4 border-b border-border bg-secondary/40 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground md:grid">
-                    <span /><span>Article</span><span className="text-center">Quantité</span><span className="text-right">Coût unitaire</span><span className="text-right">Total</span><span />
+                    <span /><span>Article</span><span className="text-center">Quantité</span><span className="text-right">Coût unitaire TTC</span><span className="text-right">Total TTC</span><span />
                   </div>
                   <ul className="divide-y divide-border">
                     {lines.map((l, i) => (
@@ -148,7 +149,7 @@ export default function StockReceivePage() {
                               input={<input type="number" min={1} value={l.qty} onChange={e => updateLine(i, 'qty', Number(e.target.value))} aria-label="Quantité" className={stepperInput} />} />
                           </div>
                           <label className="order-3 col-span-2 flex items-center justify-end gap-1 md:order-none md:col-span-1">
-                            <span className="mr-auto text-xs text-muted-foreground md:sr-only">Coût unitaire (MAD)</span>
+                            <span className="mr-auto text-xs text-muted-foreground md:sr-only">Coût unitaire TTC (MAD)</span>
                             <input type="number" min={0} step="0.01" value={l.unitCost} onChange={e => updateLine(i, 'unitCost', Number(e.target.value))}
                               className="h-10 w-24 rounded-lg border border-input bg-background px-2 text-right text-sm tabular-nums text-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
                             <span className="text-sm text-muted-foreground">Dh</span>
@@ -172,7 +173,7 @@ export default function StockReceivePage() {
                 <div className="flex justify-between"><dt className="text-muted-foreground">Unités</dt><dd className="font-medium tabular-nums text-foreground">{units}</dd></div>
               </dl>
               <div className="mt-3 flex items-baseline justify-between gap-2 border-t border-border pt-3">
-                <span className="font-semibold text-foreground">Total réception</span>
+                <span className="font-semibold text-foreground">Total réception TTC</span>
                 <span className="text-xl font-bold tabular-nums text-foreground">{formatMoney(total)}</span>
               </div>
               <button onClick={validate} disabled={saving || lines.length === 0} className={`${opsPrimaryBtn} mt-4 w-full`}>

@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient';
 import { getCompanyContext } from './supabaseCompanyFilter';
+import { writeTolerant } from './schemaFallback';
 import type { PurchaseOrder, PurchaseOrderItem, PurchaseOrderStatus } from '../types';
 
 export class PurchaseOrdersService {
@@ -36,9 +37,14 @@ export class PurchaseOrdersService {
     const { companyId } = getCompanyContext();
     const cid = header.company_id ?? companyId;
     const poNumber = header.po_number || await this.nextNumber(cid);
+    // Unit costs are entered including VAT, like every purchase cost in
+    // Stocky: total_ht keeps its historical name but holds the TTC total.
     const total = items.reduce((s, i) => s + i.qty_ordered * i.unit_cost, 0);
-    const { data, error } = await (supabase as any).from('purchase_orders').insert({
+    // supplier_id comes with the supplier invoices migration: saved without
+    // it on a database that does not have the column yet.
+    const { data, error } = await writeTolerant<PurchaseOrder>({
       company_id: cid,
+      supplier_id: (header as { supplier_id?: string | null }).supplier_id ?? null,
       po_number: poNumber,
       provider_id: header.provider_id ?? null,
       provider_name: header.provider_name ?? null,
@@ -49,7 +55,7 @@ export class PurchaseOrdersService {
       total_ht: total,
       notes: header.notes ?? null,
       created_by: header.created_by ?? null,
-    }).select().single();
+    }, ['supplier_id'], payload => (supabase as any).from('purchase_orders').insert(payload).select().single());
     if (error) throw error;
     const po = data as PurchaseOrder;
     if (items.length > 0) {
