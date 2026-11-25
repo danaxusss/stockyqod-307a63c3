@@ -8,6 +8,8 @@ import {
 } from 'lucide-react';
 import { SupabaseCompaniesService } from '../utils/supabaseCompanies';
 import { CashStampDutyField, LegalIdsWarning, PaymentDaysField, TaxAttestationField, TvaRateField, VatExemptionField } from '../components/settings/BillingSettingsFields';
+import { VatReturnSettingsFields } from '../components/settings/VatReturnSettingsFields';
+import { vatSettingsFieldsError } from '../accounting/vatReturn';
 import { billingSettingsError, iceError, normalizeIce } from '../utils/legalIds';
 import {
   CompanySettingsService, CompanySettings, QuoteVisibleFields, QuoteStyle, DEFAULT_SHARE_TEMPLATES
@@ -406,7 +408,7 @@ export default function CompaniesPage() {
 
   const handleEditSave = async () => {
     if (!editingCompany || !editSettings) return;
-    const invalid = billingSettingsError(editSettings);
+    const invalid = billingSettingsError(editSettings) || vatSettingsFieldsError(editSettings);
     if (invalid) {
       showToast({ type: 'error', message: invalid });
       return;
@@ -633,6 +635,8 @@ export default function CompaniesPage() {
                   available={s.payment_settings_available !== false}
                   className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring" />
                 <CashStampDutyField value={s.cash_stamp_duty} onChange={on => setS({ cash_stamp_duty: on })} available={s.payment_settings_available !== false} />
+                <VatReturnSettingsFields value={s} onChange={patch => setS(patch)} idPrefix="company-vat" available={s.vat_settings_available !== false}
+                  className="w-full px-3 py-1.5 text-sm border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring" />
               </div>
             </div>
 
