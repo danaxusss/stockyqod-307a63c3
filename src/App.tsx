@@ -7,6 +7,7 @@ import { LoginModal } from './components/LoginModal';
 import { FloatingQuoteCart } from './components/FloatingQuoteCart';
 import { useAuth } from './hooks/useAuth';
 import { useAccess } from './hooks/useAccess';
+import { STOCK_VALUATION_PATH } from './lib/navigation';
 import { useUserAuth } from './hooks/useUserAuth';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Toaster as SonnerToaster } from './components/ui/sonner';
@@ -62,6 +63,7 @@ const StockReceivePage = React.lazy(() => import('./pages/inventaire/StockReceiv
 const StockTransferPage = React.lazy(() => import('./pages/inventaire/StockTransferPage'));
 const StockCountPage = React.lazy(() => import('./pages/inventaire/StockCountPage'));
 const StockReportsPage = React.lazy(() => import('./pages/inventaire/StockReportsPage'));
+const StockComptablePage = React.lazy(() => import('./pages/inventaire/StockComptablePage'));
 const PurchaseOrdersPage = React.lazy(() => import('./pages/inventaire/PurchaseOrdersPage'));
 const PurchaseOrderDetailPage = React.lazy(() => import('./pages/inventaire/PurchaseOrderDetailPage'));
 const StockVouchersPage = React.lazy(() => import('./pages/inventaire/StockVouchersPage'));
@@ -255,6 +257,7 @@ function AppContent() {
                 <Route path="/inventaire/bons/:id" element={<StockVoucherPage />} />
               </>
             )}
+            {access.stockValuation && <Route path={STOCK_VALUATION_PATH} element={<StockComptablePage />} />}
             {access.payroll && (
               <>
                 <Route path="/paie/employes" element={<EmployeesPage />} />
