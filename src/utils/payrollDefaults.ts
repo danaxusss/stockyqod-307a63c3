@@ -175,6 +175,39 @@ export function settingsStatus(s: PayrollSettings, year: number): { kind: 'offic
   return { kind: 'modified', officialYear };
 }
 
+// ── HR limits set by law, by year ───────────────────────────────────────────
+// Not company settings: statutory ceilings that change only with a finance law.
+// - severance_ir_ceiling: CGI art. 57-7°, the dismissal indemnity, the
+//   voluntary-departure indemnity and court-awarded damages are exempt from IR
+//   "dans la limite d'un million (1000000) dirhams au titre du montant total"
+//   (finance law 2023).
+// - trainee_ir_ceiling / trainee_ir_months: CGI art. 57-16°, "l'indemnité de
+//   stage mensuelle brute plafonnée à six mille (6.000) dirhams ... pour une
+//   période de douze (12) mois"; above the ceiling the exemption is lost
+//   entirely. The 2027 bill (8,000) is not law: not entered.
+// - trainee_cnss_months: ANAPEC insertion contracts are reported exempt from
+//   CNSS contributions and the training tax for 24 months. NOT verified in an
+//   official text; applied only when the employee's own setting says so.
+export interface HrLimits {
+  severance_ir_ceiling: number;
+  trainee_ir_ceiling: number;
+  trainee_ir_months: number;
+  trainee_cnss_months: number;
+}
+
+export const OFFICIAL_HR_LIMITS: Record<number, HrLimits> = {
+  2025: { severance_ir_ceiling: 1000000, trainee_ir_ceiling: 6000, trainee_ir_months: 12, trainee_cnss_months: 24 },
+  2026: { severance_ir_ceiling: 1000000, trainee_ir_ceiling: 6000, trainee_ir_months: 12, trainee_cnss_months: 24 },
+};
+
+/** Limits in force for a year: the latest year known not after it. */
+export function hrLimitsFor(year: number): HrLimits {
+  const years = Object.keys(OFFICIAL_HR_LIMITS).map(Number).sort((a, b) => a - b);
+  let found = years[0];
+  for (const y of years) if (y <= year) found = y;
+  return { ...OFFICIAL_HR_LIMITS[found] };
+}
+
 /** Monthly SMIG for a full-time employee (191 hours). */
 export function smigMonthly(s: Pick<PayrollSettings, 'smig_hourly'>): number {
   return r2((Number(s.smig_hourly) || 0) * LEGAL_MONTHLY_HOURS);

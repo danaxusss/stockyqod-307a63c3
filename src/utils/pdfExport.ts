@@ -1931,6 +1931,11 @@ async function buildPayslipPdf(payslip: any, settings: any): Promise<{ doc: any;
   ].filter(Boolean).join('  ·  ');
   doc.text(`${taxInfo} (MAD)`, margin, y, { maxWidth: contentWidth });
   y += 6;
+  // Trainee: why IR (and CNSS) are or are not withheld.
+  if (payslip.trainee_note) {
+    doc.text(String(payslip.trainee_note).replace(/[\u202f\u00a0]/g, ' '), margin, y, { maxWidth: contentWidth });
+    y += 8;
+  }
   doc.setTextColor(...DARK);
 
   // ── Employer cost note (training tax and employer CIMR included) ──

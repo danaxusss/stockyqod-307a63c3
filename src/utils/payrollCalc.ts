@@ -107,6 +107,67 @@ export function seniorityBase(baseSalary: number, lines: PayLine[]): number {
   return r2((Number(baseSalary) || 0) + lines.filter(l => l.type === 'gain' && l.inclus_anciennete).reduce((s, l) => s + (Number(l.amount) || 0), 0));
 }
 
+// ── Trainees (contrat de stage ANAPEC) ──────────────────────────────────────
+
+/** What a trainee's contract gives, taken from the employee and the year's limits. */
+export interface TraineeTerms {
+  /** First day of the internship (start of both exemption periods). */
+  start_date: string;
+  /** Monthly gross ceiling of the IR exemption (CGI art. 57-16°). */
+  ir_ceiling: number;
+  /** Number of monthly payslips the IR exemption covers. */
+  ir_months: number;
+  /** The employee's setting: CNSS and training tax not due (to confirm with the CNSS). */
+  cnss_exempt: boolean;
+  cnss_months: number;
+}
+
+export interface TraineeOutcome {
+  /** exempt: no IR; over_ceiling: allowance above the ceiling, exemption lost; expired / not_started: outside the period. */
+  ir: 'exempt' | 'over_ceiling' | 'expired' | 'not_started';
+  cnss_exempt: boolean;
+  /** Last day of the month of the last exempt payslip. */
+  ir_end: string;
+  /** One sentence for the payslip. */
+  note: string;
+}
+
+const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/** Index of a pay month counted from the start month (0 = the start month). */
+function monthIndex(start: string, month: number, year: number): number | null {
+  const [sy, sm] = start.slice(0, 10).split('-').map(Number);
+  if (!sy || !sm) return null;
+  return year * 12 + month - (sy * 12 + sm);
+}
+
+/** Last day of the last month of the IR exemption (12 monthly payslips from the start month). */
+export function traineeIrEnd(t: Pick<TraineeTerms, 'start_date' | 'ir_months'>): string {
+  const [sy, sm] = t.start_date.slice(0, 10).split('-').map(Number);
+  return iso(new Date(sy, sm - 1 + t.ir_months, 0));
+}
+
+/**
+ * Exemptions of a trainee's payslip. The IR exemption covers the monthly
+ * payslips of the first `ir_months` months from the start month, and only
+ * when the gross allowance is at or under the ceiling: above it, CGI art.
+ * 57-16° says the exemption is lost ("perdent le bénéfice de l'exonération"),
+ * so the whole allowance is taxed, not just the excess.
+ */
+export function traineeOutcome(t: TraineeTerms, month: number, year: number, grossAllowance: number): TraineeOutcome {
+  const idx = monthIndex(t.start_date, month, year);
+  const fmtN = (n: number) => new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+  const end = traineeIrEnd(t);
+  const endFr = end.split('-').reverse().join('/');
+  const cnss_exempt = t.cnss_exempt && idx != null && idx >= 0 && idx < t.cnss_months;
+  if (idx == null || idx < 0) return { ir: 'not_started', cnss_exempt, ir_end: end, note: 'Stage pas encore commencé ce mois : IR normal.' };
+  if (idx >= t.ir_months) return { ir: 'expired', cnss_exempt, ir_end: end, note: `Exonération IR du stage terminée le ${endFr} (${t.ir_months} mois) : IR normal.` };
+  if (grossAllowance > t.ir_ceiling + 0.005) {
+    return { ir: 'over_ceiling', cnss_exempt, ir_end: end, note: `Indemnité de ${fmtN(grossAllowance)} MAD au-dessus du plafond de ${fmtN(t.ir_ceiling)} MAD : l'exonération est perdue, toute l'indemnité est imposée (CGI art. 57-16°).` };
+  }
+  return { ir: 'exempt', cnss_exempt, ir_end: end, note: `Stagiaire ANAPEC : indemnité exonérée d'IR jusqu'à ${fmtN(t.ir_ceiling)} MAD par mois, jusqu'au ${endFr} (CGI art. 57-16°).` };
+}
+
 // ── The payslip computation ─────────────────────────────────────────────────
 
 export interface PayslipInput {
@@ -129,6 +190,8 @@ export interface PayslipInput {
    * in excess earlier in the year, negative collects IR under-withheld.
    */
   ir_regularisation?: number;
+  /** A trainee's contract (needs the period): IR and CNSS exemptions. */
+  trainee?: TraineeTerms | null;
 }
 
 export interface PayslipResult {
@@ -168,6 +231,8 @@ export interface PayslipResult {
   cimr_employer: number;
   charges_patronales: number;
   employer_cost: number;
+  /** Set on a trainee's payslip: which exemptions applied and why. */
+  trainee?: TraineeOutcome | null;
 }
 
 /**
@@ -196,9 +261,15 @@ export function computePayslip(input: PayslipInput): PayslipResult {
   const gross_deductions = r2(sum(absences));
   const brut_global = r2(fixed + other_earnings - gross_deductions);
 
+  // A trainee's exemptions depend on the month and on the gross allowance.
+  const trainee = input.trainee && input.period_month && input.period_year
+    ? traineeOutcome(input.trainee, input.period_month, input.period_year, brut_global)
+    : null;
+  const irExempt = trainee?.ir === 'exempt';
+
   const irCeil = (l: PayLine) => ceilingAmount(l.ir_ceiling, base);
   const cnssCeil = (l: PayLine) => ceilingAmount(l.cnss_ceiling, base);
-  const brut_imposable = r2(Math.max(0, fixed
+  const brut_imposable = irExempt ? 0 : r2(Math.max(0, fixed
     + sum(gains, l => subjectPart(l.amount, !!l.soumis_ir, irCeil(l)))
     - sum(absences.filter(l => l.soumis_ir))));
   const cnss_base = r2(Math.max(0, fixed
@@ -211,7 +282,10 @@ export function computePayslip(input: PayslipInput): PayslipResult {
     + sum(gains.filter(l => l.soumis_cimr))
     - sum(absences.filter(l => l.soumis_cimr))));
 
-  const capped = Math.min(cnss_base, s.cnss_cap);
+  // Trainee CNSS exemption (employee setting): no CNSS share, no family
+  // allowances, no training tax. AMO stays due (not covered by the setting).
+  const cnssFree = !!trainee?.cnss_exempt;
+  const capped = cnssFree ? 0 : Math.min(cnss_base, s.cnss_cap);
   const cnss_employee = r2(capped * s.cnss_rate_emp);
   const amo_employee = r2(amo_base * s.amo_rate_emp);
   const cimrRate = Number(input.cimr_rate) || 0;
@@ -238,8 +312,8 @@ export function computePayslip(input: PayslipInput): PayslipResult {
 
   const cnss_employer = r2(capped * s.cnss_rate_er);
   const amo_employer = r2(amo_base * s.amo_rate_er);
-  const alloc_familiales = r2(cnss_base * s.af_rate);
-  const tfp_employer = r2(cnss_base * s.tfp_rate);
+  const alloc_familiales = cnssFree ? 0 : r2(cnss_base * s.af_rate);
+  const tfp_employer = cnssFree ? 0 : r2(cnss_base * s.tfp_rate);
   const charges_patronales = r2(cnss_employer + amo_employer + alloc_familiales + tfp_employer + cimr_employer);
   const employer_cost = r2(brut_global + charges_patronales);
 
@@ -249,6 +323,7 @@ export function computePayslip(input: PayslipInput): PayslipResult {
     cnss_employee, amo_employee, cimr_employee, frais_pro, net_imposable,
     ir_brut, ir_regularisation, ir_amount, autres_retenues, total_deductions, net_salary,
     cnss_employer, amo_employer, alloc_familiales, tfp_employer, cimr_employer, charges_patronales, employer_cost,
+    trainee,
   };
 }
 
@@ -290,7 +365,9 @@ export function computePayroll(input: PayrollInput): PayrollResult {
  * Minimum-wage warning for a full-time base salary (non-blocking: part-time
  * exists). Null when the salary reaches SMIG × 191 or the hours are part-time.
  */
-export function smigWarning(baseSalary: number, settings: PayrollSettings, hoursWorked: number = LEGAL_MONTHLY_HOURS): string | null {
+export function smigWarning(baseSalary: number, settings: PayrollSettings, hoursWorked: number = LEGAL_MONTHLY_HOURS, contractType?: string | null): string | null {
+  // A trainee receives an internship allowance, not a salary: no SMIG.
+  if (contractType === 'Stage') return null;
   const legal = smigMonthly(settings);
   if (!legal || (Number(hoursWorked) || 0) < LEGAL_MONTHLY_HOURS) return null;
   if ((Number(baseSalary) || 0) >= legal) return null;
@@ -315,17 +392,27 @@ export function checkNetPay(netSalary: number, loanWithheld: number): NetPayChec
   return { error: null, warning: null };
 }
 
+export interface WorkingDayRules {
+  /** Weekly rest day, 0 = Sunday … 6 = Saturday (company setting). */
+  restDay?: number;
+  /** Paid public holidays, as YYYY-MM-DD. */
+  holidays?: Iterable<string>;
+}
+
 /**
  * Days a leave takes from the paid-leave balance: jours ouvrables, i.e. every
- * day but Sunday (Code du travail). Public holidays are not known here.
+ * day except the weekly rest day and paid public holidays (Code du travail
+ * art. 231). Without rules: every day but Sunday.
  */
-export function leaveWorkingDays(start: string, end: string): number {
+export function leaveWorkingDays(start: string, end: string, rules: WorkingDayRules = {}): number {
   const [sy, sm, sd] = start.slice(0, 10).split('-').map(Number);
   const [ey, em, ed] = end.slice(0, 10).split('-').map(Number);
   if (!sy || !ey) return 0;
+  const rest = rules.restDay ?? 0;
+  const off = new Set(rules.holidays || []);
   let days = 0;
   for (let d = new Date(sy, sm - 1, sd); d <= new Date(ey, em - 1, ed); d.setDate(d.getDate() + 1)) {
-    if (d.getDay() !== 0) days += 1;
+    if (d.getDay() !== rest && !off.has(iso(d))) days += 1;
   }
   return days;
 }

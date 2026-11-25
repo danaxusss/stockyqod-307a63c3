@@ -54,6 +54,7 @@ function mapRow(row: Record<string, unknown>, items: PayslipItem[] = []): Paysli
     ir_regularisation_ids: Array.isArray(row.ir_regularisation_ids) ? (row.ir_regularisation_ids as string[]) : [],
     is_locked: row.is_locked === true,
     run_id: (row.run_id as string) || null,
+    loan_repayments: Array.isArray(row.loan_repayments) ? (row.loan_repayments as { loan_id: string; amount: number }[]) : null,
     notes: (row.notes as string) || undefined,
     items,
     created_at: row.created_at as string,

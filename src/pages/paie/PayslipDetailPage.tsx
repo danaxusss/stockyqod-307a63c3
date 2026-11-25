@@ -23,6 +23,10 @@ import { DocPhoneBar } from '../../components/documents/DocParts';
 import { btnPrimary, btnSecondary, btnSoft, fieldLabel, fieldSm, iconBtn, iconBtnDanger, LoadingState, panel, textArea } from '../../components/backoffice/BackOfficeUi';
 import { Notice } from './payrollUi';
 
+/** The trainee sentence of a payslip, with the CNSS setting when it applies. */
+const traineeNote = (t: NonNullable<ReturnType<typeof computeForPayslip>['trainee']>) =>
+  `${t.note}${t.cnss_exempt ? ' CNSS, allocations familiales et taxe de formation non dues (réglage de l\'employé, à confirmer avec la CNSS / le contrat ANAPEC).' : ''}`;
+
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : (e as { message?: string })?.message || String(e));
 const r2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
 
@@ -81,7 +85,7 @@ export default function PayslipDetailPage() {
 
   const loanWithheld = r2(lines.filter(l => l.type === 'retenue' && l.code === LOAN_LINE.code).reduce((s, l) => s + l.amount, 0));
   const netCheck = res ? checkNetPay(res.net_salary, loanWithheld) : { error: null, warning: null };
-  const smig = payslip ? smigWarning(payslip.base_salary, settings, payslip.hours_worked) : null;
+  const smig = payslip ? smigWarning(payslip.base_salary, settings, payslip.hours_worked, emp?.contract_type) : null;
   const salaryChanged = !!payslip && !!emp && !locked && r2(emp.base_salary) !== r2(payslip.base_salary);
 
   const save = useCallback(async () => {
@@ -106,7 +110,7 @@ export default function PayslipDetailPage() {
       ...res, total_gross: res.brut_global, other_deductions: res.autres_retenues,
       ir_taxable_gross: res.brut_imposable, net_taxable: res.net_imposable,
     };
-    return { ...payslip, ...figures, lines, rates: settings };
+    return { ...payslip, ...figures, lines, rates: settings, trainee_note: res.trainee ? traineeNote(res.trainee) : null };
   };
 
   const updateLine = (idx: number, patch: Partial<PayslipLine>) => { setLines(prev => prev.map((l, i) => i === idx ? { ...l, ...patch } : l)); setDirty(true); };
@@ -334,6 +338,7 @@ export default function PayslipDetailPage() {
         {netCheck.error && <Notice tone="error">{netCheck.error}</Notice>}
         {netCheck.warning && <Notice>{netCheck.warning}</Notice>}
         {smig && <Notice>{smig}</Notice>}
+        {res?.trainee && <Notice tone="info">{traineeNote(res.trainee)}</Notice>}
         {salaryChanged && (
           <Notice tone="info">
             <span>Ce bulletin est calculé sur {fmt(payslip.base_salary)} MAD ; le salaire actuel de l'employé est {fmt(emp!.base_salary)} MAD. </span>
@@ -404,7 +409,7 @@ export default function PayslipDetailPage() {
                 <li className={fixedRow}><span className="text-muted-foreground">CNSS salarié ({pct(settings.cnss_rate_emp)} plafonné à {fmt(settings.cnss_cap)})</span><span className="tabular-nums text-foreground">{fmt(res.cnss_employee)}</span></li>
                 <li className={fixedRow}><span className="text-muted-foreground">AMO salarié ({pct(settings.amo_rate_emp)})</span><span className="tabular-nums text-foreground">{fmt(res.amo_employee)}</span></li>
                 {res.cimr_employee > 0 && <li className={fixedRow}><span className="text-muted-foreground">CIMR salarié ({pct(cimrRate / 100)})</span><span className="tabular-nums text-foreground">{fmt(res.cimr_employee)}</span></li>}
-                <li className={fixedRow}><span className="text-muted-foreground">Impôt sur le revenu</span><span className="tabular-nums text-foreground">{fmt(res.ir_brut)}</span></li>
+                <li className={fixedRow}><span className="text-muted-foreground">Impôt sur le revenu{res.trainee?.ir === 'exempt' && ' (exonéré : stagiaire)'}</span><span className="tabular-nums text-foreground">{fmt(res.ir_brut)}</span></li>
                 {appliedReg !== 0 && (
                   <li className={fixedRow}>
                     <span className="text-muted-foreground">{regLabel}{appliedReg < 0 && ' (complément retenu)'}</span>

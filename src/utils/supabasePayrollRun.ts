@@ -1,14 +1,15 @@
-import { payrollDb, writeWithFallback } from './payrollDb';
+import { HR_MIGRATION, payrollDb, writeWithFallback } from './payrollDb';
 import { getCompanyContext } from './supabaseCompanyFilter';
 import { SupabaseEmployeesService } from './supabaseEmployees';
 import { PayrollSettingsService } from './supabasePayrollSettings';
 import { AccountingService } from './supabaseAccounting';
 import { checkNetPay, periodEnd } from './payrollCalc';
 import { NEW_PAYSLIP_COLUMNS, SupabasePayslipsService } from './supabasePayslips';
-import { LoanService } from './supabasePayrollHr';
+import { HolidayService, HrSettingsService, LeaveService, LoanService, type LeaveRequest } from './supabasePayrollHr';
+import { absencePlan, isUnpaidLeave, leaveLineDays, mergeAbsenceLines } from './hrLeave';
 import { DEFAULT_ACCOUNTS } from '../accounting/pcmSeed';
 import type { PayrollSettings } from './payrollDefaults';
-import { LEGAL_MONTHLY_HOURS } from './payrollDefaults';
+import { FULL_MONTH_CNSS_DAYS, LEGAL_MONTHLY_HOURS } from './payrollDefaults';
 import { computeForPayslip, employerCharges, payslipFigures, type PayslipEmployee } from './payslipCompute';
 import { LOAN_LINE, loanLine, payslipLines, type PayslipLine } from './payslipLines';
 import { computeIrRegularisation, planRegularisation, type IrRegularisation, type RegularisationPlan } from './payrollRegularisation';
@@ -22,6 +23,9 @@ export interface PayrollRun {
   period_month: number;
   period_year: number;
   status: 'draft' | 'validated' | 'paid';
+  /** Set by "Marquer comme payé" (HR migration). */
+  paid_at?: string | null;
+  payment_mode?: string | null;
   total_gross: number;
   total_net: number;
   /** Employee social contributions: CNSS + AMO (employee shares). */
@@ -54,6 +58,18 @@ export function runTotals(payslips: Pick<Payslip, 'total_gross' | 'net_salary' |
   };
 }
 
+/**
+ * First month a new advance's repayments can start: this month, or the month
+ * after the latest validated (or paid) run when that run is this month or
+ * later, so the default never falls in a closed month.
+ */
+export function firstOpenMonth(runs: Pick<PayrollRun, 'period_month' | 'period_year' | 'status'>[], today = new Date()): { month: number; year: number } {
+  const now = today.getFullYear() * 12 + today.getMonth();
+  const closed = runs.filter(r => r.status !== 'draft').map(r => r.period_year * 12 + r.period_month - 1);
+  const k = Math.max(now, closed.length ? Math.max(...closed) + 1 : now);
+  return { month: (k % 12) + 1, year: Math.floor(k / 12) };
+}
+
 async function employeeOf(p: Payslip): Promise<Employee | null> {
   if (p.employee && 'hire_date' in p.employee && 'dependents_count' in p.employee) return p.employee;
   return SupabaseEmployeesService.getById(p.employee_id);
@@ -64,6 +80,22 @@ async function loanDue(employeeId: string, month: number, year: number): Promise
   const loans = await LoanService.activeForEmployee(employeeId, { month, year });
   return r2(loans.reduce((s, l) => s + Math.min(Number(l.monthly_installment) || 0, Number(l.remaining) || 0), 0));
 }
+
+/** What the run needs to put approved unpaid leave on payslips. */
+interface LeaveContext { leaves: LeaveRequest[]; restDay: number; holidays: string[] }
+
+/** Approved unpaid leaves, rest day and holidays of a year (empty when the leave data cannot be read). */
+async function leaveContext(year: number): Promise<LeaveContext> {
+  const [leaves, hr, holidays] = await Promise.all([
+    LeaveService.list().catch(() => [] as LeaveRequest[]),
+    HrSettingsService.get().catch(() => ({ weekly_rest_day: 0, migrationMissing: true })),
+    HolidayService.forYear(year).then(h => h.holidays.map(x => x.date)).catch(() => [] as string[]),
+  ]);
+  return { leaves: leaves.filter(l => l.status === 'approved' && isUnpaidLeave(l)), restDay: hr.weekly_rest_day, holidays };
+}
+
+/** Repayments applied on a payslip at validation, kept so they can be undone. */
+type LoanRepayment = { loan_id: string; amount: number };
 
 const itemsOf = (lines: PayslipLine[]) => lines.map((l, i) => ({
   label: l.label, item_type: l.type === 'gain' ? 'earning' : 'deduction', amount: l.amount,
@@ -116,21 +148,36 @@ export class PayrollRunService {
     return employees.filter(e => have.has(e.id));
   }
 
-  /** Inserts an employee's computed payslip for a month (loan repayments as a line). */
-  private static async insertPayslip(e: Employee, month: number, year: number, settings: PayrollSettings, payslip_number: string, runId: string | null): Promise<Payslip> {
+  /**
+   * Inserts an employee's computed payslip for a month: loan repayments as a
+   * line, and one absence line per approved unpaid leave of the month (the
+   * CNSS days go down by the same days). `override` is the final settlement's
+   * payslip (its own base salary and lines).
+   */
+  private static async insertPayslip(
+    e: Employee, month: number, year: number, settings: PayrollSettings, payslip_number: string, runId: string | null,
+    ctx?: LeaveContext, override?: { base_salary: number; hours_worked: number; lines: PayslipLine[] },
+  ): Promise<Payslip> {
     const { companyId } = getCompanyContext();
     const company = e.company_id || companyId;
-    const loans = await loanDue(e.id, month, year);
-    // The repayment is a visible line, so editing the payslip keeps it.
-    const lines: PayslipLine[] = loans > 0 ? [loanLine(loans)] : [];
-    const basis = { base_salary: e.base_salary, period_month: month, period_year: year, dependents_count: e.dependents_count ?? 0 };
+    const leave = ctx || await leaveContext(year);
+    const absences = absencePlan(leave.leaves, e.id, month, year, e.base_salary, { restDay: leave.restDay, holidays: leave.holidays });
+    let lines: PayslipLine[];
+    if (override) lines = mergeAbsenceLines(override.lines, absences);
+    else {
+      const loans = await loanDue(e.id, month, year);
+      // The repayment is a visible line, so editing the payslip keeps it.
+      lines = [...absences.lines, ...(loans > 0 ? [loanLine(loans)] : [])];
+    }
+    const base = override ? override.base_salary : e.base_salary;
+    const basis = { base_salary: base, period_month: month, period_year: year, dependents_count: e.dependents_count ?? 0 };
     const res = computeForPayslip(basis, e, lines, settings);
     const { data: slip, error } = await writeWithFallback(
       p => payrollDb().from('payslips').insert(p).select().single(),
       {
         company_id: company, employee_id: e.id, period_month: month, period_year: year, payslip_number,
-        hours_worked: LEGAL_MONTHLY_HOURS, run_id: runId,
-        ...payslipFigures(res, { base_salary: e.base_salary, dependents_count: e.dependents_count ?? 0 }),
+        hours_worked: override ? override.hours_worked : LEGAL_MONTHLY_HOURS, run_id: runId,
+        ...payslipFigures(res, { base_salary: base, dependents_count: e.dependents_count ?? 0, cnss_days: Math.max(0, FULL_MONTH_CNSS_DAYS - leaveLineDays(lines)) }),
         ir_regularisation_ids: [],
       } as Record<string, unknown>,
       NEW_PAYSLIP_COLUMNS,
@@ -155,6 +202,19 @@ export class PayrollRunService {
     const settings = await PayrollSettingsService.get(year);
     const seq = await SupabasePayslipsService.nextNumberSeq(e.company_id || companyId, year);
     return this.insertPayslip(e, month, year, settings, `PAIE-${year}-${String(seq).padStart(3, '0')}`, null);
+  }
+
+  /**
+   * The final settlement's payslip, made outside a run: its own (prorated)
+   * base salary and the settlement lines; the month's unpaid leave is added.
+   */
+  static async createFinalPayslip(e: Employee, month: number, year: number, base_salary: number, hours_worked: number, lines: PayslipLine[]): Promise<Payslip> {
+    const [dup] = await this.alreadyPaid([e], month, year);
+    if (dup) throw new Error(`${e.full_name} a déjà un bulletin pour ${MONTHS[month - 1]} ${year}.`);
+    const { companyId } = getCompanyContext();
+    const settings = await PayrollSettingsService.get(year);
+    const seq = await SupabasePayslipsService.nextNumberSeq(e.company_id || companyId, year);
+    return this.insertPayslip(e, month, year, settings, `PAIE-${year}-${String(seq).padStart(3, '0')}`, null, undefined, { base_salary, hours_worked, lines });
   }
 
   /** Generate payslips for all active employees for a month (idempotent per month). */
@@ -183,10 +243,11 @@ export class PayrollRunService {
     const run = runRow as PayrollRun;
 
     let seq = (await SupabasePayslipsService.nextNumberSeq(companyId, year)) - 1;
+    const ctx = await leaveContext(year);
     try {
       for (const e of active) {
         seq += 1;
-        await this.insertPayslip(e, month, year, settings, `PAIE-${year}-${String(seq).padStart(3, '0')}`, run.id);
+        await this.insertPayslip(e, month, year, settings, `PAIE-${year}-${String(seq).padStart(3, '0')}`, run.id, ctx);
       }
     } catch (e) {
       // All or nothing: a run missing payslips would understate every total.
@@ -236,19 +297,40 @@ export class PayrollRunService {
     return payslipLines({ ...p, items }, []);
   }
 
-  /** Lock a payslip: cumuls for the annual return and loan repayments. */
+  /**
+   * Lock a payslip: cumuls for the annual return and loan repayments. The
+   * withheld amount pays each started loan's instalment first; anything above
+   * (a final settlement repaying the whole balance) pays the remaining
+   * balances in order, loans not yet started included. What each loan
+   * received is stored on the payslip so "dévalider" can give it back.
+   */
   private static async lockPayslip(p: Payslip, repaid: number, month: number, year: number): Promise<void> {
     const { companyId } = getCompanyContext();
     await payrollDb().from('payslips').update({ is_locked: true }).eq('id', p.id);
+    const applied: LoanRepayment[] = [];
     if (repaid > 0) {
-      let toRepay = repaid;
-      const loans = await LoanService.activeForEmployee(p.employee_id, { month, year });
-      for (const l of loans) {
-        if (toRepay <= 0) break;
-        const pay = Math.min(Number(l.monthly_installment) || 0, Number(l.remaining) || 0, toRepay);
-        if (pay > 0) { await LoanService.applyRepayment(l.id, pay); toRepay = r2(toRepay - pay); }
+      let toRepay = r2(repaid);
+      const left = new Map<string, number>();
+      const add = (loanId: string, pay: number) => {
+        const prev = applied.find(a => a.loan_id === loanId);
+        if (prev) prev.amount = r2(prev.amount + pay); else applied.push({ loan_id: loanId, amount: pay });
+      };
+      for (const l of await LoanService.activeForEmployee(p.employee_id, { month, year })) {
+        left.set(l.id, Number(l.remaining) || 0);
+        const pay = r2(Math.min(Number(l.monthly_installment) || 0, left.get(l.id) || 0, toRepay));
+        if (pay > 0) { add(l.id, pay); left.set(l.id, r2((left.get(l.id) || 0) - pay)); toRepay = r2(toRepay - pay); }
       }
+      if (toRepay > 0) {
+        for (const l of await LoanService.activeForEmployee(p.employee_id)) {
+          const rest = left.has(l.id) ? left.get(l.id) || 0 : Number(l.remaining) || 0;
+          const pay = r2(Math.min(rest, toRepay));
+          if (pay > 0) { add(l.id, pay); left.set(l.id, r2(rest - pay)); toRepay = r2(toRepay - pay); }
+        }
+      }
+      for (const a of applied) await LoanService.applyRepayment(a.loan_id, a.amount);
     }
+    // Without the HR migration the detail cannot be kept (un-validating then warns).
+    await writeWithFallback(row => payrollDb().from('payslips').update(row).eq('id', p.id), { loan_repayments: applied } as Record<string, unknown>, ['loan_repayments']);
     // Taxable figures as stored; payslips saved before they were stored are
     // recomputed from their lines.
     let taxableGross = p.ir_taxable_gross;
@@ -301,6 +383,124 @@ export class PayrollRunService {
     if (p.run_id) throw new Error('Ce bulletin fait partie d\'un lot : validez le lot.');
     const loanAmounts = await this.checkBeforeValidation([p]);
     await this.lockPayslip(p, loanAmounts.get(p.id) || 0, p.period_month, p.period_year);
+  }
+
+  // ── Undoing a validation, paying a run ───────────────────────────────────
+
+  /** Sources with a journal entry that is not reversed. */
+  private static async bookedSources(sourceIds: string[]): Promise<Set<string>> {
+    const out = new Set<string>();
+    for (let i = 0; i < sourceIds.length; i += 300) {
+      const { data, error } = await payrollDb().from('journal_entries').select('source_id, status').in('source_id', sourceIds.slice(i, i + 300));
+      if (error) throw error;
+      for (const r of (data || []) as { source_id: string; status?: string }[]) if (r.status !== 'reversed') out.add(r.source_id);
+    }
+    return out;
+  }
+
+  /**
+   * Unlocks a validated payslip: gives back its loan repayments, removes its
+   * cumul, opens it for editing. Returns a warning when the repayments were
+   * not recorded in detail (validated before the HR migration).
+   */
+  static async unlockPayslip(p: Payslip): Promise<string | null> {
+    let warning: string | null = null;
+    const repaid = Array.isArray(p.loan_repayments) ? p.loan_repayments : null;
+    if (repaid) {
+      for (const r of repaid) await LoanService.reverseRepayment(r.loan_id, Number(r.amount) || 0);
+    } else {
+      const withheld = (await SupabasePayslipsService.loanDeductions([p])).get(p.id) || 0;
+      if (withheld > 0) {
+        const who = (p.employee as Employee | undefined)?.full_name || p.payslip_number;
+        warning = `${who} : ${new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(withheld)} MAD d'avances retenus sans détail par prêt (validé avant la mise à jour de la base) : rétablissez le solde du prêt à la main dans Avances & prêts.`;
+      }
+    }
+    const { error: cErr } = await payrollDb().from('payroll_cumuls').delete().eq('employee_id', p.employee_id).eq('year', p.period_year).eq('month', p.period_month);
+    if (cErr) throw cErr;
+    const { error } = await writeWithFallback(row => payrollDb().from('payslips').update(row).eq('id', p.id), { is_locked: false, loan_repayments: null } as Record<string, unknown>, ['loan_repayments']);
+    if (error) throw error;
+    return warning;
+  }
+
+  /**
+   * Un-validates a validated run that is neither paid nor booked: unlocks its
+   * payslips and undoes what validation did (cumuls, loan balances).
+   */
+  static async unvalidate(runId: string): Promise<{ warnings: string[] }> {
+    const run = await this.getRun(runId);
+    if (!run) throw new Error('Lot introuvable');
+    if (run.status === 'draft') throw new Error('Ce lot n\'est pas validé.');
+    if (run.status === 'paid') throw new Error('Lot déjà payé : il ne peut plus être dévalidé.');
+    const posted = 'Lot comptabilisé : contre-passez d\'abord l\'écriture de paie dans la Compta.';
+    if (run.journal_entry_id) throw new Error(posted);
+    const payslips = run.payslips || [];
+    const booked = await this.bookedSources([`run:${run.id}`, ...payslips.map(p => p.id)]);
+    if (booked.has(`run:${run.id}`)) throw new Error(posted);
+    const bookedSlips = payslips.filter(p => booked.has(p.id));
+    if (bookedSlips.length) throw new Error(`${bookedSlips.length} bulletin(s) de ce lot sont comptabilisés : contre-passez leurs écritures avant de dévalider.`);
+    const warnings: string[] = [];
+    for (const p of payslips) {
+      if (!p.is_locked) continue;
+      const w = await this.unlockPayslip(p);
+      if (w) warnings.push(w);
+    }
+    const { error } = await payrollDb().from('payroll_runs').update({ status: 'draft', validated_at: null }).eq('id', runId);
+    if (error) throw error;
+    return { warnings };
+  }
+
+  /** Un-validates a payslip made outside a run (refused once booked). */
+  static async unvalidatePayslip(payslipId: string): Promise<{ warnings: string[] }> {
+    const p = await SupabasePayslipsService.getById(payslipId);
+    if (!p) throw new Error('Bulletin introuvable');
+    if (!p.is_locked) return { warnings: [] };
+    if (p.run_id) throw new Error('Ce bulletin fait partie d\'un lot : dévalidez le lot.');
+    if ((await this.bookedSources([p.id])).has(p.id)) throw new Error('Bulletin comptabilisé : contre-passez d\'abord son écriture dans la Compta.');
+    const w = await this.unlockPayslip(p);
+    return { warnings: w ? [w] : [] };
+  }
+
+  /** Records that a validated run was paid (date and mode). */
+  static async markPaid(runId: string, paidAt: string, mode: string): Promise<void> {
+    const run = await this.getRun(runId);
+    if (!run) throw new Error('Lot introuvable');
+    if (run.status !== 'validated') throw new Error(run.status === 'paid' ? 'Lot déjà payé.' : 'Validez le lot avant de le marquer payé.');
+    if (!paidAt) throw new Error('Date de paiement requise.');
+    // Before the HR migration the date and mode cannot be kept: the status still is.
+    const { error } = await writeWithFallback(row => payrollDb().from('payroll_runs').update(row).eq('id', runId),
+      { status: 'paid', paid_at: paidAt, payment_mode: mode } as Record<string, unknown>, ['paid_at', 'payment_mode'], undefined, HR_MIGRATION);
+    if (error) throw error;
+  }
+
+  // ── Leave on open payslips ───────────────────────────────────────────────
+
+  /**
+   * Brings the absence lines of an employee's open payslips in line with the
+   * approved unpaid leave, for every month a period touches (after a leave
+   * is approved, refused or deleted). Validated payslips are not changed:
+   * they are returned so the screen can say so.
+   */
+  static async syncLeaveAbsences(employeeId: string, start: string, end: string): Promise<{ updated: Payslip[]; locked: Payslip[] }> {
+    const updated: Payslip[] = [];
+    const locked: Payslip[] = [];
+    const [sy, sm] = start.slice(0, 10).split('-').map(Number);
+    const [ey, em] = end.slice(0, 10).split('-').map(Number);
+    for (let k = sy * 12 + sm - 1; k <= ey * 12 + em - 1; k++) {
+      const year = Math.floor(k / 12);
+      const month = (k % 12) + 1;
+      const found = await SupabasePayslipsService.findForPeriod(employeeId, month, year);
+      const full = found && await SupabasePayslipsService.getById(found.id);
+      if (!full) continue;
+      const employee = await employeeOf(full);
+      const current = await this.linesOf(full);
+      const ctx = await leaveContext(year);
+      const plan = absencePlan(ctx.leaves, employeeId, month, year, employee?.base_salary ?? full.base_salary, { restDay: ctx.restDay, holidays: ctx.holidays });
+      const next = mergeAbsenceLines(current, plan);
+      if (next.length === current.length && next.every((l, i) => l.code === current[i].code)) continue;
+      if (full.is_locked) { locked.push(full); continue; }
+      updated.push(await this.savePayslip({ ...full, cnss_days: Math.max(0, FULL_MONTH_CNSS_DAYS - leaveLineDays(next)) }, next, { employee }));
+    }
+    return { updated, locked };
   }
 
   // ── IR regularisation ────────────────────────────────────────────────────

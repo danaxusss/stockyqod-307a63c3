@@ -559,7 +559,8 @@ export interface Employee {
   dependents_count: number;
   position?: string;
   department?: string;
-  contract_type: 'CDI' | 'CDD' | 'Interim';
+  /** 'Stage': internship (ANAPEC), with its IR / CNSS exemptions. */
+  contract_type: 'CDI' | 'CDD' | 'Interim' | 'Stage';
   cnss_number?: string;
   cimr_number?: string;
   cimr_rate?: number;
@@ -572,6 +573,10 @@ export interface Employee {
   matricule?: string | null;
   mode_paiement?: 'virement' | 'cheque' | 'especes' | null;
   date_sortie?: string | null;
+  /** Trainee: first day of the internship (exemption periods start here); empty = hire date. */
+  stage_start_date?: string | null;
+  /** Trainee: CNSS and training tax not due (ANAPEC contract, to confirm with the CNSS). */
+  stage_cnss_exempt?: boolean | null;
   created_at: string;
   updated_at: string;
 }
@@ -630,6 +635,8 @@ export interface Payslip {
   ir_regularisation_ids?: string[];
   is_locked?: boolean;
   run_id?: string | null;
+  /** Loan repayments applied when the payslip was validated (to undo them). */
+  loan_repayments?: { loan_id: string; amount: number }[] | null;
   notes?: string;
   items: PayslipItem[];
   created_at: string;

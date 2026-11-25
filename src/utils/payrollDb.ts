@@ -21,23 +21,45 @@ function strip<T extends Record<string, unknown>>(row: T, columns: string[]): T 
   return out;
 }
 
+/** The HR migration (leave, holidays, STC, trainees, paid runs). */
+export const HR_MIGRATION = '20261126150000_hr.sql';
+
+/** An error caused by a table the database does not have (yet). */
+export function isMissingTableError(error: { message?: string; code?: string } | null | undefined): boolean {
+  if (!error) return false;
+  if (error.code === 'PGRST205' || error.code === '42P01') return true;
+  return /could not find the table|relation .+ does not exist/i.test(error.message || '');
+}
+
+/** A CHECK constraint refused a value (e.g. a contract type the database does not know yet). */
+export function isCheckViolation(error: { message?: string; code?: string } | null | undefined): boolean {
+  if (!error) return false;
+  return error.code === '23514' || /violates check constraint/i.test(error.message || '');
+}
+
+/** "Exécutez d'abord la migration … dans Supabase." */
+export const runMigrationHint = (file: string) => `Exécutez d'abord la migration ${file} dans Supabase.`;
+
 /**
  * Runs a write; when it fails on an unknown column, runs it again without
  * `optionalColumns`. `mustKeep` says when dropping them would lose data that
- * matters (then the error is raised with an explanation instead).
+ * matters (then the error is raised with an explanation instead, naming
+ * `migration`).
  */
 export async function writeWithFallback<T extends Record<string, unknown>>(
   write: (payload: T | T[]) => PromiseLike<DbResult>,
   payload: T | T[],
   optionalColumns: string[],
   mustKeep?: (payload: T) => string | null,
+  migration = '20261125140000_payroll_2026.sql',
 ): Promise<DbResult> {
   const first = await write(payload);
   if (!first.error || !isMissingColumnError(first.error)) return first;
   const rows = Array.isArray(payload) ? payload : [payload];
   for (const r of rows) {
     const reason = mustKeep?.(r);
-    if (reason) return { data: null, error: { message: `${reason} Exécutez d'abord la migration 20261125140000_payroll_2026.sql dans Supabase.` } };
+    // A reason that names its own migration is kept as it is.
+    if (reason) return { data: null, error: { message: /migration/i.test(reason) ? reason : `${reason} ${runMigrationHint(migration)}` } };
   }
   const stripped = Array.isArray(payload) ? payload.map(r => strip(r, optionalColumns)) : strip(payload, optionalColumns);
   return write(stripped);
