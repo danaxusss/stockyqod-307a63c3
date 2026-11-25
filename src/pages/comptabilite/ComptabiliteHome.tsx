@@ -102,7 +102,7 @@ export default function ComptabiliteHome() {
     { to: '/comptabilite/banque', icon: Wallet, label: 'Rapprochement bancaire', desc: 'Importer un relevé par scan (IA)' },
     { to: '/comptabilite/immobilisations', icon: BookMarked, label: 'Immobilisations', desc: 'Amortissements & dotations' },
     { to: '/comptabilite/etats', icon: Scale, label: 'États de synthèse', desc: 'Bilan & CPC (modèle simplifié)' },
-    { to: '/comptabilite/cloture', icon: BookOpen, label: 'Clôture d\'exercice', desc: 'Verrou + à-nouveaux' },
+    { to: '/comptabilite/cloture', icon: BookOpen, label: 'Clôture d\'exercice', desc: 'Verrou, à-nouveaux, export FEC, estimation IS' },
     { to: '/comptabilite/plan', icon: BookMarked, label: 'Plan comptable', desc: 'Comptes CGNC' },
   ];
 

@@ -5,6 +5,8 @@ import { AccountingService } from '../../utils/supabaseAccounting';
 import { useToast } from '../../context/ToastContext';
 import { PageHeader } from '../../components/PageHeader';
 import { btnSecondary, LoadingState, panel, Segmented } from '../../components/backoffice/BackOfficeUi';
+import { buildBilan, type BilanSection } from '../../accounting/bilan';
+import { errorText } from '../../accounting/errors';
 
 function fmt(n: number) { return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(n); }
 
@@ -23,7 +25,7 @@ export default function EtatsSynthesePage() {
       setFy(year);
       const [a, l] = await Promise.all([AccountingService.listAccounts(), AccountingService.getPostedLines(year.id)]);
       setAccounts(a); setLines(l);
-    } catch (e: any) { showToast({ type: 'error', message: e?.message || 'Erreur' }); }
+    } catch (e) { showToast({ type: 'error', message: errorText(e, 'Erreur') }); }
     finally { setLoading(false); }
   }, [showToast]);
   useEffect(() => { load(); }, [load]);
@@ -49,21 +51,12 @@ export default function EtatsSynthesePage() {
     return { produits, charges, totalProduits, totalCharges, resultat: totalProduits - totalCharges };
   }, [byClass, labelOf]);
 
-  const bilan = useMemo(() => {
-    const immob = byClass(2).reduce((s, [, b]) => s + b, 0);
-    const actifCirc = byClass(3).reduce((s, [, b]) => s + b, 0);
-    const treso = byClass(5).reduce((s, [, b]) => s + b, 0);
-    const tresoActif = Math.max(0, treso), tresoPassif = Math.max(0, -treso);
-    const capitaux = -byClass(1).reduce((s, [, b]) => s + b, 0);
-    const dettes = -byClass(4).reduce((s, [, b]) => s + b, 0);
-    const resultat = cpc.resultat;
-    const totalActif = immob + actifCirc + tresoActif;
-    const totalPassif = capitaux + resultat + dettes + tresoPassif;
-    return { immob, actifCirc, tresoActif, capitaux, dettes, tresoPassif, resultat, totalActif, totalPassif };
-  }, [byClass, cpc.resultat]);
+  // Each account on the side of its balance (a VAT credit in class 4 is an
+  // asset, a customer advance in class 3 a liability): see accounting/bilan.
+  const bilan = useMemo(() => buildBilan(balances, code => labelOf.get(code) || ''), [balances, labelOf]);
 
   const exportCsv = () => {
-    let rows: string[] = [];
+    const rows: string[] = [];
     if (tab === 'cpc') {
       rows.push('CPC;Montant');
       cpc.produits.forEach(r => rows.push(`${r.code} ${r.label};${r.amount.toFixed(2)}`));
@@ -72,15 +65,19 @@ export default function EtatsSynthesePage() {
       rows.push(`TOTAL CHARGES;${cpc.totalCharges.toFixed(2)}`);
       rows.push(`RESULTAT NET;${cpc.resultat.toFixed(2)}`);
     } else {
-      rows.push('Bilan;Montant');
-      rows.push(`Immobilisations (net);${bilan.immob.toFixed(2)}`);
-      rows.push(`Actif circulant;${bilan.actifCirc.toFixed(2)}`);
-      rows.push(`Trésorerie-Actif;${bilan.tresoActif.toFixed(2)}`);
+      const label = (t: string) => `"${t.replace(/"/g, '""')}"`;
+      const section = (s: BilanSection) => {
+        s.lines.forEach(l => rows.push(`${label(`${l.code} ${l.label}`)};${l.amount.toFixed(2)}`));
+        rows.push(`${label(s.title)};${s.total.toFixed(2)}`);
+      };
+      rows.push('Bilan (modèle simplifié);Montant');
+      rows.push('ACTIF;');
+      bilan.actif.forEach(section);
       rows.push(`TOTAL ACTIF;${bilan.totalActif.toFixed(2)}`);
-      rows.push(`Capitaux propres;${bilan.capitaux.toFixed(2)}`);
-      rows.push(`Résultat net;${bilan.resultat.toFixed(2)}`);
-      rows.push(`Dettes du passif circulant;${bilan.dettes.toFixed(2)}`);
-      rows.push(`Trésorerie-Passif;${bilan.tresoPassif.toFixed(2)}`);
+      rows.push('PASSIF;');
+      bilan.passif.slice(0, 1).forEach(section);
+      rows.push(`Résultat net de l'exercice;${bilan.resultat.toFixed(2)}`);
+      bilan.passif.slice(1).forEach(section);
       rows.push(`TOTAL PASSIF;${bilan.totalPassif.toFixed(2)}`);
     }
     const url = URL.createObjectURL(new Blob(['﻿' + rows.join('\n')], { type: 'text/csv;charset=utf-8;' }));
@@ -96,6 +93,18 @@ export default function EtatsSynthesePage() {
     </div>
   );
   const groupTitle = 'border-b border-border px-4 py-3 font-semibold text-foreground sm:px-5';
+  // A heading with its total, then one muted line per account.
+  const Section = ({ s }: { s: BilanSection }) => (
+    <>
+      <Line label={s.title} amount={s.total} />
+      {s.lines.map(l => (
+        <div key={l.code} className="flex items-baseline justify-between gap-4 py-1.5 pl-8 pr-4 sm:pr-5">
+          <span className="min-w-0 text-xs text-muted-foreground">{l.code} — {l.label}</span>
+          <span className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">{fmt(l.amount)}</span>
+        </div>
+      ))}
+    </>
+  );
 
   return (
     <div className="mx-auto max-w-[110rem]">
@@ -135,19 +144,16 @@ export default function EtatsSynthesePage() {
           <section className={`${panel} overflow-hidden`}>
             <h2 className={groupTitle}>Actif</h2>
             <div className="divide-y divide-border">
-              <Line label="Immobilisations (net)" amount={bilan.immob} />
-              <Line label="Actif circulant" amount={bilan.actifCirc} />
-              <Line label="Trésorerie - Actif" amount={bilan.tresoActif} />
+              {bilan.actif.map(s => <Section key={s.key} s={s} />)}
               <Line label="Total Actif" amount={bilan.totalActif} bold />
             </div>
           </section>
           <section className={`${panel} overflow-hidden`}>
             <h2 className={groupTitle}>Passif</h2>
             <div className="divide-y divide-border">
-              <Line label="Capitaux propres" amount={bilan.capitaux} />
+              <Section s={bilan.passif[0]} />
               <Line label="Résultat net de l'exercice" amount={bilan.resultat} />
-              <Line label="Dettes du passif circulant" amount={bilan.dettes} />
-              <Line label="Trésorerie - Passif" amount={bilan.tresoPassif} />
+              {bilan.passif.slice(1).map(s => <Section key={s.key} s={s} />)}
               <Line label="Total Passif" amount={bilan.totalPassif} bold />
             </div>
           </section>

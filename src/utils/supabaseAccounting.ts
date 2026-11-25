@@ -2,7 +2,14 @@ import { supabase } from './supabaseClient';
 import { getCompanyContext } from './supabaseCompanyFilter';
 import { readAll } from './readAll';
 import { PCM_SEED, DEFAULT_JOURNALS } from '../accounting/pcmSeed';
+import { balancesOf, buildOpeningLines, decideNewFiscalYear, RESULT_LOSS_ACCOUNT, RESULT_PROFIT_ACCOUNT } from '../accounting/fiscalYears';
+import type { FecEntry, FecLine } from '../accounting/fec';
 import type { Account, FiscalYear, Journal, JournalEntry, JournalEntryLine } from '../types';
+
+// The generated Database types do not list the accounting tables, so their
+// queries are untyped; one accessor keeps that in a single place.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const accountingTable = (name: string): any => (supabase as any).from(name);
 
 // A ledger belongs to one company: even users who see every company's
 // documents work in the books of the company they are signed in to.
@@ -37,7 +44,17 @@ export class AccountingService {
     const picked = chosen ? years.find(y => y.id === chosen) : undefined;
     if (picked) return picked;
     const today = localDay();
-    return years.find(y => contains(y, today)) || this.fiscalYearFor(today, years);
+    const current = years.find(y => contains(y, today));
+    if (current) return current;
+    try {
+      return await this.fiscalYearFor(today, years);
+    } catch (e) {
+      // Opening today's year may be refused (two years already open): the
+      // pages then show the latest open year rather than failing to load.
+      const fallback = years.filter(y => y.status === 'open').sort((a, b) => b.start_date.localeCompare(a.start_date))[0] || years[0];
+      if (fallback) return fallback;
+      throw e;
+    }
   }
 
   /** Remember which fiscal year the accounting pages show (null: the current one). */
@@ -49,8 +66,10 @@ export class AccountingService {
   }
 
   /**
-   * The open fiscal year an entry dated `day` (YYYY-MM-DD) belongs to. The
-   * calendar year is created when no year covers that date yet.
+   * The open fiscal year an entry dated `day` (YYYY-MM-DD) belongs to. When
+   * no year covers that date, its calendar year is opened if the rules allow
+   * it (at most two open years, no more than one year ahead of today):
+   * see decideNewFiscalYear.
    */
   static async fiscalYearFor(day: string, known?: FiscalYear[]): Promise<FiscalYear> {
     const years = known || await this.listFiscalYears();
@@ -59,14 +78,11 @@ export class AccountingService {
       if (found.status !== 'open') throw new Error(`L'exercice ${found.label} est clôturé : aucune écriture ne peut y être passée au ${frDay(day)}.`);
       return found;
     }
-    const y = Number(day.slice(0, 4));
-    const start = `${y}-01-01`, end = `${y}-12-31`;
-    if (years.some(x => x.start_date <= end && start <= x.end_date)) {
-      throw new Error(`Aucun exercice ne couvre le ${frDay(day)} : créez-le avant de comptabiliser.`);
-    }
+    const decision = decideNewFiscalYear(years, day, localDay());
+    if (!decision.ok) throw new Error(decision.message);
     const { companyId } = getCompanyContext();
     const { data, error } = await (supabase as any).from('accounting_fiscal_years').insert({
-      company_id: companyId, label: String(y), start_date: start, end_date: end, status: 'open',
+      company_id: companyId, label: decision.label, start_date: decision.start_date, end_date: decision.end_date, status: 'open',
     }).select().single();
     if (error) {
       // Created meanwhile by another tab.
@@ -83,13 +99,34 @@ export class AccountingService {
     if (error) throw error;
   }
 
+  /** Number of entries (any status) filed in each fiscal year. */
+  static async entryCountsByYear(): Promise<Map<string, number>> {
+    const rows = await readAll<{ id: string; fiscal_year_id: string }>(() => scope(accountingTable('journal_entries').select('id, fiscal_year_id')));
+    const out = new Map<string, number>();
+    for (const r of rows) out.set(r.fiscal_year_id, (out.get(r.fiscal_year_id) || 0) + 1);
+    return out;
+  }
+
+  /**
+   * Remove an open fiscal year that holds no entry at all, e.g. one opened by
+   * a mistyped date. A year with entries is never removed (its entries would
+   * go with it).
+   */
+  static async deleteEmptyFiscalYear(fy: FiscalYear): Promise<void> {
+    if (fy.status !== 'open') throw new Error(`L'exercice ${fy.label} est clôturé : il ne peut pas être supprimé.`);
+    const any = await this.listEntries({ fiscalYearId: fy.id, limit: 1 });
+    if (any.length > 0) throw new Error(`L'exercice ${fy.label} contient des écritures : il ne peut pas être supprimé.`);
+    const { error } = await accountingTable('accounting_fiscal_years').delete().eq('id', fy.id).eq('status', 'open');
+    if (error) throw error;
+  }
+
   /**
    * Clôture: carries forward class 1–5 balances as à-nouveaux into the next
-   * fiscal year (created if needed), books the résultat to 1191, posts the AN
-   * entry, and locks the closed year. Requires no draft entries remain.
+   * fiscal year (created if needed), books the result to 1191 (profit) or
+   * 1199 (loss), posts the AN entry, and locks the closed year. Requires no
+   * draft entries remain.
    */
   static async closeExercice(fy: FiscalYear, user: string | null): Promise<{ newYearLabel: string; carried: number }> {
-    const r2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
     if (localDay() <= fy.end_date) {
       throw new Error(`L'exercice ${fy.label} se termine le ${frDay(fy.end_date)} : clôturez-le après cette date.`);
     }
@@ -97,8 +134,7 @@ export class AccountingService {
     if (drafts.length > 0) throw new Error('Des écritures en brouillon existent — validez-les ou supprimez-les avant la clôture.');
 
     const lines = await this.getPostedLines(fy.id);
-    const bal = new Map<string, number>();
-    for (const l of lines) bal.set(l.account_code, (bal.get(l.account_code) || 0) + (Number(l.debit) || 0) - (Number(l.credit) || 0));
+    const bal = balancesOf(lines);
 
     const y = Number(fy.label);
     const { companyId } = getCompanyContext();
@@ -110,17 +146,11 @@ export class AccountingService {
       next = data as FiscalYear;
     }
 
-    const anLines: JournalEntryLine[] = [];
-    bal.forEach((b, code) => {
-      const c = Number(String(code)[0]);
-      if (c >= 1 && c <= 5 && Math.abs(b) > 0.005) anLines.push({ account_code: code, label: 'À-nouveau', debit: b > 0 ? r2(b) : 0, credit: b < 0 ? r2(-b) : 0 });
-    });
-    const D = r2(anLines.reduce((s, l) => s + l.debit, 0));
-    const C = r2(anLines.reduce((s, l) => s + l.credit, 0));
-    const diff = r2(D - C);
-    if (Math.abs(diff) > 0.005) anLines.push({ account_code: '1191', label: 'Résultat de l\'exercice', debit: diff < 0 ? r2(-diff) : 0, credit: diff > 0 ? r2(diff) : 0 });
+    const anLines = buildOpeningLines(bal);
 
     if (anLines.length > 0) {
+      // Charts created before 1199 was seeded may lack it.
+      await this.ensureSeedAccounts([RESULT_PROFIT_ACCOUNT, RESULT_LOSS_ACCOUNT]);
       const journals = await this.listJournals();
       await this.createFromDraft(
         { journalType: 'anouveaux', date: next.start_date, reference: `AN ${y + 1}`, label: `À-nouveaux ${y + 1}`, sourceType: 'anouveaux', sourceId: `an:${next.id}`, lines: anLines },
@@ -152,6 +182,65 @@ export class AccountingService {
     }
     await this.ensureDefaultJournals();
     return rows.length;
+  }
+
+  /**
+   * Add the seed accounts among `codes` that the company's chart lacks
+   * (charts initialised before they were part of the seed). Returns the codes added.
+   */
+  static async ensureSeedAccounts(codes: string[]): Promise<string[]> {
+    const existing = await this.listAccounts();
+    if (existing.length === 0) return [];
+    const have = new Set(existing.map(a => a.code));
+    const { companyId } = getCompanyContext();
+    const rows = PCM_SEED.filter(a => codes.includes(a.code) && !have.has(a.code)).map(a => ({
+      company_id: companyId, code: a.code, label: a.label, class: a.class, type: a.type,
+      vat_rate: a.vat_rate ?? null, lettrable: a.lettrable ?? false, aux_kind: a.aux_kind ?? null, is_system: true,
+    }));
+    if (rows.length > 0) {
+      const { error } = await accountingTable('accounts').insert(rows);
+      if (error) throw error;
+    }
+    return rows.map(r => r.code);
+  }
+
+  /** Whether any entry line (draft or posted) uses the account. */
+  static async accountHasLines(code: string): Promise<boolean> {
+    const { data, error } = await scope(accountingTable('journal_entry_lines').select('id').eq('account_code', code).limit(1));
+    if (error) throw error;
+    return (data || []).length > 0;
+  }
+
+  /** A new account; refused when the code is already in the chart (an upsert would silently relabel it). */
+  static async createAccount(a: { code: string; label: string; class: number; type: string; vat_rate?: number | null; lettrable?: boolean }): Promise<Account> {
+    const existing = (await this.listAccounts()).find(x => x.code === a.code);
+    if (existing) throw new Error(`Le compte ${a.code} existe déjà (${existing.label}).`);
+    const { companyId } = getCompanyContext();
+    const { data, error } = await accountingTable('accounts')
+      .insert({ ...a, company_id: companyId, is_system: false, active: true }).select().single();
+    if (error) throw error;
+    return data as Account;
+  }
+
+  /** Rename an account the company created (CGNC accounts keep their label). */
+  static async updateAccountLabel(account: Account, label: string): Promise<void> {
+    const clean = label.trim();
+    if (account.is_system) throw new Error('Le libellé d\'un compte du plan comptable marocain ne se modifie pas.');
+    if (!clean) throw new Error('Libellé requis');
+    const { error } = await accountingTable('accounts').update({ label: clean }).eq('id', account.id);
+    if (error) throw error;
+  }
+
+  /**
+   * Deactivate (or reactivate) an account. An account that has entry lines
+   * stays active: CNC avis 24 §2.6 forbids removing an account that moved.
+   */
+  static async setAccountActive(account: Account, active: boolean): Promise<void> {
+    if (!active && await this.accountHasLines(account.code)) {
+      throw new Error(`Le compte ${account.code} a des écritures : il ne peut pas être désactivé.`);
+    }
+    const { error } = await accountingTable('accounts').update({ active }).eq('id', account.id);
+    if (error) throw error;
   }
 
   static async upsertAccount(a: Partial<Account> & { code: string; label: string; class: number; type: string }): Promise<Account> {
@@ -320,6 +409,44 @@ export class AccountingService {
     );
     if (opts.post) return this.postEntry(entry.id, opts.createdBy ?? null);
     return entry;
+  }
+
+  // ── FEC ────────────────────────────────────────────────────────────────────
+  /** Everything the FEC of a fiscal year is built from: booked entries and their lines, plus the draft count. */
+  static async fecData(fiscalYearId: string): Promise<{ entries: FecEntry[]; lines: FecLine[]; draftCount: number }> {
+    const entries = await readAll<FecEntry>(() => scope(accountingTable('journal_entries')
+      .select('id, journal_id, entry_number, entry_date, reference, label, status, posted_at')
+      .eq('fiscal_year_id', fiscalYearId).in('status', ['posted', 'reversed'])));
+    const drafts = await readAll<{ id: string }>(() => scope(accountingTable('journal_entries')
+      .select('id').eq('fiscal_year_id', fiscalYearId).eq('status', 'draft')));
+    const lines = await this.linesForEntries(entries.map(e => e.id)) as FecLine[];
+    return { entries, lines, draftCount: drafts.length };
+  }
+
+  // ── Corporate tax ─────────────────────────────────────────────────────────
+  /** Source id of the corporate-tax entry of a fiscal year (one per year). */
+  static taxSourceId(fiscalYearId: string): string { return `is:${fiscalYearId}`; }
+
+  /**
+   * DRAFT entry of the estimated corporate tax, dated at the year end:
+   * debit 6701 Impôts sur les bénéfices, credit 4453 État, impôts sur les
+   * résultats. The accountant checks and validates it.
+   */
+  static async createCorporateTaxDraft(fy: FiscalYear, amount: number, user: string | null): Promise<JournalEntry> {
+    const value = Math.round((Number(amount) || 0) * 100) / 100;
+    if (value <= 0) throw new Error('Montant d\'impôt nul');
+    const sourceId = this.taxSourceId(fy.id);
+    if ((await this.entriesForSource(sourceId)).length > 0) throw new Error(`L'écriture d'impôt de l'exercice ${fy.label} existe déjà (Saisie / Journaux, journal OD).`);
+    await this.ensureSeedAccounts(['6701', '4453']);
+    const journals = await this.listJournals();
+    return this.createFromDraft({
+      journalType: 'od', date: fy.end_date, reference: `IS ${fy.label}`, label: `Impôt sur les sociétés ${fy.label} (estimation)`,
+      sourceType: 'manual', sourceId,
+      lines: [
+        { account_code: '6701', label: `IS ${fy.label}`, debit: value, credit: 0 },
+        { account_code: '4453', label: `IS ${fy.label}`, debit: 0, credit: value },
+      ],
+    }, journals, { createdBy: user });
   }
 
   // ── Posted-entries helper (two-step: entries → lines, avoids embedded filters) ─
