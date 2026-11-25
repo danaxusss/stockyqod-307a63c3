@@ -1794,10 +1794,14 @@ async function buildPayslipPdf(payslip: any, settings: any): Promise<{ doc: any;
   iy += 11;
   infoField('N° CNSS', emp.cnss_number || '—', col1x, iy);
 
-  // Ancienneté years
+  // Ancienneté: completed years at the end of the pay period, not today.
   let ancienLabel = '—';
   if (emp.hire_date) {
-    const years = Math.floor((Date.now() - new Date(emp.hire_date).getTime()) / (365.25 * 24 * 3600 * 1000));
+    const [hy, hm, hd] = String(emp.hire_date).slice(0, 10).split('-').map(Number);
+    const end = new Date(payslip.period_year, payslip.period_month || 12, 0);
+    let years = end.getFullYear() - hy;
+    if (end.getMonth() + 1 < hm || (end.getMonth() + 1 === hm && end.getDate() < hd)) years -= 1;
+    years = Math.max(0, years || 0);
     ancienLabel = `${years} an${years > 1 ? 's' : ''} (${Math.round(payslip.anciennete_rate * 100)}%)`;
   }
   infoField('Ancienneté', ancienLabel, col2x, iy);
@@ -1808,24 +1812,39 @@ async function buildPayslipPdf(payslip: any, settings: any): Promise<{ doc: any;
   y += 34;
   doc.setTextColor(...DARK);
 
-  // ── Earnings table ──
+  // Rates of the settings the payslip was computed with (official values of
+  // its year when the caller did not pass them).
+  const rates = payslip.rates || (await import('./payrollDefaults')).officialSettingsFor(payslip.period_year);
+  const pctLabel = (r: number) => `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format((Number(r) || 0) * 100)} %`;
+  const money = (n: number) => PdfExportService.formatCurrency(Number(n) || 0);
+
+  // Lines: the payslip's own (with their flags), else the legacy items
+  // (earnings, and deductions always taken after tax).
+  type PdfLine = { label: string; type: 'gain' | 'retenue'; amount: number; base?: string; quantity?: number; rate?: number; grossDeduction: boolean };
+  const pdfLines: PdfLine[] = Array.isArray(payslip.lines)
+    ? payslip.lines.map((l: any) => ({
+      label: l.label, type: l.type, amount: Number(l.amount) || 0, base: l.base, quantity: l.quantity, rate: l.rate,
+      // A deduction subject to a contribution or the IR is an absence: it lowers the gross.
+      grossDeduction: l.type === 'retenue' && !!(l.soumis_cnss || l.soumis_amo || l.soumis_ir || l.soumis_cimr),
+    }))
+    : (payslip.items || []).map((i: any) => ({ label: i.label, type: i.item_type === 'earning' ? 'gain' : 'retenue', amount: Number(i.amount) || 0, grossDeduction: false }));
+
+  // ── Earnings table: its rows add up to the gross (absences negative) ──
   y += 4;
-  const earningItems = (payslip.items || []).filter((i: any) => i.item_type === 'earning');
+  const hourly = (Number(payslip.base_salary) || 0) / 191;
+  const lineBase = (l: PdfLine) => (l.base === 'heures'
+    ? `${String(l.quantity ?? 0).replace('.', ',')} h × ${money(hourly)} × ${String(l.rate ?? 0).replace('.', ',')}`
+    : '');
 
   const earningsBody: any[] = [
-    ['Salaire de base', '', PdfExportService.formatCurrency(payslip.base_salary)],
+    ['Salaire de base', `${payslip.hours_worked || 191} h`, money(payslip.base_salary)],
   ];
   if (payslip.anciennete_amount > 0) {
-    earningsBody.push([
-      `Prime d'ancienneté (${Math.round(payslip.anciennete_rate * 100)}%)`,
-      '',
-      PdfExportService.formatCurrency(payslip.anciennete_amount),
-    ]);
+    earningsBody.push([`Prime d'ancienneté (${Math.round(payslip.anciennete_rate * 100)}%)`, '', money(payslip.anciennete_amount)]);
   }
-  earningItems.forEach((item: any) => {
-    earningsBody.push([item.label, '', PdfExportService.formatCurrency(item.amount)]);
-  });
-  earningsBody.push([{ content: 'SALAIRE BRUT', styles: { fontStyle: 'bold' } }, '', { content: PdfExportService.formatCurrency(payslip.total_gross), styles: { fontStyle: 'bold' } }]);
+  pdfLines.filter(l => l.type === 'gain').forEach(l => earningsBody.push([l.label, lineBase(l), money(l.amount)]));
+  pdfLines.filter(l => l.grossDeduction).forEach(l => earningsBody.push([l.label, lineBase(l), `-${money(l.amount)}`]));
+  earningsBody.push([{ content: 'SALAIRE BRUT', styles: { fontStyle: 'bold' } }, '', { content: money(payslip.total_gross), styles: { fontStyle: 'bold' } }]);
 
   autoTable(doc, {
     startY: y,
@@ -1833,7 +1852,7 @@ async function buildPayslipPdf(payslip: any, settings: any): Promise<{ doc: any;
     body: earningsBody,
     styles: { font, fontSize: 8, cellPadding: 2 },
     headStyles: { fillColor: ACCENT, textColor: WHITE, fontStyle: 'bold', fontSize: 8 },
-    columnStyles: { 0: { cellWidth: contentWidth * 0.6 }, 1: { cellWidth: contentWidth * 0.2 }, 2: { cellWidth: contentWidth * 0.2, halign: 'right' } },
+    columnStyles: { 0: { cellWidth: contentWidth * 0.55 }, 1: { cellWidth: contentWidth * 0.25 }, 2: { cellWidth: contentWidth * 0.2, halign: 'right' } },
     margin: { left: margin, right: margin },
     willDrawCell: (data: any) => {
       if (data.section === 'body' && data.row.index === earningsBody.length - 1) {
@@ -1844,29 +1863,32 @@ async function buildPayslipPdf(payslip: any, settings: any): Promise<{ doc: any;
 
   y = (doc as any).lastAutoTable.finalY + 4;
 
-  // ── Deductions table ──
-  const deductionItems = (payslip.items || []).filter((i: any) => i.item_type === 'deduction');
-
+  // ── Deductions table: its rows add up to "Total retenues" ──
+  const reg = Number(payslip.ir_regularisation) || 0;
+  const irBeforeReg = Math.round(((Number(payslip.ir_amount) || 0) + reg) * 100) / 100;
+  const cnssBase = payslip.cnss_base != null ? Math.min(Number(payslip.cnss_base), rates.cnss_cap) : null;
   const deductionsBody: any[] = [
-    ['CNSS (4,48% plafonné)', '', PdfExportService.formatCurrency(payslip.cnss_employee)],
-    ['AMO (2,26%)', '', PdfExportService.formatCurrency(payslip.amo_employee)],
-    ['IR (barème progressif)', '', PdfExportService.formatCurrency(payslip.ir_amount)],
+    [`CNSS (${pctLabel(rates.cnss_rate_emp)} plafonné)`, cnssBase != null ? money(cnssBase) : '', money(payslip.cnss_employee)],
+    [`AMO (${pctLabel(rates.amo_rate_emp)})`, payslip.amo_base != null ? money(payslip.amo_base) : '', money(payslip.amo_employee)],
   ];
   if (payslip.cimr_employee > 0) {
-    deductionsBody.push(['CIMR', '', PdfExportService.formatCurrency(payslip.cimr_employee)]);
+    const cimrRate = Number(emp.cimr_rate) || 0;
+    deductionsBody.push([cimrRate ? `CIMR (${pctLabel(cimrRate / 100)})` : 'CIMR', '', money(payslip.cimr_employee)]);
   }
-  deductionItems.forEach((item: any) => {
-    deductionsBody.push([item.label, '', PdfExportService.formatCurrency(item.amount)]);
-  });
-  deductionsBody.push([{ content: 'TOTAL RETENUES', styles: { fontStyle: 'bold' } }, '', { content: PdfExportService.formatCurrency(payslip.total_deductions), styles: { fontStyle: 'bold' } }]);
+  deductionsBody.push(['IR (barème progressif)', payslip.net_taxable != null ? money(payslip.net_taxable) : '', money(irBeforeReg)]);
+  if (reg !== 0) {
+    deductionsBody.push([`Régularisation IR ${payslip.period_year}`, '', reg > 0 ? `-${money(reg)}` : money(-reg)]);
+  }
+  pdfLines.filter(l => l.type === 'retenue' && !l.grossDeduction).forEach(l => deductionsBody.push([l.label, '', money(l.amount)]));
+  deductionsBody.push([{ content: 'TOTAL RETENUES', styles: { fontStyle: 'bold' } }, '', { content: money(payslip.total_deductions), styles: { fontStyle: 'bold' } }]);
 
   autoTable(doc, {
     startY: y,
-    head: [['Retenues et cotisations', '', 'Montant (MAD)']],
+    head: [['Retenues et cotisations', 'Base', 'Montant (MAD)']],
     body: deductionsBody,
     styles: { font, fontSize: 8, cellPadding: 2 },
     headStyles: { fillColor: [180, 50, 50], textColor: WHITE, fontStyle: 'bold', fontSize: 8 },
-    columnStyles: { 0: { cellWidth: contentWidth * 0.6 }, 1: { cellWidth: contentWidth * 0.2 }, 2: { cellWidth: contentWidth * 0.2, halign: 'right' } },
+    columnStyles: { 0: { cellWidth: contentWidth * 0.55 }, 1: { cellWidth: contentWidth * 0.25 }, 2: { cellWidth: contentWidth * 0.2, halign: 'right' } },
     margin: { left: margin, right: margin },
     willDrawCell: (data: any) => {
       if (data.section === 'body' && data.row.index === deductionsBody.length - 1) {
@@ -1885,7 +1907,7 @@ async function buildPayslipPdf(payslip: any, settings: any): Promise<{ doc: any;
   doc.setFontSize(10);
   doc.text('SALAIRE NET À PAYER :', margin + 4, y + 7);
   doc.setFontSize(13);
-  doc.text(`${PdfExportService.formatCurrency(payslip.net_salary)} MAD`, pageWidth - margin - 4, y + 7, { align: 'right' });
+  doc.text(`${money(payslip.net_salary)} MAD`, pageWidth - margin - 4, y + 7, { align: 'right' });
 
   y += 20;
   doc.setTextColor(...DARK);
@@ -1895,26 +1917,37 @@ async function buildPayslipPdf(payslip: any, settings: any): Promise<{ doc: any;
   doc.text(`Arrêté à la somme de : ${netWords} Dirhams`, margin, y);
 
   y += 6;
-  if (payslip.frais_pro > 0) {
-    doc.setFont(font, 'normal');
-    doc.setFontSize(7);
-    doc.setTextColor(150, 150, 150);
-    doc.text(
-      `Frais professionnels (abattement fiscal, non retenu) : ${PdfExportService.formatCurrency(payslip.frais_pro)} MAD`,
-      margin, y
-    );
-    y += 6;
-  }
+  // ── Tax figures (information, not deductions) ──
+  doc.setFont(font, 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(150, 150, 150);
+  const taxInfo = [
+    payslip.ir_taxable_gross != null ? `Brut imposable : ${money(payslip.ir_taxable_gross)}` : null,
+    `Frais professionnels (abattement fiscal, non retenu) : ${money(payslip.frais_pro)}`,
+    payslip.net_taxable != null ? `Net imposable : ${money(payslip.net_taxable)}` : null,
+    `Jours déclarés CNSS : ${payslip.cnss_days ?? 26}`,
+  ].filter(Boolean).join('  ·  ');
+  doc.text(`${taxInfo} (MAD)`, margin, y, { maxWidth: contentWidth });
+  y += 6;
   doc.setTextColor(...DARK);
 
-  // ── Employer cost note ──
-  if (payslip.cnss_employer > 0 || payslip.amo_employer > 0 || payslip.alloc_familiales > 0) {
+  // ── Employer cost note (training tax and employer CIMR included) ──
+  const tfp = Number(payslip.tfp_employer) || 0;
+  const cimrEr = Number(payslip.cimr_employer) || 0;
+  const total_employer = (payslip.cnss_employer || 0) + (payslip.amo_employer || 0) + (payslip.alloc_familiales || 0) + tfp + cimrEr;
+  if (total_employer > 0) {
     doc.setFont(font, 'normal');
     doc.setFontSize(7);
     doc.setTextColor(150, 150, 150);
-    const total_employer = (payslip.cnss_employer || 0) + (payslip.amo_employer || 0) + (payslip.alloc_familiales || 0);
+    const parts = [
+      `CNSS ${pctLabel(rates.cnss_rate_er)} : ${money(payslip.cnss_employer)}`,
+      `AMO ${pctLabel(rates.amo_rate_er)} : ${money(payslip.amo_employer)}`,
+      `Alloc. fam. ${pctLabel(rates.af_rate)} : ${money(payslip.alloc_familiales)}`,
+      `Formation pro. ${pctLabel(rates.tfp_rate)} : ${money(tfp)}`,
+    ];
+    if (cimrEr > 0) parts.push(`CIMR : ${money(cimrEr)}`);
     doc.text(
-      `Charges patronales (informatif) — CNSS: ${PdfExportService.formatCurrency(payslip.cnss_employer)} | AMO: ${PdfExportService.formatCurrency(payslip.amo_employer)} | Alloc. fam.: ${PdfExportService.formatCurrency(payslip.alloc_familiales)} | Total: ${PdfExportService.formatCurrency(total_employer)} MAD`,
+      `Charges patronales (informatif) — ${parts.join(' | ')} | Total : ${money(total_employer)} MAD`,
       margin, y, { maxWidth: contentWidth }
     );
     y += 8;

@@ -1,8 +1,20 @@
-import { supabase } from './supabaseClient';
+import { payrollDb, writeWithFallback } from './payrollDb';
 import { getCompanyContext } from './supabaseCompanyFilter';
 import type { Payslip, PayslipItem } from '../types';
+import { lineToRow, NEW_VARIABLE_COLUMNS, type PayslipLine } from './payslipLines';
 
-type PayslipRow = Omit<Payslip, 'employee' | 'items'> & { items?: never; employee?: never };
+/** Payslip columns added by the 2026 payroll migration. */
+export const NEW_PAYSLIP_COLUMNS = [
+  'cimr_employer', 'ir_taxable_gross', 'net_taxable', 'cnss_base', 'amo_base', 'cnss_days',
+  'dependents_count', 'ir_regularisation', 'ir_regularisation_ids',
+];
+
+const numOrNull = (v: unknown) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v));
+
+/** Dropping the new columns would lose an IR regularisation: refuse instead. */
+const regularisationLost = (row: Record<string, unknown>) =>
+  (Number(row.ir_regularisation) || 0) !== 0 ? 'La régularisation IR ne peut pas être enregistrée tant que la base n\'est pas à jour.' : null;
+
 
 function mapRow(row: Record<string, unknown>, items: PayslipItem[] = []): Payslip {
   return {
@@ -31,6 +43,15 @@ function mapRow(row: Record<string, unknown>, items: PayslipItem[] = []): Paysli
     amo_employer: Number(row.amo_employer ?? 0),
     alloc_familiales: Number(row.alloc_familiales ?? 0),
     tfp_employer: Number(row.tfp_employer ?? 0),
+    cimr_employer: Number(row.cimr_employer ?? 0),
+    ir_taxable_gross: numOrNull(row.ir_taxable_gross),
+    net_taxable: numOrNull(row.net_taxable),
+    cnss_base: numOrNull(row.cnss_base),
+    amo_base: numOrNull(row.amo_base),
+    cnss_days: numOrNull(row.cnss_days) ?? 26,
+    dependents_count: numOrNull(row.dependents_count),
+    ir_regularisation: Number(row.ir_regularisation ?? 0),
+    ir_regularisation_ids: Array.isArray(row.ir_regularisation_ids) ? (row.ir_regularisation_ids as string[]) : [],
     is_locked: row.is_locked === true,
     run_id: (row.run_id as string) || null,
     notes: (row.notes as string) || undefined,
@@ -50,8 +71,7 @@ export class SupabasePayslipsService {
     const ctx = getCompanyContext();
     const companyId = filters?.companyId || ctx.companyId;
 
-    let query = supabase
-      .from('payslips')
+    let query = payrollDb().from('payslips')
       .select('*, employee:employees(full_name, position, cnss_number, hire_date)')
       .order('period_year', { ascending: false })
       .order('period_month', { ascending: false });
@@ -65,26 +85,33 @@ export class SupabasePayslipsService {
 
     const { data, error } = await query;
     if (error) throw error;
-    return (data || []).map(row => mapRow(row as Record<string, unknown>));
+    return ((data || []) as Record<string, unknown>[]).map(row => mapRow(row));
   }
 
   static async getById(id: string): Promise<Payslip | null> {
-    const { data: payslipRow, error: e1 } = await supabase
-      .from('payslips')
+    const { data: payslipRow, error: e1 } = await payrollDb().from('payslips')
       .select('*, employee:employees(*)')
       .eq('id', id)
       .maybeSingle();
     if (e1) throw e1;
     if (!payslipRow) return null;
 
-    const { data: itemsData, error: e2 } = await supabase
-      .from('payslip_items')
+    const { data: itemsData, error: e2 } = await payrollDb().from('payslip_items')
       .select('*')
       .eq('payslip_id', id)
       .order('sort_order');
     if (e2) throw e2;
 
     return mapRow(payslipRow as Record<string, unknown>, (itemsData || []) as PayslipItem[]);
+  }
+
+  /** The payslip of an employee for a month, if there is one (from a run or made by hand). */
+  static async findForPeriod(employeeId: string, month: number, year: number): Promise<Payslip | null> {
+    const { data, error } = await payrollDb().from('payslips').select('*')
+      .eq('employee_id', employeeId).eq('period_month', month).eq('period_year', year).limit(1);
+    if (error) throw error;
+    const row = (data || [])[0];
+    return row ? mapRow(row as Record<string, unknown>) : null;
   }
 
   static async create(input: {
@@ -94,15 +121,17 @@ export class SupabasePayslipsService {
     period_year: number;
     [key: string]: unknown;
   }): Promise<Payslip> {
+    // One payslip per employee and month, whether from a run or by hand.
+    const existing = await this.findForPeriod(input.employee_id, input.period_month, input.period_year);
+    if (existing) throw new Error(`Un bulletin existe déjà pour cet employé et ce mois (${existing.payslip_number}).`);
     // Generate payslip number: PAIE-YYYY-NNN
     const seq = String(await this.nextNumberSeq(input.company_id, input.period_year)).padStart(3, '0');
     const payslip_number = `PAIE-${input.period_year}-${seq}`;
 
-    const { data, error } = await supabase
-      .from('payslips')
-      .insert({ ...input, payslip_number })
-      .select()
-      .single();
+    const { data, error } = await writeWithFallback(
+      p => payrollDb().from('payslips').insert(p).select().single(),
+      { ...input, payslip_number }, NEW_PAYSLIP_COLUMNS, regularisationLost,
+    );
     if (error) throw error;
     return mapRow(data as Record<string, unknown>);
   }
@@ -117,7 +146,7 @@ export class SupabasePayslipsService {
       order(column: string): NumberQuery;
       range(from: number, to: number): PromiseLike<{ data: { payslip_number: string | null }[] | null; error: unknown }>;
     };
-    const payslips = () => (supabase as unknown as { from(table: string): { select(columns: string): NumberQuery } }).from('payslips');
+    const payslips = () => (payrollDb() as unknown as { from(table: string): { select(columns: string): NumberQuery } }).from('payslips');
     let highest = 0;
     // Page by page: the server returns at most 1,000 rows per request.
     for (let from = 0; ; from += 1000) {
@@ -132,19 +161,17 @@ export class SupabasePayslipsService {
     }
   }
 
-  static async update(id: string, updates: Partial<PayslipRow>): Promise<Payslip> {
-    const { data, error } = await supabase
-      .from('payslips')
-      .update({ ...updates, updated_at: new Date().toISOString() })
-      .eq('id', id)
-      .select()
-      .single();
+  static async update(id: string, updates: Partial<Omit<Payslip, 'employee' | 'items'>>): Promise<Payslip> {
+    const { data, error } = await writeWithFallback(
+      p => payrollDb().from('payslips').update(p).eq('id', id).select().single(),
+      { ...updates, updated_at: new Date().toISOString() } as Record<string, unknown>, NEW_PAYSLIP_COLUMNS, regularisationLost,
+    );
     if (error) throw error;
     return mapRow(data as Record<string, unknown>);
   }
 
   static async delete(id: string): Promise<void> {
-    const { error } = await supabase.from('payslips').delete().eq('id', id);
+    const { error } = await payrollDb().from('payslips').delete().eq('id', id);
     if (error) throw error;
   }
 
@@ -158,7 +185,7 @@ export class SupabasePayslipsService {
     const withLines = new Set<string>();
     for (let i = 0; i < payslips.length; i += 300) {
       const ids = payslips.slice(i, i + 300).map(p => p.id);
-      const { data, error } = await (supabase as any).from('payslip_variables')
+      const { data, error } = await payrollDb().from('payslip_variables')
         .select('payslip_id, code, type, amount').in('payslip_id', ids);
       if (error) throw error;
       for (const v of (data || []) as { payslip_id: string; code: string | null; type: string; amount: number }[]) {
@@ -172,28 +199,55 @@ export class SupabasePayslipsService {
     return out;
   }
 
-  static async getVariables(payslipId: string): Promise<any[]> {
-    const { data, error } = await (supabase as any).from('payslip_variables').select('*').eq('payslip_id', payslipId).order('sort_order');
+  static async getVariables(payslipId: string): Promise<Record<string, unknown>[]> {
+    const { data, error } = await payrollDb().from('payslip_variables').select('*').eq('payslip_id', payslipId).order('sort_order');
     if (error) throw error;
-    return data || [];
+    return (data || []) as Record<string, unknown>[];
   }
 
-  static async replaceVariables(payslipId: string, companyId: string | null, vars: any[]): Promise<void> {
-    await (supabase as any).from('payslip_variables').delete().eq('payslip_id', payslipId);
-    if (vars.length === 0) return;
-    const rows = vars.map((v, i) => ({
-      payslip_id: payslipId, company_id: companyId, rubrique_id: v.rubrique_id ?? null, code: v.code ?? null,
-      label: v.label, type: v.type, quantity: v.quantity ?? 1, rate: v.rate ?? 0, amount: Number(v.amount) || 0,
-      soumis_cnss: v.soumis_cnss !== false, soumis_ir: v.soumis_ir !== false, soumis_cimr: !!v.soumis_cimr,
-      inclus_anciennete: !!v.inclus_anciennete, sort_order: i,
-    }));
-    const { error } = await (supabase as any).from('payslip_variables').insert(rows);
+  /** Variables of several payslips, by payslip id (in line order). */
+  static async getVariablesFor(payslipIds: string[]): Promise<Map<string, Record<string, unknown>[]>> {
+    const out = new Map<string, Record<string, unknown>[]>();
+    for (let i = 0; i < payslipIds.length; i += 300) {
+      const { data, error } = await payrollDb().from('payslip_variables').select('*')
+        .in('payslip_id', payslipIds.slice(i, i + 300)).order('sort_order');
+      if (error) throw error;
+      for (const v of (data || []) as Record<string, unknown>[]) {
+        const id = v.payslip_id as string;
+        out.set(id, [...(out.get(id) || []), v]);
+      }
+    }
+    return out;
+  }
+
+  /** Items (legacy free-text lines) of several payslips, by payslip id. */
+  static async getItemsFor(payslipIds: string[]): Promise<Map<string, PayslipItem[]>> {
+    const out = new Map<string, PayslipItem[]>();
+    for (let i = 0; i < payslipIds.length; i += 300) {
+      const { data, error } = await payrollDb().from('payslip_items').select('*')
+        .in('payslip_id', payslipIds.slice(i, i + 300)).order('sort_order');
+      if (error) throw error;
+      for (const it of (data || []) as PayslipItem[]) {
+        const id = it.payslip_id as string;
+        out.set(id, [...(out.get(id) || []), it]);
+      }
+    }
+    return out;
+  }
+
+  static async replaceVariables(payslipId: string, companyId: string | null, lines: PayslipLine[]): Promise<void> {
+    await payrollDb().from('payslip_variables').delete().eq('payslip_id', payslipId);
+    if (lines.length === 0) return;
+    const rows = lines.map((l, i) => lineToRow(l, payslipId, companyId, i));
+    // Without the migration the AMO flag, the hours base and the ceilings
+    // cannot be kept: the line amounts and the other flags still are.
+    const { error } = await writeWithFallback(p => payrollDb().from('payslip_variables').insert(p), rows, NEW_VARIABLE_COLUMNS);
     if (error) throw error;
   }
 
   static async upsertItems(payslipId: string, items: Omit<PayslipItem, 'id' | 'payslip_id'>[]): Promise<PayslipItem[]> {
     // Delete existing then insert fresh
-    await supabase.from('payslip_items').delete().eq('payslip_id', payslipId);
+    await payrollDb().from('payslip_items').delete().eq('payslip_id', payslipId);
 
     if (items.length === 0) return [];
 
@@ -203,8 +257,7 @@ export class SupabasePayslipsService {
       sort_order: idx,
     }));
 
-    const { data, error } = await supabase
-      .from('payslip_items')
+    const { data, error } = await payrollDb().from('payslip_items')
       .insert(rows)
       .select();
     if (error) throw error;

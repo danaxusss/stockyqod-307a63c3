@@ -9,10 +9,10 @@ vi.mock('../utils/supabaseCompanyFilter', () => ({
 }));
 
 import { AccountingService } from '../utils/supabaseAccounting';
-import { computePayroll, leaveWorkingDays, payslipLineTotals } from '../utils/payrollCalc';
+import { computePayslip, leaveWorkingDays } from '../utils/payrollCalc';
 import { PayrollSettingsService } from '../utils/supabasePayrollSettings';
 import { SupabasePayslipsService } from '../utils/supabasePayslips';
-import { DEFAULT_PAYROLL_SETTINGS } from '../utils/payrollDefaults';
+import { officialSettingsFor } from '../utils/payrollDefaults';
 
 beforeEach(() => {
   state.db = createFakeDb({ journal_entries: [], journal_entry_lines: [], payroll_settings: [], payslips: [] });
@@ -49,22 +49,25 @@ describe('ledger reads past the 1,000-row server cap', () => {
 describe('payslip lines', () => {
   const absence = { type: 'retenue' as const, amount: 1000, soumis_cnss: true, soumis_ir: true };
 
+  const settings = officialSettingsFor(2026);
+
   it('takes a taxable deduction (absence) off the taxable gross, not off the net', () => {
-    const t = payslipLineTotals([absence]);
-    expect(t).toMatchObject({ primesSoumises: -1000, primesNon: 0, autres: 0 });
-    const r = computePayroll({ base_salary: 6000, primes_soumises: t.primesSoumises, primes_non_soumises: t.primesNon, autres_retenues: t.autres });
+    const r = computePayslip({ base_salary: 6000, lines: [absence], settings });
+    expect(r.gross_deductions).toBe(1000);
     expect(r.brut_imposable).toBe(5000);
+    expect(r.brut_global).toBe(5000);
     expect(r.cnss_employee).toBe(224);
+    expect(r.autres_retenues).toBe(0);
     expect(r.net_salary).toBe(r2(5000 - r.cnss_employee - r.amo_employee - r.ir_amount));
   });
 
   it('keeps advances and other non-taxable deductions after tax', () => {
-    const t = payslipLineTotals([
+    const r = computePayslip({ base_salary: 6000, settings, lines: [
       { type: 'gain', amount: 500, soumis_cnss: true, soumis_ir: true },
       { type: 'gain', amount: 300, soumis_cnss: false, soumis_ir: false },
       { type: 'retenue', amount: 400, soumis_cnss: false, soumis_ir: false },
-    ]);
-    expect(t).toEqual({ primesSoumises: 500, primesNon: 300, autres: 400, gains: 800 });
+    ] });
+    expect(r).toMatchObject({ other_earnings: 800, brut_global: 6800, brut_imposable: 6500, cnss_base: 6500, autres_retenues: 400 });
   });
 });
 
@@ -84,7 +87,7 @@ describe('payslip numbers', () => {
 
 describe('payroll settings', () => {
   it('are the signed-in company\'s, even for a super admin', async () => {
-    const row = (company_id: string, tfp_rate: number) => ({ ...DEFAULT_PAYROLL_SETTINGS, company_id, year: 2026, tfp_rate, ir_brackets: [[0, 999999999, 0, 0]] });
+    const row = (company_id: string, tfp_rate: number) => ({ ...officialSettingsFor(2026), company_id, year: 2026, tfp_rate, ir_brackets: [[0, 999999999, 0, 0]] });
     state.db.tables.payroll_settings.push(row('c2', 0.05), row('c1', 0.02));
     const s = await PayrollSettingsService.get(2026);
     expect(s.tfp_rate).toBe(0.02);

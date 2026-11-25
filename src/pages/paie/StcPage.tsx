@@ -44,19 +44,21 @@ export default function StcPage() {
   const [preavisMonths, setPreavisMonths] = useState('1');
   const [congesNonPris, setCongesNonPris] = useState('0');
 
+  // The exit date's year decides the parameters and the leave year.
+  const exitYear = Number(sortieDate.slice(0, 4)) || new Date().getFullYear();
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [emps, leaves, s] = await Promise.all([SupabaseEmployeesService.list(), LeaveService.list(), PayrollSettingsService.get(new Date().getFullYear()).catch(() => null)]);
+      const [emps, leaves, s] = await Promise.all([SupabaseEmployeesService.list(), LeaveService.list(), PayrollSettingsService.get(exitYear).catch(() => null)]);
       setEmployees(emps);
       if (s) { setDaysPerMonth(s.conges_days_per_month); setSettings(s); }
       const map = new Map<string, number>();
-      const year = new Date().getFullYear();
-      leaves.filter(l => l.type === 'paye' && l.status === 'approved' && new Date(l.start_date).getFullYear() === year).forEach(l => map.set(l.employee_id, (map.get(l.employee_id) || 0) + Number(l.days)));
+      leaves.filter(l => l.type === 'paye' && l.status === 'approved' && new Date(l.start_date).getFullYear() === exitYear).forEach(l => map.set(l.employee_id, (map.get(l.employee_id) || 0) + Number(l.days)));
       setLeaveDays(map);
-    } catch (e: any) { showToast({ type: 'error', message: e?.message || 'Erreur' }); }
+    } catch (e) { showToast({ type: 'error', message: e instanceof Error ? e.message : 'Erreur' }); }
     finally { setLoading(false); }
-  }, [showToast]);
+  }, [showToast, exitYear]);
   useEffect(() => { load(); }, [load]);
 
   const emp = employees.find(e => e.id === employeeId);
