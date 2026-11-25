@@ -27,6 +27,27 @@ export function documentTotal(items: Pick<QuoteItem, 'subtotal'>[]): number {
   return round2(items.reduce((s, i) => s + (Number(i.subtotal) || 0), 0));
 }
 
+// ─── VAT rate ────────────────────────────────────────────────────────────────
+
+/** VAT rates in force since 1 January 2026 (CGI art. 99): 7 % and 14 % are gone. */
+export const LEGAL_TVA_RATES = [20, 10, 0] as const;
+
+export function isLegalTvaRate(rate: number): boolean {
+  return (LEGAL_TVA_RATES as readonly number[]).includes(Number(rate));
+}
+
+/**
+ * The VAT rate of a document: the one stored on it when it was issued, else
+ * (documents from before the column, or a database not migrated yet) the
+ * company's current rate. Every HT/TVA figure of a document goes through
+ * here, so changing the company rate never rewrites a past document.
+ */
+export function documentTvaRate(doc: { tva_rate?: number | string | null } | null | undefined, companyRate?: number | null): number {
+  const stored = doc?.tva_rate;
+  if (stored !== null && stored !== undefined && stored !== '' && Number.isFinite(Number(stored))) return Number(stored);
+  return companyRate !== null && companyRate !== undefined && Number.isFinite(Number(companyRate)) ? Number(companyRate) : 20;
+}
+
 export function toHT(ttc: number, tvaRate: number): number {
   return ttc / (1 + tvaRate / 100);
 }
@@ -121,4 +142,61 @@ export function documentDay(doc: Pick<Quote, 'quote_date' | 'createdAt'>): strin
 export function formatDay(day: string): string {
   const [y, m, d] = day.split('-');
   return y && m && d ? `${d}/${m}/${y}` : day;
+}
+
+/** YYYY-MM-DD plus a number of days (calendar arithmetic, no time zone drift). */
+export function addDays(day: string, days: number): string {
+  const [y, m, d] = day.slice(0, 10).split('-').map(Number);
+  return localDay(new Date(y, m - 1, d + days));
+}
+
+/** Whole days from `from` to `to` (YYYY-MM-DD), negative when `to` is earlier. */
+export function daysBetween(from: string, to: string): number {
+  const [y1, m1, d1] = from.slice(0, 10).split('-').map(Number);
+  const [y2, m2, d2] = to.slice(0, 10).split('-').map(Number);
+  return Math.round((Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1)) / 86_400_000);
+}
+
+// ─── Payment terms (loi 69-21) ───────────────────────────────────────────────
+
+/** Between businesses: 60 days from the invoice date when nothing is agreed, 120 at most by agreement. */
+export const DEFAULT_PAYMENT_DAYS = 60;
+export const MAX_PAYMENT_DAYS = 120;
+
+/** Why a payment delay setting is refused, or null when it is valid. */
+export function paymentDaysError(days: number): string | null {
+  if (!Number.isInteger(days) || days < 0) return 'Le délai de paiement est un nombre de jours entier (0 à 120).';
+  if (days > MAX_PAYMENT_DAYS) return 'Le délai de paiement ne peut pas dépasser 120 jours (maximum légal, loi 69-21).';
+  return null;
+}
+
+/** The due date of an invoice: the stored one, else invoice date + the legal 60 days. */
+export function invoiceDueDay(inv: Pick<Quote, 'quote_date' | 'createdAt'> & { due_date?: string | null }): string {
+  return inv.due_date ? inv.due_date.slice(0, 10) : addDays(documentDay(inv), DEFAULT_PAYMENT_DAYS);
+}
+
+/** Why a due date is refused for an invoice of `invoiceDay`, or null. */
+export function dueDateError(invoiceDay: string, dueDay: string): string | null {
+  if (!dueDay) return 'Indiquez la date d’échéance.';
+  if (dueDay < invoiceDay) return 'L’échéance ne peut pas précéder la date de la facture.';
+  if (daysBetween(invoiceDay, dueDay) > MAX_PAYMENT_DAYS) {
+    return `L’échéance ne peut pas dépasser 120 jours après la facture (au plus tard le ${formatDay(addDays(invoiceDay, MAX_PAYMENT_DAYS))}).`;
+  }
+  return null;
+}
+
+export interface Overdue { overdue: boolean; days: number; dueDay: string }
+
+/**
+ * An issued invoice not fully paid after its due date is late, by that many
+ * days. Uses the same payment computation as the rest of the app.
+ */
+export function invoiceOverdue(
+  inv: Pick<Quote, 'quote_date' | 'createdAt' | 'status' | 'totalAmount' | 'avance_amount' | 'payment_methods_json'> & { due_date?: string | null },
+  today: string = localDay(),
+): Overdue {
+  const dueDay = invoiceDueDay(inv);
+  const late = daysBetween(dueDay, today);
+  const open = inv.status !== 'draft' && invoicePayment(inv).status !== 'paid';
+  return { overdue: open && late > 0, days: open && late > 0 ? late : 0, dueDay };
 }

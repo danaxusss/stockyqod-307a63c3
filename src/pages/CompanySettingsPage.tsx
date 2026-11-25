@@ -9,6 +9,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs'
 import UserManagementPage from './UserManagementPage';
 import { StockLocationsTab } from '../components/StockLocationsTab';
 import { DocumentVisibilitySetting } from '../components/settings/DocumentVisibilitySetting';
+import { LegalIdsWarning, PaymentDaysField, TvaRateField, VatExemptionField } from '../components/settings/BillingSettingsFields';
+import { billingSettingsError, normalizeIce } from '../utils/legalIds';
 import { supabase } from '@/integrations/supabase/client';
 import { readAll, type Pageable } from '../utils/readAll';
 
@@ -18,9 +20,10 @@ const FIELD_LABELS: Partial<Record<keyof QuoteVisibleFields, string>> = {
   showCompanyPhone: 'Téléphone de l\'entreprise',
   showCompanyEmail: 'Email de l\'entreprise',
   showCompanyWebsite: 'Site web de l\'entreprise',
-  showCompanyICE: 'ICE de l\'entreprise',
-  showClientICE: 'ICE du client',
-  showTVA: 'Afficher TVA (détail HT/TVA/TTC)',
+  // Always printed on invoices and credit notes (CGI art. 145-III).
+  showCompanyICE: 'ICE de l\'entreprise (toujours sur factures et avoirs)',
+  showClientICE: 'ICE du client (toujours sur factures et avoirs)',
+  showTVA: 'Afficher TVA (détail HT/TVA/TTC, toujours sur factures et avoirs)',
   showTVABreakdown: 'Détail HT + TVA (ou seulement TOTAL TTC)',
   showNotes: 'Notes sur le devis',
   showPaymentTerms: 'Modalités de paiement',
@@ -357,6 +360,11 @@ function CompanySettingsTab() {
 
   const handleSave = async () => {
     if (!settings) return;
+    const invalid = billingSettingsError(settings);
+    if (invalid) {
+      showToast({ type: 'error', message: invalid });
+      return;
+    }
     setIsSaving(true);
     try {
       let logoUrl = settings.logo_url;
@@ -378,7 +386,7 @@ function CompanySettingsTab() {
         phone2: settings.phone2,
         email: settings.email,
         website: settings.website,
-        ice: settings.ice,
+        ice: normalizeIce(settings.ice),
         rc: settings.rc,
         if_number: settings.if_number,
         cnss: settings.cnss,
@@ -392,7 +400,9 @@ function CompanySettingsTab() {
         quote_style: settings.quote_style,
         share_templates: settings.share_templates,
         payment_terms: settings.payment_terms,
+        payment_terms_days: settings.payment_terms_days,
         tva_rate: settings.tva_rate,
+        vat_exemption_text: settings.vat_exemption_text,
         quote_validity_days: settings.quote_validity_days,
         doc_prefix: settings.doc_prefix,
         qr_code_url: settings.qr_code_url,
@@ -518,6 +528,7 @@ function CompanySettingsTab() {
           )}
         </div>
 
+        <LegalIdsWarning settings={settings} />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-medium text-foreground mb-1">Nom de l'entreprise</label>
@@ -544,7 +555,7 @@ function CompanySettingsTab() {
             <input type="text" value={settings.cnss} onChange={e => setSettings({ ...settings, cnss: e.target.value })} className={inputClass} placeholder="8955504" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-foreground mb-1">Patente</label>
+            <label className="block text-xs font-medium text-foreground mb-1">TP (Patente)</label>
             <input type="text" value={settings.patente} onChange={e => setSettings({ ...settings, patente: e.target.value })} className={inputClass} placeholder="35874257" />
           </div>
           <div>
@@ -572,14 +583,13 @@ function CompanySettingsTab() {
           <FileText className="h-5 w-5" /><span>Paramètres du Devis</span>
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+          <TvaRateField value={settings.tva_rate} onChange={rate => setSettings({ ...settings, tva_rate: rate })} className={inputClass} />
           <div>
-            <label className="block text-xs font-medium text-foreground mb-1">Taux TVA (%)</label>
-            <input type="number" value={settings.tva_rate} onChange={e => setSettings({ ...settings, tva_rate: parseFloat(e.target.value) || 0 })} className={inputClass} min="0" max="100" step="0.5" />
+            <label className="block text-xs font-medium text-foreground mb-1">Conditions de paiement (texte imprimé)</label>
+            <input type="text" value={settings.payment_terms} onChange={e => setSettings({ ...settings, payment_terms: e.target.value })} className={inputClass} placeholder="60 jours à compter de la date de facture" />
           </div>
-          <div>
-            <label className="block text-xs font-medium text-foreground mb-1">Conditions de paiement</label>
-            <input type="text" value={settings.payment_terms} onChange={e => setSettings({ ...settings, payment_terms: e.target.value })} className={inputClass} placeholder="30 jours" />
-          </div>
+          <PaymentDaysField value={settings.payment_terms_days} onChange={days => setSettings({ ...settings, payment_terms_days: days })} className={inputClass} />
+          <VatExemptionField value={settings.vat_exemption_text} onChange={text => setSettings({ ...settings, vat_exemption_text: text })} className={inputClass} />
           <div>
             <label className="block text-xs font-medium text-foreground mb-1">Validité du devis (jours)</label>
             <input type="number" value={settings.quote_validity_days} onChange={e => setSettings({ ...settings, quote_validity_days: parseInt(e.target.value) || 30 })} className={inputClass} min="1" />

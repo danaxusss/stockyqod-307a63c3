@@ -14,7 +14,7 @@ import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../hooks/useAuth';
 import { getCompanyContext } from '../../utils/supabaseCompanyFilter';
 import { exportToCSV } from '../../utils/csvExport';
-import { documentDay, formatDay, invoicePayment, matchesPaymentFilter } from '../../utils/documentLines';
+import { documentDay, formatDay, invoiceOverdue, invoicePayment, matchesPaymentFilter } from '../../utils/documentLines';
 import { formatMoney } from '../../utils/format';
 import { useCompactList, useIsMobile } from '../../hooks/use-mobile';
 import { PageHeader } from '../../components/PageHeader';
@@ -28,9 +28,13 @@ function fmt(n: number) {
 
 const computePayment = (inv: Quote) => invoicePayment(inv);
 
-/** Payment status of an invoice, as shown in the list. */
+type PayStatusFilter = 'all' | 'paid' | 'partial' | 'unpaid' | 'overdue';
+
+/** Payment status of an invoice, as shown in the list. Late (past due, not fully paid) wins. */
 function InvoiceStatus({ inv }: { inv: Quote }) {
   if (!inv.customer?.fullName?.trim()) return <StatusPill tone="neutral">Brouillon vide</StatusPill>;
+  const late = invoiceOverdue(inv);
+  if (late.overdue) return <StatusPill tone="danger" icon={<AlertCircle className="h-3 w-3" />}>En retard · {late.days} j</StatusPill>;
   const { status } = computePayment(inv);
   if (status === 'paid') return <StatusPill tone="success" icon={<CheckCircle className="h-3 w-3" />}>Payé</StatusPill>;
   if (status === 'partial') return <StatusPill tone="warning" icon={<Clock className="h-3 w-3" />}>Partiel</StatusPill>;
@@ -60,7 +64,7 @@ export default function InvoiceDirectoryPage() {
   const [dateTo, setDateTo] = useState('');
   const [filterPayment, setFilterPayment] = useState('Tous');
   const [filterCompany, setFilterCompany] = useState('');
-  const [filterPayStatus, setFilterPayStatus] = useState<'all' | 'paid' | 'partial' | 'unpaid'>('all');
+  const [filterPayStatus, setFilterPayStatus] = useState<PayStatusFilter>('all');
 
   // Sort
   const [sortField, setSortField] = useState<SortField>('date');
@@ -134,19 +138,11 @@ export default function InvoiceDirectoryPage() {
   };
 
 
+  // The issuing company's full settings, as on the invoice page: the same
+  // PDF (payment delay, exemption mention, template) from both places.
   const buildSettings = async (inv: Quote) => {
     const compId = inv.issuing_company_id || inv.company_id;
-    const company = compId ? await SupabaseCompaniesService.getCompanyById(compId) : null;
-    if (!company) return null;
-    return {
-      company_name: company.name, address: company.address, phone: company.phone,
-      phone2: company.phone2, email: company.email, ice: company.ice, rc: company.rc,
-      if_number: company.if_number, cnss: company.cnss, patente: company.patente,
-      logo_url: company.logo_url, logo_size: company.logo_size,
-      tva_rate: company.tva_rate, quote_validity_days: company.quote_validity_days,
-      payment_terms: company.payment_terms, quote_visible_fields: company.quote_visible_fields,
-      quote_style: { accentColor: company.accent_color, fontFamily: company.font_family, showBorders: true, borderRadius: 1, headerSize: 'large', totalsStyle: 'highlighted' },
-    } as any;
+    return compId ? CompanySettingsService.getSettings(compId).catch(() => null) : null;
   };
 
   const handleExportPdf = async (inv: Quote) => {
@@ -245,7 +241,8 @@ export default function InvoiceDirectoryPage() {
       setPinInput('');
       await load();
     } catch (e) {
-      showToast({ type: 'error', message: String(e) });
+      // Booked, not the last of the series, or with credit notes: the reason says what to do.
+      showToast({ type: 'error', title: 'Suppression refusée', message: e instanceof Error ? e.message : String(e) });
     }
   };
 
@@ -275,7 +272,9 @@ export default function InvoiceDirectoryPage() {
       if (dateTo && day > dateTo) return false;
       if (filterPayment !== 'Tous' && !matchesPaymentFilter(inv, filterPayment)) return false;
       if (filterCompany && inv.issuing_company_id !== filterCompany) return false;
-      if (filterPayStatus !== 'all') {
+      if (filterPayStatus === 'overdue') {
+        if (!invoiceOverdue(inv).overdue) return false;
+      } else if (filterPayStatus !== 'all') {
         const { status } = computePayment(inv);
         if (status !== filterPayStatus) return false;
       }
@@ -310,7 +309,8 @@ export default function InvoiceDirectoryPage() {
     }
     const rows = filtered.map(inv => {
       const { avance, paid, reste, status } = computePayment(inv);
-      const statusLabel = status === 'paid' ? 'Payé' : status === 'partial' ? 'Partiel' : 'Non payé';
+      const late = invoiceOverdue(inv);
+      const statusLabel = late.overdue ? `En retard (${late.days} j)` : status === 'paid' ? 'Payé' : status === 'partial' ? 'Partiel' : 'Non payé';
       return {
         'Code Client': ((inv.customer as any)?.clientCode || clientCodeMap[inv.customer?.phoneNumber || ''] || ''),
         'N° Facture': inv.quoteNumber,
@@ -323,6 +323,7 @@ export default function InvoiceDirectoryPage() {
         'Total Payé': paid,
         'Reste': reste,
         'Statut Paiement': statusLabel,
+        'Échéance': formatDay(late.dueDay),
         'Mode Paiement': inv.payment_method || '',
         'Référence Paiement': inv.payment_reference || '',
         'Date': formatDay(documentDay(inv)),
@@ -400,11 +401,12 @@ export default function InvoiceDirectoryPage() {
             <select value={filterPayment} onChange={e => setFilterPayment(e.target.value)} className={field} aria-label="Mode de paiement">
               {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m === 'Tous' ? 'Tous les modes de paiement' : m}</option>)}
             </select>
-            <select value={filterPayStatus} onChange={e => setFilterPayStatus(e.target.value as any)} className={field} aria-label="Statut de paiement">
+            <select value={filterPayStatus} onChange={e => setFilterPayStatus(e.target.value as PayStatusFilter)} className={field} aria-label="Statut de paiement">
               <option value="all">Tous les statuts</option>
               <option value="paid">Payé</option>
               <option value="partial">Partiel</option>
               <option value="unpaid">Non payé</option>
+              <option value="overdue">En retard</option>
             </select>
             <select value={filterCompany} onChange={e => setFilterCompany(e.target.value)} className={`${field} col-span-2 md:col-span-1`} aria-label="Société">
               <option value="">Toutes les sociétés</option>

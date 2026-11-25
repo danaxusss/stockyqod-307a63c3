@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X } from 'lucide-react';
 import { SupabaseClientsService, Client, CreateClientRequest } from '../utils/supabaseClients';
 import { useToast } from '../context/ToastContext';
+import { iceError, normalizeIce } from '../utils/legalIds';
 
 interface ClientFormModalProps {
   initialName?: string;
@@ -19,16 +20,22 @@ export function ClientFormModal({ initialName = '', onSave, onClose }: ClientFor
     city: '',
     ice: '',
     email: '',
+    is_individual: false,
   });
+  const iceProblem = iceError(formData.ice);
 
   const handleSave = async () => {
     if (!formData.full_name.trim() || !formData.phone_number.trim()) {
       showToast({ type: 'error', message: 'Le nom et le téléphone sont requis' });
       return;
     }
+    if (iceProblem) {
+      showToast({ type: 'error', message: iceProblem });
+      return;
+    }
     setIsSaving(true);
     try {
-      const client = await SupabaseClientsService.createClient(formData);
+      const client = await SupabaseClientsService.createClient({ ...formData, ice: normalizeIce(formData.ice) });
       showToast({ type: 'success', message: 'Client créé' });
       onSave(client);
     } catch (e) {
@@ -63,6 +70,11 @@ export function ClientFormModal({ initialName = '', onSave, onClose }: ClientFor
           {field('Adresse', 'address')}
           {field('Ville', 'city')}
           {field('ICE', 'ice')}
+          {iceProblem && <p className="-mt-2 text-[11px] text-destructive">{iceProblem}</p>}
+          <label className="flex items-center gap-2 text-xs text-foreground">
+            <input type="checkbox" checked={!!formData.is_individual} onChange={e => setFormData(prev => ({ ...prev, is_individual: e.target.checked }))} className="h-4 w-4 rounded accent-primary" />
+            Particulier (sans ICE)
+          </label>
           {field('Email', 'email')}
         </div>
         <div className="flex gap-2 mt-5">

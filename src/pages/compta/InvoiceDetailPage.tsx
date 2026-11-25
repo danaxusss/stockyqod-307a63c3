@@ -2,7 +2,9 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { Download, Loader, Pencil, Check, X, Plus, Calendar, Lock, Unlock, ChevronDown, ChevronUp, ChevronRight, MessageCircle, CopyPlus, Search as SearchIcon, Mail, Printer, CheckCircle, Clock, AlertCircle, Trash2, Undo2, Wallet } from 'lucide-react';
 import { Quote, QuoteItem, PaymentEntry, Product } from '../../types';
-import { SupabaseDocumentsService } from '../../utils/supabaseDocuments';
+import { SupabaseDocumentsService, POSTED_INVOICE_MESSAGE } from '../../utils/supabaseDocuments';
+import { SupabaseClientsService } from '../../utils/supabaseClients';
+import { iceError, normalizeIce } from '../../utils/legalIds';
 import { PdfExportService } from '../../utils/pdfExport';
 import { CompanySettingsService, CompanySettings } from '../../utils/companySettings';
 import { useToast } from '../../context/ToastContext';
@@ -15,7 +17,7 @@ import { SupabaseUsersService } from '../../utils/supabaseUsers';
 import { ProductSearchModal } from '../../components/ProductSearchModal';
 import { PrintPreviewModal } from '../../components/PrintPreviewModal';
 import { formatMoney } from '../../utils/format';
-import { discountRate, invoicePayment, localDay, recomputeLine, toHT, toTTC, unitPriceHTInput, documentTotal } from '../../utils/documentLines';
+import { addDays, daysBetween, discountRate, documentDay, documentTvaRate, dueDateError, formatDay, invoiceDueDay, invoiceOverdue, invoicePayment, localDay, recomputeLine, toHT, toTTC, unitPriceHTInput, documentTotal, MAX_PAYMENT_DAYS } from '../../utils/documentLines';
 
 const inputCls = 'w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring';
 const fieldCls = 'w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring';
@@ -30,8 +32,14 @@ export default function InvoiceDetailPage() {
   const [invoice, setInvoice] = useState<Quote | null>(null);
   const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null);
   const [useStamp, setUseStamp] = useState(false);
-  const [printTTCOnly, setPrintTTCOnly] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  // Booked in the accounts (validated journal entry): number, date, customer
+  // and lines are fixed; payments and the due date can still be entered.
+  const [isPosted, setIsPosted] = useState(false);
+  // Private person per the client record, when the invoice does not say.
+  const [clientIsIndividual, setClientIsIndividual] = useState<boolean | null>(null);
+  const [iceInput, setIceInput] = useState('');
+  const [iceSaving, setIceSaving] = useState(false);
 
   // Edit state
   const [isEditing, setIsEditing] = useState(false);
@@ -41,6 +49,10 @@ export default function InvoiceDetailPage() {
   const [draftCustomerName, setDraftCustomerName] = useState('');
   const [draftCustomerPhone, setDraftCustomerPhone] = useState('');
   const [draftCustomerCity, setDraftCustomerCity] = useState('');
+  const [draftCustomerAddress, setDraftCustomerAddress] = useState('');
+  const [draftCustomerIce, setDraftCustomerIce] = useState('');
+  const [draftIsIndividual, setDraftIsIndividual] = useState(false);
+  const [draftDueDate, setDraftDueDate] = useState('');
   const [draftNotes, setDraftNotes] = useState('');
   const [draftStatus, setDraftStatus] = useState('');
   const [draftItems, setDraftItems] = useState<QuoteItem[]>([]);
@@ -96,6 +108,7 @@ export default function InvoiceDetailPage() {
     try {
       const doc = await SupabaseDocumentsService.getById(id);
       setInvoice(doc);
+      setIsPosted(doc ? await SupabaseDocumentsService.isPosted(doc.id).catch(() => false) : false);
       const compId = doc?.issuing_company_id || doc?.company_id;
       if (compId) {
         const settings = await CompanySettingsService.getSettings(compId).catch(() => null);
@@ -110,6 +123,18 @@ export default function InvoiceDetailPage() {
   }, [id, showToast]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Whether the client is a private person (no ICE expected), from the
+  // client record when the invoice does not say so itself.
+  useEffect(() => {
+    const phone = invoice?.customer?.phoneNumber?.trim();
+    if (!invoice || invoice.customer?.isIndividual !== undefined || !phone) { setClientIsIndividual(null); return; }
+    let cancelled = false;
+    SupabaseClientsService.getClientByPhone(phone)
+      .then(c => { if (!cancelled) setClientIsIndividual(c?.is_individual ?? null); })
+      .catch(() => { /* the warning then relies on the invoice alone */ });
+    return () => { cancelled = true; };
+  }, [invoice]);
 
   // Devis → BL → Facture → Payé: follow the links the invoice already has
   // (invoice → proforma → its BLs → their quote). Read only, for display.
@@ -146,6 +171,10 @@ export default function InvoiceDetailPage() {
     setDraftCustomerName(invoice.customer?.fullName || '');
     setDraftCustomerPhone(invoice.customer?.phoneNumber || '');
     setDraftCustomerCity(invoice.customer?.city || '');
+    setDraftCustomerAddress(invoice.customer?.address || '');
+    setDraftCustomerIce(invoice.customer?.ice || '');
+    setDraftIsIndividual(!!(invoice.customer?.isIndividual ?? clientIsIndividual));
+    setDraftDueDate(invoiceDueDay(invoice));
     setDraftNotes(invoice.notes || '');
     setDraftStatus(invoice.status);
     setDraftItems(invoice.items.map(i => ({
@@ -172,29 +201,46 @@ export default function InvoiceDetailPage() {
       showToast({ type: 'error', title: 'Client requis', message: 'Veuillez saisir le nom du client avant de sauvegarder.' });
       return;
     }
+    // A wrong ICE or due date is never saved; the automatic save waits for a fix.
+    const problem = iceError(draftCustomerIce) || (draftDueDate ? dueDateError(draftDate || documentDay(invoice), draftDueDate) : null);
+    if (problem) {
+      if (!isAutoSave) showToast({ type: 'error', message: problem });
+      return;
+    }
+    const paymentUpdates = {
+      notes: draftNotes.trim() || null,
+      notes2: draftNotes2.trim() || null,
+      payment_date: draftPaymentDate || null,
+      payment_method: draftPaymentMethod || null,
+      payment_reference: draftPaymentReference || null,
+      payment_bank: draftPaymentBank || null,
+      avance_amount: showAvance ? draftAvance : 0,
+      payment_methods_json: draftPaymentMethods.length > 0 ? draftPaymentMethods : [],
+      due_date: draftDueDate || null,
+      // Money received so far, for the client balance and accounting.
+      paid_amount: invoicePayment({
+        totalAmount: isPosted ? invoice.totalAmount : documentTotal(draftItems),
+        avance_amount: showAvance ? draftAvance : 0,
+        payment_methods_json: draftPaymentMethods,
+      }).paid,
+    };
+    // Only the buyer's ICE, address and status may be completed on a booked
+    // invoice: the rest of the customer stays as it was invoiced.
+    const filledCustomer = { ...invoice.customer, address: draftCustomerAddress.trim(), ice: normalizeIce(draftCustomerIce), isIndividual: draftIsIndividual };
     setIsSaving(true);
     try {
-      await SupabaseDocumentsService.updateDocument(invoice.id, {
-        quoteNumber: draftNumber,
-        customer: { ...invoice.customer, fullName: draftCustomerName, phoneNumber: draftCustomerPhone, city: draftCustomerCity },
+      const saved = await SupabaseDocumentsService.updateDocument(invoice.id, isPosted ? { ...paymentUpdates, customer: filledCustomer } : {
+        ...paymentUpdates,
+        // The number of an issued invoice is fixed; a draft's is sent only when typed.
+        ...(invoice.status === 'draft' && draftNumber.trim() !== invoice.quoteNumber ? { quoteNumber: draftNumber.trim() } : {}),
+        customer: { ...filledCustomer, fullName: draftCustomerName, phoneNumber: draftCustomerPhone, city: draftCustomerCity },
         items: draftItems,
-        notes: draftNotes.trim() || null,
-        notes2: draftNotes2.trim() || null,
         status: draftStatus,
-        payment_date: draftPaymentDate || null,
-        payment_method: draftPaymentMethod || null,
-        payment_reference: draftPaymentReference || null,
-        payment_bank: draftPaymentBank || null,
-        avance_amount: showAvance ? draftAvance : 0,
-        payment_methods_json: draftPaymentMethods.length > 0 ? draftPaymentMethods : [],
         quote_date: draftDate || null,
-        // Money received so far, for the client balance and accounting.
-        paid_amount: invoicePayment({
-          totalAmount: documentTotal(draftItems),
-          avance_amount: showAvance ? draftAvance : 0,
-          payment_methods_json: draftPaymentMethods,
-        }).paid,
       });
+      // The number may follow a new month; later saves start from the stored row.
+      setInvoice(prev => prev ? { ...prev, ...saved } : saved);
+      setDraftNumber(saved.quoteNumber);
       if (!isAutoSave) {
         showToast({ type: 'success', title: 'Facture mise à jour', message: 'Modifications sauvegardées' });
         setIsEditing(false);
@@ -220,6 +266,43 @@ export default function InvoiceDetailPage() {
   };
 
   const removeDraftItem = (idx: number) => setDraftItems(prev => prev.filter((_, i) => i !== idx));
+
+  // The due date keeps its delay when the invoice date moves.
+  const changeDraftDate = (day: string) => {
+    if (day && draftDate && draftDueDate) setDraftDueDate(addDays(day, daysBetween(draftDate, draftDueDate)));
+    setDraftDate(day);
+  };
+
+  /**
+   * The buyer's ICE entered from the warning: saved on the invoice (allowed
+   * even once booked) and on the client record, so the next invoices have it.
+   */
+  const saveCustomerIce = async (individual: boolean) => {
+    if (!invoice) return;
+    const ice = normalizeIce(iceInput);
+    const problem = individual ? null : (iceError(ice) || (!ice ? 'Saisissez l’ICE du client (15 chiffres).' : null));
+    if (problem) { showToast({ type: 'error', message: problem }); return; }
+    setIceSaving(true);
+    try {
+      await SupabaseDocumentsService.updateDocument(invoice.id, {
+        customer: individual ? { ...invoice.customer, isIndividual: true } : { ...invoice.customer, ice, isIndividual: false },
+      });
+      const phone = invoice.customer?.phoneNumber?.trim();
+      const client = phone ? await SupabaseClientsService.getClientByPhone(phone).catch(() => null) : null;
+      if (client) {
+        await SupabaseClientsService.updateClient(client.id, individual ? { is_individual: true } : { ice }).catch(() => {
+          showToast({ type: 'warning', message: 'Facture mise à jour, mais la fiche client n’a pas pu l’être.' });
+        });
+      }
+      showToast({ type: 'success', message: individual ? 'Client marqué comme particulier' : 'ICE du client enregistré' });
+      setIceInput('');
+      await load();
+    } catch (e) {
+      showToast({ type: 'error', message: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setIceSaving(false);
+    }
+  };
 
   const addBlankItem = () => setDraftItems(prev => [...prev, {
     id: crypto.randomUUID(),
@@ -291,7 +374,7 @@ export default function InvoiceDetailPage() {
       const freshSettings = compId
         ? await CompanySettingsService.getSettings(compId).catch(() => companySettings)
         : companySettings;
-      await PdfExportService.exportQuoteToPdf(invoice, freshSettings, undefined, undefined, useStamp, 'invoice', undefined, printTTCOnly);
+      await PdfExportService.exportQuoteToPdf(invoice, freshSettings, undefined, undefined, useStamp, 'invoice', undefined, false);
     } catch (e) {
       showToast({ type: 'error', title: 'Erreur PDF', message: String(e) });
     }
@@ -305,7 +388,7 @@ export default function InvoiceDetailPage() {
       const freshSettings = compId
         ? await CompanySettingsService.getSettings(compId).catch(() => companySettings)
         : companySettings;
-      await PdfExportService.exportQuoteToPdf(invoice, freshSettings, undefined, undefined, useStamp, 'invoice', undefined, printTTCOnly);
+      await PdfExportService.exportQuoteToPdf(invoice, freshSettings, undefined, undefined, useStamp, 'invoice', undefined, false);
     } catch { /* continue even if PDF fails */ }
 
     const company = companySettings?.company_name?.trim() || '';
@@ -325,7 +408,7 @@ export default function InvoiceDetailPage() {
     if (!invoice) return;
     // Same letterhead as the downloaded PDF: the issuing company.
     const freshSettings = await CompanySettingsService.getSettings(invoice.issuing_company_id || invoice.company_id || undefined);
-    const { blob, filename } = await PdfExportService.generatePdfBlob(invoice, freshSettings, undefined, undefined, useStamp, 'invoice', undefined, printTTCOnly);
+    const { blob, filename } = await PdfExportService.generatePdfBlob(invoice, freshSettings, undefined, undefined, useStamp, 'invoice', undefined, false);
     setPreviewBlob(blob);
     setPreviewFilename(filename);
     setShowPrintPreview(true);
@@ -398,10 +481,18 @@ export default function InvoiceDetailPage() {
   if (isLoading) return <div className="flex items-center justify-center min-h-[40vh]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>;
   if (!invoice) return <div className="text-center py-12 text-muted-foreground">Facture introuvable.</div>;
 
-  const tvaRate = companySettings?.tva_rate ?? 20;
+  // The rate frozen on the invoice, not the company's current one.
+  const tvaRate = documentTvaRate(invoice, companySettings?.tva_rate);
   const draftTotal = documentTotal(draftItems);
   // Lines invoiced from a proforma stay as billed there; corrections go through an avoir.
-  const linesLocked = !!invoice.parent_document_id;
+  // A booked invoice keeps its lines too.
+  const linesLocked = !!invoice.parent_document_id || isPosted;
+  const numberFixed = invoice.status !== 'draft';
+  const overdue = invoiceOverdue(invoice);
+  const dueDay = invoiceDueDay(invoice);
+  const isIndividual = !!(invoice.customer?.isIndividual ?? clientIsIndividual);
+  // Art. 145 CGI: the buyer's ICE on invoices to businesses (100 DH fine per omission).
+  const missingClientIce = !!invoice.customer?.fullName?.trim() && !normalizeIce(invoice.customer?.ice) && !isIndividual;
   const shownItems = isEditing ? draftItems : invoice.items;
   const showDiscount = isEditing ? !linesLocked : shownItems.some(i => discountRate(i) > 0);
 
@@ -459,11 +550,20 @@ export default function InvoiceDetailPage() {
           {isEditing ? (
             <div className="mt-1 flex flex-wrap items-center gap-2">
               <label className="sr-only" htmlFor="invoice-number">Numéro de facture</label>
+              {/* Continuous numbering: an issued invoice keeps its number. */}
               <input id="invoice-number" value={draftNumber} onChange={e => setDraftNumber(e.target.value)}
-                className="w-48 rounded-lg border border-input bg-background px-2.5 py-1.5 text-lg font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
+                disabled={numberFixed} title={numberFixed ? 'Le numéro d’une facture finalisée ne change plus' : undefined}
+                className="w-48 rounded-lg border border-input bg-background px-2.5 py-1.5 text-lg font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-70" />
               <label className="sr-only" htmlFor="invoice-date">Date de la facture</label>
-              <input id="invoice-date" type="date" value={draftDate} onChange={e => setDraftDate(e.target.value)}
+              <input id="invoice-date" type="date" value={draftDate} onChange={e => changeDraftDate(e.target.value)} disabled={isPosted}
+                className="rounded-lg border border-input bg-background px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-70" />
+              <label htmlFor="invoice-due" className="text-xs text-muted-foreground">Échéance</label>
+              <input id="invoice-due" type="date" value={draftDueDate} onChange={e => setDraftDueDate(e.target.value)}
+                min={draftDate || undefined} max={draftDate ? addDays(draftDate, MAX_PAYMENT_DAYS) : undefined}
                 className="rounded-lg border border-input bg-background px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
+              {draftDate && draftDueDate && dueDateError(draftDate, draftDueDate) && (
+                <p className="w-full text-xs text-destructive">{dueDateError(draftDate, draftDueDate)}</p>
+              )}
             </div>
           ) : (
             <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">Facture {invoice.quoteNumber}</h1>
@@ -471,9 +571,12 @@ export default function InvoiceDetailPage() {
         </div>
         {isEditing ? (
           <select value={draftStatus} onChange={e => setDraftStatus(e.target.value)} aria-label="Statut de la facture"
+            disabled={numberFixed}
             className="rounded-full border-0 bg-secondary py-1 pl-3 pr-8 text-xs font-semibold text-foreground ring-1 ring-inset ring-border">
-            <option value="draft">Brouillon</option>
+            {/* An issued invoice does not go back to draft: it is cancelled by a credit note. */}
+            {!numberFixed && <option value="draft">Brouillon</option>}
             <option value="final">Finalisé</option>
+            {draftStatus !== 'draft' && draftStatus !== 'final' && <option value={draftStatus}>{draftStatus}</option>}
           </select>
         ) : (
           <div className="flex flex-wrap items-center gap-2">
@@ -483,6 +586,16 @@ export default function InvoiceDetailPage() {
             {paymentPill && (
               <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${paymentPill.cls}`}>
                 <paymentPill.Icon className="h-3.5 w-3.5" aria-hidden="true" />{paymentPill.label}
+              </span>
+            )}
+            {overdue.overdue && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-red-500/10 px-2.5 py-1 text-xs font-semibold text-red-700 ring-1 ring-inset ring-red-600/20 dark:text-red-300">
+                <Clock className="h-3.5 w-3.5" aria-hidden="true" />En retard · {overdue.days} j
+              </span>
+            )}
+            {isPosted && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-xs font-semibold text-foreground ring-1 ring-inset ring-border">
+                <Check className="h-3.5 w-3.5" aria-hidden="true" />Comptabilisée
               </span>
             )}
             {invoice.is_locked && (
@@ -501,6 +614,38 @@ export default function InvoiceDetailPage() {
               <Lock className="h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300" aria-hidden="true" />
               <p className="min-w-0 flex-1 text-sm text-amber-900 dark:text-amber-200">Facture verrouillée : déverrouillez-la avec le PIN pour la modifier ou enregistrer un paiement.</p>
               <button type="button" onClick={handleUnlock} className="rounded-lg border border-amber-600/30 bg-card px-3 py-1.5 text-sm font-semibold text-foreground hover:bg-secondary">Déverrouiller</button>
+            </div>
+          )}
+
+          {isPosted && (
+            <div className="flex items-start gap-3 rounded-xl border border-border bg-secondary/50 px-4 py-3">
+              <Lock className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <p className="min-w-0 flex-1 text-sm text-foreground">
+                {POSTED_INVOICE_MESSAGE} Les paiements, l’échéance et l’ICE du client restent modifiables.
+              </p>
+            </div>
+          )}
+
+          {missingClientIce && !isEditing && (
+            <div role="alert" className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+              <p className="flex items-start gap-2 text-sm text-amber-900 dark:text-amber-200">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                ICE du client manquant — obligatoire sur les factures aux professionnels (art. 145 CGI), amende de 100 DH par omission.
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-2 pl-6">
+                <label className="sr-only" htmlFor="invoice-client-ice">ICE du client</label>
+                <input id="invoice-client-ice" value={iceInput} onChange={e => setIceInput(e.target.value)} inputMode="numeric"
+                  placeholder="ICE (15 chiffres)" className="w-48 rounded-lg border border-input bg-card px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
+                <button type="button" onClick={() => saveCustomerIce(false)} disabled={iceSaving || !iceInput.trim()}
+                  className="rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                  Enregistrer l’ICE
+                </button>
+                <button type="button" onClick={() => saveCustomerIce(true)} disabled={iceSaving}
+                  className="rounded-lg border border-amber-600/30 bg-card px-3 py-1.5 text-sm font-semibold text-foreground hover:bg-secondary disabled:opacity-50">
+                  C’est un particulier
+                </button>
+                {iceInput.trim() && iceError(iceInput) && <p className="w-full text-xs text-destructive">{iceError(iceInput)}</p>}
+              </div>
             </div>
           )}
 
@@ -545,27 +690,54 @@ export default function InvoiceDetailPage() {
             <h2 id="invoice-client-title" className={isEditing ? 'mb-3 font-semibold text-foreground' : 'sr-only'}>Client</h2>
             {isEditing ? (
               <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                {isPosted ? (
+                  // Who was invoiced is fixed once booked; ICE and address can be completed.
+                  <div className="md:col-span-3">
+                    <p className="font-semibold text-foreground">{invoice.customer?.fullName || '—'}</p>
+                    <p className="text-sm text-muted-foreground">{[invoice.customer?.phoneNumber, invoice.customer?.city].filter(Boolean).join(' · ')}</p>
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <p className="mb-1 text-xs font-medium text-foreground">Client *</p>
+                      <ClientDropdown
+                        value={draftCustomerName}
+                        onChange={(client, val) => {
+                          setDraftCustomerName(client ? client.full_name : val);
+                          if (client) {
+                            setDraftCustomerPhone(client.phone_number || '');
+                            setDraftCustomerCity(client.city || '');
+                            setDraftCustomerAddress(client.address || '');
+                            setDraftCustomerIce(client.ice || '');
+                            setDraftIsIndividual(!!client.is_individual);
+                          }
+                        }}
+                        onCreateNew={q => { setClientFormInitialName(q || ''); setShowClientForm(true); }}
+                        placeholder="Rechercher un client..."
+                      />
+                    </div>
+                    <label className="block text-xs font-medium text-foreground">Téléphone
+                      <input value={draftCustomerPhone} onChange={e => setDraftCustomerPhone(e.target.value)} className={`${fieldCls} mt-1`} placeholder="Téléphone" />
+                    </label>
+                    <label className="block text-xs font-medium text-foreground">Ville
+                      <input value={draftCustomerCity} onChange={e => setDraftCustomerCity(e.target.value)} className={`${fieldCls} mt-1`} placeholder="Ville" />
+                    </label>
+                  </>
+                )}
+                <label className="block text-xs font-medium text-foreground md:col-span-2">Adresse
+                  <input value={draftCustomerAddress} onChange={e => setDraftCustomerAddress(e.target.value)} className={`${fieldCls} mt-1`} placeholder="Adresse du client" />
+                </label>
                 <div>
-                  <p className="mb-1 text-xs font-medium text-foreground">Client *</p>
-                  <ClientDropdown
-                    value={draftCustomerName}
-                    onChange={(client, val) => {
-                      setDraftCustomerName(client ? client.full_name : val);
-                      if (client) {
-                        setDraftCustomerPhone(client.phone_number || '');
-                        setDraftCustomerCity(client.city || '');
-                      }
-                    }}
-                    onCreateNew={q => { setClientFormInitialName(q || ''); setShowClientForm(true); }}
-                    placeholder="Rechercher un client..."
-                  />
+                  <label className="block text-xs font-medium text-foreground">ICE
+                    <input value={draftCustomerIce} onChange={e => setDraftCustomerIce(e.target.value)} inputMode="numeric" disabled={draftIsIndividual}
+                      className={`${fieldCls} mt-1 disabled:opacity-60`} placeholder="15 chiffres" />
+                  </label>
+                  {iceError(draftCustomerIce) && <p className="mt-1 text-xs text-destructive">{iceError(draftCustomerIce)}</p>}
+                  <label className="mt-1.5 flex items-center gap-2 text-xs text-foreground">
+                    <input type="checkbox" checked={draftIsIndividual} onChange={e => setDraftIsIndividual(e.target.checked)} className="h-4 w-4 rounded accent-primary" />
+                    Particulier (sans ICE)
+                  </label>
                 </div>
-                <label className="block text-xs font-medium text-foreground">Téléphone
-                  <input value={draftCustomerPhone} onChange={e => setDraftCustomerPhone(e.target.value)} className={`${fieldCls} mt-1`} placeholder="Téléphone" />
-                </label>
-                <label className="block text-xs font-medium text-foreground">Ville
-                  <input value={draftCustomerCity} onChange={e => setDraftCustomerCity(e.target.value)} className={`${fieldCls} mt-1`} placeholder="Ville" />
-                </label>
               </div>
             ) : (
               <div className="flex items-start gap-3 sm:gap-4">
@@ -575,8 +747,13 @@ export default function InvoiceDetailPage() {
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-lg font-semibold leading-tight text-foreground">{invoice.customer?.fullName || 'Client non renseigné'}</p>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    {[invoice.customer?.phoneNumber, invoice.customer?.city, `facturée le ${invoiceDate}`].filter(Boolean).join(' · ')}
+                    {[invoice.customer?.phoneNumber, invoice.customer?.city, `facturée le ${invoiceDate}`, `échéance le ${formatDay(dueDay)}`].filter(Boolean).join(' · ')}
                   </p>
+                  {(invoice.customer?.address || invoice.customer?.ice || isIndividual) && (
+                    <p className="mt-0.5 text-sm text-muted-foreground">
+                      {[invoice.customer?.address, invoice.customer?.ice ? `ICE ${invoice.customer.ice}` : isIndividual ? 'Particulier' : ''].filter(Boolean).join(' · ')}
+                    </p>
+                  )}
                 </div>
               </div>
             )}
@@ -588,7 +765,8 @@ export default function InvoiceDetailPage() {
               <h2 id="invoice-lines-title" className="font-semibold text-foreground">Articles</h2>
               <span className="text-sm text-muted-foreground">{shownItems.length} ligne{shownItems.length !== 1 ? 's' : ''}</span>
             </div>
-            {isEditing ? (
+            {/* A booked invoice shows its lines read-only, even while its payments are edited. */}
+            {isEditing && !isPosted ? (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-secondary/40">
@@ -691,7 +869,11 @@ export default function InvoiceDetailPage() {
             )}
             <dl className="space-y-1.5 border-t border-border px-4 py-3 text-sm sm:px-5">
               <div className="flex justify-between"><dt className="text-muted-foreground">Total HT</dt><dd className="tabular-nums text-foreground">{formatMoney(shownHT)}</dd></div>
-              <div className="flex justify-between"><dt className="text-muted-foreground">TVA {tvaRate} %</dt><dd className="tabular-nums text-foreground">{formatMoney(shownTotal - shownHT)}</dd></div>
+              {tvaRate === 0 ? (
+                <div className="flex justify-between"><dt className="text-muted-foreground">Exonéré de TVA{companySettings?.vat_exemption_text ? ` – ${companySettings.vat_exemption_text}` : ''}</dt><dd className="tabular-nums text-foreground">{formatMoney(0)}</dd></div>
+              ) : (
+                <div className="flex justify-between"><dt className="text-muted-foreground">TVA {tvaRate} %</dt><dd className="tabular-nums text-foreground">{formatMoney(shownTotal - shownHT)}</dd></div>
+              )}
               <div className="flex justify-between text-base font-semibold"><dt className="text-foreground">Total TTC</dt><dd className="tabular-nums text-foreground">{formatMoney(shownTotal)}</dd></div>
             </dl>
           </section>
@@ -863,6 +1045,12 @@ export default function InvoiceDetailPage() {
             <dl className="mt-3 space-y-2 text-sm">
               <div className="flex justify-between"><dt className="text-muted-foreground">Total TTC</dt><dd className="font-medium tabular-nums text-foreground">{formatMoney(shownTotal)}</dd></div>
               <div className="flex justify-between"><dt className="text-muted-foreground">Déjà payé</dt><dd className="font-medium tabular-nums text-emerald-700 dark:text-emerald-300">{formatMoney(paidNow)}</dd></div>
+              <div className="flex justify-between">
+                <dt className="text-muted-foreground">Échéance</dt>
+                <dd className={`font-medium tabular-nums ${overdue.overdue ? 'text-red-700 dark:text-red-300' : 'text-foreground'}`}>
+                  {formatDay(isEditing && draftDueDate ? draftDueDate : dueDay)}{overdue.overdue && !isEditing ? ` · ${overdue.days} j de retard` : ''}
+                </dd>
+              </div>
             </dl>
             <div className="mt-3 border-t border-border pt-3">
               <p className="text-sm font-semibold text-foreground">{resteNow <= 0 && paidNow > 0 ? 'Facture soldée' : 'Reste à payer'}</p>
@@ -910,10 +1098,12 @@ export default function InvoiceDetailPage() {
                   <Mail className="h-4 w-4 text-primary" />E-mail
                 </button>
               </div>
-              <div className="mt-3 border-t border-border pt-1">
-                {toggleOption(printTTCOnly, setPrintTTCOnly, 'Prix TTC uniquement', 'Masquer le détail HT et TVA sur le PDF')}
-                {companySettings?.stamp_url ? toggleOption(useStamp, setUseStamp, 'Tampon', 'Apposer le tampon de la société') : null}
-              </div>
+              {/* No "TTC only" option: an invoice always shows HT, VAT and TTC (CGI art. 145-III). */}
+              {companySettings?.stamp_url && (
+                <div className="mt-3 border-t border-border pt-1">
+                  {toggleOption(useStamp, setUseStamp, 'Tampon', 'Apposer le tampon de la société')}
+                </div>
+              )}
               <div className="mt-2 space-y-0.5 border-t border-border pt-2">
                 {invoice.is_locked ? (
                   <button type="button" onClick={handleUnlock} className={sideAction}><Unlock className="h-4 w-4 text-muted-foreground" />Déverrouiller</button>

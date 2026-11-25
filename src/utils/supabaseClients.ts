@@ -2,6 +2,11 @@ import { supabase } from './supabaseClient';
 import { getCompanyContext } from './supabaseCompanyFilter';
 import { readAll, type Pageable } from './readAll';
 import { ilikePattern } from './commandSearch';
+import { writeTolerant } from './schemaFallback';
+
+// clients.is_individual comes with 20261125120000_billing_compliance.sql:
+// before it runs, clients are saved without it.
+const NEW_CLIENT_COLUMNS = ['is_individual'];
 
 /**
  * The or() filter of the client search. The typed text is escaped: a comma or
@@ -23,6 +28,8 @@ export interface Client {
   email: string;
   client_code?: string;
   company_id?: string;
+  /** Private person: their invoices need no ICE. */
+  is_individual?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -34,6 +41,7 @@ export interface CreateClientRequest {
   city?: string;
   ice?: string;
   email?: string;
+  is_individual?: boolean;
 }
 
 export interface UpdateClientRequest {
@@ -43,6 +51,7 @@ export interface UpdateClientRequest {
   city?: string;
   ice?: string;
   email?: string;
+  is_individual?: boolean;
 }
 
 export class SupabaseClientsService {
@@ -128,31 +137,32 @@ export class SupabaseClientsService {
       if (codeData) clientCode = codeData as string;
     } catch { /* non-fatal — proceed without code */ }
 
-    const { data, error } = await supabase
-      .from('clients')
-      .insert({
-        full_name: client.full_name,
-        phone_number: client.phone_number,
-        address: client.address || '',
-        city: client.city || '',
-        ice: client.ice || '',
-        email: client.email || '',
-        ...(clientCode ? { client_code: clientCode } : {}),
-        ...(companyId ? { company_id: companyId } : {}),
-      })
-      .select()
-      .single();
+    const row: Record<string, unknown> = {
+      full_name: client.full_name,
+      phone_number: client.phone_number,
+      address: client.address || '',
+      city: client.city || '',
+      ice: client.ice || '',
+      email: client.email || '',
+      ...(clientCode ? { client_code: clientCode } : {}),
+      ...(companyId ? { company_id: companyId } : {}),
+      ...(client.is_individual !== undefined ? { is_individual: client.is_individual } : {}),
+    };
+    const { data, error } = await writeTolerant(row, NEW_CLIENT_COLUMNS,
+      payload => supabase.from('clients').insert(payload as never).select().single());
     if (error) throw error;
-    return data;
+    return data as Client;
   }
 
   static async updateClient(id: string, updates: UpdateClientRequest): Promise<Client> {
     const { companyId, isSuperAdmin } = getCompanyContext();
-    let query = supabase.from('clients').update(updates).eq('id', id);
-    if (!isSuperAdmin && companyId) query = query.eq('company_id', companyId);
-    const { data, error } = await query.select().single();
+    const { data, error } = await writeTolerant({ ...updates }, NEW_CLIENT_COLUMNS, payload => {
+      let query = supabase.from('clients').update(payload as never).eq('id', id);
+      if (!isSuperAdmin && companyId) query = query.eq('company_id', companyId);
+      return query.select().single();
+    });
     if (error) throw error;
-    return data;
+    return data as Client;
   }
 
   static async smartUpsertClient(client: CreateClientRequest): Promise<Client> {

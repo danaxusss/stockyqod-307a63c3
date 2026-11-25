@@ -1,6 +1,12 @@
 import { SupabaseCompaniesService, invalidateCompaniesCache } from './supabaseCompanies';
 import { supabase } from '@/integrations/supabase/client';
 import { getCompanyContext } from './supabaseCompanyFilter';
+import { writeTolerant } from './schemaFallback';
+import { DEFAULT_PAYMENT_DAYS } from './documentLines';
+
+// Settings columns added by 20261125120000_billing_compliance.sql: saving
+// still works on a database that does not have them yet.
+const NEW_SETTINGS_COLUMNS = ['payment_terms_days', 'vat_exemption_text'];
 
 export interface PrintColumns {
   showImage: boolean;
@@ -135,7 +141,11 @@ export interface CompanySettings {
   quote_style: QuoteStyle;
   share_templates: ShareTemplates;
   payment_terms: string;
+  /** Invoice due date = invoice date + this many days (loi 69-21: 60 by default, 120 at most). */
+  payment_terms_days: number;
   tva_rate: number;
+  /** Printed after "Exonéré de TVA" on documents at 0 % (e.g. the CGI article). */
+  vat_exemption_text: string;
   quote_validity_days: number;
   updated_at: string;
 }
@@ -191,6 +201,8 @@ export class CompanySettingsService {
       phone2: (data as any).phone2 || '',
       phone_dir: (data as any).phone_dir || '',
       phone_gsm: (data as any).phone_gsm || '',
+      payment_terms_days: (data as any).payment_terms_days ?? DEFAULT_PAYMENT_DAYS,
+      vat_exemption_text: (data as any).vat_exemption_text || '',
       quote_visible_fields: {
         ...DEFAULT_VISIBLE_FIELDS,
         ...(data.quote_visible_fields as Record<string, unknown>),
@@ -243,6 +255,8 @@ export class CompanySettingsService {
       tva_rate: data.tva_rate ?? 20,
       quote_validity_days: data.quote_validity_days ?? 30,
       payment_terms: data.payment_terms || '',
+      payment_terms_days: data.payment_terms_days ?? DEFAULT_PAYMENT_DAYS,
+      vat_exemption_text: data.vat_exemption_text || '',
       updated_at: data.updated_at || '',
       quote_visible_fields: {
         ...DEFAULT_VISIBLE_FIELDS,
@@ -305,6 +319,8 @@ export class CompanySettingsService {
       tva_rate: settings.tva_rate,
       quote_validity_days: settings.quote_validity_days,
       payment_terms: settings.payment_terms,
+      payment_terms_days: settings.payment_terms_days,
+      vat_exemption_text: settings.vat_exemption_text,
       updated_at: new Date().toISOString(),
     };
     if (settings.quote_visible_fields) updateData.quote_visible_fields = settings.quote_visible_fields;
@@ -316,7 +332,8 @@ export class CompanySettingsService {
     if (settings.share_templates) updateData.share_templates = settings.share_templates;
     // Remove undefined keys
     Object.keys(updateData).forEach(k => updateData[k] === undefined && delete updateData[k]);
-    const { error } = await supabase.from('companies').update(updateData as any).eq('id', companyId);
+    const { error } = await writeTolerant(updateData, NEW_SETTINGS_COLUMNS,
+      payload => supabase.from('companies').update(payload as never).eq('id', companyId));
     invalidateCompaniesCache();
     if (error) throw error;
   }
@@ -341,10 +358,8 @@ export class CompanySettingsService {
       delete updateData.share_templates;
     }
 
-    const { error } = await supabase
-      .from('company_settings')
-      .update(updateData as any)
-      .eq('id', current.id);
+    const { error } = await writeTolerant(updateData, NEW_SETTINGS_COLUMNS,
+      payload => supabase.from('company_settings').update(payload as never).eq('id', current.id));
 
     if (error) throw error;
   }
